@@ -116,6 +116,12 @@ const getInitials = (profile) => {
   return `${firstInitial}${lastInitial}`.toUpperCase();
 };
 
+const roleLabels = {
+  PHARMA_II: "Pharmacist II",
+  PHARMA_I: "Pharmacist I",
+  BHW: "Barangay Health Worker",
+};
+
 export default function AdminSidebar({ profile }) {
   const location = useLocation();
   const fullName = `${profile?.first_name || "Pharma"} ${
@@ -171,7 +177,7 @@ export default function AdminSidebar({ profile }) {
           <div className="min-w-0">
             <p className="truncate text-sm font-black">{fullName}</p>
             <p className="truncate text-xs font-medium text-slate-400">
-              {profile?.role || "Pharmacist"}
+              {roleLabels[profile?.role] || "Barangay Health Worker"}
             </p>
           </div>
         </div>

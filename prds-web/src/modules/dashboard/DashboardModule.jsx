@@ -71,6 +71,12 @@ const getDisplayName = (profile) => {
   return fullName || "Pharma User";
 };
 
+const roleLabels = {
+  PHARMA_II: "Pharmacist II",
+  PHARMA_I: "Pharmacist I",
+  BHW: "Barangay Health Worker",
+};
+
 const statusClass = {
   APPROVED: "bg-emerald-100 text-emerald-700",
   PENDING: "bg-orange-100 text-orange-700",
@@ -97,7 +103,7 @@ export default function DashboardModule() {
   const [dashboardError, setDashboardError] = useState("");
 
   const today = useMemo(() => formatDateTime(new Date()), []);
-  const roleLabel = profile?.role || "Pharmacist";
+  const roleLabel = roleLabels[profile?.role] || "Barangay Health Worker";
 
   const loadDashboard = async () => {
     setIsLoading(true);

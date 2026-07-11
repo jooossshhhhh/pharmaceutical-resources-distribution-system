@@ -84,6 +84,25 @@ export const getOrCreateSupabaseProfile = async (supabaseUser) => {
   const existingProfile = await getProfileById(supabaseUser?.id);
 
   if (existingProfile) {
+    if (
+      supabaseUser?.email &&
+      existingProfile.email !== supabaseUser.email
+    ) {
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({
+          email: supabaseUser.email,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", supabaseUser.id)
+        .select(PROFILE_COLUMNS)
+        .single();
+
+      if (!error) {
+        return data;
+      }
+    }
+
     return existingProfile;
   }
 

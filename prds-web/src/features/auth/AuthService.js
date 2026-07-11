@@ -97,6 +97,63 @@ export const verifyPhoneOtp = async ({
   return data;
 };
 
+export const updateUserPhone = async (phoneNumber) => {
+  const { data, error } = await supabaseAuth.auth.updateUser({
+    phone: toPhilippineE164PhoneNumber(phoneNumber),
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
+export const verifyPhoneChangeOtp = async ({
+  phoneNumber,
+  verificationCode,
+}) => {
+  const { data, error } = await supabaseAuth.auth.verifyOtp({
+    phone: toPhilippineE164PhoneNumber(phoneNumber),
+    token: verificationCode,
+    type: "phone_change",
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
+export const resendPhoneChangeOtp = async (phoneNumber) => {
+  const { data, error } = await supabaseAuth.auth.resend({
+    phone: toPhilippineE164PhoneNumber(phoneNumber),
+    type: "phone_change",
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
+export const linkGoogleIdentity = async () => {
+  const { data, error } = await supabaseAuth.auth.linkIdentity({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/profile-settings`,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
 export const getAuthErrorMessage = (error) => {
   return error?.message || "Authentication failed. Please try again.";
 };

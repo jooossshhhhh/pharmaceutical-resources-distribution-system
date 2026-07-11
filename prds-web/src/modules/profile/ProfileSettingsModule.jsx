@@ -2,7 +2,16 @@ import { useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
-import { logoutUser } from "../../features/auth/AuthService";
+import {
+  getAuthErrorMessage,
+  isPhilippineMobileNumber,
+  linkGoogleIdentity,
+  normalizePhoneNumber,
+  resendPhoneChangeOtp,
+  updateUserPhone,
+  verifyPhoneChangeOtp,
+  logoutUser,
+} from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
 import { formatDateTime } from "../dashboard/dashboardUtils";
 
@@ -17,6 +26,16 @@ const getFullName = (profile) => {
   const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
   return fullName || "Pharma User";
 };
+
+const roleLabels = {
+  PHARMA_II: "Pharmacist II",
+  PHARMA_I: "Pharmacist I",
+  BHW: "Barangay Health Worker",
+};
+
+const getRoleLabel = (role) => roleLabels[role] || "Barangay Health Worker";
+
+const isInternalPhoneEmail = (email) => email?.endsWith("@prds.local");
 
 const preferenceRows = [
   {
@@ -116,13 +135,24 @@ const FieldIcon = ({ type }) => {
 };
 
 export default function ProfileSettingsModule() {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, supabaseUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [modalError, setModalError] = useState("");
+  const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
+  const [phoneVerification, setPhoneVerification] = useState({
+    isOpen: false,
+    phoneNumber: "",
+    code: "",
+    error: "",
+    isVerifying: false,
+    isResending: false,
+  });
   const [form, setForm] = useState({
     first_name: profile?.first_name || "",
     last_name: profile?.last_name || "",
+    email: profile?.email || "",
     phone_number: profile?.phone_number || "",
   });
 
@@ -130,6 +160,13 @@ export default function ProfileSettingsModule() {
   const statusLabel = profile?.status
     ? profile.status.charAt(0) + profile.status.slice(1).toLowerCase()
     : "Active";
+  const roleLabel = getRoleLabel(profile?.role);
+  const authEmail = supabaseUser?.email || "";
+  const profileEmail = profile?.email || "";
+  const readableEmail = isInternalPhoneEmail(profileEmail)
+    ? authEmail || "No Gmail linked"
+    : profileEmail;
+  const hasGoogleEmail = !!authEmail && !isInternalPhoneEmail(authEmail);
 
   const handleFieldChange = (event) => {
     const { name, value } = event.target;
@@ -140,9 +177,11 @@ export default function ProfileSettingsModule() {
     setForm({
       first_name: profile?.first_name || "",
       last_name: profile?.last_name || "",
+      email: readableEmail === "No Gmail linked" ? "" : readableEmail,
       phone_number: profile?.phone_number || "",
     });
     setMessage("");
+    setModalError("");
     setIsEditing(true);
   };
 
@@ -154,25 +193,36 @@ export default function ProfileSettingsModule() {
     }
 
     if (!form.first_name.trim() || !form.last_name.trim()) {
-      setMessage("First name and last name are required.");
+      setModalError("First name and last name are required.");
+      return;
+    }
+
+    const nextPhoneNumber = normalizePhoneNumber(form.phone_number);
+
+    if (!isPhilippineMobileNumber(nextPhoneNumber)) {
+      setModalError("Phone number must use the 09XXXXXXXXX format.");
+      return;
+    }
+
+    if (nextPhoneNumber !== normalizePhoneNumber(profile?.phone_number || "")) {
+      await handleStartPhoneChange(nextPhoneNumber);
       return;
     }
 
     setIsSaving(true);
-    setMessage("");
+    setModalError("");
 
     const { error } = await supabase
       .from("profiles")
       .update({
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
-        phone_number: form.phone_number.trim() || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", profile.id);
 
     if (error) {
-      setMessage(error.message);
+      setModalError(error.message);
       setIsSaving(false);
       return;
     }
@@ -181,6 +231,110 @@ export default function ProfileSettingsModule() {
     setIsSaving(false);
     setIsEditing(false);
     setMessage("Profile updated.");
+  };
+
+  const handleStartPhoneChange = async (phoneNumber) => {
+    setIsSaving(true);
+    setModalError("");
+
+    try {
+      await updateUserPhone(phoneNumber);
+      setPhoneVerification({
+        isOpen: true,
+        phoneNumber,
+        code: "",
+        error: "",
+        isVerifying: false,
+        isResending: false,
+      });
+    } catch (error) {
+      setModalError(getAuthErrorMessage(error));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleVerifyPhoneChange = async (event) => {
+    event.preventDefault();
+
+    setPhoneVerification((current) => ({
+      ...current,
+      error: "",
+      isVerifying: true,
+    }));
+
+    try {
+      await verifyPhoneChangeOtp({
+        phoneNumber: phoneVerification.phoneNumber,
+        verificationCode: phoneVerification.code,
+      });
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          first_name: form.first_name.trim(),
+          last_name: form.last_name.trim(),
+          phone_number: phoneVerification.phoneNumber,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", profile.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await refreshProfile?.();
+      setPhoneVerification({
+        isOpen: false,
+        phoneNumber: "",
+        code: "",
+        error: "",
+        isVerifying: false,
+        isResending: false,
+      });
+      setIsEditing(false);
+      setMessage("Phone number verified and profile updated.");
+    } catch (error) {
+      setPhoneVerification((current) => ({
+        ...current,
+        error: getAuthErrorMessage(error),
+        isVerifying: false,
+      }));
+    }
+  };
+
+  const handleResendPhoneChangeOtp = async () => {
+    setPhoneVerification((current) => ({
+      ...current,
+      error: "",
+      isResending: true,
+    }));
+
+    try {
+      await resendPhoneChangeOtp(phoneVerification.phoneNumber);
+      setPhoneVerification((current) => ({
+        ...current,
+        isResending: false,
+      }));
+    } catch (error) {
+      setPhoneVerification((current) => ({
+        ...current,
+        error: getAuthErrorMessage(error),
+        isResending: false,
+      }));
+    }
+  };
+
+  const handleLinkGoogle = async () => {
+    setIsLinkingGoogle(true);
+    setMessage("");
+
+    try {
+      await linkGoogleIdentity();
+    } catch (error) {
+      setMessage(getAuthErrorMessage(error));
+      setIsLinkingGoogle(false);
+    }
   };
 
   return (
@@ -194,7 +348,7 @@ export default function ProfileSettingsModule() {
             <div>
               <h2 className="text-2xl font-black text-black">{getFullName(profile)}</h2>
               <p className="mt-1 text-sm font-medium text-neutral-500">
-                {profile?.role || "Pharmacist"} -{" "}
+                {roleLabel} -{" "}
                 {profile?.facility_name || "Palompon District Hospital"}
               </p>
               <span className="mt-2 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
@@ -229,9 +383,9 @@ export default function ProfileSettingsModule() {
           <div className="grid gap-4 sm:grid-cols-2">
             <ProfileField icon="user" label="First Name" value={profile?.first_name || "Not set"} readOnly />
             <ProfileField icon="user" label="Last Name" value={profile?.last_name || "Not set"} readOnly />
-            <ProfileField icon="mail" label="Email" value={profile?.email || "Not set"} readOnly />
+            <ProfileField icon="mail" label="Gmail" value={readableEmail} readOnly />
             <ProfileField icon="phone" label="Phone" value={profile?.phone_number || "Not set"} readOnly />
-            <ProfileField icon="role" label="Role" value={profile?.role || "Pharmacist"} readOnly />
+            <ProfileField icon="role" label="Role" value={roleLabel} readOnly />
             <ProfileField icon="status" label="Status" value={statusLabel} readOnly />
             <ProfileField
               icon="facility"
@@ -288,9 +442,9 @@ export default function ProfileSettingsModule() {
             </div>
 
             <div className="prds-modal-scrollbar flex-1 overflow-y-auto px-6 py-5">
-              {message && (
+              {modalError && (
                 <p className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                  {message}
+                  {modalError}
                 </p>
               )}
 
@@ -307,14 +461,35 @@ export default function ProfileSettingsModule() {
                   value={form.last_name}
                   onChange={handleFieldChange}
                 />
-                <ModalField label="Email" value={profile?.email || "Not set"} readOnly />
+                <div className="grid gap-2">
+                  <ModalField
+                    label="Gmail"
+                    name="email"
+                    value={form.email}
+                    onChange={handleFieldChange}
+                    readOnly
+                    placeholder="No Gmail linked"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleLinkGoogle}
+                    disabled={isLinkingGoogle}
+                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    <GoogleIcon />
+                    {hasGoogleEmail ? "Reconnect Google" : "Add Gmail Login"}
+                  </button>
+                  <p className="text-xs font-medium leading-5 text-neutral-500">
+                    This links Google to the same Supabase account, so the user can sign in with either phone or Gmail.
+                  </p>
+                </div>
                 <ModalField
                   label="Phone"
                   name="phone_number"
                   value={form.phone_number}
                   onChange={handleFieldChange}
                 />
-                <ModalField label="Role" value={profile?.role || "Pharmacist"} readOnly />
+                <ModalField label="Role" value={roleLabel} readOnly />
                 <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
                   Status
                   <select
@@ -352,6 +527,83 @@ export default function ProfileSettingsModule() {
           </form>
         </div>
       )}
+
+      {phoneVerification.isOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4 py-5">
+          <form
+            onSubmit={handleVerifyPhoneChange}
+            className="w-full max-w-[430px] rounded-xl bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-black">Verify Phone Number</h3>
+                <p className="mt-1 text-sm font-medium text-neutral-500">
+                  Enter the 6-digit code sent to {phoneVerification.phoneNumber}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setPhoneVerification({
+                    isOpen: false,
+                    phoneNumber: "",
+                    code: "",
+                    error: "",
+                    isVerifying: false,
+                    isResending: false,
+                  })
+                }
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+                aria-label="Close phone verification"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <label className="mt-6 grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
+              Verification Code
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={phoneVerification.code}
+                onChange={(event) =>
+                  setPhoneVerification((current) => ({
+                    ...current,
+                    code: event.target.value.replace(/\D/g, ""),
+                  }))
+                }
+                className="h-12 rounded-lg border border-neutral-200 bg-white px-3 text-center text-lg font-black tracking-[0.35em] text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                required
+              />
+            </label>
+
+            {phoneVerification.error && (
+              <p className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {phoneVerification.error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={phoneVerification.isVerifying}
+              className="mt-5 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+            >
+              {phoneVerification.isVerifying ? "Verifying..." : "Verify OTP and Save"}
+            </button>
+            <button
+              type="button"
+              onClick={handleResendPhoneChangeOtp}
+              disabled={phoneVerification.isResending}
+              className="mt-3 w-full rounded-lg bg-neutral-50 px-4 py-3 text-sm font-bold text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {phoneVerification.isResending ? "Resending..." : "Resend OTP"}
+            </button>
+          </form>
+        </div>
+      )}
     </AdminShell>
   );
 }
@@ -369,6 +621,17 @@ function ProfileField({ icon, label, readOnly, ...props }) {
         className="mt-3 w-full bg-transparent text-sm font-semibold text-black outline-none read-only:cursor-default"
       />
     </label>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.3-.2-1.9H12v3.6h5.4c-.2 1.2-.9 2.2-1.9 2.9v2.4h3.1c1.8-1.7 3-4.1 3-7Z" />
+      <path fill="#34A853" d="M12 22c2.7 0 5-0.9 6.6-2.4l-3.1-2.4c-.9.6-2 .9-3.5.9-2.6 0-4.8-1.8-5.6-4.1H3.2v2.5C4.8 19.8 8.1 22 12 22Z" />
+      <path fill="#FBBC05" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.5H3.2A10 10 0 0 0 2.1 12c0 1.6.4 3.1 1.1 4.5L6.4 14Z" />
+      <path fill="#EA4335" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9C17 2.9 14.7 2 12 2 8.1 2 4.8 4.2 3.2 7.5L6.4 10c.8-2.3 3-4.1 5.6-4.1Z" />
+    </svg>
   );
 }
 
