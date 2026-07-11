@@ -139,6 +139,7 @@ export default function ProfileSettingsModule() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
   const [modalError, setModalError] = useState("");
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [phoneVerification, setPhoneVerification] = useState({
@@ -181,6 +182,7 @@ export default function ProfileSettingsModule() {
       phone_number: profile?.phone_number || "",
     });
     setMessage("");
+    setProfileError("");
     setModalError("");
     setIsEditing(true);
   };
@@ -191,6 +193,9 @@ export default function ProfileSettingsModule() {
     if (!profile?.id) {
       return;
     }
+
+    setMessage("");
+    setProfileError("");
 
     if (!form.first_name.trim() || !form.last_name.trim()) {
       setModalError("First name and last name are required.");
@@ -239,6 +244,7 @@ export default function ProfileSettingsModule() {
 
     try {
       await updateUserPhone(phoneNumber);
+      setIsEditing(false);
       setPhoneVerification({
         isOpen: true,
         phoneNumber,
@@ -328,11 +334,17 @@ export default function ProfileSettingsModule() {
   const handleLinkGoogle = async () => {
     setIsLinkingGoogle(true);
     setMessage("");
+    setProfileError("");
 
     try {
       await linkGoogleIdentity();
     } catch (error) {
-      setMessage(getAuthErrorMessage(error));
+      const errorMessage = getAuthErrorMessage(error);
+      setProfileError(
+        errorMessage.includes("Manual linking is disabled")
+          ? "Google account linking is disabled in Supabase Auth. Enable manual account linking in your Supabase Auth settings before using Add Gmail Login."
+          : errorMessage
+      );
       setIsLinkingGoogle(false);
     }
   };
@@ -377,6 +389,11 @@ export default function ProfileSettingsModule() {
           {message && (
             <p className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
               {message}
+            </p>
+          )}
+          {profileError && (
+            <p className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {profileError}
             </p>
           )}
 
@@ -489,6 +506,9 @@ export default function ProfileSettingsModule() {
                   value={form.phone_number}
                   onChange={handleFieldChange}
                 />
+                <p className="-mt-2 text-xs font-medium leading-5 text-neutral-500">
+                  Phone edits are saved only after OTP verification. Use 09XXXXXXXXX format.
+                </p>
                 <ModalField label="Role" value={roleLabel} readOnly />
                 <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
                   Status
@@ -543,7 +563,7 @@ export default function ProfileSettingsModule() {
               </div>
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   setPhoneVerification({
                     isOpen: false,
                     phoneNumber: "",
@@ -551,8 +571,9 @@ export default function ProfileSettingsModule() {
                     error: "",
                     isVerifying: false,
                     isResending: false,
-                  })
-                }
+                  });
+                  setIsEditing(true);
+                }}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
                 aria-label="Close phone verification"
               >
