@@ -1,3 +1,50 @@
 @import "tailwindcss";
 
 @source "./**/*.{js,jsx}";
+
+.prds-sidebar-scrollbar {
+  scrollbar-color: rgba(16, 185, 129, 0.55) rgba(255, 255, 255, 0.06);
+  scrollbar-width: thin;
+}
+
+.prds-sidebar-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.prds-sidebar-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+.prds-sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.55);
+  border: 2px solid #000;
+  border-radius: 999px;
+}
+
+.prds-sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.75);
+}
+
+.prds-modal-scrollbar {
+  scrollbar-color: #8b8b8b #f4f2ef;
+  scrollbar-width: thin;
+}
+
+.prds-modal-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.prds-modal-scrollbar::-webkit-scrollbar-track {
+  background: #f4f2ef;
+  border-radius: 999px;
+}
+
+.prds-modal-scrollbar::-webkit-scrollbar-thumb {
+  background: #8b8b8b;
+  border-radius: 999px;
+}
+
+.prds-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6f6f6f;
+}

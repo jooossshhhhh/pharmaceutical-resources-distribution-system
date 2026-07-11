@@ -205,98 +205,41 @@ export default function ProfileSettingsModule() {
         </section>
 
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/40">
-          <form onSubmit={handleSave}>
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="text-base font-black text-black">Personal Information</h3>
-              {!isEditing ? (
-                <button
-                  type="button"
-                  onClick={startEditing}
-                  className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <path d="m14 5 5 5" />
-                    <path d="M4 20h5L19.5 9.5a3.5 3.5 0 0 0-5-5L4 15v5Z" />
-                  </svg>
-                  Edit
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(false)}
-                    className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:bg-emerald-300"
-                  >
-                    {isSaving ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              )}
-            </div>
+          <div className="mb-5 flex items-center justify-between">
+            <h3 className="text-base font-black text-black">Personal Information</h3>
+            <button
+              type="button"
+              onClick={startEditing}
+              className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+                <path d="m14 5 5 5" />
+                <path d="M4 20h5L19.5 9.5a3.5 3.5 0 0 0-5-5L4 15v5Z" />
+              </svg>
+              Edit
+            </button>
+          </div>
 
-            {message && (
-              <p className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                {message}
-              </p>
-            )}
+          {message && (
+            <p className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+              {message}
+            </p>
+          )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <ProfileField
-                icon="user"
-                label="First Name"
-                name="first_name"
-                value={isEditing ? form.first_name : profile?.first_name || "Not set"}
-                onChange={handleFieldChange}
-                readOnly={!isEditing}
-              />
-              <ProfileField
-                icon="user"
-                label="Last Name"
-                name="last_name"
-                value={isEditing ? form.last_name : profile?.last_name || "Not set"}
-                onChange={handleFieldChange}
-                readOnly={!isEditing}
-              />
-              <ProfileField
-                icon="mail"
-                label="Email"
-                value={profile?.email || "Not set"}
-                readOnly
-              />
-              <ProfileField
-                icon="phone"
-                label="Phone"
-                name="phone_number"
-                value={isEditing ? form.phone_number : profile?.phone_number || "Not set"}
-                onChange={handleFieldChange}
-                readOnly={!isEditing}
-              />
-              <ProfileField
-                icon="role"
-                label="Role"
-                value={profile?.role || "Pharmacist"}
-                readOnly
-              />
-              <ProfileField
-                icon="status"
-                label="Status"
-                value={statusLabel}
-                readOnly
-              />
-              <ProfileField
-                icon="facility"
-                label="Facility"
-                value={profile?.facility_name || "Palompon District Hospital"}
-                readOnly
-              />
-            </div>
-          </form>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <ProfileField icon="user" label="First Name" value={profile?.first_name || "Not set"} readOnly />
+            <ProfileField icon="user" label="Last Name" value={profile?.last_name || "Not set"} readOnly />
+            <ProfileField icon="mail" label="Email" value={profile?.email || "Not set"} readOnly />
+            <ProfileField icon="phone" label="Phone" value={profile?.phone_number || "Not set"} readOnly />
+            <ProfileField icon="role" label="Role" value={profile?.role || "Pharmacist"} readOnly />
+            <ProfileField icon="status" label="Status" value={statusLabel} readOnly />
+            <ProfileField
+              icon="facility"
+              label="Facility"
+              value={profile?.facility_name || "Palompon District Hospital"}
+              readOnly
+            />
+          </div>
         </section>
 
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/40">
@@ -323,6 +266,92 @@ export default function ProfileSettingsModule() {
           </div>
         </section>
       </div>
+
+      {isEditing && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-5">
+          <form
+            onSubmit={handleSave}
+            className="flex max-h-[88vh] w-full max-w-[486px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-5">
+              <h3 className="text-lg font-black text-black">Edit Profile</h3>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+                aria-label="Close edit profile"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="prds-modal-scrollbar flex-1 overflow-y-auto px-6 py-5">
+              {message && (
+                <p className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                  {message}
+                </p>
+              )}
+
+              <div className="grid gap-4">
+                <ModalField
+                  label="First Name"
+                  name="first_name"
+                  value={form.first_name}
+                  onChange={handleFieldChange}
+                />
+                <ModalField
+                  label="Last Name"
+                  name="last_name"
+                  value={form.last_name}
+                  onChange={handleFieldChange}
+                />
+                <ModalField label="Email" value={profile?.email || "Not set"} readOnly />
+                <ModalField
+                  label="Phone"
+                  name="phone_number"
+                  value={form.phone_number}
+                  onChange={handleFieldChange}
+                />
+                <ModalField label="Role" value={profile?.role || "Pharmacist"} readOnly />
+                <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
+                  Status
+                  <select
+                    value={statusLabel}
+                    disabled
+                    className="h-10 rounded-lg border border-neutral-200 bg-[#faf9f7] px-3 text-sm font-semibold normal-case tracking-normal text-black outline-none disabled:opacity-100"
+                  >
+                    <option>{statusLabel}</option>
+                  </select>
+                </label>
+                <ModalField
+                  label="Facility"
+                  value={profile?.facility_name || "Palompon District Hospital"}
+                  readOnly
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-neutral-100 bg-white px-6 py-5">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="rounded-lg bg-neutral-50 px-5 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </AdminShell>
   );
 }
@@ -338,6 +367,19 @@ function ProfileField({ icon, label, readOnly, ...props }) {
         {...props}
         readOnly={readOnly}
         className="mt-3 w-full bg-transparent text-sm font-semibold text-black outline-none read-only:cursor-default"
+      />
+    </label>
+  );
+}
+
+function ModalField({ label, readOnly, ...props }) {
+  return (
+    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
+      {label}
+      <input
+        {...props}
+        readOnly={readOnly}
+        className="h-10 rounded-lg border border-neutral-200 bg-[#faf9f7] px-3 text-sm font-semibold normal-case tracking-normal text-black outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100 read-only:cursor-default read-only:focus:border-neutral-200 read-only:focus:bg-[#faf9f7] read-only:focus:ring-0"
       />
     </label>
   );

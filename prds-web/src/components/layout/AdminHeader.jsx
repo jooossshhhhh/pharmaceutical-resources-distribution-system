@@ -159,23 +159,25 @@ export default function AdminHeader({ profile, currentDateTime }) {
       </div>
 
       {isNotificationsOpen && (
-        <div className={`absolute ${notificationOffset} top-[50px] z-50 w-80 rounded-xl border border-neutral-200 bg-white shadow-xl`}>
-          <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-            <div>
+        <div className={`absolute ${notificationOffset} top-[50px] z-50 w-[302px] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl shadow-neutral-200/70`}>
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
               <p className="text-sm font-black text-neutral-950">Notifications</p>
-              <p className="text-xs font-semibold text-neutral-500">
-                {unreadCount} unread
-              </p>
+              {unreadCount > 0 && (
+                <span className="rounded-full bg-orange-500 px-2 py-0.5 text-xs font-black text-white">
+                  {unreadCount} new
+                </span>
+              )}
             </div>
             <button
               type="button"
               onClick={markNotificationsRead}
               className="text-xs font-bold text-emerald-700 hover:text-emerald-800"
             >
-              Mark read
+              View all
             </button>
           </div>
-          <div className="max-h-80 overflow-y-auto p-2">
+          <div className="prds-modal-scrollbar max-h-[326px] overflow-y-auto px-4 pb-2">
             {headerError && (
               <p className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                 {headerError}
@@ -189,20 +191,26 @@ export default function AdminHeader({ profile, currentDateTime }) {
               notifications.map((notification) => (
                 <article
                   key={notification.id}
-                  className="rounded-lg px-3 py-3 hover:bg-neutral-50"
+                  className={`rounded-lg px-3 py-3 ${
+                    notification.is_read ? "hover:bg-neutral-50" : "bg-emerald-50/60"
+                  }`}
                 >
-                  <div className="flex items-start gap-2">
-                    <span
-                      className={`mt-1 h-2 w-2 rounded-full ${
-                        notification.is_read ? "bg-neutral-300" : "bg-orange-500"
-                      }`}
-                    />
-                    <div>
-                      <p className="text-sm font-black text-neutral-950">
-                        {notification.title}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-neutral-600">
+                  <div className="flex items-start gap-3">
+                    <NotificationIcon title={notification.title} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-xs font-black text-neutral-950">
+                          {notification.title}
+                        </p>
+                        {!notification.is_read && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-600" />
+                        )}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-600">
                         {notification.message}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-neutral-400">
+                        {getRelativeTime(notification.created_at)}
                       </p>
                     </div>
                   </div>
@@ -210,9 +218,67 @@ export default function AdminHeader({ profile, currentDateTime }) {
               ))
             )}
           </div>
+          <button className="w-full border-t border-neutral-100 px-4 py-3 text-center text-xs font-semibold text-neutral-600 hover:bg-neutral-50">
+            See all notifications
+          </button>
         </div>
       )}
     </header>
+  );
+}
+
+function getRelativeTime(dateString) {
+  if (!dateString) {
+    return "";
+  }
+
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min ago`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+
+  if (diffHours < 24) {
+    return `${diffHours} hr ago`;
+  }
+
+  return `${Math.round(diffHours / 24)} d ago`;
+}
+
+function NotificationIcon({ title }) {
+  const normalizedTitle = title?.toLowerCase() || "";
+  const isRequest = normalizedTitle.includes("request");
+  const isTransfer = normalizedTitle.includes("transfer");
+  const tone = isTransfer
+    ? "bg-emerald-100 text-emerald-600"
+    : isRequest
+      ? "bg-orange-100 text-orange-600"
+      : "bg-red-50 text-red-500";
+
+  return (
+    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone}`}>
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+        {isTransfer ? (
+          <>
+            <circle cx="12" cy="12" r="8" />
+            <path d="M9 12h6M13 9l3 3-3 3" />
+          </>
+        ) : isRequest ? (
+          <>
+            <path d="M7 3h8l4 4v14H7V3Z" />
+            <path d="M14 3v5h5M10 13h6M10 17h4" />
+          </>
+        ) : (
+          <>
+            <path d="M12 9v4M12 17h.01" />
+            <path d="M10.3 4.3 2.7 17.5A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.5L13.7 4.3a2 2 0 0 0-3.4 0Z" />
+          </>
+        )}
+      </svg>
+    </span>
   );
 }
 

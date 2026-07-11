@@ -136,7 +136,7 @@ export default function AdminSidebar({ profile }) {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav className="prds-sidebar-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navItems.map((item) => {
           const isActive = item.path === location.pathname;
           const itemClass = `flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${
