@@ -474,7 +474,7 @@ export default function FacilitiesModule() {
         </div>
       </section>
 
-      <section className="mt-5 grid gap-4 xl:grid-cols-3">
+      <section className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading ? (
           <p className="col-span-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
             Loading facilities...
