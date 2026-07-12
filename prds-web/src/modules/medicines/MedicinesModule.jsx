@@ -53,6 +53,7 @@ export default function MedicinesModule() {
   const [medicines, setMedicines] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [unitFilter, setUnitFilter] = useState("ALL");
+  const [dosageFilter, setDosageFilter] = useState("ALL");
   const [selectedMedicineId, setSelectedMedicineId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -69,6 +70,12 @@ export default function MedicinesModule() {
     ).sort((first, second) => first.localeCompare(second));
   }, [medicines]);
 
+  const dosageOptions = useMemo(() => {
+    return Array.from(
+      new Set(medicines.map((medicine) => medicine.dosage).filter(Boolean))
+    ).sort((first, second) => first.localeCompare(second));
+  }, [medicines]);
+
   const filteredMedicines = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -77,10 +84,12 @@ export default function MedicinesModule() {
         !normalizedSearch || normalizeMedicineText(medicine).includes(normalizedSearch);
       const matchesUnit =
         unitFilter === "ALL" || medicine.unit_of_measure === unitFilter;
+      const matchesDosage =
+        dosageFilter === "ALL" || medicine.dosage === dosageFilter;
 
-      return matchesSearch && matchesUnit;
+      return matchesSearch && matchesUnit && matchesDosage;
     });
-  }, [medicines, searchTerm, unitFilter]);
+  }, [dosageFilter, medicines, searchTerm, unitFilter]);
 
   const selectedMedicine = useMemo(() => {
     return (
@@ -89,19 +98,6 @@ export default function MedicinesModule() {
       null
     );
   }, [filteredMedicines, selectedMedicineId]);
-
-  const summary = useMemo(() => {
-    return medicines.reduce(
-      (counts, medicine) => {
-        counts.total += 1;
-        counts.branded += medicine.brand_name ? 1 : 0;
-        counts.withCost += medicine.unit_cost !== null && medicine.unit_cost !== undefined ? 1 : 0;
-        counts.units.add(medicine.unit_of_measure);
-        return counts;
-      },
-      { total: 0, branded: 0, withCost: 0, units: new Set() }
-    );
-  }, [medicines]);
 
   const loadMedicines = async () => {
     setIsLoading(true);
@@ -245,7 +241,7 @@ export default function MedicinesModule() {
       )}
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
+        <div className="grid gap-3 lg:grid-cols-[1fr_190px_190px]">
           <label className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
               <SearchIcon />
@@ -270,6 +266,18 @@ export default function MedicinesModule() {
               </option>
             ))}
           </select>
+          <select
+            value={dosageFilter}
+            onChange={(event) => setDosageFilter(event.target.value)}
+            className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          >
+            <option value="ALL">All Dosages</option>
+            {dosageOptions.map((dosage) => (
+              <option key={dosage} value={dosage}>
+                {dosage}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
 
@@ -283,10 +291,13 @@ export default function MedicinesModule() {
                   ({filteredMedicines.length} items)
                 </span>
               </h2>
-              <p className="mt-1 text-xs font-medium text-neutral-500">
-                {summary.total} total, {summary.withCost} with pricing,{" "}
-                {summary.units.size} unit types
-              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <FilterChip label="Unit" value={unitFilter === "ALL" ? "All" : unitFilter} />
+                <FilterChip
+                  label="Dosage"
+                  value={dosageFilter === "ALL" ? "All" : dosageFilter}
+                />
+              </div>
             </div>
             <button
               type="button"
@@ -322,16 +333,7 @@ export default function MedicinesModule() {
                         : "border-l-transparent hover:bg-neutral-50"
                     }`}
                   >
-                    <div className="flex min-w-0 items-center gap-4">
-                      <span
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                          isSelected
-                            ? "bg-emerald-100 text-emerald-600"
-                            : "bg-blue-100 text-blue-600"
-                        }`}
-                      >
-                        <PillIcon />
-                      </span>
+                    <div className="flex min-w-0 items-center">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-black text-black">
                           {medicine.generic_name}
@@ -402,9 +404,6 @@ function MedicineDetailsPanel({ medicine, onView, onEdit }) {
   return (
     <aside className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
       <div className="flex items-start gap-4">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-          <PillIcon />
-        </span>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-xl font-black text-black">{medicine.generic_name}</h2>
           <p className="text-sm font-medium text-neutral-500">
@@ -442,17 +441,6 @@ function MedicineDetailsPanel({ medicine, onView, onEdit }) {
             {medicine.generic_name} / {medicine.dosage}
           </p>
         </div>
-      </div>
-
-      <div className="mt-6 rounded-lg border border-neutral-200 bg-[#fbfaf8] p-4">
-        <p className="text-xs font-black uppercase tracking-wide text-neutral-500">
-          Database Fields
-        </p>
-        <p className="mt-2 text-sm leading-6 text-neutral-600">
-          This record stores only the medicine definition used by inventory and
-          requests: generic name, optional brand name, dosage, unit of measure,
-          and optional unit cost.
-        </p>
       </div>
 
       <div className="mt-6 flex gap-3">
@@ -631,20 +619,19 @@ function DetailRow({ label, value }) {
   );
 }
 
+function FilterChip({ label, value }) {
+  return (
+    <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-600">
+      {label}: <span className="text-neutral-950">{value}</span>
+    </span>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
-
-function PillIcon() {
-  return (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="m10 21 9.2-9.2a4 4 0 0 0-5.7-5.7L4.3 15.3A4 4 0 0 0 10 21Z" />
-      <path d="m8 11 5 5" />
     </svg>
   );
 }
