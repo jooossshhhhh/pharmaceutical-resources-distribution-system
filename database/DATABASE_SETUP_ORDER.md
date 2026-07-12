@@ -69,6 +69,7 @@
 
 ## 12. RLS POLICIES
 
+* medicines_rls_schema.sql
 * facilities_inventory_rls_schema.sql
 * medicine_requests_rls_schema.sql
 * patients_dispensing_rls_schema.sql
