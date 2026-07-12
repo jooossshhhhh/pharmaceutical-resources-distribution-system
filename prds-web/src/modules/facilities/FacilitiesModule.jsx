@@ -474,13 +474,13 @@ export default function FacilitiesModule() {
         </div>
       </section>
 
-      <section className="mt-5 flex flex-wrap gap-4">
+      <section className="mt-5 grid gap-4 xl:grid-cols-3">
         {isLoading ? (
-          <p className="w-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
+          <p className="col-span-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
             Loading facilities...
           </p>
         ) : filteredFacilities.length === 0 ? (
-          <p className="w-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
+          <p className="col-span-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
             No facilities match the current filters.
           </p>
         ) : (
@@ -523,25 +523,20 @@ function FacilityCard({ facility, isSelected, onView }) {
 
   return (
     <article
-      className={`w-full rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:w-[360px] ${
+      className={`rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
         isSelected
           ? "border-emerald-400 ring-1 ring-emerald-200"
           : "border-neutral-200"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-4">
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${healthMeta.iconClass}`}>
-            <FacilityIcon />
-          </span>
-          <div className="min-w-0">
-            <h3 className="truncate text-base font-black text-black">
-              {facility.facility_name}
-            </h3>
-            <p className="text-sm font-medium text-neutral-500">
-              {formatFacilityType(facility.facility_type)}
-            </p>
-          </div>
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-black text-black">
+            {facility.facility_name}
+          </h3>
+          <p className="text-sm font-medium text-neutral-500">
+            {formatFacilityType(facility.facility_type)}
+          </p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-black ${facility.status === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>
           {formatStatus(facility.status)}
