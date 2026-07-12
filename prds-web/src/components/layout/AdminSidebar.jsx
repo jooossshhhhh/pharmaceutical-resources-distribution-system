@@ -151,7 +151,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
       </div>
 
       <nav
-        className={`prds-sidebar-scrollbar flex-1 space-y-1 overflow-y-auto py-4 ${
+        className={`prds-sidebar-scrollbar flex-1 space-y-1 overflow-x-hidden overflow-y-auto py-4 ${
           isCollapsed ? "px-2" : "px-3"
         }`}
       >
