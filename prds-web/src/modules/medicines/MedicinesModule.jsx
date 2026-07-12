@@ -241,7 +241,7 @@ export default function MedicinesModule() {
       )}
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[1fr_190px_190px]">
+        <div className="grid gap-3">
           <label className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
               <SearchIcon />
@@ -254,49 +254,44 @@ export default function MedicinesModule() {
               className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             />
           </label>
-          <select
-            value={unitFilter}
-            onChange={(event) => setUnitFilter(event.target.value)}
-            className="h-10 rounded-lg border border-emerald-500 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none focus:ring-2 focus:ring-emerald-100"
-          >
-            <option value="ALL">All Units</option>
-            {unitOptions.map((unit) => (
-              <option key={unit} value={unit}>
-                {unit}
-              </option>
-            ))}
-          </select>
-          <select
-            value={dosageFilter}
-            onChange={(event) => setDosageFilter(event.target.value)}
-            className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-          >
-            <option value="ALL">All Dosages</option>
-            {dosageOptions.map((dosage) => (
-              <option key={dosage} value={dosage}>
-                {dosage}
-              </option>
-            ))}
-          </select>
         </div>
       </section>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_344px]">
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
-            <div>
+            <div className="min-w-0">
               <h2 className="text-base font-black text-black">
                 Medicine Catalog{" "}
                 <span className="font-semibold text-neutral-400">
                   ({filteredMedicines.length} items)
                 </span>
               </h2>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <FilterChip label="Unit" value={unitFilter === "ALL" ? "All" : unitFilter} />
-                <FilterChip
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <FilterSelect
+                  label="Unit"
+                  value={unitFilter}
+                  onChange={(event) => setUnitFilter(event.target.value)}
+                >
+                  <option value="ALL">All Units</option>
+                  {unitOptions.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
                   label="Dosage"
-                  value={dosageFilter === "ALL" ? "All" : dosageFilter}
-                />
+                  value={dosageFilter}
+                  onChange={(event) => setDosageFilter(event.target.value)}
+                >
+                  <option value="ALL">All Dosages</option>
+                  {dosageOptions.map((dosage) => (
+                    <option key={dosage} value={dosage}>
+                      {dosage}
+                    </option>
+                  ))}
+                </FilterSelect>
               </div>
             </div>
             <button
@@ -619,11 +614,17 @@ function DetailRow({ label, value }) {
   );
 }
 
-function FilterChip({ label, value }) {
+function FilterSelect({ label, children, ...props }) {
   return (
-    <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-600">
-      {label}: <span className="text-neutral-950">{value}</span>
-    </span>
+    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+      {label}
+      <select
+        {...props}
+        className="h-8 rounded-lg border border-neutral-200 bg-white px-2 text-xs font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+      >
+        {children}
+      </select>
+    </label>
   );
 }
 
