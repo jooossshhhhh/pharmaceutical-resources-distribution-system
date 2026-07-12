@@ -36,12 +36,29 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [headerError, setHeaderError] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => new Date());
 
   const pageInfo = pageTitles[location.pathname] || {
     title: "PRDS",
     subtitle: currentDateTime,
   };
   const notificationOffset = location.pathname === "/profile-settings" ? "right-16" : "right-14";
+  const formattedTime = useMemo(() => {
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(currentTime);
+  }, [currentTime]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -119,16 +136,9 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <label className="relative hidden sm:block">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-            <SearchIcon />
-          </span>
-          <input
-            type="search"
-            placeholder="Search medicines, requests..."
-            className="h-9 w-64 rounded-lg border border-neutral-200 bg-[#faf9f7] pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-          />
-        </label>
+        <div className="hidden h-9 min-w-[118px] items-center justify-center rounded-lg border border-neutral-200 bg-[#faf9f7] px-3 text-sm font-bold tabular-nums text-neutral-700 sm:flex">
+          {formattedTime}
+        </div>
 
         <button
           type="button"
@@ -291,15 +301,6 @@ function NotificationIcon({ title }) {
         )}
       </svg>
     </span>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
   );
 }
 
