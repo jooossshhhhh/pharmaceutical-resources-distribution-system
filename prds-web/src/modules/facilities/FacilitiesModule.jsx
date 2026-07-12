@@ -15,14 +15,6 @@ const facilityStatuses = [
   { value: "INACTIVE", label: "Inactive" },
 ];
 
-const stockHealthFilters = [
-  { value: "ALL", label: "All Stock Health" },
-  { value: "HEALTHY", label: "Healthy" },
-  { value: "WATCH", label: "Watch" },
-  { value: "LOW", label: "Low Stock" },
-  { value: "CRITICAL", label: "Critical" },
-];
-
 const emptyForm = {
   facility_name: "",
   facility_code: "",
@@ -207,7 +199,7 @@ export default function FacilitiesModule() {
   const [patients, setPatients] = useState([]);
   const [forecasts, setForecasts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [healthFilter, setHealthFilter] = useState("ALL");
+  const [typeFilter, setTypeFilter] = useState("ALL");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [facilityError, setFacilityError] = useState("");
@@ -241,23 +233,10 @@ export default function FacilitiesModule() {
 
       return (
         (!normalizedSearch || searchableText.includes(normalizedSearch)) &&
-        (healthFilter === "ALL" || facility.stockHealth === healthFilter)
+        (typeFilter === "ALL" || facility.facility_type === typeFilter)
       );
     });
-  }, [enrichedFacilities, healthFilter, searchTerm]);
-
-  const summary = useMemo(() => {
-    return enrichedFacilities.reduce(
-      (counts, facility) => {
-        counts.total += 1;
-        counts.active += facility.status === "ACTIVE" ? 1 : 0;
-        counts.critical += facility.stockHealth === "CRITICAL" ? 1 : 0;
-        counts.pendingRequests += facility.pendingRequests;
-        return counts;
-      },
-      { total: 0, active: 0, critical: 0, pendingRequests: 0 }
-    );
-  }, [enrichedFacilities]);
+  }, [enrichedFacilities, searchTerm, typeFilter]);
 
   const loadFacilities = async () => {
     setIsLoading(true);
@@ -450,12 +429,9 @@ export default function FacilitiesModule() {
       )}
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <label className="grid w-full max-w-xl gap-1">
-            <span className="text-[10px] font-black uppercase tracking-wide text-neutral-500">
-              Facility
-            </span>
-            <span className="relative block">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
+            <label className="relative block w-full max-w-md">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
                 <SearchIcon />
               </span>
@@ -463,24 +439,29 @@ export default function FacilitiesModule() {
                 type="search"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by facility name, code, address..."
+                placeholder="Search by facility name, address, or code..."
                 className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
-            </span>
-          </label>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterSelect
-              label="Stock Health"
-              value={healthFilter}
-              onChange={(event) => setHealthFilter(event.target.value)}
-            >
-              {stockHealthFilters.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterPill
+                active={typeFilter === "ALL"}
+                onClick={() => setTypeFilter("ALL")}
+              >
+                All Types
+              </FilterPill>
+              {facilityTypes.map((type) => (
+                <FilterPill
+                  key={type.value}
+                  active={typeFilter === type.value}
+                  onClick={() => setTypeFilter(type.value)}
+                >
+                  {type.label}
+                </FilterPill>
               ))}
-            </FilterSelect>
+            </div>
+          </div>
+          <div className="flex items-center">
             <button
               type="button"
               onClick={openCreateModal}
@@ -492,13 +473,6 @@ export default function FacilitiesModule() {
           </div>
         </div>
       </section>
-
-      <div className="mt-5 grid gap-4 md:grid-cols-4">
-        <SummaryCard label="Facilities" value={summary.total} tone="emerald" />
-        <SummaryCard label="Active" value={summary.active} tone="blue" />
-        <SummaryCard label="Critical Stock" value={summary.critical} tone="red" />
-        <SummaryCard label="Pending Requests" value={summary.pendingRequests} tone="amber" />
-      </div>
 
       <section className="mt-5 grid gap-4 xl:grid-cols-3">
         {isLoading ? (
@@ -515,7 +489,6 @@ export default function FacilitiesModule() {
               key={facility.id}
               facility={facility}
               onView={() => openDetailsModal(facility)}
-              onEdit={() => openEditModal(facility)}
             />
           ))
         )}
@@ -544,7 +517,7 @@ export default function FacilitiesModule() {
   );
 }
 
-function FacilityCard({ facility, onView, onEdit }) {
+function FacilityCard({ facility, onView }) {
   const healthMeta = getHealthMeta(facility.stockHealth);
 
   return (
@@ -576,8 +549,8 @@ function FacilityCard({ facility, onView, onEdit }) {
 
       <div className="mt-4 grid grid-cols-3 gap-2">
         <MetricTile value={formatNumber(facility.stockCounts.totalQuantity)} label="Units" />
-        <MetricTile value={`${facility.distributionRate}%`} label="Dist. Rate" />
-        <MetricTile value={formatNumber(facility.forecastTotal)} label="Forecast" />
+        <MetricTile value={formatNumber(facility.requestRows.length)} label="Requests" />
+        <MetricTile value={formatNumber(facility.patientCount)} label="Patients" />
       </div>
 
       <div className="mt-4">
@@ -601,21 +574,13 @@ function FacilityCard({ facility, onView, onEdit }) {
         </div>
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4">
         <button
           type="button"
           onClick={onView}
-          className="h-10 flex-1 rounded-lg bg-emerald-50 text-sm font-black text-emerald-700 hover:bg-emerald-100"
+          className="h-10 w-full rounded-lg bg-emerald-50 text-sm font-black text-emerald-700 hover:bg-emerald-100"
         >
           View Details
-        </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="h-10 rounded-lg border border-neutral-200 px-3 text-neutral-500 hover:bg-neutral-50 hover:text-emerald-700"
-          aria-label={`Edit ${facility.facility_name}`}
-        >
-          <PencilIcon />
         </button>
       </div>
     </article>
@@ -932,27 +897,6 @@ function FacilityFormModal({
   );
 }
 
-function SummaryCard({ label, value, tone }) {
-  const toneClasses = {
-    emerald: "bg-emerald-50 text-emerald-700",
-    blue: "bg-blue-50 text-blue-700",
-    red: "bg-red-50 text-red-700",
-    amber: "bg-amber-50 text-amber-700",
-  };
-
-  return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses[tone]}`}>
-        <FacilityIcon />
-      </div>
-      <p className="mt-4 text-2xl font-black text-black">{formatNumber(value)}</p>
-      <p className="mt-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
-        {label}
-      </p>
-    </div>
-  );
-}
-
 function DetailStat({ label, value, tone = "HEALTHY" }) {
   const healthMeta = getHealthMeta(tone);
 
@@ -1034,17 +978,19 @@ function SelectField({ label, options, ...props }) {
   );
 }
 
-function FilterSelect({ label, children, ...props }) {
+function FilterPill({ active, children, onClick }) {
   return (
-    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-      {label}
-      <select
-        {...props}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-      >
-        {children}
-      </select>
-    </label>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-8 rounded-full px-4 text-sm font-bold transition ${
+        active
+          ? "bg-black text-white"
+          : "bg-neutral-50 text-neutral-700 hover:bg-emerald-50 hover:text-emerald-700"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
