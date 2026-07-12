@@ -135,17 +135,17 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
       }`}
     >
       <div
-        className={`flex h-[68px] items-center border-b border-white/10 ${
+        className={`flex min-h-[76px] items-center border-b border-white/10 ${
           isCollapsed ? "justify-center px-2" : "gap-3 px-4"
         }`}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/95 p-1.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg">
           <img src={prdsLogo} alt="PRDS" className="h-full w-full object-contain" />
         </span>
         <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
-          <p className="truncate text-sm font-black">PRDS</p>
-          <p className="truncate text-xs font-medium text-slate-400">
-            Pharma Resource System
+          <p className="text-sm font-black leading-4">PRDS</p>
+          <p className="max-w-[148px] text-[11px] font-medium leading-4 text-slate-400">
+            Pharmaceutical Resources Distribution System
           </p>
         </div>
       </div>
