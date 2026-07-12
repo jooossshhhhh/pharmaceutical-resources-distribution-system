@@ -13,7 +13,10 @@ const pageTitles = {
       year: "numeric",
     }).format(new Date()),
   },
-  "/inventory": { title: "Inventory", subtitle: "Manage medicine stock levels" },
+  "/inventory": {
+    title: "Inventory Management",
+    subtitle: "Track medicine stock levels across all facilities",
+  },
   "/requests": { title: "Requests", subtitle: "Review and process medicine requests" },
   "/transfers": { title: "Transfers", subtitle: "Track stock movement across facilities" },
   "/dispensing": { title: "Dispensing", subtitle: "Monitor patient medicine dispensing" },
