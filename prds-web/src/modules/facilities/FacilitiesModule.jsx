@@ -429,8 +429,8 @@ export default function FacilitiesModule() {
       )}
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="facilities-toolbar">
+          <div className="facilities-toolbar-controls">
             <label className="relative block w-full max-w-md">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
                 <SearchIcon />
@@ -461,7 +461,7 @@ export default function FacilitiesModule() {
               ))}
             </div>
           </div>
-          <div className="flex items-center">
+          <div className="flex shrink-0 items-center">
             <button
               type="button"
               onClick={openCreateModal}
@@ -474,7 +474,7 @@ export default function FacilitiesModule() {
         </div>
       </section>
 
-      <section className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <section className="facilities-grid mt-5">
         {isLoading ? (
           <p className="col-span-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
             Loading facilities...

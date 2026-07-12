@@ -65,3 +65,51 @@ body {
 .prds-modal-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #6f6f6f;
 }
+
+.facilities-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.facilities-toolbar-controls {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.facilities-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.facilities-grid > article {
+  min-width: 0;
+}
+
+@media (min-width: 760px) {
+  .facilities-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1120px) {
+  .facilities-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .facilities-toolbar-controls {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .facilities-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
