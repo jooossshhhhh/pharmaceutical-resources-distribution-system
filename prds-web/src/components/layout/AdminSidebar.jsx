@@ -122,19 +122,27 @@ const roleLabels = {
   BHW: "Barangay Health Worker",
 };
 
-export default function AdminSidebar({ profile }) {
+export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }) {
   const location = useLocation();
   const fullName = `${profile?.first_name || "Pharma"} ${
     profile?.last_name || "User"
   }`.trim();
 
   return (
-    <aside className="sticky top-0 flex h-screen flex-col border-r border-neutral-900 bg-black text-white">
-      <div className="flex h-[68px] items-center gap-3 border-b border-white/10 px-4">
+    <aside
+      className={`sticky top-0 flex h-screen flex-col border-r border-neutral-900 bg-black text-white transition-[width] duration-300 ${
+        isCollapsed ? "w-16" : "w-[228px]"
+      }`}
+    >
+      <div
+        className={`flex h-[68px] items-center border-b border-white/10 ${
+          isCollapsed ? "justify-center px-2" : "gap-3 px-4"
+        }`}
+      >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/95 p-1.5">
           <img src={prdsLogo} alt="PRDS" className="h-full w-full object-contain" />
         </span>
-        <div className="min-w-0">
+        <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
           <p className="truncate text-sm font-black">PRDS</p>
           <p className="truncate text-xs font-medium text-slate-400">
             Pharma Resource System
@@ -142,39 +150,57 @@ export default function AdminSidebar({ profile }) {
         </div>
       </div>
 
-      <nav className="prds-sidebar-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav
+        className={`prds-sidebar-scrollbar flex-1 space-y-1 overflow-y-auto py-4 ${
+          isCollapsed ? "px-2" : "px-3"
+        }`}
+      >
         {navItems.map((item) => {
           const isActive = item.path === location.pathname;
-          const itemClass = `flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold transition ${
+          const itemClass = `group relative flex w-full items-center rounded-lg py-3 text-left text-sm font-semibold transition ${
             isActive
               ? "bg-emerald-500/20 text-emerald-400"
               : "text-slate-300 hover:bg-white/5 hover:text-white"
-          }`;
+          } ${isCollapsed ? "justify-center px-0" : "gap-3 px-4"}`;
+          const label = (
+            <>
+              <SidebarIcon label={item.label} />
+              <span className={isCollapsed ? "sr-only" : ""}>{item.label}</span>
+              {isCollapsed && (
+                <span className="pointer-events-none absolute left-[52px] z-50 rounded-md bg-neutral-900 px-2 py-1 text-xs font-bold text-white opacity-0 shadow-lg transition group-hover:opacity-100">
+                  {item.label}
+                </span>
+              )}
+            </>
+          );
 
           return item.path ? (
-            <Link key={item.label} to={item.path} className={itemClass}>
-              <SidebarIcon label={item.label} />
-              <span>{item.label}</span>
+            <Link key={item.label} to={item.path} className={itemClass} title={item.label}>
+              {label}
             </Link>
           ) : (
             <button
               key={item.label}
               type="button"
               className={`${itemClass} cursor-default`}
+              title={item.label}
             >
-              <SidebarIcon label={item.label} />
-              <span>{item.label}</span>
+              {label}
             </button>
           );
         })}
       </nav>
 
-      <div className="border-t border-white/10 px-4 py-5">
-        <div className="flex items-center gap-3">
+      <div
+        className={`border-t border-white/10 py-5 ${
+          isCollapsed ? "px-2" : "px-4"
+        }`}
+      >
+        <div className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-xs font-black text-white">
             {getInitials(profile)}
           </span>
-          <div className="min-w-0">
+          <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
             <p className="truncate text-sm font-black">{fullName}</p>
             <p className="truncate text-xs font-medium text-slate-400">
               {roleLabels[profile?.role] || "Barangay Health Worker"}
@@ -183,12 +209,16 @@ export default function AdminSidebar({ profile }) {
         </div>
         <button
           type="button"
-          className="mx-auto mt-6 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-white/5 hover:text-white"
-          aria-label="Collapse sidebar"
+          onClick={onToggleCollapsed}
+          className="mx-auto mt-6 flex h-8 w-8 items-center justify-center rounded-full border border-white/70 text-slate-300 transition hover:border-emerald-400 hover:bg-white/5 hover:text-white"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <svg
             aria-hidden="true"
-            className="h-4 w-4"
+            className={`h-4 w-4 transition-transform duration-300 ${
+              isCollapsed ? "rotate-180" : ""
+            }`}
             fill="none"
             stroke="currentColor"
             strokeLinecap="round"
