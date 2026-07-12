@@ -474,13 +474,13 @@ export default function FacilitiesModule() {
         </div>
       </section>
 
-      <section className="mt-5 grid gap-4 xl:grid-cols-3">
+      <section className="mt-5 grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,360px))]">
         {isLoading ? (
-          <p className="col-span-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
+          <p className="rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm sm:col-span-full">
             Loading facilities...
           </p>
         ) : filteredFacilities.length === 0 ? (
-          <p className="col-span-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
+          <p className="rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm sm:col-span-full">
             No facilities match the current filters.
           </p>
         ) : (
@@ -604,7 +604,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
-      <div className="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div className="flex max-h-[78vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="border-b border-neutral-100 bg-black px-5 py-4 text-white">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-start gap-4">
@@ -632,16 +632,16 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
           </div>
         </div>
 
-        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#fbfaf8] p-5">
-          <div className="grid gap-4 md:grid-cols-4">
+        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#fbfaf8] p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
             <DetailStat label="Stock Health" value={`${facility.healthPercent}%`} tone={facility.stockHealth} />
             <DetailStat label="Inventory Value" value={formatCurrency(facility.stockCounts.totalValue)} />
             <DetailStat label="Distribution Rate" value={`${facility.distributionRate}%`} />
             <DetailStat label="Patients" value={formatNumber(facility.patientCount)} />
           </div>
 
-          <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-            <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="mt-4 grid gap-4">
+            <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-base font-black text-black">Inventory Health</h4>
@@ -654,14 +654,14 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
                 </span>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              <div className="mt-4 grid gap-3 sm:grid-cols-4">
                 <MiniStatus label="Healthy" value={facility.stockCounts.HEALTHY} colorClass="bg-emerald-500" />
                 <MiniStatus label="Watch" value={facility.stockCounts.WATCH} colorClass="bg-amber-500" />
                 <MiniStatus label="Low" value={facility.stockCounts.LOW} colorClass="bg-orange-500" />
                 <MiniStatus label="Critical" value={facility.stockCounts.CRITICAL} colorClass="bg-red-500" />
               </div>
 
-              <div className="mt-5 space-y-3">
+              <div className="mt-4 space-y-3">
                 {stockRows.length === 0 ? (
                   <p className="rounded-lg bg-neutral-50 px-4 py-5 text-center text-sm font-bold text-neutral-500">
                     No inventory records for this facility yet.
@@ -701,7 +701,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
             </section>
 
             <div className="grid gap-5">
-              <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <h4 className="text-base font-black text-black">Facility Profile</h4>
                 <div className="mt-4 space-y-3">
                   <ProfileLine label="Facility Code" value={facility.facility_code} />
@@ -711,7 +711,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
                 </div>
               </section>
 
-              <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <h4 className="text-base font-black text-black">Distribution</h4>
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <MetricTile value={formatNumber(facility.requestRows.length)} label="Requests" />
@@ -742,7 +742,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
             </div>
           </div>
 
-          <section className="mt-5 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <section className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-base font-black text-black">Demand Forecast</h4>
@@ -752,7 +752,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
               </div>
               <span className="text-2xl font-black text-black">{formatNumber(facility.forecastTotal)}</span>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-5">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {forecastRows.length === 0 ? (
                 <p className="col-span-full rounded-lg bg-neutral-50 px-4 py-5 text-center text-sm font-bold text-neutral-500">
                   No forecast records available yet.
