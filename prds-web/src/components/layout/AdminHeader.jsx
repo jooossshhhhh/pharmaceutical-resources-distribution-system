@@ -136,7 +136,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="hidden h-9 min-w-[118px] items-center justify-center rounded-lg border border-neutral-200 bg-[#faf9f7] px-3 text-sm font-bold tabular-nums text-neutral-700 sm:flex">
+        <div className="hidden min-w-[118px] items-center justify-center text-sm font-bold tabular-nums text-neutral-700 sm:flex">
           {formattedTime}
         </div>
 
