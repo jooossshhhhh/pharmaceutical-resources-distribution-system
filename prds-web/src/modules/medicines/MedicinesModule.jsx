@@ -54,7 +54,7 @@ export default function MedicinesModule() {
   const [searchTerm, setSearchTerm] = useState("");
   const [unitFilter, setUnitFilter] = useState("ALL");
   const [dosageFilter, setDosageFilter] = useState("ALL");
-  const [selectedMedicineId, setSelectedMedicineId] = useState("");
+  const [medicineSort, setMedicineSort] = useState("ASC");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [medicineError, setMedicineError] = useState("");
@@ -91,13 +91,17 @@ export default function MedicinesModule() {
     });
   }, [dosageFilter, medicines, searchTerm, unitFilter]);
 
-  const selectedMedicine = useMemo(() => {
-    return (
-      filteredMedicines.find((medicine) => medicine.id === selectedMedicineId) ||
-      filteredMedicines[0] ||
-      null
-    );
-  }, [filteredMedicines, selectedMedicineId]);
+  const sortedMedicines = useMemo(() => {
+    return [...filteredMedicines].sort((first, second) => {
+      const firstName = first.generic_name || "";
+      const secondName = second.generic_name || "";
+      const comparison = firstName.localeCompare(secondName, undefined, {
+        sensitivity: "base",
+      });
+
+      return medicineSort === "ASC" ? comparison : comparison * -1;
+    });
+  }, [filteredMedicines, medicineSort]);
 
   const loadMedicines = async () => {
     setIsLoading(true);
@@ -116,7 +120,6 @@ export default function MedicinesModule() {
 
     const medicineRows = data || [];
     setMedicines(medicineRows);
-    setSelectedMedicineId((currentId) => currentId || medicineRows[0]?.id || "");
     setIsLoading(false);
   };
 
@@ -213,7 +216,7 @@ export default function MedicinesModule() {
         ? supabase.from("medicines").update(payload).eq("id", modalMedicine.id)
         : supabase.from("medicines").insert(payload).select("id").single();
 
-    const { data, error } = await request;
+    const { error } = await request;
 
     if (error) {
       setMedicineError(error.message);
@@ -224,12 +227,6 @@ export default function MedicinesModule() {
     setIsSaving(false);
     closeModal();
     await loadMedicines();
-
-    if (data?.id) {
-      setSelectedMedicineId(data.id);
-    } else if (modalMedicine?.id) {
-      setSelectedMedicineId(modalMedicine.id);
-    }
   };
 
   return (
@@ -241,133 +238,181 @@ export default function MedicinesModule() {
       )}
 
       <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3">
-          <label className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-              <SearchIcon />
+        <div className="grid gap-3 xl:grid-cols-[1fr_180px_180px_180px]">
+          <label className="grid gap-1">
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-neutral-500">
+              Medicine
             </span>
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search medicine name, generic, dosage, or unit..."
-              className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            />
+            <span className="relative block">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                <SearchIcon />
+              </span>
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search medicine name, generic, dosage, or unit..."
+                className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </span>
           </label>
+          <FilterSelect
+            label="Unit"
+            value={unitFilter}
+            onChange={(event) => setUnitFilter(event.target.value)}
+          >
+            <option value="ALL">All Units</option>
+            {unitOptions.map((unit) => (
+              <option key={unit} value={unit}>
+                {unit}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Dosage"
+            value={dosageFilter}
+            onChange={(event) => setDosageFilter(event.target.value)}
+          >
+            <option value="ALL">All Dosages</option>
+            {dosageOptions.map((dosage) => (
+              <option key={dosage} value={dosage}>
+                {dosage}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Sort"
+            value={medicineSort}
+            onChange={(event) => setMedicineSort(event.target.value)}
+          >
+            <option value="ASC">Medicine: A-Z</option>
+            <option value="DESC">Medicine: Z-A</option>
+          </FilterSelect>
         </div>
       </section>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_344px]">
-        <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
-            <div className="min-w-0">
-              <h2 className="text-base font-black text-black">
-                Medicine Catalog{" "}
-                <span className="font-semibold text-neutral-400">
-                  ({filteredMedicines.length} items)
-                </span>
-              </h2>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <FilterSelect
-                  label="Unit"
-                  value={unitFilter}
-                  onChange={(event) => setUnitFilter(event.target.value)}
-                >
-                  <option value="ALL">All Units</option>
-                  {unitOptions.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {unit}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label="Dosage"
-                  value={dosageFilter}
-                  onChange={(event) => setDosageFilter(event.target.value)}
-                >
-                  <option value="ALL">All Dosages</option>
-                  {dosageOptions.map((dosage) => (
-                    <option key={dosage} value={dosage}>
-                      {dosage}
-                    </option>
-                  ))}
-                </FilterSelect>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
-            >
-              <PlusIcon />
-              Add Medicine
-            </button>
-          </div>
+      <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+          <h2 className="text-base font-black text-black">
+            Medicine Catalog{" "}
+            <span className="font-semibold text-neutral-400">
+              ({sortedMedicines.length} items)
+            </span>
+          </h2>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
+          >
+            <PlusIcon />
+            Add Medicine
+          </button>
+        </div>
 
-          <div className="divide-y divide-neutral-100">
-            {isLoading ? (
-              <p className="px-5 py-12 text-center text-sm font-bold text-neutral-500">
-                Loading medicines...
-              </p>
-            ) : filteredMedicines.length === 0 ? (
-              <p className="px-5 py-12 text-center text-sm font-bold text-neutral-500">
-                No medicines match the current filters.
-              </p>
-            ) : (
-              filteredMedicines.map((medicine) => {
-                const isSelected = selectedMedicine?.id === medicine.id;
-
-                return (
+        <div className="overflow-x-auto">
+          <table className="min-w-[980px] w-full border-collapse">
+            <thead>
+              <tr className="border-b border-neutral-100 bg-white text-left text-[11px] font-black uppercase tracking-wide text-neutral-500">
+                <th className="px-5 py-3">
                   <button
-                    key={medicine.id}
                     type="button"
-                    onClick={() => setSelectedMedicineId(medicine.id)}
-                    className={`grid w-full grid-cols-[1fr_auto_auto] items-center gap-4 border-l-2 px-5 py-4 text-left transition ${
-                      isSelected
-                        ? "border-l-emerald-500 bg-emerald-50"
-                        : "border-l-transparent hover:bg-neutral-50"
-                    }`}
+                    onClick={() =>
+                      setMedicineSort((currentSort) =>
+                        currentSort === "ASC" ? "DESC" : "ASC"
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 font-black uppercase tracking-wide text-neutral-600 hover:text-emerald-700"
                   >
-                    <div className="flex min-w-0 items-center">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-black">
-                          {medicine.generic_name}
-                        </p>
-                        <p className="truncate text-xs font-medium text-neutral-400">
-                          {medicine.brand_name || "Generic medicine"}
-                        </p>
-                        <div className="mt-1 flex flex-wrap gap-1.5">
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                            {medicine.unit_of_measure}
-                          </span>
-                          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
-                            {medicine.dosage}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-black text-black">
-                        {formatCurrency(medicine.unit_cost)}
-                      </p>
-                      <p className="text-xs font-medium text-neutral-400">per unit</p>
-                    </div>
-                    <span className="text-neutral-400">
-                      <ChevronRightIcon />
+                    Medicine
+                    <span className="text-[10px] text-emerald-600">
+                      {medicineSort === "ASC" ? "A-Z" : "Z-A"}
                     </span>
                   </button>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        <MedicineDetailsPanel
-          medicine={selectedMedicine}
-          onView={() => selectedMedicine && openMedicineModal(selectedMedicine, "view")}
-          onEdit={() => selectedMedicine && openMedicineModal(selectedMedicine, "edit")}
-        />
-      </div>
+                </th>
+                <th className="px-5 py-3">Brand</th>
+                <th className="px-5 py-3">Unit</th>
+                <th className="px-5 py-3">Dosage</th>
+                <th className="px-5 py-3">Unit Cost</th>
+                <th className="px-5 py-3">Definition</th>
+                <th className="px-5 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan="7"
+                    className="px-5 py-12 text-center text-sm font-bold text-neutral-500"
+                  >
+                    Loading medicines...
+                  </td>
+                </tr>
+              ) : sortedMedicines.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="7"
+                    className="px-5 py-12 text-center text-sm font-bold text-neutral-500"
+                  >
+                    No medicines match the current filters.
+                  </td>
+                </tr>
+              ) : (
+                sortedMedicines.map((medicine) => (
+                  <tr key={medicine.id} className="transition hover:bg-neutral-50">
+                    <td className="px-5 py-4">
+                      <p className="text-sm font-black text-black">
+                        {medicine.generic_name}
+                      </p>
+                      <p className="text-xs font-medium text-neutral-400">
+                        {medicine.generic_name} medicine
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 text-sm font-semibold text-neutral-700">
+                      {medicine.brand_name || "Generic"}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
+                        {medicine.unit_of_measure}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-bold text-neutral-600">
+                        {medicine.dosage}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-sm font-black text-black">
+                      {formatCurrency(medicine.unit_cost)}
+                    </td>
+                    <td className="px-5 py-4 text-sm font-semibold text-neutral-700">
+                      {medicine.generic_name} / {medicine.dosage}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end gap-2 text-neutral-500">
+                        <button
+                          type="button"
+                          onClick={() => openMedicineModal(medicine, "view")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-neutral-100 hover:text-emerald-700"
+                          aria-label={`View ${medicine.generic_name}`}
+                        >
+                          <EyeIcon />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openMedicineModal(medicine, "edit")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-neutral-100 hover:text-emerald-700"
+                          aria-label={`Edit ${medicine.generic_name}`}
+                        >
+                          <PencilIcon />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {modalMode && (
         <MedicineModal
@@ -382,81 +427,6 @@ export default function MedicinesModule() {
         />
       )}
     </AdminShell>
-  );
-}
-
-function MedicineDetailsPanel({ medicine, onView, onEdit }) {
-  if (!medicine) {
-    return (
-      <aside className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <p className="py-16 text-center text-sm font-bold text-neutral-500">
-          Select a medicine to view details.
-        </p>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-xl font-black text-black">{medicine.generic_name}</h2>
-          <p className="text-sm font-medium text-neutral-500">
-            {medicine.brand_name || "Generic medicine"}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
-          {medicine.unit_of_measure}
-        </span>
-        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
-          {medicine.dosage}
-        </span>
-      </div>
-
-      <div className="mt-6 space-y-4">
-        <DetailRow label="Generic Name" value={medicine.generic_name} />
-        <DetailRow label="Brand Name" value={medicine.brand_name || "Generic"} />
-        <DetailRow label="Unit of Measure" value={medicine.unit_of_measure} />
-        <DetailRow label="Dosage" value={medicine.dosage} />
-      </div>
-
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-neutral-50 p-4">
-          <p className="text-xs font-bold text-neutral-500">Unit Cost</p>
-          <p className="mt-2 text-xl font-black text-black">
-            {formatCurrency(medicine.unit_cost)}
-          </p>
-        </div>
-        <div className="rounded-lg bg-neutral-50 p-4">
-          <p className="text-xs font-bold text-neutral-500">Definition</p>
-          <p className="mt-2 text-sm font-black text-black">
-            {medicine.generic_name} / {medicine.dosage}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-6 flex gap-3">
-        <button
-          type="button"
-          onClick={onView}
-          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-neutral-200 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
-        >
-          <EyeIcon />
-          View
-        </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 text-sm font-black text-white hover:bg-emerald-700"
-        >
-          <PencilIcon />
-          Edit
-        </button>
-      </div>
-    </aside>
   );
 }
 
@@ -605,15 +575,6 @@ function Field({ label, ...props }) {
   );
 }
 
-function DetailRow({ label, value }) {
-  return (
-    <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-black">{value || "Not set"}</p>
-    </div>
-  );
-}
-
 function FilterSelect({ label, children, ...props }) {
   return (
     <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
@@ -659,14 +620,6 @@ function PencilIcon() {
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
       <path d="M12 20h9" />
       <path d="m16.5 3.5 4 4L8 20l-5 1 1-5 12.5-12.5Z" />
-    </svg>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="m9 18 6-6-6-6" />
     </svg>
   );
 }
