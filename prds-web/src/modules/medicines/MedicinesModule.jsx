@@ -232,9 +232,9 @@ export default function MedicinesModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <label className="grid w-full max-w-3xl gap-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <section className="w-full max-w-3xl rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
+          <label className="grid gap-1">
             <span className="text-[10px] font-black uppercase tracking-wide text-neutral-500">
               Medicine
             </span>
@@ -251,16 +251,16 @@ export default function MedicinesModule() {
               />
             </span>
           </label>
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
-          >
-            <PlusIcon />
-            Add Medicine
-          </button>
-        </div>
-      </section>
+        </section>
+        <button
+          type="button"
+          onClick={openCreateModal}
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
+        >
+          <PlusIcon />
+          Add Medicine
+        </button>
+      </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_344px]">
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
