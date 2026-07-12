@@ -474,13 +474,13 @@ export default function FacilitiesModule() {
         </div>
       </section>
 
-      <section className="mt-5 grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,360px))]">
+      <section className="mt-5 flex flex-wrap gap-4">
         {isLoading ? (
-          <p className="rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm sm:col-span-full">
+          <p className="w-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
             Loading facilities...
           </p>
         ) : filteredFacilities.length === 0 ? (
-          <p className="rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm sm:col-span-full">
+          <p className="w-full rounded-xl border border-neutral-200 bg-white px-5 py-14 text-center text-sm font-bold text-neutral-500 shadow-sm">
             No facilities match the current filters.
           </p>
         ) : (
@@ -523,7 +523,7 @@ function FacilityCard({ facility, isSelected, onView }) {
 
   return (
     <article
-      className={`rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+      className={`w-full rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:w-[360px] ${
         isSelected
           ? "border-emerald-400 ring-1 ring-emerald-200"
           : "border-neutral-200"
@@ -604,18 +604,18 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
-      <div className="flex max-h-[78vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="border-b border-neutral-100 bg-black px-5 py-4 text-white">
+      <div className="flex max-h-[74vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="border-b border-neutral-100 bg-black px-4 py-3 text-white">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-start gap-4">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
                 <FacilityIcon />
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
                   Facility Details
                 </p>
-                <h3 className="mt-1 truncate text-xl font-black">{facility.facility_name}</h3>
+                <h3 className="mt-1 truncate text-lg font-black">{facility.facility_name}</h3>
                 <p className="text-sm font-medium text-neutral-300">
                   {facility.facility_code} - {formatFacilityType(facility.facility_type)}
                 </p>
