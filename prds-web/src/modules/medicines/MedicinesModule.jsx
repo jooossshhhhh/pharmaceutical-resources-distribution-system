@@ -232,8 +232,8 @@ export default function MedicinesModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-        <label className="grid max-w-3xl gap-1">
+      <section className="max-w-3xl rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
+        <label className="grid gap-1">
           <span className="text-[10px] font-black uppercase tracking-wide text-neutral-500">
             Medicine
           </span>
@@ -286,9 +286,7 @@ export default function MedicinesModule() {
                       className="inline-flex items-center gap-1.5 font-black uppercase tracking-wide text-neutral-600 hover:text-emerald-700"
                     >
                       Medicine
-                      <span className="text-[10px] text-emerald-600">
-                        {medicineSort === "ASC" ? "A-Z" : "Z-A"}
-                      </span>
+                      <SortArrowIcon direction={medicineSort} />
                     </button>
                   </th>
                   <th className="px-5 py-3">Brand</th>
@@ -610,6 +608,23 @@ function SearchIcon() {
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function SortArrowIcon({ direction }) {
+  return (
+    <svg
+      className="h-3.5 w-3.5 text-emerald-600"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.2"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      {direction === "ASC" ? <path d="m7 14 5-5 5 5" /> : <path d="m7 10 5 5 5-5" />}
     </svg>
   );
 }
