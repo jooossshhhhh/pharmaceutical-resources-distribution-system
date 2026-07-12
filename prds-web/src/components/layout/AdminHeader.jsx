@@ -20,7 +20,10 @@ const pageTitles = {
   "/requests": { title: "Requests", subtitle: "Review and process medicine requests" },
   "/transfers": { title: "Transfers", subtitle: "Track stock movement across facilities" },
   "/dispensing": { title: "Dispensing", subtitle: "Monitor patient medicine dispensing" },
-  "/medicines": { title: "Medicines", subtitle: "Manage the medicine catalog" },
+  "/medicines": {
+    title: "Medicine Catalog",
+    subtitle: "Browse and manage the full list of medicines and pricing",
+  },
   "/facilities": { title: "Facilities", subtitle: "Manage healthcare facilities" },
   "/patients": { title: "Patients", subtitle: "Manage patient records" },
   "/forecasting": { title: "Forecasting", subtitle: "Review demand forecasts" },

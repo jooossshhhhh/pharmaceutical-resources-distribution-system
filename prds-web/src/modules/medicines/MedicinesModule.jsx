@@ -31,7 +31,21 @@ const formatCurrency = (value) => {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
+    minimumFractionDigits: 2,
   }).format(Number(value));
+};
+
+const normalizeMedicineText = (medicine) => {
+  return [
+    medicine.generic_name,
+    medicine.brand_name,
+    medicine.dosage,
+    medicine.unit_of_measure,
+    medicine.unit_cost,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 };
 
 export default function MedicinesModule() {
@@ -39,11 +53,12 @@ export default function MedicinesModule() {
   const [medicines, setMedicines] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [unitFilter, setUnitFilter] = useState("ALL");
+  const [selectedMedicineId, setSelectedMedicineId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [medicineError, setMedicineError] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingMedicine, setEditingMedicine] = useState(null);
+  const [modalMode, setModalMode] = useState(null);
+  const [modalMedicine, setModalMedicine] = useState(null);
   const [formValues, setFormValues] = useState(emptyMedicineForm);
 
   const today = useMemo(() => formatDateTime(new Date()), []);
@@ -51,7 +66,7 @@ export default function MedicinesModule() {
   const unitOptions = useMemo(() => {
     return Array.from(
       new Set(medicines.map((medicine) => medicine.unit_of_measure).filter(Boolean))
-    ).sort();
+    ).sort((first, second) => first.localeCompare(second));
   }, [medicines]);
 
   const filteredMedicines = useMemo(() => {
@@ -59,16 +74,21 @@ export default function MedicinesModule() {
 
     return medicines.filter((medicine) => {
       const matchesSearch =
-        !normalizedSearch ||
-        medicine.generic_name.toLowerCase().includes(normalizedSearch) ||
-        (medicine.brand_name || "").toLowerCase().includes(normalizedSearch) ||
-        medicine.dosage.toLowerCase().includes(normalizedSearch);
+        !normalizedSearch || normalizeMedicineText(medicine).includes(normalizedSearch);
       const matchesUnit =
         unitFilter === "ALL" || medicine.unit_of_measure === unitFilter;
 
       return matchesSearch && matchesUnit;
     });
   }, [medicines, searchTerm, unitFilter]);
+
+  const selectedMedicine = useMemo(() => {
+    return (
+      filteredMedicines.find((medicine) => medicine.id === selectedMedicineId) ||
+      filteredMedicines[0] ||
+      null
+    );
+  }, [filteredMedicines, selectedMedicineId]);
 
   const summary = useMemo(() => {
     return medicines.reduce(
@@ -98,7 +118,9 @@ export default function MedicinesModule() {
       return;
     }
 
-    setMedicines(data || []);
+    const medicineRows = data || [];
+    setMedicines(medicineRows);
+    setSelectedMedicineId((currentId) => currentId || medicineRows[0]?.id || "");
     setIsLoading(false);
   };
 
@@ -111,23 +133,23 @@ export default function MedicinesModule() {
   }, []);
 
   const openCreateModal = () => {
-    setEditingMedicine(null);
+    setModalMedicine(null);
     setFormValues(emptyMedicineForm);
     setMedicineError("");
-    setIsModalOpen(true);
+    setModalMode("create");
   };
 
-  const openEditModal = (medicine) => {
-    setEditingMedicine(medicine);
+  const openMedicineModal = (medicine, mode) => {
+    setModalMedicine(medicine);
     setFormValues({
-      generic_name: medicine.generic_name,
+      generic_name: medicine.generic_name || "",
       brand_name: medicine.brand_name || "",
-      unit_of_measure: medicine.unit_of_measure,
-      dosage: medicine.dosage,
+      unit_of_measure: medicine.unit_of_measure || "",
+      dosage: medicine.dosage || "",
       unit_cost: medicine.unit_cost ?? "",
     });
     setMedicineError("");
-    setIsModalOpen(true);
+    setModalMode(mode);
   };
 
   const closeModal = () => {
@@ -135,8 +157,8 @@ export default function MedicinesModule() {
       return;
     }
 
-    setIsModalOpen(false);
-    setEditingMedicine(null);
+    setModalMode(null);
+    setModalMedicine(null);
     setFormValues(emptyMedicineForm);
   };
 
@@ -168,6 +190,11 @@ export default function MedicinesModule() {
   const handleSaveMedicine = async (event) => {
     event.preventDefault();
 
+    if (modalMode === "view") {
+      closeModal();
+      return;
+    }
+
     const validationError = validateForm();
     if (validationError) {
       setMedicineError(validationError);
@@ -185,11 +212,12 @@ export default function MedicinesModule() {
       unit_cost: formValues.unit_cost === "" ? null : Number(formValues.unit_cost),
     };
 
-    const request = editingMedicine
-      ? supabase.from("medicines").update(payload).eq("id", editingMedicine.id)
-      : supabase.from("medicines").insert(payload);
+    const request =
+      modalMode === "edit" && modalMedicine
+        ? supabase.from("medicines").update(payload).eq("id", modalMedicine.id)
+        : supabase.from("medicines").insert(payload).select("id").single();
 
-    const { error } = await request;
+    const { data, error } = await request;
 
     if (error) {
       setMedicineError(error.message);
@@ -200,207 +228,465 @@ export default function MedicinesModule() {
     setIsSaving(false);
     closeModal();
     await loadMedicines();
+
+    if (data?.id) {
+      setSelectedMedicineId(data.id);
+    } else if (modalMedicine?.id) {
+      setSelectedMedicineId(modalMedicine.id);
+    }
   };
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-            Core Module
-          </p>
-          <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-950">
-            Medicines
-          </h2>
-          <p className="text-sm font-medium text-slate-500">
-            Maintain the master medicine list used by inventory and requests.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-800"
-        >
-          Add Medicine
-        </button>
-      </div>
-
-      {medicineError && !isModalOpen && (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+      {medicineError && !modalMode && (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           {medicineError}
         </p>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
-        <SummaryCard label="Total Medicines" value={summary.total} tone="emerald" />
-        <SummaryCard label="With Brand Name" value={summary.branded} tone="blue" />
-        <SummaryCard label="With Unit Cost" value={summary.withCost} tone="amber" />
-        <SummaryCard label="Unit Types" value={summary.units.size} tone="slate" />
-      </div>
-
-      <section className="mt-4 rounded-md border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4">
-          <div>
-            <h3 className="text-base font-black text-slate-950">Medicine Catalog</h3>
-            <p className="text-xs font-semibold text-slate-500">
-              {filteredMedicines.length} shown from {medicines.length} records
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
+          <label className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+              <SearchIcon />
+            </span>
             <input
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search generic, brand, dosage"
-              className="h-10 w-72 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              placeholder="Search medicine name, generic, dosage, or unit..."
+              className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             />
-            <select
-              value={unitFilter}
-              onChange={(event) => setUnitFilter(event.target.value)}
-              className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            >
-              <option value="ALL">All units</option>
-              {unitOptions.map((unit) => (
-                <option key={unit} value={unit}>
-                  {unit}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Medicine</th>
-                <th className="px-4 py-3">Brand</th>
-                <th className="px-4 py-3">Dosage</th>
-                <th className="px-4 py-3">Unit</th>
-                <th className="px-4 py-3">Unit Cost</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <tr>
-                  <td className="px-4 py-10 text-center font-bold text-slate-500" colSpan="6">
-                    Loading medicines...
-                  </td>
-                </tr>
-              ) : filteredMedicines.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-10 text-center font-bold text-slate-500" colSpan="6">
-                    No medicines match the current filters.
-                  </td>
-                </tr>
-              ) : (
-                filteredMedicines.map((medicine) => (
-                  <tr key={medicine.id} className="hover:bg-slate-50/80">
-                    <td className="px-4 py-4">
-                      <p className="font-black text-slate-950">{medicine.generic_name}</p>
-                      <p className="text-xs font-semibold text-slate-500">
-                        ID: {medicine.id.slice(0, 8)}
-                      </p>
-                    </td>
-                    <td className="px-4 py-4 font-semibold text-slate-600">
-                      {medicine.brand_name || "Generic"}
-                    </td>
-                    <td className="px-4 py-4 font-bold text-slate-700">
-                      {medicine.dosage}
-                    </td>
-                    <td className="px-4 py-4 font-semibold text-slate-600">
-                      {medicine.unit_of_measure}
-                    </td>
-                    <td className="px-4 py-4 font-semibold text-slate-600">
-                      {formatCurrency(medicine.unit_cost)}
-                    </td>
-                    <td className="px-4 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(medicine)}
-                        className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          </label>
+          <select
+            value={unitFilter}
+            onChange={(event) => setUnitFilter(event.target.value)}
+            className="h-10 rounded-lg border border-emerald-500 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none focus:ring-2 focus:ring-emerald-100"
+          >
+            <option value="ALL">All Units</option>
+            {unitOptions.map((unit) => (
+              <option key={unit} value={unit}>
+                {unit}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">
-          <form onSubmit={handleSaveMedicine} className="w-full max-w-2xl rounded-md bg-white shadow-2xl">
-            <div className="border-b border-slate-100 px-6 py-5">
-              <h3 className="text-xl font-black text-slate-950">
-                {editingMedicine ? "Edit Medicine" : "Add Medicine"}
-              </h3>
-              <p className="text-sm font-semibold text-slate-500">
-                Generic name, dosage, and unit form the medicine definition.
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_344px]">
+        <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+            <div>
+              <h2 className="text-base font-black text-black">
+                Medicine Catalog{" "}
+                <span className="font-semibold text-neutral-400">
+                  ({filteredMedicines.length} items)
+                </span>
+              </h2>
+              <p className="mt-1 text-xs font-medium text-neutral-500">
+                {summary.total} total, {summary.withCost} with pricing,{" "}
+                {summary.units.size} unit types
               </p>
             </div>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
+            >
+              <PlusIcon />
+              Add Medicine
+            </button>
+          </div>
 
-            <div className="grid gap-4 px-6 py-5">
-              {medicineError && (
-                <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                  {medicineError}
-                </p>
-              )}
+          <div className="divide-y divide-neutral-100">
+            {isLoading ? (
+              <p className="px-5 py-12 text-center text-sm font-bold text-neutral-500">
+                Loading medicines...
+              </p>
+            ) : filteredMedicines.length === 0 ? (
+              <p className="px-5 py-12 text-center text-sm font-bold text-neutral-500">
+                No medicines match the current filters.
+              </p>
+            ) : (
+              filteredMedicines.map((medicine) => {
+                const isSelected = selectedMedicine?.id === medicine.id;
 
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Generic Name" name="generic_name" value={formValues.generic_name} onChange={handleFieldChange} />
-                <Field label="Brand Name" name="brand_name" value={formValues.brand_name} onChange={handleFieldChange} />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <Field label="Dosage" name="dosage" value={formValues.dosage} onChange={handleFieldChange} />
-                <Field label="Unit of Measure" name="unit_of_measure" value={formValues.unit_of_measure} onChange={handleFieldChange} />
-                <Field label="Unit Cost" name="unit_cost" type="number" step="0.01" value={formValues.unit_cost} onChange={handleFieldChange} />
-              </div>
-            </div>
+                return (
+                  <button
+                    key={medicine.id}
+                    type="button"
+                    onClick={() => setSelectedMedicineId(medicine.id)}
+                    className={`grid w-full grid-cols-[1fr_auto_auto] items-center gap-4 border-l-2 px-5 py-4 text-left transition ${
+                      isSelected
+                        ? "border-l-emerald-500 bg-emerald-50"
+                        : "border-l-transparent hover:bg-neutral-50"
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-center gap-4">
+                      <span
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                          isSelected
+                            ? "bg-emerald-100 text-emerald-600"
+                            : "bg-blue-100 text-blue-600"
+                        }`}
+                      >
+                        <PillIcon />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-black">
+                          {medicine.generic_name}
+                        </p>
+                        <p className="truncate text-xs font-medium text-neutral-400">
+                          {medicine.brand_name || "Generic medicine"}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                            {medicine.unit_of_measure}
+                          </span>
+                          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
+                            {medicine.dosage}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-black">
+                        {formatCurrency(medicine.unit_cost)}
+                      </p>
+                      <p className="text-xs font-medium text-neutral-400">per unit</p>
+                    </div>
+                    <span className="text-neutral-400">
+                      <ChevronRightIcon />
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </section>
 
-            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-              <button type="button" onClick={closeModal} className="rounded-md border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
-                Cancel
-              </button>
-              <button type="submit" disabled={isSaving} className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-emerald-300">
-                {isSaving ? "Saving..." : "Save Medicine"}
-              </button>
-            </div>
-          </form>
-        </div>
+        <MedicineDetailsPanel
+          medicine={selectedMedicine}
+          onView={() => selectedMedicine && openMedicineModal(selectedMedicine, "view")}
+          onEdit={() => selectedMedicine && openMedicineModal(selectedMedicine, "edit")}
+        />
+      </div>
+
+      {modalMode && (
+        <MedicineModal
+          mode={modalMode}
+          formValues={formValues}
+          error={medicineError}
+          isSaving={isSaving}
+          onClose={closeModal}
+          onChange={handleFieldChange}
+          onSubmit={handleSaveMedicine}
+          onEdit={() => setModalMode("edit")}
+        />
       )}
     </AdminShell>
   );
 }
 
+function MedicineDetailsPanel({ medicine, onView, onEdit }) {
+  if (!medicine) {
+    return (
+      <aside className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <p className="py-16 text-center text-sm font-bold text-neutral-500">
+          Select a medicine to view details.
+        </p>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+          <PillIcon />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-xl font-black text-black">{medicine.generic_name}</h2>
+          <p className="text-sm font-medium text-neutral-500">
+            {medicine.brand_name || "Generic medicine"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+          {medicine.unit_of_measure}
+        </span>
+        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
+          {medicine.dosage}
+        </span>
+      </div>
+
+      <div className="mt-6 space-y-4">
+        <DetailRow label="Generic Name" value={medicine.generic_name} />
+        <DetailRow label="Brand Name" value={medicine.brand_name || "Generic"} />
+        <DetailRow label="Unit of Measure" value={medicine.unit_of_measure} />
+        <DetailRow label="Dosage" value={medicine.dosage} />
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-3">
+        <div className="rounded-lg bg-neutral-50 p-4">
+          <p className="text-xs font-bold text-neutral-500">Unit Cost</p>
+          <p className="mt-2 text-xl font-black text-black">
+            {formatCurrency(medicine.unit_cost)}
+          </p>
+        </div>
+        <div className="rounded-lg bg-neutral-50 p-4">
+          <p className="text-xs font-bold text-neutral-500">Definition</p>
+          <p className="mt-2 text-sm font-black text-black">
+            {medicine.generic_name} / {medicine.dosage}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-lg border border-neutral-200 bg-[#fbfaf8] p-4">
+        <p className="text-xs font-black uppercase tracking-wide text-neutral-500">
+          Database Fields
+        </p>
+        <p className="mt-2 text-sm leading-6 text-neutral-600">
+          This record stores only the medicine definition used by inventory and
+          requests: generic name, optional brand name, dosage, unit of measure,
+          and optional unit cost.
+        </p>
+      </div>
+
+      <div className="mt-6 flex gap-3">
+        <button
+          type="button"
+          onClick={onView}
+          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-neutral-200 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+        >
+          <EyeIcon />
+          View
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 text-sm font-black text-white hover:bg-emerald-700"
+        >
+          <PencilIcon />
+          Edit
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function MedicineModal({
+  mode,
+  formValues,
+  error,
+  isSaving,
+  onClose,
+  onChange,
+  onSubmit,
+  onEdit,
+}) {
+  const isReadOnly = mode === "view";
+  const title =
+    mode === "create" ? "Add New Medicine" : mode === "edit" ? "Edit Medicine" : "Medicine Details";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
+      <form
+        onSubmit={onSubmit}
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
+          <div>
+            <h3 className="text-xl font-black text-black">{title}</h3>
+            <p className="text-sm font-medium text-neutral-500">
+              Based on the medicines table schema.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+            aria-label="Close medicine modal"
+          >
+            <XIcon />
+          </button>
+        </div>
+
+        <div className="prds-modal-scrollbar flex-1 overflow-y-auto px-6 py-5">
+          {error && (
+            <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {error}
+            </p>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Generic Name"
+              name="generic_name"
+              value={formValues.generic_name}
+              onChange={onChange}
+              disabled={isReadOnly}
+              required
+            />
+            <Field
+              label="Brand Name"
+              name="brand_name"
+              value={formValues.brand_name}
+              onChange={onChange}
+              disabled={isReadOnly}
+              placeholder="Optional"
+            />
+            <Field
+              label="Unit of Measure"
+              name="unit_of_measure"
+              value={formValues.unit_of_measure}
+              onChange={onChange}
+              disabled={isReadOnly}
+              required
+            />
+            <Field
+              label="Dosage"
+              name="dosage"
+              value={formValues.dosage}
+              onChange={onChange}
+              disabled={isReadOnly}
+              required
+            />
+            <Field
+              label="Unit Cost"
+              name="unit_cost"
+              type="number"
+              min="0"
+              step="0.01"
+              value={formValues.unit_cost}
+              onChange={onChange}
+              disabled={isReadOnly}
+              placeholder="Optional"
+            />
+          </div>
+
+          <div className="mt-5 rounded-lg border border-neutral-200 bg-[#fbfaf8] p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-neutral-500">
+              Unique Definition
+            </p>
+            <p className="mt-2 text-sm leading-6 text-neutral-600">
+              The database prevents duplicate medicines with the same generic
+              name, dosage, and unit of measure.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-neutral-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg bg-neutral-100 px-6 text-sm font-bold text-neutral-700 hover:bg-neutral-200"
+          >
+            {isReadOnly ? "Close" : "Cancel"}
+          </button>
+          {isReadOnly ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="h-10 rounded-lg bg-emerald-600 px-6 text-sm font-black text-white hover:bg-emerald-700"
+            >
+              Edit Medicine
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-6 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+            >
+              <PlusIcon />
+              {isSaving ? "Saving..." : mode === "create" ? "Add Medicine" : "Save Changes"}
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function Field({ label, ...props }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
+    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
       {label}
       <input
         {...props}
-        className="h-11 rounded-md border border-slate-200 px-3 text-sm font-semibold normal-case tracking-normal text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50 disabled:text-neutral-500"
       />
     </label>
   );
 }
 
-function SummaryCard({ label, value, tone }) {
-  const toneClasses = {
-    emerald: "border-emerald-100 bg-emerald-50 text-emerald-700",
-    blue: "border-blue-100 bg-blue-50 text-blue-700",
-    amber: "border-amber-100 bg-amber-50 text-amber-700",
-    slate: "border-slate-200 bg-white text-slate-700",
-  };
-
+function DetailRow({ label, value }) {
   return (
-    <div className={`rounded-md border p-4 shadow-sm ${toneClasses[tone]}`}>
-      <p className="text-xs font-black uppercase tracking-wide opacity-80">{label}</p>
-      <p className="mt-2 text-3xl font-black text-slate-950">{value}</p>
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-black">{value || "Not set"}</p>
     </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function PillIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="m10 21 9.2-9.2a4 4 0 0 0-5.7-5.7L4.3 15.3A4 4 0 0 0 10 21Z" />
+      <path d="m8 11 5 5" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M12 20h9" />
+      <path d="m16.5 3.5 4 4L8 20l-5 1 1-5 12.5-12.5Z" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
   );
 }
