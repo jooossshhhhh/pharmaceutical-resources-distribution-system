@@ -488,6 +488,7 @@ export default function FacilitiesModule() {
             <FacilityCard
               key={facility.id}
               facility={facility}
+              isSelected={selectedFacility?.id === facility.id}
               onView={() => openDetailsModal(facility)}
             />
           ))
@@ -517,11 +518,17 @@ export default function FacilitiesModule() {
   );
 }
 
-function FacilityCard({ facility, onView }) {
+function FacilityCard({ facility, isSelected, onView }) {
   const healthMeta = getHealthMeta(facility.stockHealth);
 
   return (
-    <article className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <article
+      className={`rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        isSelected
+          ? "border-emerald-400 ring-1 ring-emerald-200"
+          : "border-neutral-200"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-4">
           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${healthMeta.iconClass}`}>
@@ -597,8 +604,8 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
-      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="border-b border-neutral-100 bg-black px-6 py-5 text-white">
+      <div className="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="border-b border-neutral-100 bg-black px-5 py-4 text-white">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-start gap-4">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
@@ -608,7 +615,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
                   Facility Details
                 </p>
-                <h3 className="mt-1 truncate text-2xl font-black">{facility.facility_name}</h3>
+                <h3 className="mt-1 truncate text-xl font-black">{facility.facility_name}</h3>
                 <p className="text-sm font-medium text-neutral-300">
                   {facility.facility_code} - {formatFacilityType(facility.facility_type)}
                 </p>
@@ -625,7 +632,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
           </div>
         </div>
 
-        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#fbfaf8] p-6">
+        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#fbfaf8] p-5">
           <div className="grid gap-4 md:grid-cols-4">
             <DetailStat label="Stock Health" value={`${facility.healthPercent}%`} tone={facility.stockHealth} />
             <DetailStat label="Inventory Value" value={formatCurrency(facility.stockCounts.totalValue)} />
@@ -633,7 +640,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
             <DetailStat label="Patients" value={formatNumber(facility.patientCount)} />
           </div>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
             <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
