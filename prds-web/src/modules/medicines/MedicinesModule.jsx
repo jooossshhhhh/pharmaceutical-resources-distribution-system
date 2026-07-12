@@ -232,34 +232,24 @@ export default function MedicinesModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 xl:grid-cols-[1fr_180px]">
-          <label className="grid gap-1">
-            <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-neutral-500">
-              Medicine
+      <section className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
+        <label className="grid max-w-3xl gap-1">
+          <span className="text-[10px] font-black uppercase tracking-wide text-neutral-500">
+            Medicine
+          </span>
+          <span className="relative block">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+              <SearchIcon />
             </span>
-            <span className="relative block">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                <SearchIcon />
-              </span>
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search medicine name, generic, dosage, or unit..."
-                className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-              />
-            </span>
-          </label>
-          <FilterSelect
-            label="Sort"
-            value={medicineSort}
-            onChange={(event) => setMedicineSort(event.target.value)}
-          >
-            <option value="ASC">Medicine: A-Z</option>
-            <option value="DESC">Medicine: Z-A</option>
-          </FilterSelect>
-        </div>
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search medicine name, generic, dosage, or unit..."
+              className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            />
+          </span>
+        </label>
       </section>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_344px]">
@@ -282,7 +272,7 @@ export default function MedicinesModule() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[720px] w-full border-collapse">
+            <table className="min-w-[640px] w-full border-collapse">
               <thead>
                 <tr className="border-b border-neutral-100 bg-white text-left text-[11px] font-black uppercase tracking-wide text-neutral-500">
                   <th className="px-5 py-3">
@@ -303,14 +293,13 @@ export default function MedicinesModule() {
                   </th>
                   <th className="px-5 py-3">Brand</th>
                   <th className="px-5 py-3">Dosage</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {isLoading ? (
                   <tr>
                     <td
-                      colSpan="4"
+                      colSpan="3"
                       className="px-5 py-12 text-center text-sm font-bold text-neutral-500"
                     >
                       Loading medicines...
@@ -319,7 +308,7 @@ export default function MedicinesModule() {
                 ) : sortedMedicines.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="4"
+                      colSpan="3"
                       className="px-5 py-12 text-center text-sm font-bold text-neutral-500"
                     >
                       No medicines match the current filters.
@@ -354,32 +343,6 @@ export default function MedicinesModule() {
                           <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-bold text-neutral-600">
                             {medicine.dosage}
                           </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center justify-end gap-2 text-neutral-500">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openMedicineModal(medicine, "view");
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-neutral-100 hover:text-emerald-700"
-                              aria-label={`View ${medicine.generic_name}`}
-                            >
-                              <EyeIcon />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openMedicineModal(medicine, "edit");
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-neutral-100 hover:text-emerald-700"
-                              aria-label={`Edit ${medicine.generic_name}`}
-                            >
-                              <PencilIcon />
-                            </button>
-                          </div>
                         </td>
                       </tr>
                     );
@@ -639,20 +602,6 @@ function DetailRow({ label, value }) {
       <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-black">{value || "Not set"}</p>
     </div>
-  );
-}
-
-function FilterSelect({ label, children, ...props }) {
-  return (
-    <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-      {label}
-      <select
-        {...props}
-        className="h-8 rounded-lg border border-neutral-200 bg-white px-2 text-xs font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-      >
-        {children}
-      </select>
-    </label>
   );
 }
 
