@@ -15,6 +15,19 @@ const facilityStatuses = [
   { value: "INACTIVE", label: "Inactive" },
 ];
 
+const stockHealthFilters = [
+  { value: "ALL", label: "All Stock" },
+  { value: "HEALTHY", label: "Healthy" },
+  { value: "WATCH", label: "Watch" },
+  { value: "LOW", label: "Low Stock" },
+  { value: "CRITICAL", label: "Critical" },
+];
+
+const sortDirections = [
+  { value: "ASC", label: "Ascending" },
+  { value: "DESC", label: "Descending" },
+];
+
 const emptyForm = {
   facility_name: "",
   facility_code: "",
@@ -199,7 +212,8 @@ export default function FacilitiesModule() {
   const [patients, setPatients] = useState([]);
   const [forecasts, setForecasts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [stockFilter, setStockFilter] = useState("ALL");
+  const [sortDirection, setSortDirection] = useState("ASC");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [facilityError, setFacilityError] = useState("");
@@ -219,24 +233,33 @@ export default function FacilitiesModule() {
   const filteredFacilities = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return enrichedFacilities.filter((facility) => {
-      const searchableText = [
-        facility.facility_name,
-        facility.facility_code,
-        facility.address,
-        formatFacilityType(facility.facility_type),
-        facility.status,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+    return enrichedFacilities
+      .filter((facility) => {
+        const searchableText = [
+          facility.facility_name,
+          facility.facility_code,
+          facility.address,
+          formatFacilityType(facility.facility_type),
+          facility.status,
+          getHealthMeta(facility.stockHealth).label,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
 
-      return (
-        (!normalizedSearch || searchableText.includes(normalizedSearch)) &&
-        (typeFilter === "ALL" || facility.facility_type === typeFilter)
-      );
-    });
-  }, [enrichedFacilities, searchTerm, typeFilter]);
+        return (
+          (!normalizedSearch || searchableText.includes(normalizedSearch)) &&
+          (stockFilter === "ALL" || facility.stockHealth === stockFilter)
+        );
+      })
+      .sort((firstFacility, secondFacility) => {
+        const comparison = firstFacility.facility_name.localeCompare(
+          secondFacility.facility_name
+        );
+
+        return sortDirection === "ASC" ? comparison : comparison * -1;
+      });
+  }, [enrichedFacilities, searchTerm, sortDirection, stockFilter]);
 
   const loadFacilities = async () => {
     setIsLoading(true);
@@ -444,19 +467,23 @@ export default function FacilitiesModule() {
               />
             </label>
             <div className="flex flex-wrap items-center gap-2">
-              <FilterPill
-                active={typeFilter === "ALL"}
-                onClick={() => setTypeFilter("ALL")}
-              >
-                All Types
-              </FilterPill>
-              {facilityTypes.map((type) => (
+              {sortDirections.map((direction) => (
                 <FilterPill
-                  key={type.value}
-                  active={typeFilter === type.value}
-                  onClick={() => setTypeFilter(type.value)}
+                  key={direction.value}
+                  active={sortDirection === direction.value}
+                  onClick={() => setSortDirection(direction.value)}
                 >
-                  {type.label}
+                  {direction.label}
+                </FilterPill>
+              ))}
+              <span className="mx-1 hidden h-6 w-px bg-neutral-200 sm:block" />
+              {stockHealthFilters.map((health) => (
+                <FilterPill
+                  key={health.value}
+                  active={stockFilter === health.value}
+                  onClick={() => setStockFilter(health.value)}
+                >
+                  {health.label}
                 </FilterPill>
               ))}
             </div>
