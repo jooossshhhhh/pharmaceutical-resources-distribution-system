@@ -9,6 +9,7 @@ import DashboardModule from "../modules/dashboard/DashboardModule";
 import FacilitiesModule from "../modules/facilities/FacilitiesModule";
 import InventoryModule from "../modules/inventory/InventoryModule";
 import MedicinesModule from "../modules/medicines/MedicinesModule";
+import NotificationsModule from "../modules/notifications/NotificationsModule";
 import ProfileSettingsModule from "../modules/profile/ProfileSettingsModule";
 import SuppliersModule from "../modules/suppliers/SuppliersModule";
 import ProtectedRoutes from "./ProtectedRoutes";
@@ -28,6 +29,7 @@ export default function AppRoutes() {
           <Route path="/medicines" element={<MedicinesModule />} />
           <Route path="/suppliers" element={<SuppliersModule />} />
           <Route path="/inventory" element={<InventoryModule />} />
+          <Route path="/notifications" element={<NotificationsModule />} />
           <Route path="/profile-settings" element={<ProfileSettingsModule />} />
         </Route>
       </Routes>

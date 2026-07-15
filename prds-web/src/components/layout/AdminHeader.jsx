@@ -27,6 +27,10 @@ const pageTitles = {
   "/facilities": { title: "Facilities", subtitle: "Manage healthcare facilities" },
   "/patients": { title: "Patients", subtitle: "Manage patient records" },
   "/forecasting": { title: "Forecasting", subtitle: "Review demand forecasts" },
+  "/notifications": {
+    title: "Notifications",
+    subtitle: "System alerts, request updates, and transfer notifications",
+  },
   "/profile-settings": {
     title: "Profile & Settings",
     subtitle: "Manage your account and system preferences",
@@ -243,7 +247,14 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
               ))
             )}
           </div>
-          <button className="w-full border-t border-neutral-100 px-4 py-3 text-center text-xs font-semibold text-neutral-600 hover:bg-neutral-50">
+          <button
+            type="button"
+            onClick={() => {
+              setIsNotificationsOpen(false);
+              navigate("/notifications");
+            }}
+            className="w-full border-t border-neutral-100 px-4 py-3 text-center text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+          >
             See all notifications
           </button>
         </div>
