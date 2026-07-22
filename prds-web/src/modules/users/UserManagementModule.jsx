@@ -304,7 +304,7 @@ export default function UserManagementModule() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-left text-sm">
+          <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-neutral-50 text-xs font-black uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-4 py-3">User</th>
@@ -314,25 +314,35 @@ export default function UserManagementModule() {
                 <th className="px-4 py-3">Facility</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Created</th>
-                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+                  <td colSpan="7" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
                     Loading user accounts...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+                  <td colSpan="7" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
                     No users match the current filters.
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-neutral-50/80">
+                  <tr
+                    key={user.id}
+                    tabIndex={0}
+                    onClick={() => openUserModal(user)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openUserModal(user);
+                      }
+                    }}
+                    className="cursor-pointer transition hover:bg-emerald-50/60 focus:bg-emerald-50/80 focus:outline-none"
+                  >
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">
@@ -365,26 +375,6 @@ export default function UserManagementModule() {
                     </td>
                     <td className="px-4 py-4 font-medium text-neutral-500">
                       {formatDate(user.created_at)}
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex justify-end gap-2">
-                        {user.status === "PENDING" && (
-                          <button
-                            type="button"
-                            onClick={() => updateUser(user, { status: "ACTIVE" })}
-                            className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-700"
-                          >
-                            Approve
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => openUserModal(user)}
-                          className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50"
-                        >
-                          Manage
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))
