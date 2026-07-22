@@ -1,5 +1,4 @@
 import { supabase } from "../../services/supabase";
-import { getInternalPhoneEmail } from "./AuthService";
 
 const PROFILE_COLUMNS =
   "id, first_name, last_name, email, phone_number, role, facility_id, status";
@@ -34,7 +33,7 @@ export const createPhoneProfile = async ({
       id: userId,
       first_name: firstName.trim(),
       last_name: lastName.trim(),
-      email: getInternalPhoneEmail(phoneNumber),
+      email: null,
       phone_number: phoneNumber,
       role: "BHW",
       status: "PENDING",

@@ -4,7 +4,7 @@ create table profiles (
     first_name text not null,
     last_name text not null,
 
-    email text not null unique,
+    email text unique,
     phone_number text,
 
     role user_role not null default 'BHW',

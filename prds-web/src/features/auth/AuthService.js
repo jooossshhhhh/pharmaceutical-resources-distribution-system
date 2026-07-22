@@ -22,14 +22,6 @@ export const toPhilippineE164PhoneNumber = (phoneNumber) => {
   return `+63${normalizePhoneNumber(phoneNumber).slice(1)}`;
 };
 
-const phoneToEmail = (phoneNumber) => {
-  return `${normalizePhoneNumber(phoneNumber)}@prds.local`;
-};
-
-export const getInternalPhoneEmail = (phoneNumber) => {
-  return phoneToEmail(phoneNumber);
-};
-
 export const sendPhoneOtp = async (
   phoneNumber,
   { shouldCreateUser = true } = {}

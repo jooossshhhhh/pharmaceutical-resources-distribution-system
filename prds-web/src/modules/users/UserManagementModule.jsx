@@ -74,6 +74,23 @@ const getFullName = (user) => {
   return `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Unnamed user";
 };
 
+const isPhoneDerivedEmail = (email, phoneNumber) => {
+  if (!email || !phoneNumber) {
+    return false;
+  }
+
+  const [localPart] = email.split("@");
+  return localPart?.replace(/\D/g, "") === phoneNumber.replace(/\D/g, "");
+};
+
+const getDisplayEmail = (user) => {
+  return isPhoneDerivedEmail(user?.email, user?.phone_number) ? "" : user?.email || "";
+};
+
+const getDisplayPhone = (user) => {
+  return user?.phone_number || "";
+};
+
 export default function UserManagementModule() {
   const { profile } = useAuth();
   const [users, setUsers] = useState([]);
@@ -89,8 +106,12 @@ export default function UserManagementModule() {
 
   const today = useMemo(() => formatDateTime(new Date()), []);
 
+  const visibleUsers = useMemo(() => {
+    return users.filter((user) => user.id !== profile?.id);
+  }, [profile?.id, users]);
+
   const summary = useMemo(() => {
-    return users.reduce(
+    return visibleUsers.reduce(
       (counts, user) => {
         counts.total += 1;
         counts.pending += user.status === "PENDING" ? 1 : 0;
@@ -100,16 +121,16 @@ export default function UserManagementModule() {
       },
       { total: 0, pending: 0, active: 0, deactivated: 0 }
     );
-  }, [users]);
+  }, [visibleUsers]);
 
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return users.filter((user) => {
+    return visibleUsers.filter((user) => {
       const searchableText = [
         getFullName(user),
-        user.email,
-        user.phone_number,
+        getDisplayEmail(user),
+        getDisplayPhone(user),
         getRoleLabel(user.role),
         getStatusLabel(user.status),
         user.facility?.facility_name,
@@ -124,7 +145,7 @@ export default function UserManagementModule() {
         (roleFilter === "ALL" || user.role === roleFilter)
       );
     });
-  }, [roleFilter, searchTerm, statusFilter, users]);
+  }, [roleFilter, searchTerm, statusFilter, visibleUsers]);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -251,14 +272,14 @@ export default function UserManagementModule() {
       )}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Total Users" value={summary.total} tone="emerald" />
-        <SummaryCard label="Pending Approval" value={summary.pending} tone="amber" />
-        <SummaryCard label="Active" value={summary.active} tone="blue" />
-        <SummaryCard label="Deactivated" value={summary.deactivated} tone="neutral" />
+        <SummaryCard label="Total Users" value={summary.total} tone="emerald" active={statusFilter === "ALL"} onClick={() => setStatusFilter("ALL")} />
+        <SummaryCard label="Pending Approval" value={summary.pending} tone="amber" active={statusFilter === "PENDING"} onClick={() => setStatusFilter("PENDING")} />
+        <SummaryCard label="Active" value={summary.active} tone="blue" active={statusFilter === "ACTIVE"} onClick={() => setStatusFilter("ACTIVE")} />
+        <SummaryCard label="Deactivated" value={summary.deactivated} tone="neutral" active={statusFilter === "DEACTIVATED"} onClick={() => setStatusFilter("DEACTIVATED")} />
       </section>
 
       <section className="mt-5 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 xl:grid-cols-[1fr_180px_220px]">
+        <div className="grid gap-3 xl:grid-cols-[1fr_220px]">
           <label className="relative block">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
               <SearchIcon />
@@ -271,7 +292,6 @@ export default function UserManagementModule() {
               className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             />
           </label>
-          <SelectFilter value={statusFilter} onChange={setStatusFilter} options={statusOptions} allLabel="All statuses" />
           <SelectFilter value={roleFilter} onChange={setRoleFilter} options={roleOptions} allLabel="All roles" />
         </div>
       </section>
@@ -280,21 +300,16 @@ export default function UserManagementModule() {
         <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-4">
           <div>
             <h2 className="text-base font-black text-black">User Accounts</h2>
-            <p className="text-xs font-semibold text-neutral-500">
-              {filteredUsers.length} shown from {users.length} profile records
-            </p>
           </div>
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
-            Supabase profiles
-          </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[940px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-neutral-50 text-xs font-black uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Contact</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Facility</th>
                 <th className="px-4 py-3">Status</th>
@@ -305,13 +320,13 @@ export default function UserManagementModule() {
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+                  <td colSpan="8" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
                     Loading user accounts...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+                  <td colSpan="8" className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
                     No users match the current filters.
                   </td>
                 </tr>
@@ -332,10 +347,10 @@ export default function UserManagementModule() {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <p className="font-semibold text-neutral-700">{user.email}</p>
-                      <p className="text-xs font-medium text-neutral-500">
-                        {user.phone_number || "No phone linked"}
-                      </p>
+                      <p className="min-h-5 font-semibold text-neutral-700">{getDisplayEmail(user)}</p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="min-h-5 font-semibold text-neutral-700">{getDisplayPhone(user)}</p>
                     </td>
                     <td className="px-4 py-4 font-semibold text-neutral-700">
                       {getRoleLabel(user.role)}
@@ -409,7 +424,9 @@ function UserModal({ user, formValues, facilities, isSaving, error, onClose, onC
                 User Profile
               </p>
               <h3 className="mt-1 truncate text-xl font-black text-black">{getFullName(user)}</h3>
-              <p className="text-sm font-medium text-neutral-600">{user.email}</p>
+              <p className="text-sm font-medium text-neutral-600">
+                {getDisplayEmail(user) || getDisplayPhone(user)}
+              </p>
             </div>
           </div>
         </div>
@@ -424,8 +441,8 @@ function UserModal({ user, formValues, facilities, isSaving, error, onClose, onC
           <div className="grid gap-3 sm:grid-cols-2">
             <ReadOnlyField label="First Name" value={user.first_name} />
             <ReadOnlyField label="Last Name" value={user.last_name} />
-            <ReadOnlyField label="Email" value={user.email} />
-            <ReadOnlyField label="Phone" value={user.phone_number || "No phone linked"} />
+            <ReadOnlyField label="Email" value={getDisplayEmail(user)} emptyLabel="" />
+            <ReadOnlyField label="Phone" value={getDisplayPhone(user)} emptyLabel="" />
             <ReadOnlyField label="Approved At" value={formatDate(user.approved_at)} />
             <ReadOnlyField label="Last Updated" value={formatDate(user.updated_at)} />
           </div>
@@ -474,7 +491,7 @@ function UserModal({ user, formValues, facilities, isSaving, error, onClose, onC
   );
 }
 
-function SummaryCard({ label, value, tone }) {
+function SummaryCard({ label, value, tone, active, onClick }) {
   const toneClasses = {
     emerald: "bg-emerald-50 text-emerald-700",
     amber: "bg-amber-50 text-amber-700",
@@ -483,21 +500,27 @@ function SummaryCard({ label, value, tone }) {
   };
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        active ? "border-emerald-400 ring-2 ring-emerald-100" : "border-neutral-200"
+      }`}
+    >
       <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses[tone]}`}>
         <UserIcon />
       </span>
       <p className="mt-4 text-3xl font-black text-black">{value}</p>
       <p className="text-xs font-black uppercase tracking-wide text-neutral-500">{label}</p>
-    </div>
+    </button>
   );
 }
 
-function ReadOnlyField({ label, value }) {
+function ReadOnlyField({ label, value, emptyLabel = "Not set" }) {
   return (
     <div className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-neutral-100">
       <p className="text-xs font-black uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-2 break-words text-sm font-semibold text-black">{value || "Not set"}</p>
+      <p className="mt-2 min-h-5 break-words text-sm font-semibold text-black">{value || emptyLabel}</p>
     </div>
   );
 }

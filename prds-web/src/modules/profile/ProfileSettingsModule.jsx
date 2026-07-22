@@ -35,7 +35,14 @@ const roleLabels = {
 
 const getRoleLabel = (role) => roleLabels[role] || "Barangay Health Worker";
 
-const isInternalPhoneEmail = (email) => email?.endsWith("@prds.local");
+const isPhoneDerivedEmail = (email, phoneNumber) => {
+  if (!email || !phoneNumber) {
+    return false;
+  }
+
+  const [localPart] = email.split("@");
+  return localPart?.replace(/\D/g, "") === phoneNumber.replace(/\D/g, "");
+};
 
 const preferenceRows = [
   {
@@ -164,10 +171,10 @@ export default function ProfileSettingsModule() {
   const roleLabel = getRoleLabel(profile?.role);
   const authEmail = supabaseUser?.email || "";
   const profileEmail = profile?.email || "";
-  const readableEmail = isInternalPhoneEmail(profileEmail)
+  const readableEmail = isPhoneDerivedEmail(profileEmail, profile?.phone_number)
     ? authEmail || "No Gmail linked"
     : profileEmail;
-  const hasGoogleEmail = !!authEmail && !isInternalPhoneEmail(authEmail);
+  const hasGoogleEmail = !!authEmail && !isPhoneDerivedEmail(authEmail, profile?.phone_number);
 
   const handleFieldChange = (event) => {
     const { name, value } = event.target;
