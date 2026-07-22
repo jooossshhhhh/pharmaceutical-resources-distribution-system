@@ -91,6 +91,51 @@ body {
   min-width: 0;
 }
 
+.facility-details-modal {
+  container-type: inline-size;
+  height: min(78vh, 720px);
+  max-height: calc(100vh - 2rem);
+  max-width: calc(100vw - 2rem);
+  min-height: 420px;
+  min-width: min(92vw, 420px);
+  resize: both;
+  width: min(92vw, 680px);
+}
+
+.facility-detail-stats {
+  grid-template-columns: 1fr;
+}
+
+.facility-health-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.facility-detail-main {
+  grid-template-columns: 1fr;
+}
+
+@container (min-width: 560px) {
+  .facility-detail-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 760px) {
+  .facility-health-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 900px) {
+  .facility-detail-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .facility-detail-main {
+    grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.95fr);
+  }
+}
+
 @media (min-width: 760px) {
   .facilities-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
