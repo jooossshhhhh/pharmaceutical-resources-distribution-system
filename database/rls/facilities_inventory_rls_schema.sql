@@ -67,6 +67,21 @@ using (
 );
 
 
+-- Registration can list active facilities for account requests
+
+create policy "registration_can_view_active_facilities"
+
+on facilities
+
+for select
+
+to anon, authenticated
+
+using (
+    status = 'ACTIVE'
+);
+
+
 -- BHW can view only assigned facility
 
 create policy "bhw_can_view_own_facility"
