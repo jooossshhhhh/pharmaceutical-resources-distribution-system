@@ -31,6 +31,10 @@ const pageTitles = {
     title: "Notifications",
     subtitle: "System alerts, request updates, and transfer notifications",
   },
+  "/users": {
+    title: "User Management",
+    subtitle: "Review accounts, approvals, roles, and facility assignments",
+  },
   "/profile-settings": {
     title: "Profile & Settings",
     subtitle: "Manage your account and system preferences",

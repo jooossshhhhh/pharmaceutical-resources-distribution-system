@@ -58,6 +58,16 @@ const iconPaths = {
       <path d="M19 8v6M16 11h6" />
     </>
   ),
+  "User Management": (
+    <>
+      <circle cx="9" cy="8" r="4" />
+      <path d="M2 21a7 7 0 0 1 14 0" />
+      <circle cx="18" cy="9" r="3" />
+      <path d="M17 21a5 5 0 0 0-2-4" />
+      <path d="M20 15v6" />
+      <path d="M17 18h6" />
+    </>
+  ),
   Forecasting: (
     <>
       <path d="M4 19V5" />
@@ -89,6 +99,7 @@ const navItems = [
   { label: "Medicines", path: "/medicines" },
   { label: "Facilities", path: "/facilities" },
   { label: "Patients" },
+  { label: "User Management", path: "/users" },
   { label: "Forecasting" },
   { label: "Activity Logs" },
   { label: "Notifications" },

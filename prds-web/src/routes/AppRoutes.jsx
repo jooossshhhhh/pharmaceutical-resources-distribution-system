@@ -12,6 +12,7 @@ import MedicinesModule from "../modules/medicines/MedicinesModule";
 import NotificationsModule from "../modules/notifications/NotificationsModule";
 import ProfileSettingsModule from "../modules/profile/ProfileSettingsModule";
 import SuppliersModule from "../modules/suppliers/SuppliersModule";
+import UserManagementModule from "../modules/users/UserManagementModule";
 import ProtectedRoutes from "./ProtectedRoutes";
 
 export default function AppRoutes() {
@@ -30,6 +31,7 @@ export default function AppRoutes() {
           <Route path="/suppliers" element={<SuppliersModule />} />
           <Route path="/inventory" element={<InventoryModule />} />
           <Route path="/notifications" element={<NotificationsModule />} />
+          <Route path="/users" element={<UserManagementModule />} />
           <Route path="/profile-settings" element={<ProfileSettingsModule />} />
         </Route>
       </Routes>
