@@ -5,6 +5,7 @@ import {
   getAuthErrorMessage,
   logoutUser,
   toPhilippineE164PhoneNumber,
+  updateUserPassword,
   verifyPhoneOtp,
 } from "./AuthService";
 import {
@@ -56,6 +57,7 @@ export default function OTPVerification() {
     facilityId,
     firstName,
     lastName,
+    password,
     phoneNumber,
     purpose,
     role,
@@ -91,6 +93,10 @@ export default function OTPVerification() {
 
       if (isRegistrationOtp) {
         const existingProfile = await getProfileById(user.id);
+
+        if (password) {
+          await updateUserPassword(password);
+        }
 
         if (!isProfileRegistrationComplete(existingProfile)) {
           await createPhoneProfile({

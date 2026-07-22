@@ -182,6 +182,7 @@ export default function RegisterPage() {
         firstName: firstNameValue,
         lastName: lastNameValue,
         facilityId: facilityIdValue,
+        password,
         phoneNumber: normalizedPhoneNumber,
         role: roleValue,
       });
