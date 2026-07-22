@@ -41,7 +41,7 @@ export const createPhoneProfile = async ({
 }) => {
   const { data, error } = await supabase
     .from("profiles")
-    .insert({
+    .upsert({
       id: userId,
       first_name: firstName.trim(),
       last_name: lastName.trim(),
@@ -50,7 +50,7 @@ export const createPhoneProfile = async ({
       role,
       facility_id: facilityId,
       status: "PENDING",
-    })
+    }, { onConflict: "id" })
     .select(PROFILE_COLUMNS)
     .single();
 

@@ -14,7 +14,10 @@ import {
   getProfileById,
   isProfileRegistrationComplete,
 } from "./ProfileService";
-import { setPendingRegistration } from "./PendingRegistrationStore";
+import {
+  PHONE_OTP_PURPOSES,
+  setPendingPhoneOtp,
+} from "./PendingPhoneOtpStore";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -92,8 +95,8 @@ export default function LoginPage() {
       const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
       await sendPhoneOtp(normalizedPhoneNumber, { shouldCreateUser: false });
 
-      setPendingRegistration({
-        mode: "login",
+      setPendingPhoneOtp({
+        purpose: PHONE_OTP_PURPOSES.LOGIN,
         phoneNumber: normalizedPhoneNumber,
       });
 

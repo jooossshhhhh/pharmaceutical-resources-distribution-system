@@ -11,7 +11,10 @@ import {
   signUpWithPhonePassword,
   updateUserPassword,
 } from "./AuthService";
-import { setPendingRegistration } from "./PendingRegistrationStore";
+import {
+  PHONE_OTP_PURPOSES,
+  setPendingPhoneOtp,
+} from "./PendingPhoneOtpStore";
 import {
   createGoogleProfile,
   getProfileById,
@@ -173,8 +176,8 @@ export default function RegisterPage() {
         password,
       });
 
-      setPendingRegistration({
-        mode: "register",
+      setPendingPhoneOtp({
+        purpose: PHONE_OTP_PURPOSES.REGISTRATION,
         firstName: firstNameValue,
         lastName: lastNameValue,
         facilityId: facilityIdValue,

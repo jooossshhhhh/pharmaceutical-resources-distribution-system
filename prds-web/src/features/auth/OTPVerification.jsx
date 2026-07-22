@@ -7,32 +7,34 @@ import {
   verifyPhoneOtp,
 } from "./AuthService";
 import {
-  clearPendingRegistration,
-  getPendingRegistration,
-} from "./PendingRegistrationStore";
+  clearPendingPhoneOtp,
+  getPendingPhoneOtp,
+  PHONE_OTP_PURPOSES,
+} from "./PendingPhoneOtpStore";
 import {
   createPhoneProfile,
   getProfileById,
+  isProfileRegistrationComplete,
 } from "./ProfileService";
 
 const OTP_EXPIRY_SECONDS = 120;
 
 export default function OTPVerification() {
   const navigate = useNavigate();
-  const [pendingRegistration] = useState(() => getPendingRegistration());
+  const [pendingPhoneOtp] = useState(() => getPendingPhoneOtp());
   const [verificationCode, setVerificationCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(OTP_EXPIRY_SECONDS);
 
   useEffect(() => {
-    if (!pendingRegistration) {
-      navigate("/register", { replace: true });
+    if (!pendingPhoneOtp) {
+      navigate("/", { replace: true });
     }
-  }, [navigate, pendingRegistration]);
+  }, [navigate, pendingPhoneOtp]);
 
   useEffect(() => {
-    if (!pendingRegistration || secondsRemaining <= 0) {
+    if (!pendingPhoneOtp || secondsRemaining <= 0) {
       return undefined;
     }
 
@@ -43,20 +45,21 @@ export default function OTPVerification() {
     }, 1000);
 
     return () => window.clearInterval(timerId);
-  }, [pendingRegistration, secondsRemaining]);
+  }, [pendingPhoneOtp, secondsRemaining]);
 
-  if (!pendingRegistration) {
+  if (!pendingPhoneOtp) {
     return null;
   }
 
   const {
-    mode,
     facilityId,
     firstName,
     lastName,
     phoneNumber,
+    purpose,
     role,
-  } = pendingRegistration;
+  } = pendingPhoneOtp;
+  const isRegistrationOtp = purpose === PHONE_OTP_PURPOSES.REGISTRATION;
   const isOtpExpired = secondsRemaining <= 0;
   const formattedTimeRemaining = `${String(
     Math.floor(secondsRemaining / 60)
@@ -85,10 +88,10 @@ export default function OTPVerification() {
         throw new Error("Unable to verify OTP. Please try again.");
       }
 
-      if (mode === "register") {
+      if (isRegistrationOtp) {
         const existingProfile = await getProfileById(user.id);
 
-        if (!existingProfile) {
+        if (!isProfileRegistrationComplete(existingProfile)) {
           await createPhoneProfile({
             facilityId,
             firstName,
@@ -99,16 +102,20 @@ export default function OTPVerification() {
           });
         }
 
-        clearPendingRegistration();
+        clearPendingPhoneOtp();
         navigate("/pending-approval", { replace: true });
         return;
       }
 
       const profile = await getProfileById(user.id);
 
-      clearPendingRegistration();
+      clearPendingPhoneOtp();
       navigate(
-        profile?.status === "ACTIVE" ? "/dashboard" : "/pending-approval",
+        !isProfileRegistrationComplete(profile)
+          ? "/register"
+          : profile.status === "ACTIVE"
+            ? "/dashboard"
+            : "/pending-approval",
         { replace: true }
       );
     } catch (error) {
@@ -119,8 +126,8 @@ export default function OTPVerification() {
   };
 
   const handleChangePhoneNumber = async () => {
-    clearPendingRegistration();
-    navigate(mode === "register" ? "/register" : "/", { replace: true });
+    clearPendingPhoneOtp();
+    navigate(isRegistrationOtp ? "/register" : "/", { replace: true });
   };
 
   return (
@@ -153,7 +160,9 @@ export default function OTPVerification() {
           </h1>
 
           <p className="text-lg text-blue-100/80 max-w-md font-medium leading-relaxed">
-            Verify your phone number before your access request is submitted for approval.
+            {isRegistrationOtp
+              ? "Verify your phone number before your access request is submitted for approval."
+              : "Use the one-time code to sign in without your account password."}
           </p>
         </div>
 
@@ -170,7 +179,9 @@ export default function OTPVerification() {
                 Verify Phone Number
               </h2>
               <p className="text-sm font-medium text-slate-500">
-                Enter the 6-digit code sent to{" "}
+                {isRegistrationOtp
+                  ? "Enter the registration code sent to "
+                  : "Enter the sign-in code sent to "}
                 <span className="font-bold text-slate-700">
                   {toPhilippineE164PhoneNumber(phoneNumber)}
                 </span>
@@ -215,7 +226,7 @@ export default function OTPVerification() {
             >
               {isSubmitting
                 ? "Verifying OTP"
-                : mode === "register"
+                : isRegistrationOtp
                   ? "Verify OTP and Create Account"
                   : "Verify OTP and Sign In"}
             </button>
@@ -226,7 +237,7 @@ export default function OTPVerification() {
               disabled={isSubmitting}
               className="mt-4 w-full text-center text-sm font-bold text-[#1d3f8c] transition hover:text-green-700 hover:underline disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Change phone number
+              {isRegistrationOtp ? "Change registration number" : "Back to sign in"}
             </button>
 
             <div className="text-center mt-8 text-sm text-gray-500 font-medium">
