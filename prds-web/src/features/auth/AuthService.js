@@ -131,6 +131,18 @@ export const resendPhoneChangeOtp = async (phoneNumber) => {
   return data;
 };
 
+export const updateUserPassword = async (password) => {
+  const { data, error } = await supabaseAuth.auth.updateUser({
+    password,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
 export const linkGoogleIdentity = async () => {
   const { data, error } = await supabaseAuth.auth.linkIdentity({
     provider: "google",
@@ -150,11 +162,11 @@ export const getAuthErrorMessage = (error) => {
   return error?.message || "Authentication failed. Please try again.";
 };
 
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = async (redirectPath = "/") => {
   const { data, error } = await supabaseAuth.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}${redirectPath}`,
     },
   });
 

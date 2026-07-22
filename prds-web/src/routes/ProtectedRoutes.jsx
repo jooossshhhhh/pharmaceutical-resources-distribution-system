@@ -1,9 +1,10 @@
 import { Navigate, Outlet } from "react-router-dom";
 
 import { useAuth } from "../context/useAuth";
+import { isProfileRegistrationComplete } from "../features/auth/ProfileService";
 
 export default function ProtectedRoutes() {
-  const { isAuthenticated, isProfileApproved, loading } = useAuth();
+  const { isAuthenticated, isProfileApproved, loading, profile } = useAuth();
 
   if (loading) {
     return (
@@ -15,6 +16,10 @@ export default function ProtectedRoutes() {
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
+  }
+
+  if (!isProfileRegistrationComplete(profile)) {
+    return <Navigate to="/register" replace />;
   }
 
   if (!isProfileApproved) {

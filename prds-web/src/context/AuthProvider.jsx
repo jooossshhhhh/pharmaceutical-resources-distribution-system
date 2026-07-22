@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { supabaseAuth } from "../services/supabase";
 import {
-  getOrCreateSupabaseProfile,
+  getSupabaseProfile,
   getProfileById,
 } from "../features/auth/ProfileService";
 import { AuthContext } from "./AuthContext";
@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        const userProfile = await getOrCreateSupabaseProfile(currentSupabaseUser);
+        const userProfile = await getSupabaseProfile(currentSupabaseUser);
 
         if (isMounted) {
           setProfile(userProfile);

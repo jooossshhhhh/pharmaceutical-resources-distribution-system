@@ -10,12 +10,15 @@ import {
   signInWithPhonePassword,
   signInWithGoogle,
 } from "./AuthService";
-import { getProfileById } from "./ProfileService";
+import {
+  getProfileById,
+  isProfileRegistrationComplete,
+} from "./ProfileService";
 import { setPendingRegistration } from "./PendingRegistrationStore";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, isProfileApproved, loading } = useAuth();
+  const { isAuthenticated, isProfileApproved, loading, profile } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,10 +31,17 @@ export default function LoginPage() {
       return;
     }
 
-    navigate(isProfileApproved ? "/dashboard" : "/pending-approval", {
-      replace: true,
-    });
-  }, [isAuthenticated, isProfileApproved, loading, navigate]);
+    navigate(
+      !isProfileRegistrationComplete(profile)
+        ? "/register"
+        : isProfileApproved
+          ? "/dashboard"
+          : "/pending-approval",
+      {
+        replace: true,
+      }
+    );
+  }, [isAuthenticated, isProfileApproved, loading, navigate, profile]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -100,7 +110,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await signInWithGoogle();
+      await signInWithGoogle("/");
     } catch (error) {
       setErrorMessage(
         error?.message || "Unable to sign in with Google. Please try again."

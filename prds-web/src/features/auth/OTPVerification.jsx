@@ -51,9 +51,11 @@ export default function OTPVerification() {
 
   const {
     mode,
+    facilityId,
     firstName,
     lastName,
     phoneNumber,
+    role,
   } = pendingRegistration;
   const isOtpExpired = secondsRemaining <= 0;
   const formattedTimeRemaining = `${String(
@@ -88,9 +90,11 @@ export default function OTPVerification() {
 
         if (!existingProfile) {
           await createPhoneProfile({
+            facilityId,
             firstName,
             lastName,
             phoneNumber,
+            role,
             userId: user.id,
           });
         }

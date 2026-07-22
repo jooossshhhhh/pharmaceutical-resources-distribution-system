@@ -21,10 +21,22 @@ export const getProfileById = async (profileId) => {
   return data;
 };
 
+export const isProfileRegistrationComplete = (profile) => {
+  return !!(
+    profile?.first_name &&
+    profile?.last_name &&
+    profile?.role &&
+    profile?.facility_id &&
+    (profile?.email || profile?.phone_number)
+  );
+};
+
 export const createPhoneProfile = async ({
+  facilityId,
   firstName,
   lastName,
   phoneNumber,
+  role,
   userId,
 }) => {
   const { data, error } = await supabase
@@ -35,7 +47,8 @@ export const createPhoneProfile = async ({
       last_name: lastName.trim(),
       email: null,
       phone_number: phoneNumber,
-      role: "BHW",
+      role,
+      facility_id: facilityId,
       status: "PENDING",
     })
     .select(PROFILE_COLUMNS)
@@ -48,27 +61,26 @@ export const createPhoneProfile = async ({
   return data;
 };
 
-export const createSupabaseProfile = async (supabaseUser) => {
-  const metadata = supabaseUser.user_metadata || {};
-  const fullName = metadata.full_name || metadata.name || "";
-  const [firstName = "Google", ...lastNameParts] = fullName.trim().split(" ");
-  const lastName = lastNameParts.join(" ") || "User";
-  const email = supabaseUser.email;
-
-  if (!email) {
-    return null;
-  }
-
+export const createGoogleProfile = async ({
+  email,
+  facilityId,
+  firstName,
+  lastName,
+  role,
+  userId,
+}) => {
   const { data, error } = await supabase
     .from("profiles")
-    .insert({
-      id: supabaseUser.id,
-      first_name: firstName,
-      last_name: lastName,
+    .upsert({
+      id: userId,
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
       email,
-      role: "BHW",
+      phone_number: null,
+      role,
+      facility_id: facilityId,
       status: "PENDING",
-    })
+    }, { onConflict: "id" })
     .select(PROFILE_COLUMNS)
     .single();
 
@@ -79,7 +91,7 @@ export const createSupabaseProfile = async (supabaseUser) => {
   return data;
 };
 
-export const getOrCreateSupabaseProfile = async (supabaseUser) => {
+export const getSupabaseProfile = async (supabaseUser) => {
   const existingProfile = await getProfileById(supabaseUser?.id);
 
   if (existingProfile) {
@@ -105,5 +117,5 @@ export const getOrCreateSupabaseProfile = async (supabaseUser) => {
     return existingProfile;
   }
 
-  return createSupabaseProfile(supabaseUser);
+  return null;
 };

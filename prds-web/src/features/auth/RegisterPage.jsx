@@ -1,43 +1,172 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { useAuth } from "../../context/useAuth";
+import { supabase } from "../../services/supabase";
 import {
   getAuthErrorMessage,
   isPhilippineMobileNumber,
   normalizePhoneNumber,
+  signInWithGoogle,
   signUpWithPhonePassword,
+  updateUserPassword,
 } from "./AuthService";
 import { setPendingRegistration } from "./PendingRegistrationStore";
+import {
+  createGoogleProfile,
+  getProfileById,
+  isProfileRegistrationComplete,
+} from "./ProfileService";
+
+const roleOptions = [
+  { value: "PHARMA_I", label: "Pharmacist I" },
+  { value: "BHW", label: "Barangay Health Worker" },
+];
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const { loading, profile, refreshProfile, supabaseUser } = useAuth();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [facilityId, setFacilityId] = useState("");
+  const [role, setRole] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [facilities, setFacilities] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+
+  const isGoogleRegistration =
+    !!supabaseUser?.email && !isProfileRegistrationComplete(profile);
+  const defaultNames = useMemo(() => {
+    const metadata = supabaseUser?.user_metadata || {};
+    const fullName = metadata.full_name || metadata.name || "";
+    const [defaultFirstName = "", ...lastNameParts] = fullName.trim().split(" ");
+
+    return {
+      firstName: defaultFirstName,
+      lastName: lastNameParts.join(" "),
+    };
+  }, [supabaseUser]);
+
+  useEffect(() => {
+    const loadFacilities = async () => {
+      const { data, error } = await supabase
+        .from("facilities")
+        .select("id, facility_name, facility_code")
+        .eq("status", "ACTIVE")
+        .order("facility_name", { ascending: true });
+
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+
+      setFacilities(data || []);
+    };
+
+    loadFacilities();
+  }, []);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    if (profile?.status === "ACTIVE" && isProfileRegistrationComplete(profile)) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+
+    if (profile && isProfileRegistrationComplete(profile)) {
+      navigate("/pending-approval", { replace: true });
+    }
+  }, [loading, navigate, profile]);
+
+  const firstNameValue =
+    firstName || (isGoogleRegistration ? profile?.first_name || defaultNames.firstName : "");
+  const lastNameValue =
+    lastName || (isGoogleRegistration ? profile?.last_name || defaultNames.lastName : "");
+  const facilityIdValue =
+    facilityId || (isGoogleRegistration ? profile?.facility_id || "" : "");
+  const roleValue =
+    role ||
+    (isGoogleRegistration && profile?.role !== "PHARMA_II"
+      ? profile?.role || ""
+      : "");
+
+  const validateSharedFields = () => {
+    if (!firstNameValue.trim() || !lastNameValue.trim()) {
+      return "First name and last name are required.";
+    }
+
+    if (!facilityIdValue) {
+      return "Facility is required.";
+    }
+
+    if (!roleValue) {
+      return "Role is required.";
+    }
+
+    if (password.length < 6) {
+      return "Password must be at least 6 characters.";
+    }
+
+    if (password !== confirmPassword) {
+      return "Passwords do not match.";
+    }
+
+    return "";
+  };
 
   const handleRegister = async (event) => {
     event.preventDefault();
     setErrorMessage("");
 
-    if (!isPhilippineMobileNumber(phoneNumber)) {
-      setErrorMessage("Phone number must use the format 09XXXXXXXXX.");
+    const sharedError = validateSharedFields();
+
+    if (sharedError) {
+      setErrorMessage(sharedError);
       return;
     }
 
-    if (password !== confirmPassword) {
-      setErrorMessage("Passwords do not match.");
+    if (!isGoogleRegistration && !isPhilippineMobileNumber(phoneNumber)) {
+      setErrorMessage("Phone number must use the format 09XXXXXXXXX.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      if (isGoogleRegistration) {
+        const existingProfile = await getProfileById(supabaseUser.id);
+
+        if (isProfileRegistrationComplete(existingProfile)) {
+          navigate(
+            existingProfile.status === "ACTIVE" ? "/dashboard" : "/pending-approval",
+            { replace: true }
+          );
+          return;
+        }
+
+        await updateUserPassword(password);
+        await createGoogleProfile({
+          email: supabaseUser.email,
+          facilityId: facilityIdValue,
+          firstName: firstNameValue,
+          lastName: lastNameValue,
+          role: roleValue,
+          userId: supabaseUser.id,
+        });
+        await refreshProfile();
+        navigate("/pending-approval", { replace: true });
+        return;
+      }
+
       const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
       await signUpWithPhonePassword({
         phoneNumber: normalizedPhoneNumber,
@@ -46,9 +175,11 @@ export default function RegisterPage() {
 
       setPendingRegistration({
         mode: "register",
-        firstName,
-        lastName,
+        firstName: firstNameValue,
+        lastName: lastNameValue,
+        facilityId: facilityIdValue,
         phoneNumber: normalizedPhoneNumber,
+        role: roleValue,
       });
 
       navigate("/otp-verification");
@@ -56,6 +187,18 @@ export default function RegisterPage() {
       setErrorMessage(getAuthErrorMessage(error));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGoogleRegister = async () => {
+    setErrorMessage("");
+    setIsGoogleSubmitting(true);
+
+    try {
+      await signInWithGoogle("/register");
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error));
+      setIsGoogleSubmitting(false);
     }
   };
 
@@ -105,6 +248,15 @@ export default function RegisterPage() {
               <h2 className="text-3xl font-bold tracking-tight text-slate-800 mb-2">
                 Register Account
               </h2>
+              {isGoogleRegistration && (
+                <p className="text-sm font-medium text-slate-500">
+                  Complete the required account details for{" "}
+                  <span className="font-bold text-slate-700">
+                    {supabaseUser.email}
+                  </span>
+                  .
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -114,7 +266,7 @@ export default function RegisterPage() {
                 </label>
                 <input
                   type="text"
-                  value={firstName}
+                  value={firstNameValue}
                   onChange={(event) => setFirstName(event.target.value)}
                   required
                   className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
@@ -127,7 +279,7 @@ export default function RegisterPage() {
                 </label>
                 <input
                   type="text"
-                  value={lastName}
+                  value={lastNameValue}
                   onChange={(event) => setLastName(event.target.value)}
                   required
                   className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
@@ -135,28 +287,79 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="mt-5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                Phone Number
-              </label>
-              <div className="relative flex rounded-xl border border-gray-300 shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-green-600/20 focus-within:border-green-600 transition-all bg-white">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
+            {!isGoogleRegistration ? (
+              <div className="mt-5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Phone Number
+                </label>
+                <div className="relative flex rounded-xl border border-gray-300 shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-green-600/20 focus-within:border-green-600 transition-all bg-white">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={11}
+                    placeholder="09623702834"
+                    value={phoneNumber}
+                    onChange={(event) =>
+                      setPhoneNumber(event.target.value.replace(/\D/g, ""))
+                    }
+                    required
+                    className="w-full bg-transparent pl-10 pr-4 py-3.5 text-sm font-medium tracking-wide text-gray-900 placeholder-gray-300 outline-none"
+                  />
                 </div>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={11}
-                  placeholder="09623702834"
-                  value={phoneNumber}
-                  onChange={(event) =>
-                    setPhoneNumber(event.target.value.replace(/\D/g, ""))
-                  }
+              </div>
+            ) : (
+              <div className="mt-5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Gmail
+                </label>
+                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-sm font-semibold text-gray-900">
+                  {supabaseUser.email}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Facility
+                </label>
+                <select
+                  value={facilityIdValue}
+                  onChange={(event) => setFacilityId(event.target.value)}
                   required
-                  className="w-full bg-transparent pl-10 pr-4 py-3.5 text-sm font-medium tracking-wide text-gray-900 placeholder-gray-300 outline-none"
-                />
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                >
+                  <option value="">Select facility</option>
+                  {facilities.map((facility) => (
+                    <option key={facility.id} value={facility.id}>
+                      {facility.facility_name} ({facility.facility_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Role
+                </label>
+                <select
+                  value={roleValue}
+                  onChange={(event) => setRole(event.target.value)}
+                  required
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                >
+                  <option value="">Select role</option>
+                  {roleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -231,6 +434,45 @@ export default function RegisterPage() {
             >
               {isSubmitting ? "Creating Account" : "Create Account"}
             </button>
+
+            {!isGoogleRegistration && (
+              <>
+                <div className="flex items-center my-6">
+                  <div className="grow border-t border-gray-200"></div>
+                  <span className="px-4 text-xs font-bold tracking-wider text-gray-400 uppercase">
+                    OR
+                  </span>
+                  <div className="grow border-t border-gray-200"></div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleRegister}
+                  disabled={isSubmitting || isGoogleSubmitting}
+                  className="w-full flex items-center justify-center gap-3 border border-gray-200 bg-white text-slate-600 font-semibold py-3.5 rounded-xl hover:bg-gray-50 hover:border-gray-300 active:scale-[0.99] transition-all duration-150 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path
+                      fill="#EA4335"
+                      d="M5.266 9.765A7.077 7.077 0 0112 4.909c1.69 0 3.218.6 4.418 1.582l3.51-3.51C17.827 1.127 15.118 0 12 0 7.34 0 3.314 2.673 1.311 6.56l3.955 3.205z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M23.49 12.275c0-.796-.073-1.564-.2-2.305H12v4.51h6.464a5.523 5.523 0 01-2.397 3.623l3.714 2.877c2.173-2.002 3.423-4.952 3.423-8.705z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.266 14.235L1.311 17.44A11.944 11.944 0 0012 24c3.118 0 5.964-1.005 8.082-2.732l-3.714-2.877a7.114 7.114 0 01-4.368 1.218 7.098 7.098 0 01-6.734-4.874z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M5.266 9.765A7.038 7.038 0 015 12c0 .782.095 1.54.266 2.235l-3.955 3.205A11.947 11.947 0 010 12c0-2.01.5-3.905 1.311-5.595l3.955 3.205z"
+                    />
+                  </svg>
+                  {isGoogleSubmitting ? "Opening Google" : "Register with Google"}
+                </button>
+              </>
+            )}
 
             <div className="text-center mt-8 text-sm text-gray-500 font-medium">
               Already have an account?{" "}
