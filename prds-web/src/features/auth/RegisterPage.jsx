@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../context/useAuth";
 import { supabase } from "../../services/supabase";
 import {
   getAuthErrorMessage,
   isPhilippineMobileNumber,
+  logoutUser,
   normalizePhoneNumber,
   signInWithGoogle,
   signUpWithPhonePassword,
@@ -203,6 +204,14 @@ export default function RegisterPage() {
       setErrorMessage(getAuthErrorMessage(error));
       setIsGoogleSubmitting(false);
     }
+  };
+
+  const handleGoToSignIn = async () => {
+    if (supabaseUser) {
+      await logoutUser();
+    }
+
+    navigate("/", { replace: true });
   };
 
   return (
@@ -479,12 +488,13 @@ export default function RegisterPage() {
 
             <div className="text-center mt-8 text-sm text-gray-500 font-medium">
               Already have an account?{" "}
-              <Link
-                to="/"
+              <button
+                type="button"
+                onClick={handleGoToSignIn}
                 className="text-[#1d3f8c] font-bold hover:text-green-700 hover:underline"
               >
                 Sign in
-              </Link>
+              </button>
             </div>
           </form>
         </div>
