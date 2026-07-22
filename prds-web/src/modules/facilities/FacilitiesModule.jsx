@@ -630,6 +630,7 @@ function FacilityCard({ facility, isSelected, onView }) {
 }
 
 function FacilityDetailsModal({ facility, onClose, onEdit }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const healthMeta = getHealthMeta(facility.stockHealth);
   const stockRows = [...facility.inventoryRows]
     .sort((first, second) => getStockPercent(first) - getStockPercent(second))
@@ -638,44 +639,63 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
   const forecastRows = facility.forecastRows.slice(0, 5);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
-      <div className="flex max-h-[74vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="border-b border-neutral-100 bg-black px-4 py-3 text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-8">
+      <div
+        className={`flex max-h-[86vh] w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-900/20 transition-[max-width] duration-300 ${
+          isExpanded ? "max-w-5xl" : "max-w-2xl"
+        }`}
+      >
+        <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-4 text-neutral-950">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-start gap-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
                 <FacilityIcon />
               </span>
               <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
                   Facility Details
                 </p>
                 <h3 className="mt-1 truncate text-lg font-black">{facility.facility_name}</h3>
-                <p className="text-sm font-medium text-neutral-300">
+                <p className="text-sm font-medium text-neutral-600">
                   {facility.facility_code} - {formatFacilityType(facility.facility_type)}
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-300 hover:bg-white/10 hover:text-white"
-              aria-label="Close facility details"
-            >
-              <XIcon />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsExpanded((currentValue) => !currentValue)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition hover:bg-emerald-100"
+                aria-label={isExpanded ? "Shrink facility details" : "Expand facility details"}
+                title={isExpanded ? "Shrink" : "Expand"}
+              >
+                {isExpanded ? <ShrinkIcon /> : <ExpandIcon />}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-white hover:text-neutral-950"
+                aria-label="Close facility details"
+              >
+                <XIcon />
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#fbfaf8] p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#f8faf7] p-4 sm:p-5">
+          <div
+            className={`grid gap-3 ${
+              isExpanded ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-2"
+            }`}
+          >
             <DetailStat label="Stock Health" value={`${facility.healthPercent}%`} tone={facility.stockHealth} />
             <DetailStat label="Inventory Value" value={formatCurrency(facility.stockCounts.totalValue)} />
             <DetailStat label="Distribution Rate" value={`${facility.distributionRate}%`} />
             <DetailStat label="Patients" value={formatNumber(facility.patientCount)} />
           </div>
 
-          <div className="mt-4 grid gap-4">
+          <div className={`mt-4 grid gap-4 ${isExpanded ? "xl:grid-cols-[1.25fr_0.95fr]" : ""}`}>
             <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
@@ -689,7 +709,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
                 </span>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <div className={`mt-4 grid gap-3 ${isExpanded ? "sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-4"}`}>
                 <MiniStatus label="Healthy" value={facility.stockCounts.HEALTHY} colorClass="bg-emerald-500" />
                 <MiniStatus label="Watch" value={facility.stockCounts.WATCH} colorClass="bg-amber-500" />
                 <MiniStatus label="Low" value={facility.stockCounts.LOW} colorClass="bg-orange-500" />
@@ -811,7 +831,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
           </section>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-neutral-100 px-6 py-4">
+        <div className="flex flex-wrap justify-end gap-3 border-t border-neutral-100 bg-white px-5 py-4">
           <button
             type="button"
             onClick={onClose}
@@ -1118,6 +1138,28 @@ function XIcon() {
   return (
     <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
       <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function ExpandIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M15 3h6v6" />
+      <path d="m14 10 7-7" />
+      <path d="M9 21H3v-6" />
+      <path d="m10 14-7 7" />
+    </svg>
+  );
+}
+
+function ShrinkIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M21 9h-6V3" />
+      <path d="m14 10 7-7" />
+      <path d="M3 15h6v6" />
+      <path d="m10 14-7 7" />
     </svg>
   );
 }
