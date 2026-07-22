@@ -118,7 +118,7 @@ export default function LoginPage() {
       await routeAfterProfileCheck(profile);
     } catch (error) {
       setErrorMessage(
-        `${getAuthErrorMessage(error)} If this number is not registered yet, please create an account first.`
+        `${getAuthErrorMessage(error)} Check the phone number and password, or sign in using OTP verification.`
       );
     } finally {
       setIsSubmitting(false);
