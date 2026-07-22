@@ -15,17 +15,11 @@ const facilityStatuses = [
   { value: "INACTIVE", label: "Inactive" },
 ];
 
-const stockHealthFilters = [
-  { value: "ALL", label: "All Stock" },
+const stockHealthOptions = [
+  { value: "ALL", label: "Stock Health" },
   { value: "HEALTHY", label: "Healthy" },
-  { value: "WATCH", label: "Watch" },
   { value: "LOW", label: "Low Stock" },
   { value: "CRITICAL", label: "Critical" },
-];
-
-const sortDirections = [
-  { value: "ASC", label: "Ascending" },
-  { value: "DESC", label: "Descending" },
 ];
 
 const emptyForm = {
@@ -467,25 +461,44 @@ export default function FacilitiesModule() {
               />
             </label>
             <div className="flex flex-wrap items-center gap-2">
-              {sortDirections.map((direction) => (
-                <FilterPill
-                  key={direction.value}
-                  active={sortDirection === direction.value}
-                  onClick={() => setSortDirection(direction.value)}
+              <button
+                type="button"
+                onClick={() =>
+                  setSortDirection((currentDirection) =>
+                    currentDirection === "ASC" ? "DESC" : "ASC"
+                  )
+                }
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+                aria-label={
+                  sortDirection === "ASC"
+                    ? "Sort facilities descending"
+                    : "Sort facilities ascending"
+                }
+                title={
+                  sortDirection === "ASC"
+                    ? "Sort descending"
+                    : "Sort ascending"
+                }
+              >
+                {sortDirection === "ASC" ? <SortAscendingIcon /> : <SortDescendingIcon />}
+              </button>
+              <label className="relative block">
+                <span className="sr-only">Stock health filter</span>
+                <select
+                  value={stockFilter}
+                  onChange={(event) => setStockFilter(event.target.value)}
+                  className="h-10 min-w-[152px] appearance-none rounded-lg border border-neutral-200 bg-white py-0 pl-4 pr-10 text-sm font-bold text-neutral-700 outline-none transition hover:border-emerald-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 >
-                  {direction.label}
-                </FilterPill>
-              ))}
-              <span className="mx-1 hidden h-6 w-px bg-neutral-200 sm:block" />
-              {stockHealthFilters.map((health) => (
-                <FilterPill
-                  key={health.value}
-                  active={stockFilter === health.value}
-                  onClick={() => setStockFilter(health.value)}
-                >
-                  {health.label}
-                </FilterPill>
-              ))}
+                  {stockHealthOptions.map((health) => (
+                    <option key={health.value} value={health.value}>
+                      {health.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                  <ChevronDownIcon />
+                </span>
+              </label>
             </div>
           </div>
           <div className="flex shrink-0 items-center">
@@ -1007,27 +1020,43 @@ function SelectField({ label, options, ...props }) {
   );
 }
 
-function FilterPill({ active, children, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-8 rounded-full px-4 text-sm font-bold transition ${
-        active
-          ? "bg-black text-white"
-          : "bg-neutral-50 text-neutral-700 hover:bg-emerald-50 hover:text-emerald-700"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function SearchIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function SortAscendingIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M4 7h13" />
+      <path d="M4 12h9" />
+      <path d="M4 17h5" />
+      <path d="m17 14 3 3 3-3" />
+      <path d="M20 6v11" />
+    </svg>
+  );
+}
+
+function SortDescendingIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M4 7h5" />
+      <path d="M4 12h9" />
+      <path d="M4 17h13" />
+      <path d="m17 10 3-3 3 3" />
+      <path d="M20 18V7" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
