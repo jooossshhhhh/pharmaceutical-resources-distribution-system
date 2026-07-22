@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import {
   getAuthErrorMessage,
+  logoutUser,
   toPhilippineE164PhoneNumber,
   verifyPhoneOtp,
 } from "./AuthService";
@@ -110,12 +111,33 @@ export default function OTPVerification() {
       const profile = await getProfileById(user.id);
 
       clearPendingPhoneOtp();
+
+      if (!isProfileRegistrationComplete(profile)) {
+        await logoutUser();
+        navigate("/", {
+          replace: true,
+          state: {
+            noticeMessage:
+              "This phone number is not registered in PRDS yet. Please register an account before signing in.",
+          },
+        });
+        return;
+      }
+
+      if (profile.status === "DEACTIVATED") {
+        await logoutUser();
+        navigate("/", {
+          replace: true,
+          state: {
+            noticeMessage:
+              "This account is deactivated. Please contact a PRDS administrator for assistance.",
+          },
+        });
+        return;
+      }
+
       navigate(
-        !isProfileRegistrationComplete(profile)
-          ? "/register"
-          : profile.status === "ACTIVE"
-            ? "/dashboard"
-            : "/pending-approval",
+        profile.status === "ACTIVE" ? "/dashboard" : "/pending-approval",
         { replace: true }
       );
     } catch (error) {

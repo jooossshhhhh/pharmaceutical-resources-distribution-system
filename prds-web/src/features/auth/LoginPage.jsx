@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../context/useAuth";
 import {
   getAuthErrorMessage,
   isPhilippineMobileNumber,
+  logoutUser,
   normalizePhoneNumber,
   sendPhoneOtp,
   signInWithPhonePassword,
@@ -21,11 +22,15 @@ import {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, isProfileApproved, loading, profile } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [noticeMessage, setNoticeMessage] = useState(
+    location.state?.noticeMessage || ""
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOtpSubmitting, setIsOtpSubmitting] = useState(false);
 
@@ -34,21 +39,61 @@ export default function LoginPage() {
       return;
     }
 
-    navigate(
-      !isProfileRegistrationComplete(profile)
-        ? "/register"
-        : isProfileApproved
-          ? "/dashboard"
-          : "/pending-approval",
-      {
+    if (isProfileRegistrationComplete(profile)) {
+      navigate(isProfileApproved ? "/dashboard" : "/pending-approval", {
         replace: true,
+      });
+      return;
+    }
+
+    let isMounted = true;
+
+    const rejectUnregisteredSession = async () => {
+      await logoutUser();
+
+      if (isMounted) {
+        setNoticeMessage(
+          "This account is not registered in PRDS yet. Please register an account before signing in."
+        );
       }
-    );
+    };
+
+    rejectUnregisteredSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, [isAuthenticated, isProfileApproved, loading, navigate, profile]);
+
+  const routeAfterProfileCheck = async (profileToCheck) => {
+    if (!isProfileRegistrationComplete(profileToCheck)) {
+      await logoutUser();
+      setNoticeMessage(
+        "This account is not registered in PRDS yet. Please register an account before signing in."
+      );
+      return;
+    }
+
+    if (profileToCheck.status === "ACTIVE") {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+
+    if (profileToCheck.status === "PENDING") {
+      navigate("/pending-approval", { replace: true });
+      return;
+    }
+
+    await logoutUser();
+    setNoticeMessage(
+      "This account is deactivated. Please contact a PRDS administrator for assistance."
+    );
+  };
 
   const handleLogin = async (event) => {
     event.preventDefault();
     setErrorMessage("");
+    setNoticeMessage("");
 
     if (!isPhilippineMobileNumber(phoneNumber)) {
       setErrorMessage("Phone number must use the format 09XXXXXXXXX.");
@@ -70,12 +115,11 @@ export default function LoginPage() {
       });
       const profile = await getProfileById(user?.id);
 
-      navigate(
-        profile?.status === "ACTIVE" ? "/dashboard" : "/pending-approval",
-        { replace: true }
-      );
+      await routeAfterProfileCheck(profile);
     } catch (error) {
-      setErrorMessage(getAuthErrorMessage(error));
+      setErrorMessage(
+        `${getAuthErrorMessage(error)} If this number is not registered yet, please create an account first.`
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -83,6 +127,7 @@ export default function LoginPage() {
 
   const handleOtpSignIn = async () => {
     setErrorMessage("");
+    setNoticeMessage("");
 
     if (!isPhilippineMobileNumber(phoneNumber)) {
       setErrorMessage("Phone number must use the format 09XXXXXXXXX.");
@@ -102,7 +147,9 @@ export default function LoginPage() {
 
       navigate("/otp-verification");
     } catch (error) {
-      setErrorMessage(getAuthErrorMessage(error));
+      setErrorMessage(
+        `${getAuthErrorMessage(error)} OTP sign-in only works for registered phone accounts.`
+      );
     } finally {
       setIsOtpSubmitting(false);
     }
@@ -110,6 +157,7 @@ export default function LoginPage() {
 
   const handleGoogleSignIn = async () => {
     setErrorMessage("");
+    setNoticeMessage("");
     setIsSubmitting(true);
 
     try {
@@ -243,6 +291,20 @@ export default function LoginPage() {
               <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                 {errorMessage}
               </p>
+            )}
+
+            {noticeMessage && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold leading-6 text-amber-800">
+                  {noticeMessage}
+                </p>
+                <Link
+                  to="/register"
+                  className="mt-3 inline-flex rounded-lg bg-[#008000] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#006600]"
+                >
+                  Register account
+                </Link>
+              </div>
             )}
 
             <button
