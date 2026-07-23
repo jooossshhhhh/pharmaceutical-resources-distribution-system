@@ -102,7 +102,7 @@ const navItems = [
   { label: "User Management", path: "/users" },
   { label: "Forecasting" },
   { label: "Activity Logs" },
-  { label: "Notifications" },
+  { label: "Notifications", path: "/notifications" },
 ];
 
 const SidebarIcon = ({ label }) => (
@@ -142,11 +142,11 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
   return (
     <aside
       className={`sticky top-0 flex h-screen flex-col border-r border-neutral-900 bg-black text-white transition-[width] duration-300 ${
-        isCollapsed ? "w-16" : "w-[228px]"
+        isCollapsed ? "w-16" : "w-57"
       }`}
     >
       <div
-        className={`flex min-h-[76px] items-center border-b border-white/10 ${
+        className={`flex min-h-19 items-center border-b border-white/10 ${
           isCollapsed ? "justify-center px-2" : "gap-3 px-4"
         }`}
       >
@@ -154,8 +154,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
           <img src={prdsLogo} alt="PRDS" className="h-full w-full object-contain" />
         </span>
         <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
-          <p className="text-sm font-black leading-4">PRDS</p>
-          <p className="max-w-[148px] text-[11px] font-medium leading-4 text-slate-400">
+          <p className="max-w-37.5 text-[12px] font-medium leading-4 text-slate-400">
             Pharmaceutical Resources Distribution System
           </p>
         </div>
@@ -178,7 +177,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
               <SidebarIcon label={item.label} />
               <span className={isCollapsed ? "sr-only" : ""}>{item.label}</span>
               {isCollapsed && (
-                <span className="pointer-events-none absolute left-[52px] z-50 rounded-md bg-neutral-900 px-2 py-1 text-xs font-bold text-white opacity-0 shadow-lg transition group-hover:opacity-100">
+                <span className="pointer-events-none absolute left-13 z-50 rounded-md bg-neutral-900 px-2 py-1 text-xs font-bold text-white opacity-0 shadow-lg transition group-hover:opacity-100">
                   {item.label}
                 </span>
               )}

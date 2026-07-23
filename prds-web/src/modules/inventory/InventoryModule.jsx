@@ -480,7 +480,7 @@ export default function InventoryModule() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1120px] w-full text-left text-sm">
+          <table className="min-w-280 w-full text-left text-sm">
             <thead className="border-y border-neutral-100 bg-[#fbfaf8] text-[11px] font-black uppercase tracking-[0.12em] text-neutral-500">
               <tr>
                 <th className="px-4 py-3">Medicine</th>

@@ -136,7 +136,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   };
 
   return (
-    <header className="relative flex h-[54px] items-center justify-between border-b border-neutral-200 bg-white px-6">
+    <header className="relative flex h-13.5 items-center justify-between border-b border-neutral-200 bg-white px-6">
       <div className="min-w-0">
         <h1 className="truncate text-lg font-black tracking-tight text-black">
           {pageInfo.title}
@@ -147,7 +147,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="hidden min-w-[118px] items-center justify-center text-sm font-bold tabular-nums text-neutral-700 sm:flex">
+        <div className="hidden min-w-29.5 items-center justify-center text-sm font-bold tabular-nums text-neutral-700 sm:flex">
           {formattedTime}
         </div>
 
@@ -192,7 +192,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
       </div>
 
       {isNotificationsOpen && (
-        <div className={`absolute ${notificationOffset} top-[50px] z-50 w-[302px] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl shadow-neutral-200/70`}>
+        <div className={`absolute ${notificationOffset} top-12.5 z-50 w-75.5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl shadow-neutral-200/70`}>
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2">
               <p className="text-sm font-black text-neutral-950">Notifications</p>
@@ -210,7 +210,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
               View all
             </button>
           </div>
-          <div className="prds-modal-scrollbar max-h-[326px] overflow-y-auto px-4 pb-2">
+          <div className="prds-modal-scrollbar max-h-81.5 overflow-y-auto px-4 pb-2">
             {headerError && (
               <p className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                 {headerError}

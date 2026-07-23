@@ -232,49 +232,47 @@ export default function MedicinesModule() {
         </p>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <section className="w-full max-w-3xl rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-          <label className="grid gap-1">
-            <span className="text-[10px] font-black uppercase tracking-wide text-neutral-500">
-              Medicine
+      <section className="max-w-3xl rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
+        <label className="grid gap-1">
+          <span className="text-[10px] font-black uppercase tracking-wide text-neutral-500">
+            Medicine
+          </span>
+          <span className="relative block">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+              <SearchIcon />
             </span>
-            <span className="relative block">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                <SearchIcon />
-              </span>
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search medicine name, generic, dosage, or unit..."
-                className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-              />
-            </span>
-          </label>
-        </section>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
-        >
-          <PlusIcon />
-          Add Medicine
-        </button>
-      </div>
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search medicine name, generic, dosage, or unit..."
+              className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            />
+          </span>
+        </label>
+      </section>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_344px]">
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <div className="border-b border-neutral-100 px-5 py-4">
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
             <h2 className="text-base font-black text-black">
               Medicine Catalog{" "}
               <span className="font-semibold text-neutral-400">
                 ({sortedMedicines.length} items)
               </span>
             </h2>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
+            >
+              <PlusIcon />
+              Add Medicine
+            </button>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[640px] w-full border-collapse">
+            <table className="min-w-160 w-full border-collapse">
               <thead>
                 <tr className="border-b border-neutral-100 bg-white text-left text-[11px] font-black uppercase tracking-wide text-neutral-500">
                   <th className="px-5 py-3">
