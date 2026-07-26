@@ -135,16 +135,6 @@ export default function ActivityLogsModule() {
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
-      <div className="mb-5 flex justify-end">
-        <button
-          type="button"
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-black text-neutral-700 shadow-sm hover:bg-neutral-50"
-        >
-          <DownloadIcon />
-          Export
-        </button>
-      </div>
-
       {error && (
         <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           {error}
@@ -234,9 +224,18 @@ export default function ActivityLogsModule() {
                 {panelLabel}
               </p>
             </div>
-            <p className="text-xs font-black text-neutral-500">
-              {filteredLogs.length} shown
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-black text-neutral-500">
+                {filteredLogs.length} shown
+              </p>
+              <button
+                type="button"
+                className="inline-flex h-8 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-neutral-700 shadow-sm hover:bg-neutral-50"
+              >
+                <DownloadIcon />
+                Export
+              </button>
+            </div>
           </div>
 
           <div className="max-h-[68vh] overflow-y-auto p-4">
