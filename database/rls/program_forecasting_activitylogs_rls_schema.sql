@@ -220,18 +220,38 @@ of the audit trail.
 */
 
 
--- Pharma I and Pharma II can view logs
+-- Pharma II can view all logs
+-- Pharma I can view own logs and BHW logs
+-- BHW can view own logs
 
-create policy "pharma_staff_view_logs"
+create policy "role_scoped_view_logs"
 
 on activity_logs
 
 for select
 
+to authenticated
+
 using (
     is_pharma_i()
+    and (
+        user_id = (select auth.uid())
+        or
+        exists (
+            select 1
+            from profiles log_profile
+            where log_profile.id = activity_logs.user_id
+            and log_profile.role = 'BHW'
+        )
+    )
     or
     is_pharma_ii()
+    or
+    (
+        is_bhw()
+        and
+        user_id = (select auth.uid())
+    )
 );
 
 

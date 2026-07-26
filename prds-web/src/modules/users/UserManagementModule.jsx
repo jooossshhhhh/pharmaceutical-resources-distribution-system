@@ -8,7 +8,6 @@ import {
   reviewFacilityChangeRequest,
   updateManagedUser,
 } from "./UserManagementService";
-import { getUserAccountLogs } from "./userManagementUtils";
 
 const roleOptions = [
   { value: "PHARMA_II", label: "Pharmacist II" },
@@ -131,7 +130,6 @@ export default function UserManagementModule() {
   const [users, setUsers] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [facilityRequests, setFacilityRequests] = useState([]);
-  const [activityLogs, setActivityLogs] = useState([]);
   const [activeView, setActiveView] = useState("accounts");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -143,10 +141,6 @@ export default function UserManagementModule() {
   const [formValues, setFormValues] = useState(emptyForm);
 
   const today = useMemo(() => formatDateTime(new Date()), []);
-  const userAccountLogs = useMemo(
-    () => getUserAccountLogs(activityLogs),
-    [activityLogs]
-  );
 
   const visibleUsers = useMemo(() => {
     return users.filter((user) => user.id !== profile?.id);
@@ -212,25 +206,6 @@ export default function UserManagementModule() {
     });
   }, [facilityRequests, searchTerm]);
 
-  const filteredUserLogs = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-
-    return userAccountLogs.filter((log) => {
-      const searchableText = [
-        getFullName(log.user),
-        log.action,
-        log.details,
-        log.user?.email,
-        log.user?.phone_number,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return !normalizedSearch || searchableText.includes(normalizedSearch);
-    });
-  }, [searchTerm, userAccountLogs]);
-
   const loadUsers = async () => {
     setIsLoading(true);
     setUserError("");
@@ -240,7 +215,6 @@ export default function UserManagementModule() {
       setUsers(data.users);
       setFacilities(data.facilities);
       setFacilityRequests(data.facilityRequests);
-      setActivityLogs(data.logs);
     } catch (error) {
       setUserError(error.message);
     } finally {
@@ -368,12 +342,20 @@ export default function UserManagementModule() {
           </label>
           <SelectFilter value={roleFilter} onChange={setRoleFilter} options={roleOptions} allLabel="All roles" />
         </div>
-        <ViewTabs
-          activeView={activeView}
-          pendingRequests={pendingFacilityRequests.length}
-          userLogs={userAccountLogs.length}
-          onChange={setActiveView}
-        />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <ViewTabs
+            activeView={activeView}
+            pendingRequests={pendingFacilityRequests.length}
+            onChange={setActiveView}
+          />
+          <button
+            type="button"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
+          >
+            <PlusIcon />
+            Add New User
+          </button>
+        </div>
       </section>
 
       {activeView === "accounts" && (
@@ -475,13 +457,6 @@ export default function UserManagementModule() {
         />
       )}
 
-      {activeView === "logs" && (
-        <UserLogsPanel
-          isLoading={isLoading}
-          logs={filteredUserLogs}
-        />
-      )}
-
       {selectedUser && (
         <UserModal
           user={selectedUser}
@@ -498,11 +473,10 @@ export default function UserManagementModule() {
   );
 }
 
-function ViewTabs({ activeView, onChange, pendingRequests, userLogs }) {
+function ViewTabs({ activeView, onChange, pendingRequests }) {
   const tabs = [
     { count: null, id: "accounts", label: "User Accounts" },
     { count: pendingRequests, id: "requests", label: "Facility Requests" },
-    { count: userLogs, id: "logs", label: "User Logs" },
   ];
 
   return (
@@ -601,55 +575,6 @@ function FacilityRequestsPanel({ isLoading, isSaving, onReview, requests }) {
                   {request.reviewed_at ? formatDate(request.reviewed_at) : "Reviewed"}
                 </p>
               )}
-            </article>
-          ))
-        )}
-      </div>
-    </section>
-  );
-}
-
-function UserLogsPanel({ isLoading, logs }) {
-  return (
-    <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-4">
-        <div>
-          <h2 className="text-base font-black text-black">User Logs</h2>
-          <p className="mt-1 text-xs font-semibold text-neutral-500">
-            Account-related records filtered from the system activity log.
-          </p>
-        </div>
-      </div>
-
-      <div className="divide-y divide-neutral-100">
-        {isLoading ? (
-          <p className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
-            Loading user logs...
-          </p>
-        ) : logs.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
-            No user account logs match the current search.
-          </p>
-        ) : (
-          logs.map((log) => (
-            <article key={log.id} className="flex gap-3 px-4 py-4">
-              <span className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                <UserIcon />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-black text-black">{log.action}</h3>
-                  <time className="text-xs font-semibold text-neutral-400">
-                    {formatDateTime(new Date(log.created_at))}
-                  </time>
-                </div>
-                <p className="mt-1 text-sm font-semibold text-neutral-700">
-                  {getFullName(log.user)}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-neutral-500">
-                  {log.details}
-                </p>
-              </div>
             </article>
           ))
         )}
@@ -813,6 +738,15 @@ function SearchIcon() {
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
     </svg>
   );
 }

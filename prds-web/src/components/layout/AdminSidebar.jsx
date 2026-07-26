@@ -102,7 +102,7 @@ const navItems = [
   { label: "Patients" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
   { label: "Forecasting" },
-  { label: "Activity Logs" },
+  { label: "Activity Logs", path: "/activity-logs" },
   { label: "Notifications", path: "/notifications" },
 ];
 

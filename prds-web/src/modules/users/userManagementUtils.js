@@ -23,7 +23,3 @@ export const getAllowedNavItems = (items, role) => {
     return canAccessModule(role, item.path);
   });
 };
-
-export const getUserAccountLogs = (logs = []) => {
-  return logs.filter((log) => log.module === USER_ACCOUNT_LOG_MODULE);
-};

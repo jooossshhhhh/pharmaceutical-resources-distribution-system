@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   canAccessModule,
   getAllowedNavItems,
-  getUserAccountLogs,
 } from "./userManagementUtils.js";
 
 const navItems = [
@@ -28,18 +27,5 @@ test("filters role-restricted navigation items", () => {
   assert.deepEqual(
     getAllowedNavItems(navItems, "PHARMA_II").map((item) => item.label),
     ["Dashboard", "User Management", "Notifications"]
-  );
-});
-
-test("user logs show only account-related activity log records", () => {
-  const logs = [
-    { id: "1", module: "User Account", action: "Profile Updated" },
-    { id: "2", module: "Inventory", action: "Stock Added" },
-    { id: "3", module: "User Account", action: "Facility Change Requested" },
-  ];
-
-  assert.deepEqual(
-    getUserAccountLogs(logs).map((log) => log.id),
-    ["1", "3"]
   );
 });

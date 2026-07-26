@@ -2,7 +2,7 @@ import { supabase } from "../../services/supabase";
 import { USER_ACCOUNT_LOG_MODULE } from "./userManagementUtils";
 
 export const getUserManagementData = async () => {
-  const [profilesResult, facilitiesResult, requestsResult, logsResult] =
+  const [profilesResult, facilitiesResult, requestsResult] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -69,36 +69,12 @@ export const getUserManagementData = async () => {
         `
         )
         .order("created_at", { ascending: false }),
-      supabase
-        .from("activity_logs")
-        .select(
-          `
-          id,
-          user_id,
-          action,
-          module,
-          details,
-          created_at,
-          user:profiles!activity_logs_user_id_fkey(
-            id,
-            first_name,
-            last_name,
-            email,
-            phone_number,
-            role
-          )
-        `
-        )
-        .eq("module", USER_ACCOUNT_LOG_MODULE)
-        .order("created_at", { ascending: false })
-        .limit(80),
     ]);
 
   const firstError =
     profilesResult.error ||
     facilitiesResult.error ||
-    requestsResult.error ||
-    logsResult.error;
+    requestsResult.error;
 
   if (firstError) {
     throw firstError;
@@ -107,7 +83,6 @@ export const getUserManagementData = async () => {
   return {
     facilities: facilitiesResult.data || [],
     facilityRequests: requestsResult.data || [],
-    logs: logsResult.data || [],
     users: profilesResult.data || [],
   };
 };

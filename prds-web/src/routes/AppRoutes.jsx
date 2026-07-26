@@ -6,6 +6,7 @@ import OTPVerification from "../features/auth/OTPVerification";
 import ForgotPassword from "../features/auth/ForgotPassword";
 import PendingApproval from "../features/auth/PendingApproval";
 import DashboardModule from "../modules/dashboard/DashboardModule";
+import ActivityLogsModule from "../modules/activity/ActivityLogsModule";
 import FacilitiesModule from "../modules/facilities/FacilitiesModule";
 import InventoryModule from "../modules/inventory/InventoryModule";
 import MedicinesModule from "../modules/medicines/MedicinesModule";
@@ -32,6 +33,7 @@ export default function AppRoutes() {
           <Route path="/suppliers" element={<SuppliersModule />} />
           <Route path="/inventory" element={<InventoryModule />} />
           <Route path="/notifications" element={<NotificationsModule />} />
+          <Route path="/activity-logs" element={<ActivityLogsModule />} />
           <Route
             path="/users"
             element={
