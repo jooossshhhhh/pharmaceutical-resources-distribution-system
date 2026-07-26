@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canRemoveLoginMethod,
   getGoogleIdentityEmail,
+  getLinkedGmailEmail,
   getLoginMethodAction,
   getLoginMethodStatusLabel,
   getReadableEmail,
@@ -49,5 +51,65 @@ test("uses linked Google identity email when the profile email is empty", () => 
       profile: { email: null, phone_number: "09623702834" },
     }),
     "linked@gmail.com"
+  );
+});
+
+test("does not treat the Supabase auth email alone as a linked Gmail login", () => {
+  assert.equal(
+    getLinkedGmailEmail({
+      identities: [{ provider: "phone", identity_data: {} }],
+      profileEmail: "",
+    }),
+    ""
+  );
+});
+
+test("uses the Google identity as the linked Gmail source of truth", () => {
+  assert.equal(
+    getLinkedGmailEmail({
+      identities: [
+        {
+          provider: "google",
+          email: "fallback@gmail.com",
+          identity_data: { email: "linked@gmail.com" },
+        },
+      ],
+      profileEmail: "",
+    }),
+    "linked@gmail.com"
+  );
+});
+
+test("ignores a stale profile email that is not linked in Supabase Auth", () => {
+  assert.equal(
+    getLinkedGmailEmail({
+      identities: [
+        {
+          provider: "google",
+          identity_data: { email: "actual@gmail.com" },
+        },
+      ],
+      profileEmail: "stale@gmail.com",
+    }),
+    "actual@gmail.com"
+  );
+});
+
+test("only allows removing a login method when another method remains", () => {
+  assert.equal(
+    canRemoveLoginMethod({
+      hasGmailLogin: true,
+      hasPhoneLogin: true,
+      method: "gmail",
+    }),
+    true
+  );
+  assert.equal(
+    canRemoveLoginMethod({
+      hasGmailLogin: true,
+      hasPhoneLogin: false,
+      method: "gmail",
+    }),
+    false
   );
 });

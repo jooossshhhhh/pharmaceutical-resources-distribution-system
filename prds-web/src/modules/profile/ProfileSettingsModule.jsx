@@ -12,6 +12,9 @@ import {
   resendPhoneChangeOtp,
   sendEmailOtp,
   sendPhoneOtp,
+  signInWithEmailPassword,
+  signInWithPhonePassword,
+  unlinkUserIdentity,
   updateUserPassword,
   updateUserPhone,
   verifyEmailOtp,
@@ -30,7 +33,9 @@ import OtpModal from "./OtpModal";
 import PasswordModal from "./PasswordModal";
 import { LoginMethod, PreferenceRow } from "./ProfileCards";
 import { ModalField, ProfileField, ReadonlyBlock } from "./ProfileFields";
+import RemoveLoginMethodModal from "./RemoveLoginMethodModal";
 import {
+  canRemoveLoginMethod,
   emptyForm,
   emptyPasswordVerification,
   emptyPhoneVerification,
@@ -41,8 +46,9 @@ import {
   getGoogleIdentityEmail,
   getGoogleLinkErrorMessage,
   getInitials,
+  getIdentityByProvider,
+  getLinkedGmailEmail,
   getLoginMethodAction,
-  getReadableEmail,
   getRoleLabel,
   getStatusLabel,
   preferenceRows,
@@ -52,8 +58,16 @@ const cleanAuthCallbackUrl = () => {
   window.history.replaceState({}, document.title, window.location.pathname);
 };
 
+const emptyRemoveLoginMethod = {
+  error: "",
+  isOpen: false,
+  isRemoving: false,
+  method: "",
+  password: "",
+};
+
 export default function ProfileSettingsModule() {
-  const { profile, refreshProfile, supabaseUser } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [authIdentities, setAuthIdentities] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [pendingFacilityRequest, setPendingFacilityRequest] = useState(null);
@@ -67,15 +81,30 @@ export default function ProfileSettingsModule() {
   const [form, setForm] = useState(emptyForm);
   const [phoneVerification, setPhoneVerification] = useState(emptyPhoneVerification);
   const [passwordVerification, setPasswordVerification] = useState(emptyPasswordVerification);
+  const [removeLoginMethod, setRemoveLoginMethod] = useState(emptyRemoveLoginMethod);
   const [processedUrl, setProcessedUrl] = useState("");
 
   const today = useMemo(() => formatDateTime(new Date()), []);
-  const authEmail = supabaseUser?.email || "";
+  const googleIdentity = getIdentityByProvider(authIdentities, "google");
+  const phoneIdentity = getIdentityByProvider(authIdentities, "phone");
   const googleIdentityEmail = getGoogleIdentityEmail(authIdentities);
-  const readableEmail = getReadableEmail({ authEmail, googleIdentityEmail, profile });
-  const hasGmailLogin = !!readableEmail;
-  const hasPhoneLogin = !!profile?.phone_number;
+  const linkedGmailEmail = getLinkedGmailEmail({
+    identities: authIdentities,
+    profileEmail: profile?.email || "",
+  });
+  const hasGmailLogin = !!googleIdentity && !!linkedGmailEmail;
+  const hasPhoneLogin = !!phoneIdentity && !!profile?.phone_number;
   const loginMethodAction = getLoginMethodAction({ hasGmailLogin, hasPhoneLogin });
+  const canRemoveGmail = canRemoveLoginMethod({
+    hasGmailLogin,
+    hasPhoneLogin,
+    method: "gmail",
+  });
+  const canRemovePhone = canRemoveLoginMethod({
+    hasGmailLogin,
+    hasPhoneLogin,
+    method: "phone",
+  });
   const roleLabel = getRoleLabel(profile?.role);
   const statusLabel = getStatusLabel(profile?.status);
   const activeFacility = facilities.find((facility) => facility.id === profile?.facility_id);
@@ -103,17 +132,14 @@ export default function ProfileSettingsModule() {
   }, [googleIdentityEmail, profile, refreshProfile]);
 
   const loadAuthIdentitiesAndSyncEmail = useCallback(async () => {
-    const [freshUser, identities] = await Promise.all([
-      getCurrentAuthUser(),
-      getUserIdentities(),
-    ]);
+    await getCurrentAuthUser();
+    const identities = await getUserIdentities();
     const linkedGoogleEmail = getGoogleIdentityEmail(identities);
-    const nextEmail = linkedGoogleEmail || freshUser?.email || "";
 
     setAuthIdentities(identities);
 
-    if (nextEmail) {
-      return syncProfileEmail(nextEmail);
+    if (linkedGoogleEmail) {
+      return syncProfileEmail(linkedGoogleEmail);
     }
 
     return false;
@@ -148,6 +174,17 @@ export default function ProfileSettingsModule() {
         setFacilities(facilitiesResult.data || []);
         setPendingFacilityRequest(requestResult);
         setAuthIdentities(identities);
+
+        const linkedGoogleEmail = getGoogleIdentityEmail(identities);
+        if (linkedGoogleEmail && profile.email !== linkedGoogleEmail) {
+          await updateOwnProfileContact({
+            email: linkedGoogleEmail,
+            firstName: profile.first_name,
+            lastName: profile.last_name,
+            phoneNumber: profile.phone_number,
+          });
+          await refreshProfile?.();
+        }
       } catch (error) {
         if (isMounted) {
           setProfileError(getAuthErrorMessage(error));
@@ -166,7 +203,14 @@ export default function ProfileSettingsModule() {
     return () => {
       isMounted = false;
     };
-  }, [profile?.id]);
+  }, [
+    profile?.email,
+    profile?.first_name,
+    profile?.id,
+    profile?.last_name,
+    profile?.phone_number,
+    refreshProfile,
+  ]);
 
   useEffect(() => {
     if (!profile?.id || processedUrl === window.location.href) {
@@ -254,7 +298,7 @@ export default function ProfileSettingsModule() {
 
   const saveEditableProfileFields = async (phoneNumberOverride = form.phone_number) => {
     await updateOwnProfileContact({
-      email: readableEmail,
+      email: linkedGmailEmail,
       firstName: form.first_name.trim(),
       lastName: form.last_name.trim(),
       phoneNumber: phoneNumberOverride || "",
@@ -287,7 +331,7 @@ export default function ProfileSettingsModule() {
       return "Phone number must use the 09XXXXXXXXX format.";
     }
 
-    if (!readableEmail && !nextPhoneNumber) {
+    if (!linkedGmailEmail && !nextPhoneNumber) {
       return "Add either a Gmail login or a phone number before saving.";
     }
 
@@ -455,11 +499,11 @@ export default function ProfileSettingsModule() {
 
         await sendPhoneOtp(profile.phone_number, { shouldCreateUser: false });
       } else {
-        if (!readableEmail) {
+        if (!linkedGmailEmail) {
           throw new Error("No Gmail is linked to this account.");
         }
 
-        await sendEmailOtp(readableEmail, { shouldCreateUser: false });
+        await sendEmailOtp(linkedGmailEmail, { shouldCreateUser: false });
       }
 
       setPasswordVerification((current) => ({
@@ -509,7 +553,7 @@ export default function ProfileSettingsModule() {
         });
       } else {
         await verifyEmailOtp({
-          email: readableEmail,
+          email: linkedGmailEmail,
           verificationCode: passwordVerification.code,
         });
       }
@@ -522,6 +566,124 @@ export default function ProfileSettingsModule() {
         ...current,
         error: getAuthErrorMessage(error),
         isVerifying: false,
+      }));
+    }
+  };
+
+  const openRemoveLoginMethod = (method) => {
+    const methodLabel = method === "gmail" ? "Gmail Login" : "Phone Login";
+
+    setRemoveLoginMethod({
+      ...emptyRemoveLoginMethod,
+      isOpen: true,
+      method,
+    });
+    setMessage("");
+    setProfileError("");
+
+    if (
+      !canRemoveLoginMethod({
+        hasGmailLogin,
+        hasPhoneLogin,
+        method,
+      })
+    ) {
+      setRemoveLoginMethod({
+        ...emptyRemoveLoginMethod,
+        error: `${methodLabel} cannot be removed because it is the only connected login method.`,
+        isOpen: true,
+        method,
+      });
+    }
+  };
+
+  const verifyCurrentPassword = async (password) => {
+    if (profile?.phone_number) {
+      const result = await signInWithPhonePassword({
+        phoneNumber: profile.phone_number,
+        password,
+      });
+
+      if (result.user?.id !== profile.id) {
+        throw new Error("Password verification did not match the current account.");
+      }
+
+      return result;
+    }
+
+    if (linkedGmailEmail) {
+      const result = await signInWithEmailPassword({
+        email: linkedGmailEmail,
+        password,
+      });
+
+      if (result.user?.id !== profile.id) {
+        throw new Error("Password verification did not match the current account.");
+      }
+
+      return result;
+    }
+
+    throw new Error("No password login method is available for verification.");
+  };
+
+  const handleRemoveLoginMethod = async (event) => {
+    event.preventDefault();
+
+    if (!removeLoginMethod.password) {
+      setRemoveLoginMethod((current) => ({
+        ...current,
+        error: "Current password is required.",
+      }));
+      return;
+    }
+
+    setRemoveLoginMethod((current) => ({
+      ...current,
+      error: "",
+      isRemoving: true,
+    }));
+
+    try {
+      await verifyCurrentPassword(removeLoginMethod.password);
+
+      const latestIdentities = await getUserIdentities();
+      const identity = getIdentityByProvider(
+        latestIdentities,
+        removeLoginMethod.method === "gmail" ? "google" : "phone"
+      );
+
+      if (!identity) {
+        throw new Error("This login method is not linked in Supabase Auth.");
+      }
+
+      await unlinkUserIdentity(identity);
+
+      const remainingIdentities = await getUserIdentities();
+      const remainingGoogleEmail = getGoogleIdentityEmail(remainingIdentities);
+      const nextEmail =
+        removeLoginMethod.method === "gmail" ? remainingGoogleEmail : linkedGmailEmail;
+      const nextPhoneNumber =
+        removeLoginMethod.method === "phone" ? "" : profile?.phone_number || "";
+
+      await updateOwnProfileContact({
+        email: nextEmail || null,
+        firstName: profile.first_name,
+        lastName: profile.last_name,
+        phoneNumber: nextPhoneNumber,
+      });
+
+      setAuthIdentities(remainingIdentities);
+      await refreshProfile?.();
+      setRemoveLoginMethod(emptyRemoveLoginMethod);
+      setMessage(
+        `${removeLoginMethod.method === "gmail" ? "Gmail" : "Phone"} login removed.`
+      );
+    } catch (error) {
+      setRemoveLoginMethod((current) => ({
+        ...current,
+        error: getAuthErrorMessage(error),
+        isRemoving: false,
       }));
     }
   };
@@ -583,8 +745,8 @@ export default function ProfileSettingsModule() {
               <div className="grid gap-4 md:grid-cols-2">
                 <ProfileField icon="user" label="First Name" value={profile?.first_name || "Not set"} readOnly />
                 <ProfileField icon="user" label="Last Name" value={profile?.last_name || "Not set"} readOnly />
-                <ProfileField icon="mail" label="Gmail" value={readableEmail || "No Gmail linked"} readOnly />
-                <ProfileField icon="phone" label="Phone" value={profile?.phone_number || "No phone linked"} readOnly />
+                <ProfileField icon="mail" label="Gmail" value={linkedGmailEmail || "No Gmail linked"} readOnly />
+                <ProfileField icon="phone" label="Phone" value={hasPhoneLogin ? profile?.phone_number : "No phone linked"} readOnly />
                 <ProfileField icon="role" label="Role" value={roleLabel} readOnly />
                 <ProfileField icon="status" label="Status" value={statusLabel} readOnly />
                 <ProfileField icon="facility" label="Facility" value={facilityLabel} readOnly />
@@ -599,13 +761,19 @@ export default function ProfileSettingsModule() {
               <div className="mt-5 grid gap-3">
                 <LoginMethod
                   label="Gmail Login"
-                  value={readableEmail || "Not connected"}
+                  value={hasGmailLogin ? linkedGmailEmail : "Not connected"}
                   active={hasGmailLogin}
+                  canRemove={canRemoveGmail}
+                  isRemoving={removeLoginMethod.isRemoving && removeLoginMethod.method === "gmail"}
+                  onRemove={() => openRemoveLoginMethod("gmail")}
                 />
                 <LoginMethod
                   label="Phone Login"
-                  value={profile?.phone_number || "Not connected"}
+                  value={hasPhoneLogin ? profile?.phone_number : "Not connected"}
                   active={hasPhoneLogin}
+                  canRemove={canRemovePhone}
+                  isRemoving={removeLoginMethod.isRemoving && removeLoginMethod.method === "phone"}
+                  onRemove={() => openRemoveLoginMethod("phone")}
                 />
               </div>
               {loginMethodAction && (
@@ -712,7 +880,7 @@ export default function ProfileSettingsModule() {
                 />
                 <ReadonlyBlock
                   label="Gmail"
-                  value={readableEmail || "No Gmail linked"}
+                  value={linkedGmailEmail || "No Gmail linked"}
                   actionLabel={!hasGmailLogin ? "Add Gmail Login" : ""}
                   onAction={handleLinkGoogle}
                   isActionLoading={isLinkingGoogle}
@@ -807,13 +975,27 @@ export default function ProfileSettingsModule() {
 
       {passwordVerification.isOpen && (
         <PasswordModal
-          authEmail={readableEmail}
+          authEmail={linkedGmailEmail}
           onChange={setPasswordVerification}
           onClose={() => setPasswordVerification(emptyPasswordVerification)}
           onSend={handleSendPasswordVerification}
           onSubmit={handleVerifyPasswordAndSave}
           phoneNumber={profile?.phone_number || ""}
           state={passwordVerification}
+        />
+      )}
+
+      {removeLoginMethod.isOpen && (
+        <RemoveLoginMethodModal
+          error={removeLoginMethod.error}
+          isRemoving={removeLoginMethod.isRemoving}
+          methodLabel={removeLoginMethod.method === "gmail" ? "Gmail Login" : "Phone Login"}
+          onClose={() => setRemoveLoginMethod(emptyRemoveLoginMethod)}
+          onPasswordChange={(password) =>
+            setRemoveLoginMethod((current) => ({ ...current, password }))
+          }
+          onSubmit={handleRemoveLoginMethod}
+          password={removeLoginMethod.password}
         />
       )}
     </AdminShell>

@@ -107,6 +107,24 @@ export const getGoogleIdentityEmail = (identities = []) => {
   );
 };
 
+export const getIdentityByProvider = (identities = [], provider) => {
+  return identities.find((identity) => identity.provider === provider) || null;
+};
+
+export const getLinkedGmailEmail = ({ identities = [], profileEmail = "" }) => {
+  const googleIdentityEmails = identities
+    .filter((identity) => identity.provider === "google")
+    .map((identity) => identity.identity_data?.email || identity.email || "")
+    .filter(Boolean);
+  const googleIdentityEmail = googleIdentityEmails[0] || "";
+
+  if (!googleIdentityEmail) {
+    return "";
+  }
+
+  return googleIdentityEmails.includes(profileEmail) ? profileEmail : googleIdentityEmail;
+};
+
 export const getReadableEmail = ({ authEmail, googleIdentityEmail, profile }) => {
   const profileEmail = profile?.email || "";
 
@@ -150,6 +168,18 @@ export const getLoginMethodAction = ({ hasGmailLogin, hasPhoneLogin }) => {
   }
 
   return null;
+};
+
+export const canRemoveLoginMethod = ({ hasGmailLogin, hasPhoneLogin, method }) => {
+  if (method === "gmail") {
+    return hasGmailLogin && hasPhoneLogin;
+  }
+
+  if (method === "phone") {
+    return hasPhoneLogin && hasGmailLogin;
+  }
+
+  return false;
 };
 
 export const getGoogleLinkErrorMessage = (errorDescription = "") => {

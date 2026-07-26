@@ -90,6 +90,22 @@ export const signInWithPhonePassword = async ({
   return data;
 };
 
+export const signInWithEmailPassword = async ({
+  email,
+  password,
+}) => {
+  const { data, error } = await supabaseAuth.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
 export const verifyPhoneOtp = async ({
   phoneNumber,
   verificationCode,
@@ -196,6 +212,16 @@ export const getUserIdentities = async () => {
   }
 
   return data.identities || [];
+};
+
+export const unlinkUserIdentity = async (identity) => {
+  const { data, error } = await supabaseAuth.auth.unlinkIdentity(identity);
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 };
 
 export const linkGoogleIdentity = async () => {
