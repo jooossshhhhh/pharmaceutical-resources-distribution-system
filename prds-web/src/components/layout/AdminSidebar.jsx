@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 
 import prdsLogo from "../../assets/prds-logo-main.svg";
+import { getAllowedNavItems } from "../../modules/users/userManagementUtils";
 
 const iconPaths = {
   Dashboard: (
@@ -99,7 +100,7 @@ const navItems = [
   { label: "Medicines", path: "/medicines" },
   { label: "Facilities", path: "/facilities" },
   { label: "Patients" },
-  { label: "User Management", path: "/users" },
+  { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
   { label: "Forecasting" },
   { label: "Activity Logs" },
   { label: "Notifications", path: "/notifications" },
@@ -138,6 +139,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
   const fullName = `${profile?.first_name || "Pharma"} ${
     profile?.last_name || "User"
   }`.trim();
+  const allowedNavItems = getAllowedNavItems(navItems, profile?.role);
 
   return (
     <aside
@@ -165,7 +167,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
           isCollapsed ? "px-2" : "px-3"
         }`}
       >
-        {navItems.map((item) => {
+        {allowedNavItems.map((item) => {
           const isActive = item.path === location.pathname;
           const itemClass = `group relative flex w-full items-center rounded-lg py-3 text-left text-sm font-semibold transition ${
             isActive

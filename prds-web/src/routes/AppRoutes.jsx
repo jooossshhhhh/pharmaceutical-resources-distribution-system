@@ -14,6 +14,7 @@ import ProfileSettingsModule from "../modules/profile/ProfileSettingsModule";
 import SuppliersModule from "../modules/suppliers/SuppliersModule";
 import UserManagementModule from "../modules/users/UserManagementModule";
 import ProtectedRoutes from "./ProtectedRoutes";
+import RoleGuard from "./RoleGuard";
 
 export default function AppRoutes() {
   return (
@@ -31,7 +32,14 @@ export default function AppRoutes() {
           <Route path="/suppliers" element={<SuppliersModule />} />
           <Route path="/inventory" element={<InventoryModule />} />
           <Route path="/notifications" element={<NotificationsModule />} />
-          <Route path="/users" element={<UserManagementModule />} />
+          <Route
+            path="/users"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_II"]}>
+                <UserManagementModule />
+              </RoleGuard>
+            }
+          />
           <Route path="/profile-settings" element={<ProfileSettingsModule />} />
         </Route>
       </Routes>

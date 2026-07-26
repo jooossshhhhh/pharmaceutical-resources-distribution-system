@@ -1,0 +1,29 @@
+export const USER_ACCOUNT_LOG_MODULE = "User Account";
+
+export const moduleAccess = {
+  "/users": ["PHARMA_II"],
+};
+
+export const canAccessModule = (role, path) => {
+  const allowedRoles = moduleAccess[path];
+
+  if (!allowedRoles) {
+    return true;
+  }
+
+  return allowedRoles.includes(role);
+};
+
+export const getAllowedNavItems = (items, role) => {
+  return items.filter((item) => {
+    if (item.roles?.length) {
+      return item.roles.includes(role);
+    }
+
+    return canAccessModule(role, item.path);
+  });
+};
+
+export const getUserAccountLogs = (logs = []) => {
+  return logs.filter((log) => log.module === USER_ACCOUNT_LOG_MODULE);
+};

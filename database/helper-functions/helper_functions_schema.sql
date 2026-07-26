@@ -135,33 +135,235 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+    v_profile profiles%rowtype;
+    v_next_first_name text := trim(p_first_name);
+    v_next_last_name text := trim(p_last_name);
+    v_next_email text := nullif(trim(coalesce(p_email, '')), '');
+    v_next_phone_number text := nullif(trim(coalesce(p_phone_number, '')), '');
+    v_details text[] := array[]::text[];
 begin
     if auth.uid() is null then
         raise exception 'Not authenticated';
     end if;
 
-    if nullif(trim(p_first_name), '') is null then
+    if nullif(v_next_first_name, '') is null then
         raise exception 'First name is required';
     end if;
 
-    if nullif(trim(p_last_name), '') is null then
+    if nullif(v_next_last_name, '') is null then
         raise exception 'Last name is required';
+    end if;
+
+    select *
+    into v_profile
+    from profiles
+    where id = auth.uid()
+    for update;
+
+    if not found then
+        raise exception 'Profile not found';
+    end if;
+
+    if v_profile.first_name is distinct from v_next_first_name then
+        v_details := array_append(v_details, 'First name changed from "' || coalesce(v_profile.first_name, '') || '" to "' || v_next_first_name || '"');
+    end if;
+
+    if v_profile.last_name is distinct from v_next_last_name then
+        v_details := array_append(v_details, 'Last name changed from "' || coalesce(v_profile.last_name, '') || '" to "' || v_next_last_name || '"');
+    end if;
+
+    if v_profile.email is distinct from v_next_email then
+        v_details := array_append(v_details, 'Gmail changed from "' || coalesce(v_profile.email, 'Not connected') || '" to "' || coalesce(v_next_email, 'Not connected') || '"');
+    end if;
+
+    if v_profile.phone_number is distinct from v_next_phone_number then
+        v_details := array_append(v_details, 'Phone number changed from "' || coalesce(v_profile.phone_number, 'Not connected') || '" to "' || coalesce(v_next_phone_number, 'Not connected') || '"');
     end if;
 
     update profiles
     set
-        first_name = trim(p_first_name),
-        last_name = trim(p_last_name),
-        email = nullif(trim(coalesce(p_email, '')), ''),
-        phone_number = nullif(trim(coalesce(p_phone_number, '')), ''),
+        first_name = v_next_first_name,
+        last_name = v_next_last_name,
+        email = v_next_email,
+        phone_number = v_next_phone_number,
         updated_at = now()
     where id = auth.uid();
 
-    if not found then
-        raise exception 'Profile not found';
+    if coalesce(array_length(v_details, 1), 0) > 0 then
+        insert into activity_logs (user_id, action, module, details)
+        values (auth.uid(), 'Profile Updated', 'User Account', array_to_string(v_details, '; '));
     end if;
 end;
 $$;
 
 revoke all on function update_own_profile_contact(text, text, text, text) from public;
 grant execute on function update_own_profile_contact(text, text, text, text) to authenticated;
+
+
+-- ==========================================
+-- Log a password change initiated by the current user.
+-- Password contents are never stored.
+-- ==========================================
+
+create or replace function log_own_password_change()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    if auth.uid() is null then
+        raise exception 'Not authenticated';
+    end if;
+
+    insert into activity_logs (user_id, action, module, details)
+    values (auth.uid(), 'Password Changed', 'User Account', 'User changed their account password.');
+end;
+$$;
+
+revoke all on function log_own_password_change() from public;
+grant execute on function log_own_password_change() to authenticated;
+
+
+-- ==========================================
+-- Notify admins and log when a user requests facility change.
+-- ==========================================
+
+create or replace function notify_and_log_facility_change_request()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_user_name text;
+    v_current_facility text;
+    v_requested_facility text;
+    v_admin_id uuid;
+begin
+    select concat_ws(' ', p.first_name, p.last_name)
+    into v_user_name
+    from profiles p
+    where p.id = new.profile_id;
+
+    select facility_name into v_current_facility
+    from facilities
+    where id = new.current_facility_id;
+
+    select facility_name into v_requested_facility
+    from facilities
+    where id = new.requested_facility_id;
+
+    insert into activity_logs (user_id, action, module, details)
+    values (
+        new.profile_id,
+        'Facility Change Requested',
+        'User Account',
+        coalesce(v_user_name, 'User') || ' requested facility change from ' || coalesce(v_current_facility, 'No facility') || ' to ' || coalesce(v_requested_facility, 'No facility') || coalesce('. Reason: ' || nullif(new.reason, ''), '.')
+    );
+
+    for v_admin_id in
+        select id from profiles where role = 'PHARMA_II' and status = 'ACTIVE'
+    loop
+        insert into notifications (user_id, title, message)
+        values (
+            v_admin_id,
+            'Facility Change Request',
+            coalesce(v_user_name, 'A user') || ' requested transfer to ' || coalesce(v_requested_facility, 'another facility') || '.'
+        );
+    end loop;
+
+    return new;
+end;
+$$;
+
+drop trigger if exists on_profile_facility_change_requested on public.profile_facility_change_requests;
+create trigger on_profile_facility_change_requested
+after insert on public.profile_facility_change_requests
+for each row execute function notify_and_log_facility_change_request();
+
+
+-- ==========================================
+-- Review a pending facility-change request.
+-- Approval updates the user's assigned facility.
+-- ==========================================
+
+create or replace function review_profile_facility_change_request(
+    p_request_id uuid,
+    p_status facility_change_request_status
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_request profile_facility_change_requests%rowtype;
+    v_requested_facility text;
+    v_reviewer_name text;
+begin
+    if not is_pharma_ii() then
+        raise exception 'Only Pharmacist II can review facility change requests';
+    end if;
+
+    if p_status not in ('APPROVED', 'REJECTED') then
+        raise exception 'Facility change review status must be APPROVED or REJECTED';
+    end if;
+
+    select *
+    into v_request
+    from profile_facility_change_requests
+    where id = p_request_id
+      and status = 'PENDING'
+    for update;
+
+    if not found then
+        raise exception 'Pending facility change request not found';
+    end if;
+
+    select facility_name into v_requested_facility
+    from facilities
+    where id = v_request.requested_facility_id;
+
+    select concat_ws(' ', first_name, last_name) into v_reviewer_name
+    from profiles
+    where id = auth.uid();
+
+    update profile_facility_change_requests
+    set
+        status = p_status,
+        reviewed_by = auth.uid(),
+        reviewed_at = now(),
+        updated_at = now()
+    where id = v_request.id;
+
+    if p_status = 'APPROVED' then
+        update profiles
+        set facility_id = v_request.requested_facility_id,
+            updated_at = now()
+        where id = v_request.profile_id;
+    end if;
+
+    insert into activity_logs (user_id, action, module, details)
+    values (
+        v_request.profile_id,
+        case when p_status = 'APPROVED' then 'Facility Change Approved' else 'Facility Change Rejected' end,
+        'User Account',
+        'Facility change to ' || coalesce(v_requested_facility, 'requested facility') || ' was ' || lower(p_status::text) || ' by ' || coalesce(v_reviewer_name, 'an administrator') || '.'
+    );
+
+    insert into notifications (user_id, title, message)
+    values (
+        v_request.profile_id,
+        case when p_status = 'APPROVED' then 'Facility Change Approved' else 'Facility Change Rejected' end,
+        case
+            when p_status = 'APPROVED' then 'Your facility change request to ' || coalesce(v_requested_facility, 'the requested facility') || ' has been approved.'
+            else 'Your facility change request to ' || coalesce(v_requested_facility, 'the requested facility') || ' has been rejected.'
+        end
+    );
+end;
+$$;
+
+revoke all on function review_profile_facility_change_request(uuid, facility_change_request_status) from public;
+grant execute on function review_profile_facility_change_request(uuid, facility_change_request_status) to authenticated;

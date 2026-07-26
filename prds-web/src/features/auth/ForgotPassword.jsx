@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import {
   getAuthErrorMessage,
+  logOwnPasswordChange,
   logoutUser,
   updateUserPassword,
 } from "./AuthService";
@@ -76,6 +77,7 @@ export default function ForgotPassword() {
 
     try {
       await updateUserPassword(newPassword);
+      await logOwnPasswordChange();
       await logoutUser();
       setSuccessMessage("Password updated successfully. Please sign in again.");
       setNewPassword("");

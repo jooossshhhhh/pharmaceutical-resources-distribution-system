@@ -206,6 +206,14 @@ export const updateUserPassword = async (password) => {
   return data;
 };
 
+export const logOwnPasswordChange = async () => {
+  const { error } = await supabaseAuth.rpc("log_own_password_change");
+
+  if (error) {
+    throw error;
+  }
+};
+
 export const getCurrentAuthUser = async () => {
   const { data, error } = await supabaseAuth.auth.getUser();
 

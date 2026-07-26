@@ -7,6 +7,7 @@ import {
   getCurrentAuthUser,
   getUserIdentities,
   isPhilippineMobileNumber,
+  logOwnPasswordChange,
   linkGoogleIdentity,
   normalizePhoneNumber,
   resendPhoneChangeOtp,
@@ -558,6 +559,7 @@ export default function ProfileSettingsModule() {
       }
 
       await updateUserPassword(passwordVerification.newPassword);
+      await logOwnPasswordChange();
       setPasswordVerification(emptyPasswordVerification);
       setMessage("Password changed successfully.");
     } catch (error) {

@@ -3,7 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { supabase } from "../../services/supabase";
+import {
+  getUserManagementData,
+  reviewFacilityChangeRequest,
+  updateManagedUser,
+} from "./UserManagementService";
+import { getUserAccountLogs } from "./userManagementUtils";
 
 const roleOptions = [
   { value: "PHARMA_II", label: "Pharmacist II" },
@@ -63,6 +68,36 @@ const getStatusClass = (status) => {
   return classes[status] || classes.PENDING;
 };
 
+const getRequestStatusLabel = (status) => {
+  const labels = {
+    APPROVED: "Approved",
+    CANCELLED: "Cancelled",
+    PENDING: "Pending",
+    REJECTED: "Rejected",
+  };
+
+  return labels[status] || status;
+};
+
+const getRequestStatusClass = (status) => {
+  const classes = {
+    APPROVED: "bg-emerald-100 text-emerald-700",
+    CANCELLED: "bg-neutral-100 text-neutral-600",
+    PENDING: "bg-amber-100 text-amber-700",
+    REJECTED: "bg-red-100 text-red-700",
+  };
+
+  return classes[status] || classes.PENDING;
+};
+
+const formatFacilityLabel = (facility) => {
+  if (!facility) {
+    return "No facility";
+  }
+
+  return `${facility.facility_name}${facility.facility_code ? ` (${facility.facility_code})` : ""}`;
+};
+
 const getInitials = (user) => {
   const firstInitial = user?.first_name?.[0] || "U";
   const lastInitial = user?.last_name?.[0] || "M";
@@ -95,6 +130,9 @@ export default function UserManagementModule() {
   const { profile } = useAuth();
   const [users, setUsers] = useState([]);
   const [facilities, setFacilities] = useState([]);
+  const [facilityRequests, setFacilityRequests] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [activeView, setActiveView] = useState("accounts");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [roleFilter, setRoleFilter] = useState("ALL");
@@ -105,6 +143,10 @@ export default function UserManagementModule() {
   const [formValues, setFormValues] = useState(emptyForm);
 
   const today = useMemo(() => formatDateTime(new Date()), []);
+  const userAccountLogs = useMemo(
+    () => getUserAccountLogs(activityLogs),
+    [activityLogs]
+  );
 
   const visibleUsers = useMemo(() => {
     return users.filter((user) => user.id !== profile?.id);
@@ -147,49 +189,63 @@ export default function UserManagementModule() {
     });
   }, [roleFilter, searchTerm, statusFilter, visibleUsers]);
 
+  const pendingFacilityRequests = useMemo(() => {
+    return facilityRequests.filter((request) => request.status === "PENDING");
+  }, [facilityRequests]);
+
+  const filteredFacilityRequests = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return facilityRequests.filter((request) => {
+      const searchableText = [
+        getFullName(request.profile),
+        request.current_facility?.facility_name,
+        request.requested_facility?.facility_name,
+        request.reason,
+        request.status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return !normalizedSearch || searchableText.includes(normalizedSearch);
+    });
+  }, [facilityRequests, searchTerm]);
+
+  const filteredUserLogs = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return userAccountLogs.filter((log) => {
+      const searchableText = [
+        getFullName(log.user),
+        log.action,
+        log.details,
+        log.user?.email,
+        log.user?.phone_number,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return !normalizedSearch || searchableText.includes(normalizedSearch);
+    });
+  }, [searchTerm, userAccountLogs]);
+
   const loadUsers = async () => {
     setIsLoading(true);
     setUserError("");
 
-    const [profilesResult, facilitiesResult] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          `
-          id,
-          first_name,
-          last_name,
-          email,
-          phone_number,
-          role,
-          facility_id,
-          status,
-          approved_by,
-          approved_at,
-          created_at,
-          updated_at,
-          facility:facilities(id, facility_name, facility_code)
-        `
-        )
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("facilities")
-        .select("id, facility_name, facility_code")
-        .eq("status", "ACTIVE")
-        .order("facility_name", { ascending: true }),
-    ]);
-
-    const firstError = profilesResult.error || facilitiesResult.error;
-
-    if (firstError) {
-      setUserError(firstError.message);
+    try {
+      const data = await getUserManagementData();
+      setUsers(data.users);
+      setFacilities(data.facilities);
+      setFacilityRequests(data.facilityRequests);
+      setActivityLogs(data.logs);
+    } catch (error) {
+      setUserError(error.message);
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    setUsers(profilesResult.data || []);
-    setFacilities(facilitiesResult.data || []);
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -247,12 +303,13 @@ export default function UserManagementModule() {
       payload.approved_at = new Date().toISOString();
     }
 
-    const { error } = await supabase
-      .from("profiles")
-      .update(payload)
-      .eq("id", user.id);
-
-    if (error) {
+    try {
+      await updateManagedUser({
+        adminId: profile?.id,
+        payload,
+        user,
+      });
+    } catch (error) {
       setUserError(error.message);
       setIsSaving(false);
       return;
@@ -261,6 +318,23 @@ export default function UserManagementModule() {
     setIsSaving(false);
     closeUserModal();
     await loadUsers();
+  };
+
+  const handleReviewFacilityRequest = async (request, status) => {
+    setIsSaving(true);
+    setUserError("");
+
+    try {
+      await reviewFacilityChangeRequest({
+        requestId: request.id,
+        status,
+      });
+      await loadUsers();
+    } catch (error) {
+      setUserError(error.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -294,8 +368,15 @@ export default function UserManagementModule() {
           </label>
           <SelectFilter value={roleFilter} onChange={setRoleFilter} options={roleOptions} allLabel="All roles" />
         </div>
+        <ViewTabs
+          activeView={activeView}
+          pendingRequests={pendingFacilityRequests.length}
+          userLogs={userAccountLogs.length}
+          onChange={setActiveView}
+        />
       </section>
 
+      {activeView === "accounts" && (
       <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-4">
           <div>
@@ -383,6 +464,23 @@ export default function UserManagementModule() {
           </table>
         </div>
       </section>
+      )}
+
+      {activeView === "requests" && (
+        <FacilityRequestsPanel
+          isLoading={isLoading}
+          isSaving={isSaving}
+          requests={filteredFacilityRequests}
+          onReview={handleReviewFacilityRequest}
+        />
+      )}
+
+      {activeView === "logs" && (
+        <UserLogsPanel
+          isLoading={isLoading}
+          logs={filteredUserLogs}
+        />
+      )}
 
       {selectedUser && (
         <UserModal
@@ -397,6 +495,166 @@ export default function UserManagementModule() {
         />
       )}
     </AdminShell>
+  );
+}
+
+function ViewTabs({ activeView, onChange, pendingRequests, userLogs }) {
+  const tabs = [
+    { count: null, id: "accounts", label: "User Accounts" },
+    { count: pendingRequests, id: "requests", label: "Facility Requests" },
+    { count: userLogs, id: "logs", label: "User Logs" },
+  ];
+
+  return (
+    <div className="mt-4 flex flex-wrap gap-2">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition ${
+            activeView === tab.id
+              ? "bg-black text-white"
+              : "bg-neutral-50 text-neutral-700 hover:bg-neutral-100"
+          }`}
+        >
+          {tab.label}
+          {tab.count ? (
+            <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-black text-white">
+              {tab.count}
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FacilityRequestsPanel({ isLoading, isSaving, onReview, requests }) {
+  return (
+    <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-4">
+        <div>
+          <h2 className="text-base font-black text-black">Facility Change Requests</h2>
+          <p className="mt-1 text-xs font-semibold text-neutral-500">
+            Review assigned facility changes requested from profile settings.
+          </p>
+        </div>
+      </div>
+
+      <div className="divide-y divide-neutral-100">
+        {isLoading ? (
+          <p className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+            Loading facility requests...
+          </p>
+        ) : requests.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+            No facility change requests match the current search.
+          </p>
+        ) : (
+          requests.map((request) => (
+            <article key={request.id} className="grid gap-4 px-4 py-4 xl:grid-cols-[1fr_auto]">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-black text-black">
+                    {getFullName(request.profile)}
+                  </h3>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-black ${getRequestStatusClass(request.status)}`}>
+                    {getRequestStatusLabel(request.status)}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-semibold text-neutral-700">
+                  {formatFacilityLabel(request.current_facility)} to {formatFacilityLabel(request.requested_facility)}
+                </p>
+                {request.reason && (
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-neutral-500">
+                    {request.reason}
+                  </p>
+                )}
+                <p className="mt-2 text-xs font-semibold text-neutral-400">
+                  Requested {formatDateTime(new Date(request.created_at))}
+                  {request.reviewer ? ` | Reviewed by ${getFullName(request.reviewer)}` : ""}
+                </p>
+              </div>
+
+              {request.status === "PENDING" ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => onReview(request, "APPROVED")}
+                    className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => onReview(request, "REJECTED")}
+                    className="h-10 rounded-lg bg-red-50 px-4 text-sm font-black text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Reject
+                  </button>
+                </div>
+              ) : (
+                <p className="self-center text-sm font-bold text-neutral-400">
+                  {request.reviewed_at ? formatDate(request.reviewed_at) : "Reviewed"}
+                </p>
+              )}
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function UserLogsPanel({ isLoading, logs }) {
+  return (
+    <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-4">
+        <div>
+          <h2 className="text-base font-black text-black">User Logs</h2>
+          <p className="mt-1 text-xs font-semibold text-neutral-500">
+            Account-related records filtered from the system activity log.
+          </p>
+        </div>
+      </div>
+
+      <div className="divide-y divide-neutral-100">
+        {isLoading ? (
+          <p className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+            Loading user logs...
+          </p>
+        ) : logs.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm font-bold text-neutral-500">
+            No user account logs match the current search.
+          </p>
+        ) : (
+          logs.map((log) => (
+            <article key={log.id} className="flex gap-3 px-4 py-4">
+              <span className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                <UserIcon />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-black text-black">{log.action}</h3>
+                  <time className="text-xs font-semibold text-neutral-400">
+                    {formatDateTime(new Date(log.created_at))}
+                  </time>
+                </div>
+                <p className="mt-1 text-sm font-semibold text-neutral-700">
+                  {getFullName(log.user)}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-neutral-500">
+                  {log.details}
+                </p>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 
