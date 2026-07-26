@@ -3,6 +3,10 @@ import { supabaseAuth } from "../../services/supabase";
 export const normalizePhoneNumber = (phoneNumber) => {
   const digitsOnly = phoneNumber.replace(/\D/g, "");
 
+  if (!digitsOnly) {
+    return "";
+  }
+
   if (digitsOnly.startsWith("63")) {
     return `0${digitsOnly.slice(2)}`;
   }

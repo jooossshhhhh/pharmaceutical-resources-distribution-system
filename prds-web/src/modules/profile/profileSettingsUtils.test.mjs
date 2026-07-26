@@ -125,6 +125,16 @@ test("keeps the current phone number when the edit form phone field is blank", (
   );
 });
 
+test("keeps phone empty when an account has no current phone and no phone edit", () => {
+  assert.equal(
+    getSubmittedPhoneNumber({
+      currentPhoneNumber: "",
+      formPhoneNumber: "",
+    }),
+    ""
+  );
+});
+
 test("uses the edited phone number when a new value is submitted", () => {
   assert.equal(
     getSubmittedPhoneNumber({
