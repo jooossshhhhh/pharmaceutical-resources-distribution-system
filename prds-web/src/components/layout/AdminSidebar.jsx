@@ -94,7 +94,7 @@ const iconPaths = {
 const navItems = [
   { label: "Dashboard", path: "/dashboard" },
   { label: "Inventory", path: "/inventory" },
-  { label: "Requests" },
+  { label: "Requests", path: "/requests" },
   { label: "Transfers" },
   { label: "Dispensing" },
   { label: "Medicines", path: "/medicines" },
