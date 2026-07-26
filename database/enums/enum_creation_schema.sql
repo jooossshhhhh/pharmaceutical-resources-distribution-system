@@ -10,6 +10,13 @@ create type profile_status as enum (
     'DEACTIVATED'
 );
 
+create type facility_change_request_status as enum (
+    'PENDING',
+    'APPROVED',
+    'REJECTED',
+    'CANCELLED'
+);
+
 create type facility_type as enum (
     'CHO',
     'HEALTH_CENTER'

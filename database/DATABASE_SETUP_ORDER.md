@@ -8,6 +8,7 @@
 
 * profiles_schema.sql
 * facilities_schema.sql
+* profile_facility_change_requests_schema.sql
 * medicines_schema.sql
 * suppliers_schema.sql
 * patient_schema.sql
@@ -74,6 +75,7 @@
 * medicine_requests_rls_schema.sql
 * patients_dispensing_rls_schema.sql
 * profile_notifications_rls_schema.sql
+* profile_facility_change_requests_rls_schema.sql
 * program_forecasting_activitylogs_rls_schema.sql
 * stock_transfer_rls_schema.sql
 
