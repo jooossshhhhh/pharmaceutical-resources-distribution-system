@@ -147,3 +147,107 @@ export const reviewMedicineRequest = async ({
 
   return data;
 };
+
+export const getBhwRequestsData = async ({ facilityId }) => {
+  const [requestsResult, medicinesResult] = await Promise.all([
+    supabase
+      .from("medicine_requests")
+      .select(
+        `
+        id,
+        requested_by,
+        facility_id,
+        request_date,
+        status,
+        approved_by,
+        approved_at,
+        remarks,
+        facility:facilities(id, facility_name, facility_code, facility_type, address),
+        requester:profiles!medicine_requests_requested_by_fkey(
+          id,
+          first_name,
+          last_name,
+          email,
+          phone_number,
+          role
+        ),
+        approver:profiles!medicine_requests_approved_by_fkey(
+          id,
+          first_name,
+          last_name
+        ),
+        items:medicine_request_items(
+          id,
+          medicine_id,
+          quantity,
+          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure)
+        )
+      `
+      )
+      .eq("facility_id", facilityId)
+      .order("request_date", { ascending: false }),
+    supabase
+      .from("medicines")
+      .select("id, generic_name, brand_name, dosage, unit_of_measure")
+      .order("generic_name", { ascending: true }),
+  ]);
+
+  const firstError = requestsResult.error || medicinesResult.error;
+
+  if (firstError) {
+    throw firstError;
+  }
+
+  return {
+    medicines: medicinesResult.data || [],
+    requests: requestsResult.data || [],
+  };
+};
+
+export const createBhwMedicineRequest = async ({
+  facilityId,
+  items,
+  profileId,
+  remarks,
+}) => {
+  const { data: request, error: requestError } = await supabase
+    .from("medicine_requests")
+    .insert({
+      facility_id: facilityId,
+      remarks: remarks || null,
+      requested_by: profileId,
+    })
+    .select("id")
+    .single();
+
+  if (requestError) {
+    throw requestError;
+  }
+
+  const requestItems = items.map((item) => ({
+    medicine_id: item.medicine_id,
+    quantity: Number(item.quantity),
+    request_id: request.id,
+  }));
+
+  const { error: itemsError } = await supabase
+    .from("medicine_request_items")
+    .insert(requestItems);
+
+  if (itemsError) {
+    throw itemsError;
+  }
+
+  const { error: logError } = await supabase.from("activity_logs").insert({
+    action: "Medicine Request Submitted",
+    details: `Submitted medicine request ${request.id}`,
+    module: "Medicine Request",
+    user_id: profileId,
+  });
+
+  if (logError) {
+    throw logError;
+  }
+
+  return request.id;
+};

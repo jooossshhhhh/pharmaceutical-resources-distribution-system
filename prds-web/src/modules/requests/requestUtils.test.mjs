@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   getItemStockStatus,
+  getCompletedRequestQuantity,
+  getFacilityRequestRating,
   getRequestNumber,
   getRequestPriority,
   getRequestSummary,
@@ -66,6 +68,11 @@ test("summarizes request statuses", () => {
     pending: 1,
     total: 3,
   });
+});
+
+test("calculates completed quantity and facility rating", () => {
+  assert.equal(getCompletedRequestQuantity(requests), 0);
+  assert.equal(getFacilityRequestRating(requests), 66.7);
 });
 
 test("derives pending request priority from quantity", () => {

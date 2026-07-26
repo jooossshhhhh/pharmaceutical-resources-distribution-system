@@ -135,6 +135,24 @@ export const getRequestSummary = (requests = []) => {
   );
 };
 
+export const getCompletedRequestQuantity = (requests = []) => {
+  return requests
+    .filter((request) => request.status === "COMPLETED")
+    .reduce((total, request) => total + getRequestTotalQuantity(request), 0);
+};
+
+export const getFacilityRequestRating = (requests = []) => {
+  if (requests.length === 0) {
+    return 0;
+  }
+
+  const resolvedRequests = requests.filter((request) =>
+    ["APPROVED", "COMPLETED"].includes(request.status)
+  ).length;
+
+  return Math.round((resolvedRequests / requests.length) * 1000) / 10;
+};
+
 export const matchesRequestFilters = (
   request,
   { facilityId = "ALL", keyword = "", status = "ALL" }
