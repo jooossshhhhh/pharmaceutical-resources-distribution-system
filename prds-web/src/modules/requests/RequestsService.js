@@ -149,7 +149,7 @@ export const reviewMedicineRequest = async ({
 };
 
 export const getBhwRequestsData = async ({ facilityId }) => {
-  const [requestsResult, medicinesResult] = await Promise.all([
+  const [requestsResult, medicinesResult, inventoryResult] = await Promise.all([
     supabase
       .from("medicine_requests")
       .select(
@@ -190,15 +190,21 @@ export const getBhwRequestsData = async ({ facilityId }) => {
       .from("medicines")
       .select("id, generic_name, brand_name, dosage, unit_of_measure")
       .order("generic_name", { ascending: true }),
+    supabase
+      .from("inventory")
+      .select("id, facility_id, medicine_id, quantity, threshold")
+      .eq("facility_id", facilityId),
   ]);
 
-  const firstError = requestsResult.error || medicinesResult.error;
+  const firstError =
+    requestsResult.error || medicinesResult.error || inventoryResult.error;
 
   if (firstError) {
     throw firstError;
   }
 
   return {
+    inventoryRows: inventoryResult.data || [],
     medicines: medicinesResult.data || [],
     requests: requestsResult.data || [],
   };

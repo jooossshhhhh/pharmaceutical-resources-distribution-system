@@ -9,10 +9,12 @@ import {
   formatRequestDate,
   getCompletedRequestQuantity,
   getFacilityRequestRating,
+  getItemStockStatus,
   getItemLabel,
   getRequestNumber,
   getRequestSummary,
   getRequestTotalQuantity,
+  getStockMap,
   matchesRequestFilters,
   requestStatusLabels,
   requestStatusTones,
@@ -57,6 +59,7 @@ export default function BhwRequestsModule() {
   const profileId = profile?.id;
   const [requests, setRequests] = useState([]);
   const [medicines, setMedicines] = useState([]);
+  const [inventoryRows, setInventoryRows] = useState([]);
   const [activeFilter, setActiveFilter] = useState("ALL");
   const [keyword, setKeyword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -70,6 +73,7 @@ export default function BhwRequestsModule() {
   const summary = useMemo(() => getRequestSummary(requests), [requests]);
   const receivedQuantity = useMemo(() => getCompletedRequestQuantity(requests), [requests]);
   const facilityRating = useMemo(() => getFacilityRequestRating(requests), [requests]);
+  const stockMap = useMemo(() => getStockMap(inventoryRows), [inventoryRows]);
 
   const cardValues = useMemo(
     () => ({
@@ -97,6 +101,7 @@ export default function BhwRequestsModule() {
     if (!profileFacilityId) {
       setRequests([]);
       setMedicines([]);
+      setInventoryRows([]);
       setIsLoading(false);
       return;
     }
@@ -108,6 +113,7 @@ export default function BhwRequestsModule() {
       const data = await getBhwRequestsData({ facilityId: profileFacilityId });
       setRequests(data.requests);
       setMedicines(data.medicines);
+      setInventoryRows(data.inventoryRows);
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -273,6 +279,8 @@ export default function BhwRequestsModule() {
           requestItems={requestItems}
           setRemarks={setRemarks}
           setRequestItems={setRequestItems}
+          stockMap={stockMap}
+          facilityId={profileFacilityId}
         />
       )}
     </AdminShell>
@@ -339,6 +347,7 @@ function BhwRequestRow({ request }) {
 }
 
 function NewRequestModal({
+  facilityId,
   isSaving,
   medicines,
   onClose,
@@ -347,6 +356,7 @@ function NewRequestModal({
   requestItems,
   setRemarks,
   setRequestItems,
+  stockMap,
 }) {
   const updateItem = (index, field, value) => {
     setRequestItems((currentItems) =>
@@ -364,9 +374,9 @@ function NewRequestModal({
       >
         <header className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
           <div>
-            <h2 className="text-lg font-black text-black">New Medicine Request</h2>
-            <p className="mt-1 text-sm font-semibold text-neutral-500">
-              Add one or more medicines for CHO review.
+            <h2 className="text-lg font-black text-black">New Supply Request</h2>
+            <p className="mt-1 text-xs font-semibold text-neutral-500">
+              Submit a medicine request for CHO review and replenishment.
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-800">
@@ -374,75 +384,61 @@ function NewRequestModal({
           </button>
         </header>
 
-        <div className="prds-modal-scrollbar max-h-[70vh] overflow-y-auto p-5">
-          <div className="grid gap-4">
+        <div className="prds-modal-scrollbar max-h-[72vh] overflow-y-auto p-5">
+          <section>
+            <SectionTitle icon={<ClipboardIcon />} title="Item Specification" />
+            <div className="mt-3 grid gap-4">
             {requestItems.map((item, index) => (
-              <div key={`request-item-${index}`} className="grid gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 md:grid-cols-[1fr_130px_36px]">
-                <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-                  Medicine
-                  <select
-                    required
-                    value={item.medicine_id}
-                    onChange={(event) => updateItem(index, "medicine_id", event.target.value)}
-                    className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option value="">Select medicine</option>
-                    {medicines.map((medicine) => (
-                      <option key={medicine.id} value={medicine.id}>
-                        {medicine.brand_name || medicine.generic_name} {medicine.dosage}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-                  Quantity
-                  <input
-                    required
-                    min="1"
-                    type="number"
-                    value={item.quantity}
-                    onChange={(event) => updateItem(index, "quantity", event.target.value)}
-                    className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setRequestItems((currentItems) =>
-                      currentItems.length === 1
-                        ? currentItems
-                        : currentItems.filter((_, itemIndex) => itemIndex !== index)
-                    )
-                  }
-                  className="mt-6 flex h-10 w-10 items-center justify-center rounded-lg text-neutral-400 hover:bg-white hover:text-red-500"
-                  aria-label="Remove request item"
-                >
-                  <TrashIcon />
-                </button>
-              </div>
+              <RequestItemFields
+                key={`request-item-${index}`}
+                canRemove={requestItems.length > 1}
+                facilityId={facilityId}
+                item={item}
+                medicines={medicines}
+                onRemove={() =>
+                  setRequestItems((currentItems) =>
+                    currentItems.filter((_, itemIndex) => itemIndex !== index)
+                  )
+                }
+                stockMap={stockMap}
+                updateItem={(field, value) => updateItem(index, field, value)}
+              />
             ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setRequestItems((currentItems) => [...currentItems, { ...emptyItem }])}
+              className="mt-3 h-9 rounded-lg border border-dashed border-emerald-300 px-4 text-xs font-black text-emerald-700 hover:bg-emerald-50"
+            >
+              Add another medicine
+            </button>
+          </section>
+
+          <section className="mt-5">
+            <SectionTitle icon={<TruckIcon />} title="Request Details" />
+            <label className="mt-3 grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
+              Notes and handling instructions
+              <textarea
+                value={remarks}
+                onChange={(event) => setRemarks(event.target.value)}
+                rows="4"
+                placeholder="e.g. Current stock is below threshold, urgent monthly replenishment needed..."
+                className="resize-none rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium normal-case tracking-normal text-neutral-700 outline-none placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+          </section>
+
+          <div className="mt-5 flex gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
+            <span className="mt-0.5 shrink-0 text-blue-600">
+              <InfoIcon />
+            </span>
+            <p>
+              <span className="font-black">Procurement Notice:</span> Requests store only
+              medicines, quantities, and optional remarks from the database schema. CHO will
+              verify availability and approval status before fulfillment.
+            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setRequestItems((currentItems) => [...currentItems, { ...emptyItem }])}
-            className="mt-4 h-10 rounded-lg border border-dashed border-emerald-300 px-4 text-sm font-black text-emerald-700 hover:bg-emerald-50"
-          >
-            Add another medicine
-          </button>
-
-          <label className="mt-4 grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-            Request Notes
-            <textarea
-              value={remarks}
-              onChange={(event) => setRemarks(event.target.value)}
-              rows="3"
-              placeholder="Optional context for CHO..."
-              className="resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium normal-case tracking-normal text-neutral-700 outline-none placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            />
-          </label>
         </div>
 
         <footer className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-4">
@@ -466,6 +462,137 @@ function NewRequestModal({
   );
 }
 
+function RequestItemFields({
+  canRemove,
+  facilityId,
+  item,
+  medicines,
+  onRemove,
+  stockMap,
+  updateItem,
+}) {
+  const selectedMedicine = medicines.find((medicine) => medicine.id === item.medicine_id);
+  const stock = stockMap.get(`${facilityId}:${item.medicine_id}`);
+  const stockStatus = item.medicine_id
+    ? getItemStockStatus(item, facilityId, stockMap)
+    : { label: "Select a medicine", tone: "text-neutral-500" };
+  const threshold = Number(stock?.threshold || 0);
+  const quantity = Number(stock?.quantity || 0);
+  const progressValue = threshold > 0 ? Math.min((quantity / Math.max(threshold * 2, 1)) * 100, 100) : 0;
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+        <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
+          Select Medicine
+          <select
+            required
+            value={item.medicine_id}
+            onChange={(event) => updateItem("medicine_id", event.target.value)}
+            className="h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          >
+            <option value="">Search item (e.g. Amoxicillin)</option>
+            {medicines.map((medicine) => (
+              <option key={medicine.id} value={medicine.id}>
+                {medicine.brand_name || medicine.generic_name} {medicine.dosage}
+              </option>
+            ))}
+          </select>
+          {selectedMedicine && (
+            <span className="text-xs font-semibold normal-case tracking-normal text-neutral-500">
+              {[selectedMedicine.generic_name, selectedMedicine.unit_of_measure]
+                .filter(Boolean)
+                .join(" / ")}
+            </span>
+          )}
+        </label>
+
+        <div className="rounded-lg border border-neutral-200 bg-slate-50 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
+              In-Stock Availability
+            </span>
+            <span className={`text-xs font-black ${stockStatus.tone}`}>
+              {item.medicine_id && stock ? `${quantity.toLocaleString()} Units` : stockStatus.label}
+            </span>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-200">
+            <div
+              className={`h-full rounded-full ${
+                quantity <= threshold ? "bg-orange-500" : "bg-blue-500"
+              }`}
+              style={{ width: `${progressValue}%` }}
+            />
+          </div>
+          <p className="mt-2 text-[11px] font-semibold text-neutral-500">
+            Low stock alert threshold: {threshold.toLocaleString()} units
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
+        <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
+          Requested Quantity
+          <input
+            required
+            min="1"
+            type="number"
+            value={item.quantity}
+            onChange={(event) => updateItem("quantity", event.target.value)}
+            placeholder="0"
+            className="h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          />
+        </label>
+
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="self-end rounded-lg px-3 py-2 text-xs font-black text-red-600 hover:bg-red-50"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ icon, title }) {
+  return (
+    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-neutral-600">
+      <span className="text-neutral-500">{icon}</span>
+      {title}
+    </div>
+  );
+}
+
+const ClipboardIcon = () => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M9 5h6" />
+    <path d="M9 12h6" />
+    <path d="M9 16h4" />
+    <path d="M8 3h8l1 2h3v16H4V5h3z" />
+  </svg>
+);
+
+const TruckIcon = () => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M10 17h4V5H2v12h3" />
+    <path d="M14 8h4l4 4v5h-3" />
+    <circle cx="7.5" cy="17.5" r="2.5" />
+    <circle cx="16.5" cy="17.5" r="2.5" />
+  </svg>
+);
+
+const InfoIcon = () => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 16v-4" />
+    <path d="M12 8h.01" />
+  </svg>
+);
+
 const SearchIcon = () => (
   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
     <circle cx="11" cy="11" r="8" />
@@ -484,13 +611,5 @@ const CloseIcon = () => (
   <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
     <path d="M18 6 6 18" />
     <path d="m6 6 12 12" />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M3 6h18" />
-    <path d="M8 6V4h8v2" />
-    <path d="M19 6l-1 14H6L5 6" />
   </svg>
 );
