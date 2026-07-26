@@ -97,6 +97,16 @@ export const isPhoneDerivedEmail = (email, phoneNumber) => {
   return localPart?.replace(/\D/g, "") === phoneNumber.replace(/\D/g, "");
 };
 
+export const getSubmittedPhoneNumber = ({ currentPhoneNumber = "", formPhoneNumber = "" }) => {
+  const trimmedPhoneNumber = formPhoneNumber.trim();
+
+  if (!trimmedPhoneNumber) {
+    return currentPhoneNumber ? currentPhoneNumber.trim() : "";
+  }
+
+  return trimmedPhoneNumber;
+};
+
 export const getGoogleIdentityEmail = (identities = []) => {
   const googleIdentity = identities.find((identity) => identity.provider === "google");
 

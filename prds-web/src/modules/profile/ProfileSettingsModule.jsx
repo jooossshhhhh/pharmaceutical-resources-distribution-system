@@ -51,6 +51,7 @@ import {
   getLoginMethodAction,
   getRoleLabel,
   getStatusLabel,
+  getSubmittedPhoneNumber,
   preferenceRows,
 } from "./profileSettingsUtils";
 
@@ -323,8 +324,12 @@ export default function ProfileSettingsModule() {
       return "First name and last name are required.";
     }
 
-    const nextPhoneNumber = form.phone_number.trim()
-      ? normalizePhoneNumber(form.phone_number)
+    const submittedPhoneNumber = getSubmittedPhoneNumber({
+      currentPhoneNumber: profile?.phone_number || "",
+      formPhoneNumber: form.phone_number,
+    });
+    const nextPhoneNumber = submittedPhoneNumber
+      ? normalizePhoneNumber(submittedPhoneNumber)
       : "";
 
     if (nextPhoneNumber && !isPhilippineMobileNumber(nextPhoneNumber)) {
@@ -352,8 +357,12 @@ export default function ProfileSettingsModule() {
       return;
     }
 
-    const nextPhoneNumber = form.phone_number.trim()
-      ? normalizePhoneNumber(form.phone_number)
+    const submittedPhoneNumber = getSubmittedPhoneNumber({
+      currentPhoneNumber: profile?.phone_number || "",
+      formPhoneNumber: form.phone_number,
+    });
+    const nextPhoneNumber = submittedPhoneNumber
+      ? normalizePhoneNumber(submittedPhoneNumber)
       : "";
     const currentPhoneNumber = normalizePhoneNumber(profile?.phone_number || "");
 

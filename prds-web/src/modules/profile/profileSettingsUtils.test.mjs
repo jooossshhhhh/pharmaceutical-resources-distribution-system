@@ -8,6 +8,7 @@ import {
   getLoginMethodAction,
   getLoginMethodStatusLabel,
   getReadableEmail,
+  getSubmittedPhoneNumber,
 } from "./profileSettingsUtils.js";
 
 test("uses Not connected for missing login methods", () => {
@@ -111,5 +112,25 @@ test("only allows removing a login method when another method remains", () => {
       method: "gmail",
     }),
     false
+  );
+});
+
+test("keeps the current phone number when the edit form phone field is blank", () => {
+  assert.equal(
+    getSubmittedPhoneNumber({
+      currentPhoneNumber: "09623702834",
+      formPhoneNumber: "",
+    }),
+    "09623702834"
+  );
+});
+
+test("uses the edited phone number when a new value is submitted", () => {
+  assert.equal(
+    getSubmittedPhoneNumber({
+      currentPhoneNumber: "09623702834",
+      formPhoneNumber: "09702347186",
+    }),
+    "09702347186"
   );
 });
