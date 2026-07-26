@@ -10,14 +10,13 @@ import {
   linkGoogleIdentity,
   normalizePhoneNumber,
   resendPhoneChangeOtp,
-  sendEmailOtp,
+  sendPasswordResetEmail,
   sendPhoneOtp,
   signInWithEmailPassword,
   signInWithPhonePassword,
   unlinkUserIdentity,
   updateUserPassword,
   updateUserPhone,
-  verifyEmailOtp,
   verifyPhoneChangeOtp,
   verifyPhoneOtp,
   logoutUser,
@@ -503,7 +502,12 @@ export default function ProfileSettingsModule() {
           throw new Error("No Gmail is linked to this account.");
         }
 
-        await sendEmailOtp(linkedGmailEmail, { shouldCreateUser: false });
+        await sendPasswordResetEmail(linkedGmailEmail);
+        setPasswordVerification(emptyPasswordVerification);
+        setMessage(
+          "Password reset link sent to your Gmail. Open the email to set a new password."
+        );
+        return;
       }
 
       setPasswordVerification((current) => ({
@@ -549,11 +553,6 @@ export default function ProfileSettingsModule() {
       if (passwordVerification.method === "phone") {
         await verifyPhoneOtp({
           phoneNumber: profile.phone_number,
-          verificationCode: passwordVerification.code,
-        });
-      } else {
-        await verifyEmailOtp({
-          email: linkedGmailEmail,
           verificationCode: passwordVerification.code,
         });
       }

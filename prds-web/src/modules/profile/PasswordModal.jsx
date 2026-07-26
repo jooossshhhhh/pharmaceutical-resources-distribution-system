@@ -17,7 +17,7 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
           <div>
             <h3 className="text-lg font-black text-black">Change Password</h3>
             <p className="mt-1 text-sm font-medium text-neutral-500">
-              Verify your identity with a code before setting a new password.
+              Use phone OTP or a Gmail reset link before setting a new password.
             </p>
           </div>
           <button
@@ -44,7 +44,7 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
             <VerificationChoice
               checked={state.method === "email"}
               disabled={!authEmail}
-              label="Send code to Gmail"
+              label="Send reset link to Gmail"
               value={authEmail || "No Gmail linked"}
               onClick={() => updateState({ method: "email" })}
             />
@@ -95,7 +95,11 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
             className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
           >
             {state.step === "choose"
-              ? state.isSending ? "Sending..." : "Send Code"
+              ? state.isSending
+                ? "Sending..."
+                : state.method === "email"
+                  ? "Send Reset Link"
+                  : "Send Code"
               : state.isVerifying ? "Saving..." : "Change Password"}
           </button>
         </div>

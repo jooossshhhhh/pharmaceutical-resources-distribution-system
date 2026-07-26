@@ -58,6 +58,18 @@ export const sendEmailOtp = async (
   return data;
 };
 
+export const sendPasswordResetEmail = async (email) => {
+  const { data, error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/forgot-password`,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
 export const signUpWithPhonePassword = async ({
   phoneNumber,
   password,
