@@ -27,6 +27,10 @@ const pageTitles = {
   "/facilities": { title: "Facilities", subtitle: "Manage healthcare facilities" },
   "/patients": { title: "Patients", subtitle: "Manage patient records" },
   "/forecasting": { title: "Forecasting", subtitle: "Review demand forecasts" },
+  "/activity-logs": {
+    title: "Activity Logs",
+    subtitle: "Review user actions, profile changes, inventory updates, and facility activity.",
+  },
   "/notifications": {
     title: "Notifications",
     subtitle: "System alerts, request updates, and transfer notifications",

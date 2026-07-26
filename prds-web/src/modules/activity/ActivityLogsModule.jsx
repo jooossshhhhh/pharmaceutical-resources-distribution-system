@@ -4,7 +4,6 @@ import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { formatDateTime } from "../dashboard/dashboardUtils";
-import { getRoleLabel } from "../profile/profileSettingsUtils";
 import { getActivityLogData } from "./ActivityLogService";
 import {
   getAllowedActivityLogRoleFilters,
@@ -23,12 +22,13 @@ const getFullName = (user) => {
   return `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Unknown user";
 };
 
-const getInitials = (user) => {
-  const firstInitial = user?.first_name?.[0] || "A";
-  const lastInitial = user?.last_name?.[0] || "L";
-
-  return `${firstInitial}${lastInitial}`.toUpperCase();
+const activityRoleLabels = {
+  PHARMA_II: "Pharmacist II",
+  PHARMA_I: "Pharmacist I",
+  BHW: "Barangay Health Worker",
 };
+
+const getActivityRoleLabel = (role) => activityRoleLabels[role] || "Unknown role";
 
 const getLogTone = (module) => {
   if (module === "Inventory") {
@@ -121,17 +121,9 @@ export default function ActivityLogsModule() {
     return () => window.clearTimeout(timerId);
   }, []);
 
-  const latestLog = visibleLogs[0];
-
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-black">Activity Logs</h1>
-          <p className="mt-1 text-sm font-medium text-neutral-500">
-            Review user actions, profile changes, inventory updates, and facility activity.
-          </p>
-        </div>
+      <div className="mb-5 flex justify-end">
         <button
           type="button"
           className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-black text-neutral-700 shadow-sm hover:bg-neutral-50"
@@ -146,34 +138,6 @@ export default function ActivityLogsModule() {
           {error}
         </p>
       )}
-
-      <section className="mb-5 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">
-            {getInitials(profile)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-black text-black">{getFullName(profile)}</h2>
-              <span className="rounded bg-blue-50 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">
-                {getRoleLabel(profile?.role)}
-              </span>
-            </div>
-            <p className="mt-1 text-sm font-medium text-neutral-500">
-              {profile?.email || profile?.phone_number || "No contact linked"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-3">
-          <Metric label="Visible actions" value={visibleLogs.length} />
-          <Metric
-            label="Latest activity"
-            value={latestLog ? formatDateTime(new Date(latestLog.created_at)) : "No logs yet"}
-          />
-          <Metric label="Security status" value="Secure" />
-        </div>
-      </section>
 
       <div className="grid gap-5 xl:grid-cols-[250px_1fr]">
         <aside className="h-fit rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -257,9 +221,6 @@ export default function ActivityLogsModule() {
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
                 Global Activity Log
               </p>
-              <p className="mt-1 text-xs font-bold uppercase text-black">
-                Viewing as: {getRoleLabel(profile?.role)}
-              </p>
             </div>
             <p className="text-xs font-black text-neutral-500">
               {filteredLogs.length} shown
@@ -299,7 +260,7 @@ export default function ActivityLogsModule() {
                       </div>
                       <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold text-neutral-500">
                         <span>{getFullName(log.user)}</span>
-                        <span>{getRoleLabel(log.user?.role)}</span>
+                        <span>{getActivityRoleLabel(log.user?.role)}</span>
                         <span>{log.user?.facility?.facility_name || "No facility"}</span>
                       </div>
                     </div>
@@ -311,15 +272,6 @@ export default function ActivityLogsModule() {
         </section>
       </div>
     </AdminShell>
-  );
-}
-
-function Metric({ label, value }) {
-  return (
-    <div className="border-l border-neutral-200 pl-4">
-      <p className="text-xs font-black uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-1 text-xl font-black text-black">{value}</p>
-    </div>
   );
 }
 
