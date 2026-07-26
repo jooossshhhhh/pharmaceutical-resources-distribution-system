@@ -178,6 +178,26 @@ export const updateUserPassword = async (password) => {
   return data;
 };
 
+export const getCurrentAuthUser = async () => {
+  const { data, error } = await supabaseAuth.auth.getUser();
+
+  if (error) {
+    throw error;
+  }
+
+  return data.user;
+};
+
+export const getUserIdentities = async () => {
+  const { data, error } = await supabaseAuth.auth.getUserIdentities();
+
+  if (error) {
+    throw error;
+  }
+
+  return data.identities || [];
+};
+
 export const linkGoogleIdentity = async () => {
   const { data, error } = await supabaseAuth.auth.linkIdentity({
     provider: "google",

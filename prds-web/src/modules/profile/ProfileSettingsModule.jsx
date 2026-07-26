@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import {
   getAuthErrorMessage,
+  getCurrentAuthUser,
+  getUserIdentities,
   isPhilippineMobileNumber,
   linkGoogleIdentity,
   normalizePhoneNumber,
@@ -24,201 +26,35 @@ import {
 } from "../../features/auth/ProfileService";
 import { supabase } from "../../services/supabase";
 import { formatDateTime } from "../dashboard/dashboardUtils";
+import OtpModal from "./OtpModal";
+import PasswordModal from "./PasswordModal";
+import { LoginMethod, PreferenceRow } from "./ProfileCards";
+import { ModalField, ProfileField, ReadonlyBlock } from "./ProfileFields";
+import {
+  emptyForm,
+  emptyPasswordVerification,
+  emptyPhoneVerification,
+  formatRequestDate,
+  getAuthCallbackParams,
+  getFacilityLabel,
+  getFullName,
+  getGoogleIdentityEmail,
+  getGoogleLinkErrorMessage,
+  getInitials,
+  getLoginMethodAction,
+  getReadableEmail,
+  getRoleLabel,
+  getStatusLabel,
+  preferenceRows,
+} from "./profileSettingsUtils";
 
-const roleLabels = {
-  PHARMA_II: "Pharmacist II",
-  PHARMA_I: "Pharmacist I",
-  BHW: "Barangay Health Worker",
-};
-
-const statusLabels = {
-  ACTIVE: "Active",
-  PENDING: "Pending",
-  DEACTIVATED: "Deactivated",
-};
-
-const preferenceRows = [
-  {
-    label: "Email Notifications",
-    description: "Receive email updates for requests, transfers, and alerts",
-    icon: "mail",
-    enabled: true,
-  },
-  {
-    label: "Low Stock Alerts",
-    description: "Get notified when medicine stock falls below minimum",
-    icon: "alert",
-    enabled: true,
-  },
-  {
-    label: "Request Auto-Approval",
-    description: "Automatically approve routine monthly replenishments",
-    icon: "check",
-    enabled: false,
-  },
-  {
-    label: "Dark Mode",
-    description: "Switch to dark color theme for low-light environments",
-    icon: "moon",
-    enabled: false,
-  },
-  {
-    label: "Compact View",
-    description: "Use condensed layout with smaller text and spacing",
-    icon: "layout",
-    enabled: false,
-  },
-];
-
-const emptyForm = {
-  facility_id: "",
-  facility_reason: "",
-  first_name: "",
-  last_name: "",
-  phone_number: "",
-};
-
-const emptyPhoneVerification = {
-  code: "",
-  error: "",
-  isOpen: false,
-  isResending: false,
-  isVerifying: false,
-  phoneNumber: "",
-};
-
-const emptyPasswordVerification = {
-  code: "",
-  confirmPassword: "",
-  error: "",
-  isOpen: false,
-  isSending: false,
-  isVerifying: false,
-  method: "phone",
-  newPassword: "",
-  step: "choose",
-};
-
-const getInitials = (profile) => {
-  const firstInitial = profile?.first_name?.[0] || "P";
-  const lastInitial = profile?.last_name?.[0] || "U";
-
-  return `${firstInitial}${lastInitial}`.toUpperCase();
-};
-
-const getFullName = (profile) => {
-  const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
-  return fullName || "Pharma User";
-};
-
-const getRoleLabel = (role) => roleLabels[role] || "Not assigned";
-
-const getStatusLabel = (status) => statusLabels[status] || "Not set";
-
-const isPhoneDerivedEmail = (email, phoneNumber) => {
-  if (!email || !phoneNumber) {
-    return false;
-  }
-
-  const [localPart] = email.split("@");
-  return localPart?.replace(/\D/g, "") === phoneNumber.replace(/\D/g, "");
-};
-
-const getReadableEmail = ({ authEmail, profile }) => {
-  const profileEmail = profile?.email || "";
-
-  if (isPhoneDerivedEmail(profileEmail, profile?.phone_number)) {
-    return authEmail || "";
-  }
-
-  return profileEmail || authEmail || "";
-};
-
-const getFacilityLabel = (facility) => {
-  if (!facility) {
-    return "No facility assigned";
-  }
-
-  return `${facility.facility_name}${facility.facility_code ? ` (${facility.facility_code})` : ""}`;
-};
-
-const formatRequestDate = (dateValue) => {
-  if (!dateValue) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("en-PH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(dateValue));
-};
-
-const FieldIcon = ({ type }) => {
-  const commonProps = {
-    className: "h-4 w-4 text-neutral-400",
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    strokeWidth: "1.8",
-    viewBox: "0 0 24 24",
-  };
-
-  const paths = {
-    alert: (
-      <>
-        <path d="M12 9v4M12 17h.01" />
-        <path d="M10.3 4.3 2.7 17.5A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.5L13.7 4.3a2 2 0 0 0-3.4 0Z" />
-      </>
-    ),
-    check: <path d="m5 12 4 4L19 6" />,
-    facility: (
-      <>
-        <path d="M5 21V7l7-4 7 4v14" />
-        <path d="M9 21v-6h6v6M9 10h.01M15 10h.01" />
-      </>
-    ),
-    layout: (
-      <>
-        <rect x="4" y="5" width="16" height="14" rx="2" />
-        <path d="M4 10h16M10 10v9" />
-      </>
-    ),
-    mail: (
-      <>
-        <rect x="4" y="6" width="16" height="12" rx="2" />
-        <path d="m4 8 8 6 8-6" />
-      </>
-    ),
-    moon: <path d="M20 15.5A8 8 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z" />,
-    phone: (
-      <path d="M7 4h3l1.5 4-2 1.2a10 10 0 0 0 5.3 5.3l1.2-2 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 5 6.2 2 2 0 0 1 7 4Z" />
-    ),
-    role: (
-      <>
-        <path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6l-7-3Z" />
-        <path d="M9.5 12 11 13.5 14.5 10" />
-      </>
-    ),
-    status: (
-      <>
-        <circle cx="12" cy="12" r="8" />
-        <path d="m9 12 2 2 4-4" />
-      </>
-    ),
-    user: (
-      <>
-        <circle cx="12" cy="8" r="3.5" />
-        <path d="M5.5 21a6.5 6.5 0 0 1 13 0" />
-      </>
-    ),
-  };
-
-  return <svg {...commonProps}>{paths[type]}</svg>;
+const cleanAuthCallbackUrl = () => {
+  window.history.replaceState({}, document.title, window.location.pathname);
 };
 
 export default function ProfileSettingsModule() {
   const { profile, refreshProfile, supabaseUser } = useAuth();
+  const [authIdentities, setAuthIdentities] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [pendingFacilityRequest, setPendingFacilityRequest] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -231,11 +67,15 @@ export default function ProfileSettingsModule() {
   const [form, setForm] = useState(emptyForm);
   const [phoneVerification, setPhoneVerification] = useState(emptyPhoneVerification);
   const [passwordVerification, setPasswordVerification] = useState(emptyPasswordVerification);
+  const [processedUrl, setProcessedUrl] = useState("");
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const authEmail = supabaseUser?.email || "";
-  const readableEmail = getReadableEmail({ authEmail, profile });
+  const googleIdentityEmail = getGoogleIdentityEmail(authIdentities);
+  const readableEmail = getReadableEmail({ authEmail, googleIdentityEmail, profile });
   const hasGmailLogin = !!readableEmail;
+  const hasPhoneLogin = !!profile?.phone_number;
+  const loginMethodAction = getLoginMethodAction({ hasGmailLogin, hasPhoneLogin });
   const roleLabel = getRoleLabel(profile?.role);
   const statusLabel = getStatusLabel(profile?.status);
   const activeFacility = facilities.find((facility) => facility.id === profile?.facility_id);
@@ -247,21 +87,54 @@ export default function ProfileSettingsModule() {
   const selectedFacilityChanged =
     !!form.facility_id && form.facility_id !== (profile?.facility_id || "");
 
+  const syncProfileEmail = useCallback(async (emailOverride = googleIdentityEmail) => {
+    if (!profile?.id || !emailOverride || profile.email === emailOverride) {
+      return false;
+    }
+
+    await updateOwnProfileContact({
+      email: emailOverride,
+      firstName: profile.first_name,
+      lastName: profile.last_name,
+      phoneNumber: profile.phone_number,
+    });
+    await refreshProfile?.();
+    return true;
+  }, [googleIdentityEmail, profile, refreshProfile]);
+
+  const loadAuthIdentitiesAndSyncEmail = useCallback(async () => {
+    const [freshUser, identities] = await Promise.all([
+      getCurrentAuthUser(),
+      getUserIdentities(),
+    ]);
+    const linkedGoogleEmail = getGoogleIdentityEmail(identities);
+    const nextEmail = linkedGoogleEmail || freshUser?.email || "";
+
+    setAuthIdentities(identities);
+
+    if (nextEmail) {
+      return syncProfileEmail(nextEmail);
+    }
+
+    return false;
+  }, [syncProfileEmail]);
+
   useEffect(() => {
     let isMounted = true;
 
-    const loadFacilitiesAndRequests = async () => {
+    const loadProfileContext = async () => {
       setIsLoadingFacilities(true);
       setProfileError("");
 
       try {
-        const [facilitiesResult, requestResult] = await Promise.all([
+        const [facilitiesResult, requestResult, identities] = await Promise.all([
           supabase
             .from("facilities")
             .select("id, facility_name, facility_code, facility_type, address, status")
             .eq("status", "ACTIVE")
             .order("facility_name", { ascending: true }),
           getOwnPendingFacilityChangeRequest(profile?.id),
+          getUserIdentities(),
         ]);
 
         if (facilitiesResult.error) {
@@ -274,6 +147,7 @@ export default function ProfileSettingsModule() {
 
         setFacilities(facilitiesResult.data || []);
         setPendingFacilityRequest(requestResult);
+        setAuthIdentities(identities);
       } catch (error) {
         if (isMounted) {
           setProfileError(getAuthErrorMessage(error));
@@ -286,13 +160,57 @@ export default function ProfileSettingsModule() {
     };
 
     if (profile?.id) {
-      loadFacilitiesAndRequests();
+      loadProfileContext();
     }
 
     return () => {
       isMounted = false;
     };
   }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id || processedUrl === window.location.href) {
+      return;
+    }
+
+    const { error, errorCode, errorDescription } = getAuthCallbackParams(window.location.href);
+    const hasAuthCallbackParams =
+      window.location.search.includes("code=") ||
+      window.location.search.includes("error=") ||
+      window.location.hash.includes("access_token") ||
+      window.location.hash.includes("error=");
+
+    if (!hasAuthCallbackParams) {
+      return;
+    }
+
+    setProcessedUrl(window.location.href);
+
+    const handleAuthCallback = async () => {
+      setProfileError("");
+
+      try {
+        const syncedEmail = await loadAuthIdentitiesAndSyncEmail();
+
+        if (error || errorCode || errorDescription) {
+          if (syncedEmail) {
+            setMessage("Gmail login was already linked to this account and has been synced.");
+          } else {
+            setProfileError(getGoogleLinkErrorMessage(errorDescription || errorCode || error));
+          }
+        } else if (syncedEmail) {
+          setMessage("Gmail login linked successfully.");
+        }
+      } catch (callbackError) {
+        setProfileError(getAuthErrorMessage(callbackError));
+      } finally {
+        setIsLinkingGoogle(false);
+        cleanAuthCallbackUrl();
+      }
+    };
+
+    handleAuthCallback();
+  }, [loadAuthIdentitiesAndSyncEmail, processedUrl, profile?.id]);
 
   const startEditing = () => {
     setForm({
@@ -500,6 +418,17 @@ export default function ProfileSettingsModule() {
     }
   };
 
+  const handleLoginMethodAction = () => {
+    if (loginMethodAction?.kind === "gmail") {
+      handleLinkGoogle();
+      return;
+    }
+
+    if (loginMethodAction?.kind === "phone") {
+      startEditing();
+    }
+  };
+
   const openPasswordModal = () => {
     setPasswordVerification({
       ...emptyPasswordVerification,
@@ -670,24 +599,25 @@ export default function ProfileSettingsModule() {
               <div className="mt-5 grid gap-3">
                 <LoginMethod
                   label="Gmail Login"
-                  value={readableEmail || "Not linked"}
+                  value={readableEmail || "Not connected"}
                   active={hasGmailLogin}
                 />
                 <LoginMethod
                   label="Phone Login"
-                  value={profile?.phone_number || "Not linked"}
-                  active={!!profile?.phone_number}
+                  value={profile?.phone_number || "Not connected"}
+                  active={hasPhoneLogin}
                 />
               </div>
-              <button
-                type="button"
-                onClick={handleLinkGoogle}
-                disabled={isLinkingGoogle}
-                className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-black text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <GoogleIcon />
-                {hasGmailLogin ? "Reconnect Gmail Login" : "Add Gmail Login"}
-              </button>
+              {loginMethodAction && (
+                <button
+                  type="button"
+                  onClick={handleLoginMethodAction}
+                  disabled={isLinkingGoogle}
+                  className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-black text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isLinkingGoogle ? "Opening Google..." : loginMethodAction.label}
+                </button>
+              )}
             </section>
 
             {pendingFacilityRequest && (
@@ -783,7 +713,7 @@ export default function ProfileSettingsModule() {
                 <ReadonlyBlock
                   label="Gmail"
                   value={readableEmail || "No Gmail linked"}
-                  actionLabel={hasGmailLogin ? "Reconnect Gmail" : "Add Gmail Login"}
+                  actionLabel={!hasGmailLogin ? "Add Gmail Login" : ""}
                   onAction={handleLinkGoogle}
                   isActionLoading={isLinkingGoogle}
                 />
@@ -887,302 +817,5 @@ export default function ProfileSettingsModule() {
         />
       )}
     </AdminShell>
-  );
-}
-
-function ProfileField({ icon, label, readOnly, ...props }) {
-  return (
-    <label className="block rounded-lg bg-[#faf9f7] px-4 py-3">
-      <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-        <FieldIcon type={icon} />
-        {label}
-      </span>
-      <input
-        {...props}
-        readOnly={readOnly}
-        className="mt-3 w-full bg-transparent text-sm font-semibold text-black outline-none read-only:cursor-default"
-      />
-    </label>
-  );
-}
-
-function ModalField({ label, readOnly, ...props }) {
-  return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
-      {label}
-      <input
-        {...props}
-        readOnly={readOnly}
-        className="h-11 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 read-only:cursor-default read-only:bg-[#faf9f7] read-only:focus:border-neutral-200 read-only:focus:ring-0"
-      />
-    </label>
-  );
-}
-
-function ReadonlyBlock({ actionLabel, isActionLoading, label, onAction, value }) {
-  return (
-    <div className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
-      {label}
-      <div className="rounded-lg border border-neutral-200 bg-[#faf9f7] px-3 py-3 text-sm font-semibold normal-case tracking-normal text-black">
-        {value}
-      </div>
-      <button
-        type="button"
-        onClick={onAction}
-        disabled={isActionLoading}
-        className="flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-70"
-      >
-        <GoogleIcon />
-        {isActionLoading ? "Opening Google..." : actionLabel}
-      </button>
-    </div>
-  );
-}
-
-function LoginMethod({ active, label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-lg bg-[#faf9f7] px-4 py-3">
-      <div className="min-w-0">
-        <p className="text-sm font-black text-black">{label}</p>
-        <p className="truncate text-sm font-medium text-neutral-500">{value}</p>
-      </div>
-      <span
-        className={`rounded-full px-3 py-1 text-xs font-black ${
-          active
-            ? "bg-emerald-100 text-emerald-700"
-            : "bg-neutral-100 text-neutral-500"
-        }`}
-      >
-        {active ? "Linked" : "Missing"}
-      </span>
-    </div>
-  );
-}
-
-function OtpModal({
-  code,
-  error,
-  isBusy,
-  isResending,
-  onBack,
-  onChange,
-  onResend,
-  onSubmit,
-  submitLabel,
-  subtitle,
-  title,
-}) {
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4 py-5">
-      <form onSubmit={onSubmit} className="w-full max-w-[430px] rounded-xl bg-white p-6 shadow-2xl">
-        <h3 className="text-lg font-black text-black">{title}</h3>
-        <p className="mt-1 text-sm font-medium text-neutral-500">{subtitle}</p>
-
-        <label className="mt-6 grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
-          Verification Code
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={6}
-            value={code}
-            onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
-            className="h-12 rounded-lg border border-neutral-200 bg-white px-3 text-center text-lg font-black tracking-[0.35em] text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            required
-          />
-        </label>
-
-        {error && (
-          <p className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isBusy}
-          className="mt-5 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-        >
-          {isBusy ? "Verifying..." : submitLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onResend}
-          disabled={isResending}
-          className="mt-3 w-full rounded-lg bg-neutral-50 px-4 py-3 text-sm font-bold text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {isResending ? "Resending..." : "Resend OTP"}
-        </button>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-3 w-full rounded-lg px-4 py-3 text-sm font-bold text-neutral-500 hover:bg-neutral-50"
-        >
-          Back
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function PasswordModal({ authEmail, onChange, onClose, onSend, onSubmit, phoneNumber, state }) {
-  const updateState = (updates) => onChange((current) => ({ ...current, ...updates }));
-
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4 py-5">
-      <form
-        onSubmit={state.step === "choose" ? onSend : onSubmit}
-        className="w-full max-w-[500px] rounded-xl bg-white p-6 shadow-2xl"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-black text-black">Change Password</h3>
-            <p className="mt-1 text-sm font-medium text-neutral-500">
-              Verify your identity before setting a new phone-login password.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
-            aria-label="Close change password"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {state.step === "choose" ? (
-          <div className="mt-6 grid gap-3">
-            <VerificationChoice
-              checked={state.method === "phone"}
-              disabled={!phoneNumber}
-              label="Send OTP to phone"
-              value={phoneNumber || "No phone linked"}
-              onClick={() => updateState({ method: "phone" })}
-            />
-            <VerificationChoice
-              checked={state.method === "email"}
-              disabled={!authEmail}
-              label="Send code to Gmail"
-              value={authEmail || "No Gmail linked"}
-              onClick={() => updateState({ method: "email" })}
-            />
-          </div>
-        ) : (
-          <div className="mt-6 grid gap-4">
-            <ModalField
-              label="Verification Code"
-              value={state.code}
-              onChange={(event) => updateState({ code: event.target.value.replace(/\D/g, "") })}
-              inputMode="numeric"
-              maxLength={6}
-            />
-            <ModalField
-              label="New Password"
-              type="password"
-              value={state.newPassword}
-              onChange={(event) => updateState({ newPassword: event.target.value })}
-            />
-            <ModalField
-              label="Confirm Password"
-              type="password"
-              value={state.confirmPassword}
-              onChange={(event) => updateState({ confirmPassword: event.target.value })}
-            />
-          </div>
-        )}
-
-        {state.error && (
-          <p className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            {state.error}
-          </p>
-        )}
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg bg-neutral-50 px-5 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={state.isSending || state.isVerifying}
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-          >
-            {state.step === "choose"
-              ? state.isSending ? "Sending..." : "Send Verification"
-              : state.isVerifying ? "Saving..." : "Change Password"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function VerificationChoice({ checked, disabled, label, onClick, value }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center justify-between gap-4 rounded-lg border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked
-          ? "border-emerald-500 bg-emerald-50"
-          : "border-neutral-200 bg-white hover:bg-neutral-50"
-      }`}
-    >
-      <span>
-        <span className="block text-sm font-black text-black">{label}</span>
-        <span className="mt-1 block text-sm font-medium text-neutral-500">{value}</span>
-      </span>
-      <span
-        className={`h-4 w-4 rounded-full border ${
-          checked ? "border-emerald-600 bg-emerald-600" : "border-neutral-300"
-        }`}
-      />
-    </button>
-  );
-}
-
-function PreferenceRow({ icon, label, description, enabled }) {
-  return (
-    <div className="flex items-center justify-between gap-5 py-4">
-      <div className="flex min-w-0 items-center gap-4">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#faf9f7]">
-          <FieldIcon type={icon} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-black text-black">{label}</p>
-          <p className="truncate text-sm font-medium text-neutral-500">{description}</p>
-        </div>
-      </div>
-      <button
-        type="button"
-        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-          enabled ? "bg-emerald-600" : "bg-neutral-200"
-        }`}
-        aria-pressed={enabled}
-      >
-        <span
-          className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${
-            enabled ? "left-6" : "left-1"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.3-.2-1.9H12v3.6h5.4c-.2 1.2-.9 2.2-1.9 2.9v2.4h3.1c1.8-1.7 3-4.1 3-7Z" />
-      <path fill="#34A853" d="M12 22c2.7 0 5-0.9 6.6-2.4l-3.1-2.4c-.9.6-2 .9-3.5.9-2.6 0-4.8-1.8-5.6-4.1H3.2v2.5C4.8 19.8 8.1 22 12 22Z" />
-      <path fill="#FBBC05" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.5H3.2A10 10 0 0 0 2.1 12c0 1.6.4 3.1 1.1 4.5L6.4 14Z" />
-      <path fill="#EA4335" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9C17 2.9 14.7 2 12 2 8.1 2 4.8 4.2 3.2 7.5L6.4 10c.8-2.3 3-4.1 5.6-4.1Z" />
-    </svg>
   );
 }
