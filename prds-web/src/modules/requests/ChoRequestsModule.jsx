@@ -18,7 +18,6 @@ import {
   getStockMap,
   matchesRequestFilters,
   requestSortOptions,
-  requestStatuses,
   requestStatusLabels,
   requestStatusTones,
   sortRequests,
@@ -31,6 +30,37 @@ const statusDotTones = {
   REJECTED: "bg-red-500",
 };
 
+const summaryFilters = [
+  {
+    icon: "request",
+    label: "Total Requests",
+    note: "All facilities",
+    status: "ALL",
+    valueKey: "total",
+  },
+  {
+    icon: "clock",
+    label: "Pending Approval",
+    note: "Requires CHO action",
+    status: "PENDING",
+    valueKey: "pending",
+  },
+  {
+    icon: "transit",
+    label: "Approved",
+    note: "Ready for fulfillment",
+    status: "APPROVED",
+    valueKey: "inTransit",
+  },
+  {
+    icon: "check",
+    label: "Completed",
+    note: "Fulfilled requests",
+    status: "COMPLETED",
+    valueKey: "completed",
+  },
+];
+
 export default function ChoRequestsModule() {
   const { profile } = useAuth();
   const [requests, setRequests] = useState([]);
@@ -38,8 +68,9 @@ export default function ChoRequestsModule() {
   const [inventoryRows, setInventoryRows] = useState([]);
   const [keyword, setKeyword] = useState("");
   const [facilityId, setFacilityId] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("PENDING");
   const [sortMode, setSortMode] = useState("newest");
+  const [isSortOpen, setIsSortOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [remarks, setRemarks] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -133,31 +164,17 @@ export default function ChoRequestsModule() {
       )}
 
       <section className="grid gap-4 lg:grid-cols-4">
-        <SummaryCard
-          icon={<RequestIcon />}
-          label="Total Requests"
-          value={summary.total}
-          note="All facilities"
-        />
-        <SummaryCard
-          active
-          icon={<ClockIcon />}
-          label="Pending Approval"
-          value={summary.pending}
-          note="Requires CHO action"
-        />
-        <SummaryCard
-          icon={<TransitIcon />}
-          label="Approved"
-          value={summary.inTransit}
-          note="Ready for fulfillment"
-        />
-        <SummaryCard
-          icon={<CheckIcon />}
-          label="Completed"
-          value={summary.completed}
-          note="Fulfilled requests"
-        />
+        {summaryFilters.map((filter) => (
+          <SummaryCard
+            key={filter.status}
+            active={statusFilter === filter.status}
+            iconKey={filter.icon}
+            label={filter.label}
+            note={filter.note}
+            onClick={() => setStatusFilter(filter.status)}
+            value={summary[filter.valueKey]}
+          />
+        ))}
       </section>
 
       <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
@@ -192,8 +209,16 @@ export default function ChoRequestsModule() {
                 })),
               ]}
             />
-            <SelectFilter value={statusFilter} onChange={setStatusFilter} options={requestStatuses} />
-            <SelectFilter value={sortMode} onChange={setSortMode} options={requestSortOptions} />
+            <SortFilter
+              isOpen={isSortOpen}
+              onChange={(nextSortMode) => {
+                setSortMode(nextSortMode);
+                setIsSortOpen(false);
+              }}
+              onToggle={() => setIsSortOpen((isOpen) => !isOpen)}
+              options={requestSortOptions}
+              value={sortMode}
+            />
           </div>
         </div>
 
@@ -246,7 +271,7 @@ export default function ChoRequestsModule() {
             Showing {filteredRequests.length} of {requests.length} requests
           </span>
           <span>
-            Select a facility to review request history for one health center.
+            {requestStatusLabels[statusFilter] || "All requests"} are shown from the selected facility scope.
           </span>
         </div>
       </section>
@@ -269,10 +294,12 @@ export default function ChoRequestsModule() {
   );
 }
 
-function SummaryCard({ active = false, icon, label, note, value }) {
+function SummaryCard({ active = false, iconKey, label, note, onClick, value }) {
   return (
-    <article
-      className={`rounded-xl border p-5 shadow-sm ${
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
         active ? "border-neutral-900 bg-neutral-950 text-white" : "border-neutral-200 bg-white text-black"
       }`}
     >
@@ -287,11 +314,27 @@ function SummaryCard({ active = false, icon, label, note, value }) {
           </p>
         </div>
         <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${active ? "bg-blue-500 text-white" : "bg-neutral-50 text-neutral-500"}`}>
-          {icon}
+          <SummaryIcon iconKey={iconKey} />
         </span>
       </div>
-    </article>
+    </button>
   );
+}
+
+function SummaryIcon({ iconKey }) {
+  if (iconKey === "clock") {
+    return <ClockIcon />;
+  }
+
+  if (iconKey === "transit") {
+    return <TransitIcon />;
+  }
+
+  if (iconKey === "check") {
+    return <CheckIcon />;
+  }
+
+  return <RequestIcon />;
 }
 
 function RequestRow({ isSaving, onReview, onSelect, request }) {
@@ -588,10 +631,70 @@ function SelectFilter({ onChange, options, value }) {
   );
 }
 
+function SortFilter({ isOpen, onChange, onToggle, options, value }) {
+  const selectedOption = options.find((option) => option.value === value) || options[0];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex h-10 min-w-38 items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none transition hover:bg-neutral-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+      >
+        <span className="inline-flex items-center gap-2">
+          <SortIcon />
+          {selectedOption.label}
+        </span>
+        <ChevronIcon />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl shadow-neutral-200/70">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold ${
+                option.value === value
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "text-neutral-700 hover:bg-neutral-50"
+              }`}
+            >
+              {option.label}
+              {option.value === value && <SmallCheckIcon />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const SearchIcon = () => (
   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
     <circle cx="11" cy="11" r="8" />
     <path d="m21 21-4.3-4.3" />
+  </svg>
+);
+
+const SortIcon = () => (
+  <svg className="h-4 w-4 text-neutral-500" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M4 7h12" />
+    <path d="M4 12h8" />
+    <path d="M4 17h4" />
+  </svg>
+);
+
+const ChevronIcon = () => (
+  <svg className="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
+const SmallCheckIcon = () => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M20 6 9 17l-5-5" />
   </svg>
 );
 
