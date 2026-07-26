@@ -49,9 +49,9 @@ import {
   getIdentityByProvider,
   getLinkedGmailEmail,
   getLoginMethodAction,
+  getPhoneChangeState,
   getRoleLabel,
   getStatusLabel,
-  getSubmittedPhoneNumber,
   preferenceRows,
 } from "./profileSettingsUtils";
 
@@ -324,13 +324,12 @@ export default function ProfileSettingsModule() {
       return "First name and last name are required.";
     }
 
-    const submittedPhoneNumber = getSubmittedPhoneNumber({
+    const phoneChangeState = getPhoneChangeState({
       currentPhoneNumber: profile?.phone_number || "",
       formPhoneNumber: form.phone_number,
+      normalizePhoneNumber,
     });
-    const nextPhoneNumber = submittedPhoneNumber
-      ? normalizePhoneNumber(submittedPhoneNumber)
-      : "";
+    const nextPhoneNumber = phoneChangeState.nextPhoneNumber;
 
     if (nextPhoneNumber && !isPhilippineMobileNumber(nextPhoneNumber)) {
       return "Phone number must use the 09XXXXXXXXX format.";
@@ -357,16 +356,14 @@ export default function ProfileSettingsModule() {
       return;
     }
 
-    const submittedPhoneNumber = getSubmittedPhoneNumber({
+    const phoneChangeState = getPhoneChangeState({
       currentPhoneNumber: profile?.phone_number || "",
       formPhoneNumber: form.phone_number,
+      normalizePhoneNumber,
     });
-    const nextPhoneNumber = submittedPhoneNumber
-      ? normalizePhoneNumber(submittedPhoneNumber)
-      : "";
-    const currentPhoneNumber = normalizePhoneNumber(profile?.phone_number || "");
+    const nextPhoneNumber = phoneChangeState.nextPhoneNumber;
 
-    if (nextPhoneNumber !== currentPhoneNumber) {
+    if (phoneChangeState.requiresVerification) {
       await handleStartPhoneChange(nextPhoneNumber);
       return;
     }
@@ -419,6 +416,8 @@ export default function ProfileSettingsModule() {
       });
 
       await saveEditableProfileFields(phoneVerification.phoneNumber);
+      const identities = await getUserIdentities();
+      setAuthIdentities(identities);
       setPhoneVerification(emptyPhoneVerification);
       setIsEditing(false);
       setMessage("Phone number verified and profile updated.");

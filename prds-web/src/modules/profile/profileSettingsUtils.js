@@ -107,6 +107,29 @@ export const getSubmittedPhoneNumber = ({ currentPhoneNumber = "", formPhoneNumb
   return trimmedPhoneNumber;
 };
 
+export const getPhoneChangeState = ({
+  currentPhoneNumber = "",
+  formPhoneNumber = "",
+  normalizePhoneNumber,
+}) => {
+  const normalizedCurrentPhoneNumber = currentPhoneNumber
+    ? normalizePhoneNumber(currentPhoneNumber)
+    : "";
+  const submittedPhoneNumber = getSubmittedPhoneNumber({
+    currentPhoneNumber: normalizedCurrentPhoneNumber,
+    formPhoneNumber,
+  });
+  const nextPhoneNumber = submittedPhoneNumber
+    ? normalizePhoneNumber(submittedPhoneNumber)
+    : "";
+
+  return {
+    currentPhoneNumber: normalizedCurrentPhoneNumber,
+    nextPhoneNumber,
+    requiresVerification: nextPhoneNumber !== normalizedCurrentPhoneNumber,
+  };
+};
+
 export const getGoogleIdentityEmail = (identities = []) => {
   const googleIdentity = identities.find((identity) => identity.provider === "google");
 

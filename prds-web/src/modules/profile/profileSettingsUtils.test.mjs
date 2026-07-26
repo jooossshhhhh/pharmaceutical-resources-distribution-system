@@ -7,9 +7,28 @@ import {
   getLinkedGmailEmail,
   getLoginMethodAction,
   getLoginMethodStatusLabel,
+  getPhoneChangeState,
   getReadableEmail,
   getSubmittedPhoneNumber,
 } from "./profileSettingsUtils.js";
+
+const normalizePhoneNumber = (phoneNumber) => {
+  const digitsOnly = phoneNumber.replace(/\D/g, "");
+
+  if (!digitsOnly) {
+    return "";
+  }
+
+  if (digitsOnly.startsWith("63")) {
+    return `0${digitsOnly.slice(2)}`;
+  }
+
+  if (digitsOnly.startsWith("0")) {
+    return digitsOnly;
+  }
+
+  return `0${digitsOnly}`;
+};
 
 test("uses Not connected for missing login methods", () => {
   assert.equal(getLoginMethodStatusLabel(false), "Not connected");
@@ -142,5 +161,50 @@ test("uses the edited phone number when a new value is submitted", () => {
       formPhoneNumber: "09702347186",
     }),
     "09702347186"
+  );
+});
+
+test("requires verification when adding a phone number to a profile without one", () => {
+  assert.deepEqual(
+    getPhoneChangeState({
+      currentPhoneNumber: "",
+      formPhoneNumber: "09623702834",
+      normalizePhoneNumber,
+    }),
+    {
+      currentPhoneNumber: "",
+      nextPhoneNumber: "09623702834",
+      requiresVerification: true,
+    }
+  );
+});
+
+test("does not require verification when phone is unchanged while saving profile details", () => {
+  assert.deepEqual(
+    getPhoneChangeState({
+      currentPhoneNumber: "09623702834",
+      formPhoneNumber: "0962 370 2834",
+      normalizePhoneNumber,
+    }),
+    {
+      currentPhoneNumber: "09623702834",
+      nextPhoneNumber: "09623702834",
+      requiresVerification: false,
+    }
+  );
+});
+
+test("requires verification when an existing phone number is changed", () => {
+  assert.deepEqual(
+    getPhoneChangeState({
+      currentPhoneNumber: "09623702834",
+      formPhoneNumber: "09702347186",
+      normalizePhoneNumber,
+    }),
+    {
+      currentPhoneNumber: "09623702834",
+      nextPhoneNumber: "09702347186",
+      requiresVerification: true,
+    }
   );
 });
