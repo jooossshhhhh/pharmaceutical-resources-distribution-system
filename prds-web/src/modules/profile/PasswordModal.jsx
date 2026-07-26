@@ -1,6 +1,10 @@
+import { useState } from "react";
+
 import { ModalField } from "./ProfileFields";
 
 export default function PasswordModal({ authEmail, onChange, onClose, onSend, onSubmit, phoneNumber, state }) {
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const updateState = (updates) => onChange((current) => ({ ...current, ...updates }));
 
   return (
@@ -13,7 +17,7 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
           <div>
             <h3 className="text-lg font-black text-black">Change Password</h3>
             <p className="mt-1 text-sm font-medium text-neutral-500">
-              Verify your identity before setting a new phone-login password.
+              Verify your identity with a code before setting a new password.
             </p>
           </div>
           <button
@@ -54,15 +58,17 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
               inputMode="numeric"
               maxLength={6}
             />
-            <ModalField
+            <PasswordField
+              isVisible={showNewPassword}
               label="New Password"
-              type="password"
+              onToggle={() => setShowNewPassword((current) => !current)}
               value={state.newPassword}
               onChange={(event) => updateState({ newPassword: event.target.value })}
             />
-            <ModalField
+            <PasswordField
+              isVisible={showConfirmPassword}
               label="Confirm Password"
-              type="password"
+              onToggle={() => setShowConfirmPassword((current) => !current)}
               value={state.confirmPassword}
               onChange={(event) => updateState({ confirmPassword: event.target.value })}
             />
@@ -89,12 +95,55 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
             className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
           >
             {state.step === "choose"
-              ? state.isSending ? "Sending..." : "Send Verification"
+              ? state.isSending ? "Sending..." : "Send Code"
               : state.isVerifying ? "Saving..." : "Change Password"}
           </button>
         </div>
       </form>
     </div>
+  );
+}
+
+function PasswordField({ isVisible, label, onChange, onToggle, value }) {
+  return (
+    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
+      {label}
+      <span className="relative block">
+        <input
+          type={isVisible ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          className="h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 pr-11 text-sm font-semibold normal-case tracking-normal text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-50 hover:text-neutral-700"
+          aria-label={isVisible ? "Hide password" : "Show password"}
+        >
+          <EyeIcon hidden={isVisible} />
+        </button>
+      </span>
+    </label>
+  );
+}
+
+function EyeIcon({ hidden }) {
+  if (hidden) {
+    return (
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0 0 12 14a2 2 0 0 0 1.42-.58" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 4.24A9.77 9.77 0 0 1 12 4c4.48 0 8.27 2.94 9.54 7a9.98 9.98 0 0 1-3.04 4.43M6.23 6.23A9.98 9.98 0 0 0 2.46 11c1.27 4.06 5.06 7 9.54 7a9.96 9.96 0 0 0 4.13-.89" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.46 12C3.73 7.94 7.52 5 12 5s8.27 2.94 9.54 7c-1.27 4.06-5.06 7-9.54 7s-8.27-2.94-9.54-7Z" />
+    </svg>
   );
 }
 
