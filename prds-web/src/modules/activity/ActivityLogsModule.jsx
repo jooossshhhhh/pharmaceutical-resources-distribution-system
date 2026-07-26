@@ -151,7 +151,7 @@ export default function ActivityLogsModule() {
         </p>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[250px_1fr]">
+      <div className="grid items-start gap-5 xl:grid-cols-[250px_1fr]">
         <aside className="h-fit rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h2 className="text-xs font-black uppercase tracking-[0.18em] text-neutral-500">
             Filter Logs
@@ -227,7 +227,7 @@ export default function ActivityLogsModule() {
           </button>
         </aside>
 
-        <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+        <section className="self-start overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
@@ -239,21 +239,21 @@ export default function ActivityLogsModule() {
             </p>
           </div>
 
-          <div className="max-h-[68vh] overflow-y-auto p-5">
+          <div className="max-h-[68vh] overflow-y-auto p-4">
             {isLoading ? (
-              <p className="py-12 text-center text-sm font-bold text-neutral-500">
+              <p className="py-8 text-center text-sm font-bold text-neutral-500">
                 Loading activity logs...
               </p>
             ) : filteredLogs.length === 0 ? (
-              <p className="py-12 text-center text-sm font-bold text-neutral-500">
+              <p className="py-8 text-center text-sm font-bold text-neutral-500">
                 No activity logs match the current filters.
               </p>
             ) : (
-              <div className="relative space-y-4 before:absolute before:bottom-0 before:left-2 before:top-2 before:w-px before:bg-neutral-200">
+              <div className="relative space-y-3 before:absolute before:bottom-0 before:left-2 before:top-2 before:w-px before:bg-neutral-200">
                 {filteredLogs.map((log) => (
                   <article key={log.id} className="relative pl-8">
                     <span className="absolute left-0 top-2 h-4 w-4 rounded-full border-4 border-white bg-emerald-500 shadow ring-1 ring-neutral-200" />
-                    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
