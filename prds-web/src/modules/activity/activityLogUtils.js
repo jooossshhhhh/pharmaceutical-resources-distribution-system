@@ -75,3 +75,29 @@ export const matchesActivityLogFilters = (
 
   return true;
 };
+
+export const getActivityLogPanelLabel = ({
+  category,
+  categoryOptions = activityCategories,
+  facilityId,
+  facilities = [],
+  roleFilter,
+  roleOptions = [],
+}) => {
+  const parts = [];
+  const selectedCategory = categoryOptions.find((option) => option.value === category);
+  const selectedRole = roleOptions.find((option) => option.value === roleFilter);
+  const selectedFacility = facilities.find((facility) => facility.id === facilityId);
+
+  parts.push(selectedCategory?.label || "Activity Logs");
+
+  if (selectedRole && selectedRole.value !== "ALL") {
+    parts.push(selectedRole.label);
+  }
+
+  if (selectedFacility) {
+    parts.push(selectedFacility.facility_name);
+  }
+
+  return parts.join(" - ");
+};

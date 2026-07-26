@@ -7,6 +7,7 @@ import { formatDateTime } from "../dashboard/dashboardUtils";
 import { getActivityLogData } from "./ActivityLogService";
 import {
   getAllowedActivityLogRoleFilters,
+  getActivityLogPanelLabel,
   getVisibleActivityLogs,
   matchesActivityLogFilters,
 } from "./activityLogUtils";
@@ -82,6 +83,17 @@ export default function ActivityLogsModule() {
       ["ALL", "BHW"].includes(option.value)
     );
   }, [profile?.role]);
+
+  const panelLabel = useMemo(() => {
+    return getActivityLogPanelLabel({
+      category,
+      categoryOptions: allowedCategories,
+      facilities,
+      facilityId,
+      roleFilter,
+      roleOptions: allowedRoleOptions,
+    });
+  }, [allowedCategories, allowedRoleOptions, category, facilities, facilityId, roleFilter]);
 
   const filteredLogs = useMemo(() => {
     return visibleLogs.filter((log) => {
@@ -219,7 +231,7 @@ export default function ActivityLogsModule() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
-                Global Activity Log
+                {panelLabel}
               </p>
             </div>
             <p className="text-xs font-black text-neutral-500">

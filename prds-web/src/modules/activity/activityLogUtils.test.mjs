@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getAllowedActivityLogRoleFilters,
+  getActivityLogPanelLabel,
   getVisibleActivityLogs,
   matchesActivityLogFilters,
 } from "./activityLogUtils.js";
@@ -92,5 +93,32 @@ test("matches keyword, category, self, and facility filters", () => {
       selfOnly: false,
     }),
     false
+  );
+});
+
+test("builds a panel label from the selected action category", () => {
+  assert.equal(
+    getActivityLogPanelLabel({
+      category: "inventory",
+      facilityId: "ALL",
+      roleFilter: "ALL",
+    }),
+    "Inventory Updates"
+  );
+});
+
+test("adds role and facility filters to the panel label", () => {
+  assert.equal(
+    getActivityLogPanelLabel({
+      category: "profile",
+      facilityId: "cho",
+      facilities: [{ id: "cho", facility_name: "City Of Naga Health Office" }],
+      roleFilter: "PHARMA_I",
+      roleOptions: [
+        { value: "ALL", label: "All visible roles" },
+        { value: "PHARMA_I", label: "Pharmacist I" },
+      ],
+    }),
+    "Profile Changes - Pharmacist I - City Of Naga Health Office"
   );
 });
