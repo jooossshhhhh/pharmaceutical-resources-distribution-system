@@ -69,7 +69,7 @@ export default function BhwRequestsModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [trackedItem, setTrackedItem] = useState(null);
+  const [trackedRequest, setTrackedRequest] = useState(null);
   const [remarks, setRemarks] = useState("");
   const [requestItems, setRequestItems] = useState([{ ...emptyItem }]);
 
@@ -280,7 +280,7 @@ export default function BhwRequestsModule() {
                 filteredRequests.map((request) => (
                   <BhwRequestRow
                     key={request.id}
-                    onTrackItem={(item) => setTrackedItem({ item, request })}
+                    onTrackRequest={() => setTrackedRequest(request)}
                     request={request}
                   />
                 ))
@@ -308,11 +308,10 @@ export default function BhwRequestsModule() {
         />
       )}
 
-      {trackedItem && (
-        <MedicineTrackingModal
-          item={trackedItem.item}
-          onClose={() => setTrackedItem(null)}
-          request={trackedItem.request}
+      {trackedRequest && (
+        <RequestTrackingModal
+          onClose={() => setTrackedRequest(null)}
+          request={trackedRequest}
           stockMap={stockMap}
         />
       )}
@@ -340,12 +339,22 @@ function MetricCard({ active, label, note, onClick, value }) {
   );
 }
 
-function BhwRequestRow({ onTrackItem, request }) {
+function BhwRequestRow({ onTrackRequest, request }) {
   const totalQuantity = getRequestTotalQuantity(request);
   const items = request.items || [];
 
   return (
-    <tr className="align-top text-sm hover:bg-neutral-50">
+    <tr
+      className="group cursor-pointer align-top text-sm transition hover:bg-emerald-50/50"
+      onClick={onTrackRequest}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onTrackRequest();
+        }
+      }}
+      tabIndex={0}
+    >
       <td className="px-4 py-4 text-xs font-semibold leading-5 text-neutral-600">
         {formatRequestDate(request.request_date)}
       </td>
@@ -360,14 +369,12 @@ function BhwRequestRow({ onTrackItem, request }) {
         ) : (
           <div className="grid gap-1.5">
             {items.map((item) => (
-              <button
+              <span
                 key={item.id}
-                type="button"
-                onClick={() => onTrackItem(item)}
-                className="w-fit text-left text-sm font-black text-black underline-offset-4 hover:text-emerald-700 hover:underline"
+                className="w-fit text-left text-sm font-black text-black underline-offset-4 group-hover:text-emerald-700"
               >
                 {getItemLabel(item)}
-              </button>
+              </span>
             ))}
           </div>
         )}
@@ -387,12 +394,17 @@ function BhwRequestRow({ onTrackItem, request }) {
   );
 }
 
-function MedicineTrackingModal({ item, onClose, request, stockMap }) {
+function RequestTrackingModal({ onClose, request, stockMap }) {
+  const items = request.items || [];
+  const primaryItem = items[0] || null;
   const steps = getRequestTrackingSteps(request);
-  const stockStatus = getItemStockStatus(item, request.facility_id, stockMap);
+  const stockStatus = primaryItem
+    ? getItemStockStatus(primaryItem, request.facility_id, stockMap)
+    : { label: "No items", tone: "text-neutral-500" };
   const approverName = request.approver
     ? `${request.approver.first_name || ""} ${request.approver.last_name || ""}`.trim()
     : "CHO staff";
+  const totalQuantity = getRequestTotalQuantity(request);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6">
@@ -403,9 +415,9 @@ function MedicineTrackingModal({ item, onClose, request, stockMap }) {
               <BoxIcon />
             </span>
             <div>
-              <h2 className="text-base font-black text-black">{getItemLabel(item)}</h2>
+              <h2 className="text-base font-black text-black">{getRequestNumber(request.id)}</h2>
               <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-neutral-400">
-                {getRequestNumber(request.id)} / {request.facility?.facility_code || "Facility"}
+                {request.facility?.facility_code || "Facility"} / {items.length} item{items.length === 1 ? "" : "s"}
               </p>
             </div>
           </div>
@@ -435,19 +447,19 @@ function MedicineTrackingModal({ item, onClose, request, stockMap }) {
           <section className="mt-5 grid gap-3 md:grid-cols-3">
             <TrackingStat
               label="Requested"
-              value={Number(item.quantity || 0).toLocaleString()}
-              detail={`${item.medicine?.unit_of_measure || "units"} requested`}
+              value={totalQuantity.toLocaleString()}
+              detail="Total requested units"
             />
             <TrackingStat
               active
               label={requestStatusLabels[request.status] || request.status}
-              value={request.status === "APPROVED" || request.status === "COMPLETED" ? Number(item.quantity || 0).toLocaleString() : "-"}
+              value={request.status === "APPROVED" || request.status === "COMPLETED" ? totalQuantity.toLocaleString() : "-"}
               detail={request.approved_at ? `Reviewed by ${approverName}` : "Awaiting CHO"}
             />
             <TrackingStat
-              label="Stock Status"
+              label={primaryItem ? "First Item Stock" : "Item Status"}
               value={stockStatus.label}
-              detail={item.medicine?.unit_of_measure || "Facility inventory"}
+              detail={primaryItem?.medicine?.unit_of_measure || "Request items"}
             />
           </section>
 
@@ -459,7 +471,7 @@ function MedicineTrackingModal({ item, onClose, request, stockMap }) {
               <div>
                 <h3 className="text-sm font-black">Request Confirmation</h3>
                 <p className="mt-1 text-xs font-semibold leading-5 text-slate-300">
-                  Track this medicine line against the request record. Final receipt is
+                  Track this request against the database record. Final receipt is
                   available after CHO marks the request as completed.
                 </p>
               </div>
@@ -470,10 +482,36 @@ function MedicineTrackingModal({ item, onClose, request, stockMap }) {
           </section>
 
           <section className="mt-5 grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
-            <TrackingDetail label="Medicine" value={item.medicine?.generic_name || "No generic name"} />
-            <TrackingDetail label="Brand" value={item.medicine?.brand_name || "No brand name"} />
-            <TrackingDetail label="Dosage" value={item.medicine?.dosage || "No dosage"} />
-            <TrackingDetail label="Unit" value={item.medicine?.unit_of_measure || "No unit"} />
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-neutral-500">
+                Requested Items
+              </p>
+              <div className="mt-3 grid gap-2">
+                {items.length === 0 ? (
+                  <p className="rounded-lg bg-white px-3 py-3 text-sm font-bold text-neutral-500">
+                    No medicine items recorded for this request.
+                  </p>
+                ) : (
+                  items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="grid gap-1 rounded-lg bg-white px-3 py-3 md:grid-cols-[1fr_auto]"
+                    >
+                      <div>
+                        <p className="font-black text-neutral-900">{getItemLabel(item)}</p>
+                        <p className="text-xs font-semibold text-neutral-500">
+                          {item.medicine?.generic_name || "No generic name"} /{" "}
+                          {item.medicine?.unit_of_measure || "No unit"}
+                        </p>
+                      </div>
+                      <p className="text-sm font-black text-neutral-800">
+                        {Number(item.quantity || 0).toLocaleString()} units
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
             <TrackingDetail label="Facility" value={request.facility?.facility_name || "No facility"} />
             <TrackingDetail label="Request Date" value={formatRequestDate(request.request_date)} />
           </section>
