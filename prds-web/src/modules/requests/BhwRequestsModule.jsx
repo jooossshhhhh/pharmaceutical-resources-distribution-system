@@ -8,14 +8,17 @@ import { createBhwMedicineRequest, getBhwRequestsData } from "./RequestsService"
 import {
   formatRequestDate,
   getCompletedRequestQuantity,
+  getDuplicateRequestMedicineIds,
   getFacilityRequestRating,
   getItemStockStatus,
   getItemLabel,
   getRequestNumber,
   getRequestSummary,
   getRequestTotalQuantity,
+  getRequestTrackingSteps,
   getStockMap,
   matchesRequestFilters,
+  normalizeRequestErrorMessage,
   requestStatusLabels,
   requestStatusTones,
   sortRequests,
@@ -66,6 +69,7 @@ export default function BhwRequestsModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [trackedItem, setTrackedItem] = useState(null);
   const [remarks, setRemarks] = useState("");
   const [requestItems, setRequestItems] = useState([{ ...emptyItem }]);
 
@@ -151,6 +155,22 @@ export default function BhwRequestsModule() {
       return;
     }
 
+    const duplicateMedicineIds = getDuplicateRequestMedicineIds(validItems);
+
+    if (duplicateMedicineIds.length > 0) {
+      const duplicateNames = duplicateMedicineIds.map((medicineId) => {
+        const duplicateMedicine = medicines.find((medicine) => medicine.id === medicineId);
+        return duplicateMedicine
+          ? `${duplicateMedicine.brand_name || duplicateMedicine.generic_name} ${duplicateMedicine.dosage || ""}`.trim()
+          : "selected medicine";
+      });
+
+      setError(
+        `Each medicine can appear only once per request. Update the quantity for ${duplicateNames.join(", ")} instead.`
+      );
+      return;
+    }
+
     setIsSaving(true);
     setError("");
 
@@ -165,7 +185,7 @@ export default function BhwRequestsModule() {
       resetForm();
       await loadRequests();
     } catch (saveError) {
-      setError(saveError.message);
+      setError(normalizeRequestErrorMessage(saveError.message));
     } finally {
       setIsSaving(false);
     }
@@ -258,7 +278,11 @@ export default function BhwRequestsModule() {
                 </tr>
               ) : (
                 filteredRequests.map((request) => (
-                  <BhwRequestRow key={request.id} request={request} />
+                  <BhwRequestRow
+                    key={request.id}
+                    onTrackItem={(item) => setTrackedItem({ item, request })}
+                    request={request}
+                  />
                 ))
               )}
             </tbody>
@@ -281,6 +305,15 @@ export default function BhwRequestsModule() {
           setRequestItems={setRequestItems}
           stockMap={stockMap}
           facilityId={profileFacilityId}
+        />
+      )}
+
+      {trackedItem && (
+        <MedicineTrackingModal
+          item={trackedItem.item}
+          onClose={() => setTrackedItem(null)}
+          request={trackedItem.request}
+          stockMap={stockMap}
         />
       )}
     </AdminShell>
@@ -307,9 +340,9 @@ function MetricCard({ active, label, note, onClick, value }) {
   );
 }
 
-function BhwRequestRow({ request }) {
+function BhwRequestRow({ onTrackItem, request }) {
   const totalQuantity = getRequestTotalQuantity(request);
-  const firstItem = request.items?.[0];
+  const items = request.items || [];
 
   return (
     <tr className="align-top text-sm hover:bg-neutral-50">
@@ -322,13 +355,21 @@ function BhwRequestRow({ request }) {
         </span>
       </td>
       <td className="px-4 py-4">
-        <p className="text-sm font-black text-black">
-          {firstItem ? getItemLabel(firstItem) : "No items"}
-        </p>
-        {(request.items || []).length > 1 && (
-          <p className="mt-1 text-xs font-semibold text-neutral-500">
-            +{request.items.length - 1} more items
-          </p>
+        {items.length === 0 ? (
+          <p className="text-sm font-black text-black">No items</p>
+        ) : (
+          <div className="grid gap-1.5">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onTrackItem(item)}
+                className="w-fit text-left text-sm font-black text-black underline-offset-4 hover:text-emerald-700 hover:underline"
+              >
+                {getItemLabel(item)}
+              </button>
+            ))}
+          </div>
         )}
       </td>
       <td className="px-4 py-4 text-xs font-black text-neutral-600">
@@ -343,6 +384,157 @@ function BhwRequestRow({ request }) {
         {request.remarks || "No admin notes yet."}
       </td>
     </tr>
+  );
+}
+
+function MedicineTrackingModal({ item, onClose, request, stockMap }) {
+  const steps = getRequestTrackingSteps(request);
+  const stockStatus = getItemStockStatus(item, request.facility_id, stockMap);
+  const approverName = request.approver
+    ? `${request.approver.first_name || ""} ${request.approver.last_name || ""}`.trim()
+    : "CHO staff";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6">
+      <article className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
+          <div className="flex gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+              <BoxIcon />
+            </span>
+            <div>
+              <h2 className="text-base font-black text-black">{getItemLabel(item)}</h2>
+              <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-neutral-400">
+                {getRequestNumber(request.id)} / {request.facility?.facility_code || "Facility"}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-800">
+            <CloseIcon />
+          </button>
+        </header>
+
+        <div className="prds-modal-scrollbar max-h-[72vh] overflow-y-auto px-5 py-4">
+          <section>
+            <h3 className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
+              Medicine Request Tracking
+            </h3>
+            <div className="mt-4 grid grid-cols-4 gap-2">
+              {steps.map((step, index) => (
+                <TrackingStep
+                  key={step.key}
+                  detail={step.detail}
+                  isLast={index === steps.length - 1}
+                  label={step.label}
+                  state={step.state}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-5 grid gap-3 md:grid-cols-3">
+            <TrackingStat
+              label="Requested"
+              value={Number(item.quantity || 0).toLocaleString()}
+              detail={`${item.medicine?.unit_of_measure || "units"} requested`}
+            />
+            <TrackingStat
+              active
+              label={requestStatusLabels[request.status] || request.status}
+              value={request.status === "APPROVED" || request.status === "COMPLETED" ? Number(item.quantity || 0).toLocaleString() : "-"}
+              detail={request.approved_at ? `Reviewed by ${approverName}` : "Awaiting CHO"}
+            />
+            <TrackingStat
+              label="Stock Status"
+              value={stockStatus.label}
+              detail={item.medicine?.unit_of_measure || "Facility inventory"}
+            />
+          </section>
+
+          <section className="mt-5 rounded-xl bg-slate-950 p-4 text-white">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 text-blue-300">
+                <ShieldIcon />
+              </span>
+              <div>
+                <h3 className="text-sm font-black">Request Confirmation</h3>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-300">
+                  Track this medicine line against the request record. Final receipt is
+                  available after CHO marks the request as completed.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-300">
+              {request.remarks || "No CHO remarks recorded yet."}
+            </div>
+          </section>
+
+          <section className="mt-5 grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+            <TrackingDetail label="Medicine" value={item.medicine?.generic_name || "No generic name"} />
+            <TrackingDetail label="Brand" value={item.medicine?.brand_name || "No brand name"} />
+            <TrackingDetail label="Dosage" value={item.medicine?.dosage || "No dosage"} />
+            <TrackingDetail label="Unit" value={item.medicine?.unit_of_measure || "No unit"} />
+            <TrackingDetail label="Facility" value={request.facility?.facility_name || "No facility"} />
+            <TrackingDetail label="Request Date" value={formatRequestDate(request.request_date)} />
+          </section>
+        </div>
+
+        <footer className="flex items-center justify-between border-t border-neutral-100 px-5 py-4">
+          <p className="text-xs font-semibold text-emerald-700">Live tracking active</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg bg-neutral-50 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-100"
+          >
+            Close
+          </button>
+        </footer>
+      </article>
+    </div>
+  );
+}
+
+function TrackingStep({ detail, isLast, label, state }) {
+  const isComplete = state === "complete";
+  const isCurrent = state === "current";
+  const isRejected = state === "rejected";
+  const dotClass = isRejected
+    ? "bg-red-500 text-white"
+    : isComplete || isCurrent
+      ? "bg-blue-600 text-white"
+      : "bg-neutral-200 text-neutral-400";
+  const lineClass = isComplete ? "bg-blue-500" : "bg-neutral-200";
+
+  return (
+    <div className="relative text-center">
+      {!isLast && (
+        <span className={`absolute left-1/2 top-4 h-0.5 w-full ${lineClass}`} aria-hidden="true" />
+      )}
+      <span className={`relative mx-auto flex h-8 w-8 items-center justify-center rounded-full ${dotClass}`}>
+        <CheckIcon />
+      </span>
+      <p className="mt-2 text-[11px] font-black text-neutral-700">{label}</p>
+      <p className="text-[10px] font-semibold text-neutral-400">{detail}</p>
+    </div>
+  );
+}
+
+function TrackingStat({ active = false, detail, label, value }) {
+  return (
+    <div className={`rounded-lg border p-4 ${active ? "border-blue-200 bg-blue-50" : "border-neutral-200 bg-neutral-50"}`}>
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">{label}</p>
+      <p className="mt-2 text-xl font-black text-black">{value}</p>
+      <p className="mt-1 text-[11px] font-semibold text-neutral-500">{detail}</p>
+    </div>
+  );
+}
+
+function TrackingDetail({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-xs font-black uppercase tracking-wide text-neutral-500">{label}</span>
+      <span className="text-right font-bold text-neutral-800">{value}</span>
+    </div>
   );
 }
 
@@ -590,6 +782,26 @@ const InfoIcon = () => (
     <circle cx="12" cy="12" r="10" />
     <path d="M12 16v-4" />
     <path d="M12 8h.01" />
+  </svg>
+);
+
+const BoxIcon = () => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="m21 8-9-5-9 5 9 5 9-5Z" />
+    <path d="M3 8v8l9 5 9-5V8" />
+    <path d="M12 13v8" />
+  </svg>
+);
+
+const ShieldIcon = () => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="m5 12 4 4L19 6" />
   </svg>
 );
 

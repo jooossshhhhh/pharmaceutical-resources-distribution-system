@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getDuplicateRequestMedicineIds,
   getItemStockStatus,
   getCompletedRequestQuantity,
   getFacilityRequestRating,
   getRequestNumber,
   getRequestPriority,
   getRequestSummary,
+  getRequestTrackingSteps,
   getStockMap,
   matchesRequestFilters,
+  normalizeRequestErrorMessage,
   sortRequests,
 } from "./requestUtils.js";
 
@@ -118,4 +121,78 @@ test("calculates stock status from facility inventory", () => {
     getItemStockStatus(requests[0].items[0], "facility-a", stockMap),
     { label: "250 available", tone: "text-orange-600" }
   );
+});
+
+test("detects duplicate medicines before request item insert", () => {
+  assert.deepEqual(
+    getDuplicateRequestMedicineIds([
+      { medicine_id: "med-a", quantity: 10 },
+      { medicine_id: "med-b", quantity: 20 },
+      { medicine_id: "med-a", quantity: 30 },
+      { medicine_id: "", quantity: 40 },
+    ]),
+    ["med-a"]
+  );
+
+  assert.deepEqual(
+    getDuplicateRequestMedicineIds([
+      { medicine_id: "med-a", quantity: 10 },
+      { medicine_id: "med-b", quantity: 20 },
+    ]),
+    []
+  );
+});
+
+test("derives BHW request tracking steps from request status", () => {
+  const steps = getRequestTrackingSteps({
+    ...requests[1],
+    approved_at: "2026-07-24T04:00:00.000Z",
+  });
+
+  assert.deepEqual(
+    steps.map((step) => [step.key, step.state]),
+    [
+      ["requested", "complete"],
+      ["approved", "complete"],
+      ["in_transit", "current"],
+      ["received", "pending"],
+    ]
+  );
+
+  assert.deepEqual(
+    getRequestTrackingSteps({
+      ...requests[0],
+      status: "REJECTED",
+    }).map((step) => [step.key, step.state]),
+    [
+      ["requested", "complete"],
+      ["approved", "rejected"],
+      ["in_transit", "pending"],
+      ["received", "pending"],
+    ]
+  );
+
+  assert.deepEqual(
+    getRequestTrackingSteps({
+      ...requests[2],
+      approved_at: "2026-07-25T04:00:00.000Z",
+    }).map((step) => [step.key, step.state]),
+    [
+      ["requested", "complete"],
+      ["approved", "complete"],
+      ["in_transit", "complete"],
+      ["received", "complete"],
+    ]
+  );
+});
+
+test("normalizes request database errors for users", () => {
+  assert.equal(
+    normalizeRequestErrorMessage(
+      'duplicate key value violates unique constraint "request_item_unique_medicine"'
+    ),
+    "Each medicine can appear only once per request. Update the existing quantity instead."
+  );
+
+  assert.equal(normalizeRequestErrorMessage("Some other failure"), "Some other failure");
 });

@@ -122,6 +122,75 @@ export const getItemStockStatus = (item, facilityId, stockMap) => {
   return { label: "In stock", tone: "text-blue-600" };
 };
 
+export const getDuplicateRequestMedicineIds = (items = []) => {
+  const seenMedicineIds = new Set();
+  const duplicateMedicineIds = new Set();
+
+  items.forEach((item) => {
+    if (!item.medicine_id) {
+      return;
+    }
+
+    if (seenMedicineIds.has(item.medicine_id)) {
+      duplicateMedicineIds.add(item.medicine_id);
+      return;
+    }
+
+    seenMedicineIds.add(item.medicine_id);
+  });
+
+  return [...duplicateMedicineIds];
+};
+
+export const getRequestTrackingSteps = (request = {}) => {
+  const status = request.status || "PENDING";
+  const approvedLikeStatuses = ["APPROVED", "COMPLETED"];
+
+  return [
+    {
+      detail: formatRequestDate(request.request_date),
+      key: "requested",
+      label: "Requested",
+      state: "complete",
+    },
+    {
+      detail: request.approved_at ? formatRequestDate(request.approved_at) : "CHO review",
+      key: "approved",
+      label: "Approved",
+      state: approvedLikeStatuses.includes(status)
+        ? "complete"
+        : status === "REJECTED"
+          ? "rejected"
+          : "current",
+    },
+    {
+      detail: status === "COMPLETED" ? "Fulfilled" : "For release",
+      key: "in_transit",
+      label: "In-Transit",
+      state:
+        status === "COMPLETED"
+          ? "complete"
+          : status === "APPROVED"
+            ? "current"
+            : "pending",
+    },
+    {
+      detail: status === "COMPLETED" ? "Received" : "Pending",
+      key: "received",
+      label: "Received",
+      state: status === "COMPLETED" ? "complete" : "pending",
+    },
+  ];
+};
+
+export const normalizeRequestErrorMessage = (message = "") => {
+  if (message.includes("request_item_unique_medicine")) {
+    return "Each medicine can appear only once per request. Update the existing quantity instead.";
+  }
+
+  return message;
+};
+
 export const getRequestSummary = (requests = []) => {
   return requests.reduce(
     (summary, request) => {
