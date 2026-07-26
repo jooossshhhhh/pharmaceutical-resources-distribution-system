@@ -5,6 +5,30 @@ export const activityCategories = [
   { value: "profile", label: "Profile Changes", adminOnly: true },
 ];
 
+export const activityDateModes = [
+  { value: "all", label: "All Dates" },
+  { value: "specific", label: "Specific Date" },
+  { value: "range", label: "Date Range" },
+];
+
+const getLocalDateString = (dateValue) => {
+  if (!dateValue) {
+    return "";
+  }
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
 export const getAllowedActivityLogRoleFilters = (role) => {
   return activityCategories.filter((filter) => {
     return !filter.adminOnly || role === "PHARMA_II";
@@ -31,7 +55,17 @@ export const getVisibleActivityLogs = (logs = [], profile) => {
 
 export const matchesActivityLogFilters = (
   log,
-  { category, currentUserId, facilityId, keyword, selfOnly }
+  {
+    category,
+    currentUserId,
+    dateMode = "all",
+    endDate = "",
+    facilityId,
+    keyword,
+    selfOnly,
+    specificDate = "",
+    startDate = "",
+  }
 ) => {
   const normalizedKeyword = keyword.trim().toLowerCase();
   const searchableText = [
@@ -73,6 +107,40 @@ export const matchesActivityLogFilters = (
     return false;
   }
 
+  if (!matchesActivityLogDateFilter(log, {
+    dateMode,
+    endDate,
+    specificDate,
+    startDate,
+  })) {
+    return false;
+  }
+
+  return true;
+};
+
+export const matchesActivityLogDateFilter = (
+  log,
+  { dateMode = "all", endDate = "", specificDate = "", startDate = "" }
+) => {
+  if (dateMode === "all") {
+    return true;
+  }
+
+  const logDate = getLocalDateString(log.created_at);
+
+  if (!logDate) {
+    return false;
+  }
+
+  if (dateMode === "specific") {
+    return !specificDate || logDate === specificDate;
+  }
+
+  if (dateMode === "range") {
+    return (!startDate || logDate >= startDate) && (!endDate || logDate <= endDate);
+  }
+
   return true;
 };
 
@@ -81,8 +149,12 @@ export const getActivityLogPanelLabel = ({
   categoryOptions = activityCategories,
   facilityId,
   facilities = [],
+  dateMode = "all",
+  endDate = "",
   roleFilter,
   roleOptions = [],
+  specificDate = "",
+  startDate = "",
 }) => {
   const parts = [];
   const selectedCategory = categoryOptions.find((option) => option.value === category);
@@ -97,6 +169,14 @@ export const getActivityLogPanelLabel = ({
 
   if (selectedFacility) {
     parts.push(selectedFacility.facility_name);
+  }
+
+  if (dateMode === "specific" && specificDate) {
+    parts.push(specificDate);
+  }
+
+  if (dateMode === "range" && (startDate || endDate)) {
+    parts.push(`${startDate || "Start"} to ${endDate || "Today"}`);
   }
 
   return parts.join(" - ");

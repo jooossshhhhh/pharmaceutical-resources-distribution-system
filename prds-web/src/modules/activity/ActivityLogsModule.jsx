@@ -6,6 +6,7 @@ import { logoutUser } from "../../features/auth/AuthService";
 import { formatDateTime } from "../dashboard/dashboardUtils";
 import { getActivityLogData } from "./ActivityLogService";
 import {
+  activityDateModes,
   getAllowedActivityLogRoleFilters,
   getActivityLogPanelLabel,
   getVisibleActivityLogs,
@@ -53,8 +54,12 @@ export default function ActivityLogsModule() {
   const [facilities, setFacilities] = useState([]);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("all");
+  const [dateMode, setDateMode] = useState("all");
+  const [endDate, setEndDate] = useState("");
   const [facilityId, setFacilityId] = useState("ALL");
   const [roleFilter, setRoleFilter] = useState("ALL");
+  const [specificDate, setSpecificDate] = useState("");
+  const [startDate, setStartDate] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -88,12 +93,27 @@ export default function ActivityLogsModule() {
     return getActivityLogPanelLabel({
       category,
       categoryOptions: allowedCategories,
+      dateMode,
+      endDate,
       facilities,
       facilityId,
       roleFilter,
       roleOptions: allowedRoleOptions,
+      specificDate,
+      startDate,
     });
-  }, [allowedCategories, allowedRoleOptions, category, facilities, facilityId, roleFilter]);
+  }, [
+    allowedCategories,
+    allowedRoleOptions,
+    category,
+    dateMode,
+    endDate,
+    facilities,
+    facilityId,
+    roleFilter,
+    specificDate,
+    startDate,
+  ]);
 
   const filteredLogs = useMemo(() => {
     return visibleLogs.filter((log) => {
@@ -102,13 +122,28 @@ export default function ActivityLogsModule() {
         matchesActivityLogFilters(log, {
           category,
           currentUserId: profile?.id,
+          dateMode,
+          endDate,
           facilityId,
           keyword,
           selfOnly: false,
+          specificDate,
+          startDate,
         })
       );
     });
-  }, [category, facilityId, keyword, profile?.id, roleFilter, visibleLogs]);
+  }, [
+    category,
+    dateMode,
+    endDate,
+    facilityId,
+    keyword,
+    profile?.id,
+    roleFilter,
+    specificDate,
+    startDate,
+    visibleLogs,
+  ]);
 
   const loadLogs = async () => {
     setIsLoading(true);
@@ -203,13 +238,47 @@ export default function ActivityLogsModule() {
             ]}
           />
 
+          <SelectField
+            label="Date Filter"
+            value={dateMode}
+            onChange={setDateMode}
+            options={activityDateModes}
+          />
+
+          {dateMode === "specific" && (
+            <DateField
+              label="Select Date"
+              value={specificDate}
+              onChange={setSpecificDate}
+            />
+          )}
+
+          {dateMode === "range" && (
+            <div className="grid gap-3">
+              <DateField
+                label="Start Date"
+                value={startDate}
+                onChange={setStartDate}
+              />
+              <DateField
+                label="End Date"
+                value={endDate}
+                onChange={setEndDate}
+              />
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => {
               setKeyword("");
               setCategory("all");
+              setDateMode("all");
+              setEndDate("");
               setFacilityId("ALL");
               setRoleFilter("ALL");
+              setSpecificDate("");
+              setStartDate("");
             }}
             className="mt-5 h-10 w-full rounded-lg bg-black text-sm font-black text-white hover:bg-neutral-800"
           >
@@ -301,6 +370,20 @@ function SelectField({ label, value, onChange, options }) {
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+function DateField({ label, value, onChange }) {
+  return (
+    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
+      {label}
+      <input
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+      />
     </label>
   );
 }
