@@ -40,6 +40,24 @@ export const sendPhoneOtp = async (
   return data;
 };
 
+export const sendEmailOtp = async (
+  email,
+  { shouldCreateUser = false } = {}
+) => {
+  const { data, error } = await supabaseAuth.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
 export const signUpWithPhonePassword = async ({
   phoneNumber,
   password,
@@ -80,6 +98,23 @@ export const verifyPhoneOtp = async ({
     phone: toPhilippineE164PhoneNumber(phoneNumber),
     token: verificationCode,
     type: "sms",
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
+export const verifyEmailOtp = async ({
+  email,
+  verificationCode,
+}) => {
+  const { data, error } = await supabaseAuth.auth.verifyOtp({
+    email,
+    token: verificationCode,
+    type: "email",
   });
 
   if (error) {

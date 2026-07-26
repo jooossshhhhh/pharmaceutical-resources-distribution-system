@@ -1,7 +1,39 @@
 import { supabase } from "../../services/supabase";
 
 const PROFILE_COLUMNS =
-  "id, first_name, last_name, email, phone_number, role, facility_id, status";
+  `
+    id,
+    first_name,
+    last_name,
+    email,
+    phone_number,
+    role,
+    facility_id,
+    status,
+    facility:facilities(
+      id,
+      facility_name,
+      facility_code,
+      facility_type,
+      address,
+      status
+    )
+  `;
+
+const normalizeProfile = (profile) => {
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    ...profile,
+    facility_name: profile.facility?.facility_name || "",
+    facility_code: profile.facility?.facility_code || "",
+    facility_type: profile.facility?.facility_type || "",
+    facility_address: profile.facility?.address || "",
+    facility_status: profile.facility?.status || "",
+  };
+};
 
 export const getProfileById = async (profileId) => {
   if (!profileId) {
@@ -18,7 +50,7 @@ export const getProfileById = async (profileId) => {
     throw error;
   }
 
-  return data;
+  return normalizeProfile(data);
 };
 
 export const isProfileRegistrationComplete = (profile) => {
@@ -58,7 +90,7 @@ export const createPhoneProfile = async ({
     throw error;
   }
 
-  return data;
+  return normalizeProfile(data);
 };
 
 export const createGoogleProfile = async ({
@@ -88,6 +120,96 @@ export const createGoogleProfile = async ({
     throw error;
   }
 
+  return normalizeProfile(data);
+};
+
+export const updateOwnProfileContact = async ({
+  email,
+  firstName,
+  lastName,
+  phoneNumber,
+}) => {
+  const { error } = await supabase.rpc("update_own_profile_contact", {
+    p_email: email || null,
+    p_first_name: firstName,
+    p_last_name: lastName,
+    p_phone_number: phoneNumber || null,
+  });
+
+  if (error) {
+    throw error;
+  }
+};
+
+export const createFacilityChangeRequest = async ({
+  currentFacilityId,
+  profileId,
+  reason,
+  requestedFacilityId,
+}) => {
+  const { data, error } = await supabase
+    .from("profile_facility_change_requests")
+    .insert({
+      profile_id: profileId,
+      current_facility_id: currentFacilityId || null,
+      requested_facility_id: requestedFacilityId,
+      reason: reason?.trim() || null,
+      status: "PENDING",
+    })
+    .select(
+      `
+        id,
+        profile_id,
+        current_facility_id,
+        requested_facility_id,
+        reason,
+        status,
+        created_at,
+        requested_facility:facilities!profile_facility_change_requests_requested_facility_id_fkey(
+          facility_name,
+          facility_code
+        )
+      `
+    )
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+};
+
+export const getOwnPendingFacilityChangeRequest = async (profileId) => {
+  if (!profileId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("profile_facility_change_requests")
+    .select(
+      `
+        id,
+        profile_id,
+        current_facility_id,
+        requested_facility_id,
+        reason,
+        status,
+        created_at,
+        requested_facility:facilities!profile_facility_change_requests_requested_facility_id_fkey(
+          facility_name,
+          facility_code
+        )
+      `
+    )
+    .eq("profile_id", profileId)
+    .eq("status", "PENDING")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
   return data;
 };
 
@@ -99,18 +221,17 @@ export const getSupabaseProfile = async (supabaseUser) => {
       supabaseUser?.email &&
       existingProfile.email !== supabaseUser.email
     ) {
-      const { data, error } = await supabase
-        .from("profiles")
-        .update({
+      try {
+        await updateOwnProfileContact({
           email: supabaseUser.email,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", supabaseUser.id)
-        .select(PROFILE_COLUMNS)
-        .single();
+          firstName: existingProfile.first_name,
+          lastName: existingProfile.last_name,
+          phoneNumber: existingProfile.phone_number,
+        });
 
-      if (!error) {
-        return data;
+        return await getProfileById(supabaseUser.id);
+      } catch {
+        return existingProfile;
       }
     }
 
