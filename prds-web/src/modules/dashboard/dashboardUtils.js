@@ -1,8 +1,10 @@
 export const emptyStats = {
   inventoryItems: 0,
+  inventoryAlerts: 0,
   totalQuantity: 0,
   lowStock: 0,
   expiring: 0,
+  pendingApprovals: 0,
   pendingRequests: 0,
   inboundTransfers: 0,
 };

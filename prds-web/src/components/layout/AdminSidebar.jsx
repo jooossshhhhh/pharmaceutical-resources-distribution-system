@@ -101,7 +101,7 @@ const navItems = [
   { label: "Facilities", path: "/facilities" },
   { label: "Patients" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
-  { label: "Forecasting" },
+  { label: "Forecasting", path: "/forecasting" },
   { label: "Activity Logs", path: "/activity-logs" },
   { label: "Notifications", path: "/notifications" },
 ];

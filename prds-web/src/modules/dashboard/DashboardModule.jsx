@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
+import ForecastDemandBars from "./components/ForecastDemandBars";
+import ForecastMapPreview from "./components/ForecastMapPreview";
 import InventoryFlowChart from "./components/InventoryFlowChart";
 import Panel from "./components/Panel";
 import RequestStatusChart from "./components/RequestStatusChart";
@@ -95,7 +98,10 @@ const formatRequestStatus = (status) => {
 
 export default function DashboardModule() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState(emptyStats);
+  const [facilities, setFacilities] = useState([]);
+  const [forecastRows, setForecastRows] = useState([]);
   const [recentRequests, setRecentRequests] = useState(defaultRecentRequests);
   const [lowStockRows, setLowStockRows] = useState([]);
   const [requestStatus, setRequestStatus] = useState(defaultRequestStatus);
@@ -104,6 +110,14 @@ export default function DashboardModule() {
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const roleLabel = roleLabels[profile?.role] || "Barangay Health Worker";
+  const forecastTotal = useMemo(
+    () =>
+      forecastRows.reduce(
+        (sum, row) => sum + Number(row.predicted_quantity || 0),
+        0
+      ),
+    [forecastRows]
+  );
 
   const loadDashboard = async () => {
     setIsLoading(true);
@@ -115,8 +129,12 @@ export default function DashboardModule() {
         lowStockResult,
         pendingRequestsResult,
         facilitiesResult,
+        facilityRowsResult,
+        inventoryAlertsResult,
         patientsResult,
         transfersResult,
+        forecastResult,
+        pendingApprovalsResult,
         requestRowsResult,
         recentRequestsResult,
       ] = await Promise.all([
@@ -130,11 +148,28 @@ export default function DashboardModule() {
           .select("id", { count: "exact", head: true })
           .eq("status", "PENDING"),
         supabase.from("facilities").select("id", { count: "exact", head: true }).eq("status", "ACTIVE"),
+        supabase
+          .from("facilities")
+          .select("id, facility_name, facility_code, facility_type, address, status")
+          .eq("status", "ACTIVE")
+          .order("facility_name", { ascending: true }),
+        supabase
+          .from("inventory")
+          .select("id, quantity, threshold"),
         supabase.from("patients").select("id", { count: "exact", head: true }),
         supabase
           .from("stock_transfers")
           .select("id", { count: "exact", head: true })
           .eq("status", "COMPLETED"),
+        supabase
+          .from("forecasting")
+          .select("id, predicted_quantity, forecast_month, facility_id")
+          .order("forecast_month", { ascending: false })
+          .limit(24),
+        supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "PENDING"),
         supabase.from("medicine_requests").select("id, status"),
         supabase
           .from("medicine_requests")
@@ -157,8 +192,12 @@ export default function DashboardModule() {
         lowStockResult,
         pendingRequestsResult,
         facilitiesResult,
+        facilityRowsResult,
+        inventoryAlertsResult,
         patientsResult,
         transfersResult,
+        forecastResult,
+        pendingApprovalsResult,
         requestRowsResult,
         recentRequestsResult,
       ];
@@ -199,15 +238,24 @@ export default function DashboardModule() {
           status: request.status,
         };
       });
+      const inventoryAlertCount = (inventoryAlertsResult.data || []).filter((item) => {
+        const quantity = Number(item.quantity || 0);
+        const threshold = Number(item.threshold || 0);
+        return threshold > 0 && quantity <= threshold;
+      }).length;
 
       setStats({
         inventoryItems: medicinesResult.count || 0,
+        inventoryAlerts: inventoryAlertCount,
         totalQuantity: patientsResult.count || 0,
         lowStock: lowStockResult.data?.length || 0,
         expiring: facilitiesResult.count || 0,
+        pendingApprovals: pendingApprovalsResult.count || 0,
         pendingRequests: pendingRequestsResult.count || 0,
         inboundTransfers: transfersResult.count || 0,
       });
+      setFacilities(facilityRowsResult.data || []);
+      setForecastRows(forecastResult.data || []);
       setLowStockRows(lowStockResult.data || []);
       setRequestStatus(statusSummary);
       setRecentRequests(requestRows.length > 0 ? requestRows : defaultRecentRequests);
@@ -253,10 +301,18 @@ export default function DashboardModule() {
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <button className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-700">
+            <button
+              type="button"
+              onClick={() => navigate("/requests")}
+              className="rounded-lg bg-[#6be9c2] px-4 py-2 text-xs font-black text-[#0d1117] hover:bg-emerald-300"
+            >
               View Requests
             </button>
-            <button className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-black text-white ring-1 ring-white/10 hover:bg-neutral-800">
+            <button
+              type="button"
+              onClick={() => navigate("/inventory?stock=low")}
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-black text-white ring-1 ring-white/10 hover:bg-neutral-800"
+            >
               Restock Alert
             </button>
           </div>
@@ -274,48 +330,118 @@ export default function DashboardModule() {
         </svg>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
+          description="Open the medicine catalog to review definitions and pricing."
           icon={iconMap.medicines}
-          label="Total Medicines"
+          label="Medicine Catalog"
           value={isLoading ? "..." : formatNumber(stats.inventoryItems)}
-          note="+12"
+          onClick={() => navigate("/medicines")}
           tone="emerald"
         />
         <StatCard
+          description="Requests waiting for CHO review and action."
           icon={iconMap.requests}
           label="Pending Requests"
           value={isLoading ? "..." : formatNumber(stats.pendingRequests)}
-          note="+5"
+          onClick={() => navigate("/requests?status=pending")}
           tone="orange"
         />
         <StatCard
+          description="Medicine batches at or below threshold."
           icon={iconMap.alerts}
           label="Low Stock Alerts"
           value={isLoading ? "..." : formatNumber(stats.lowStock)}
-          note="+3"
+          onClick={() => navigate("/inventory?stock=low")}
           tone="red"
         />
         <StatCard
+          description="All inventory records requiring attention."
+          icon={iconMap.transfers}
+          label="Inventory Alerts"
+          value={isLoading ? "..." : formatNumber(stats.inventoryAlerts)}
+          onClick={() => navigate("/inventory?stock=alerts")}
+          tone="teal"
+        />
+      </section>
+
+      <section className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <StatCard
+          description="Active facilities covered by the distribution system."
           icon={iconMap.facilities}
           label="Active Facilities"
           value={isLoading ? "..." : formatNumber(stats.expiring)}
+          onClick={() => navigate("/facilities")}
           tone="blue"
         />
         <StatCard
+          description="New users waiting for administrator approval."
           icon={iconMap.patients}
-          label="Total Patients"
-          value={isLoading ? "..." : formatNumber(stats.totalQuantity)}
-          note="+28"
-          tone="teal"
+          label="Pending Approvals"
+          value={isLoading ? "..." : formatNumber(stats.pendingApprovals)}
+          onClick={() => navigate("/users")}
+          tone="orange"
         />
         <StatCard
+          description="Completed stock transfers across facilities."
           icon={iconMap.transfers}
-          label="Transfers Done"
+          label="Transfers Completed"
           value={isLoading ? "..." : formatNumber(stats.inboundTransfers)}
-          note="+7"
+          onClick={() => navigate("/inventory")}
           tone="blue"
         />
+      </section>
+
+      <section className="mt-5">
+        <ForecastMapPreview
+          facilities={facilities}
+          forecastTotal={forecastTotal}
+          lowStockCount={stats.lowStock}
+          onOpenForecasting={() => navigate("/forecasting")}
+        />
+      </section>
+
+      <section className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Panel
+          title="Forecast Demand Summary"
+          action={
+            <button
+              type="button"
+              onClick={() => navigate("/forecasting")}
+              className="text-sm font-bold text-emerald-700 hover:text-emerald-800"
+            >
+              Open forecasting
+            </button>
+          }
+        >
+          <ForecastDemandBars rows={forecastRows} />
+        </Panel>
+
+        <Panel
+          title="Operational Worklist"
+          action={<p className="text-sm font-medium text-neutral-500">Needs attention</p>}
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <WorkItem
+              label="Request Queue"
+              value={stats.pendingRequests}
+              tone="orange"
+              onClick={() => navigate("/requests?status=pending")}
+            />
+            <WorkItem
+              label="Account Approval"
+              value={stats.pendingApprovals}
+              tone="emerald"
+              onClick={() => navigate("/users")}
+            />
+            <WorkItem
+              label="Stock Watch"
+              value={stats.inventoryAlerts}
+              tone="red"
+              onClick={() => navigate("/inventory?stock=alerts")}
+            />
+          </div>
+        </Panel>
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[2fr_1fr]">
@@ -345,7 +471,11 @@ export default function DashboardModule() {
         <Panel
           title="Recent Requests"
           action={
-            <button className="text-sm font-bold text-emerald-700 hover:text-emerald-800">
+            <button
+              type="button"
+              onClick={() => navigate("/requests")}
+              className="text-sm font-bold text-emerald-700 hover:text-emerald-800"
+            >
               View all
             </button>
           }
@@ -434,11 +564,37 @@ export default function DashboardModule() {
               })}
             </div>
           )}
-          <button className="mt-5 text-sm font-bold text-emerald-700 hover:text-emerald-800">
+          <button
+            type="button"
+            onClick={() => navigate("/requests")}
+            className="mt-5 text-sm font-bold text-emerald-700 hover:text-emerald-800"
+          >
             Create restock requests -&gt;
           </button>
         </Panel>
       </section>
     </AdminShell>
+  );
+}
+
+function WorkItem({ label, onClick, tone, value }) {
+  const toneClass =
+    tone === "red"
+      ? "border-red-100 bg-red-50 text-red-700"
+      : tone === "orange"
+        ? "border-orange-100 bg-orange-50 text-orange-700"
+        : "border-emerald-100 bg-emerald-50 text-emerald-700";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-4 py-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${toneClass}`}
+    >
+      <p className="text-3xl font-black">{formatNumber(value)}</p>
+      <p className="mt-2 text-xs font-black uppercase tracking-[0.14em]">
+        {label}
+      </p>
+    </button>
   );
 }

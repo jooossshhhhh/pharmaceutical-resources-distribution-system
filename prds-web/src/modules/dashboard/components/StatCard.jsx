@@ -21,11 +21,28 @@ const toneClasses = {
   },
 };
 
-export default function StatCard({ label, value, icon, note, tone = "emerald" }) {
+export default function StatCard({
+  description,
+  icon,
+  label,
+  note,
+  onClick,
+  tone = "emerald",
+  value,
+}) {
   const classes = toneClasses[tone] || toneClasses.emerald;
+  const Element = onClick ? "button" : "article";
 
   return (
-    <article className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm shadow-neutral-200/40">
+    <Element
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={`group rounded-xl border border-[#d8dadc] bg-white p-4 text-left shadow-sm shadow-neutral-200/40 transition ${
+        onClick
+          ? "cursor-pointer hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md hover:shadow-emerald-100"
+          : ""
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <span
           className={`flex h-9 w-9 items-center justify-center rounded-lg ${classes.icon}`}
@@ -40,8 +57,18 @@ export default function StatCard({ label, value, icon, note, tone = "emerald" })
           </span>
         )}
       </div>
-      <p className="mt-5 text-3xl font-black tracking-tight text-black">{value}</p>
-      <p className="mt-1 text-sm font-medium text-neutral-500">{label}</p>
-    </article>
+      <p className="mt-5 text-3xl font-black tracking-tight text-[#0d1117]">{value}</p>
+      <p className="mt-1 text-sm font-black text-[#42474e]">{label}</p>
+      {description && (
+        <p className="mt-2 text-xs font-medium leading-4 text-neutral-500">
+          {description}
+        </p>
+      )}
+      {onClick && (
+        <span className="mt-3 inline-flex items-center text-xs font-black text-emerald-700 opacity-0 transition group-hover:opacity-100">
+          Open module -&gt;
+        </span>
+      )}
+    </Element>
   );
 }

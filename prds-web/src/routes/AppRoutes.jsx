@@ -8,6 +8,7 @@ import PendingApproval from "../features/auth/PendingApproval";
 import DashboardModule from "../modules/dashboard/DashboardModule";
 import ActivityLogsModule from "../modules/activity/ActivityLogsModule";
 import FacilitiesModule from "../modules/facilities/FacilitiesModule";
+import ForecastingModule from "../modules/forecasting/ForecastingModule";
 import InventoryModule from "../modules/inventory/InventoryModule";
 import MedicinesModule from "../modules/medicines/MedicinesModule";
 import NotificationsModule from "../modules/notifications/NotificationsModule";
@@ -34,6 +35,7 @@ export default function AppRoutes() {
           <Route path="/suppliers" element={<SuppliersModule />} />
           <Route path="/inventory" element={<InventoryModule />} />
           <Route path="/requests" element={<RequestsModule />} />
+          <Route path="/forecasting" element={<ForecastingModule />} />
           <Route path="/notifications" element={<NotificationsModule />} />
           <Route path="/activity-logs" element={<ActivityLogsModule />} />
           <Route
