@@ -143,43 +143,44 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
 
   return (
     <aside
-      className={`sticky top-0 flex h-screen flex-col border-r border-neutral-900 bg-black text-white transition-[width] duration-300 ${
+      className={`sticky top-0 flex h-screen flex-col border-r border-neutral-900 bg-[#050505] text-white transition-[width] duration-300 ${
         isCollapsed ? "w-16" : "w-57"
       }`}
     >
       <div
-        className={`flex min-h-19 items-center border-b border-white/10 ${
-          isCollapsed ? "justify-center px-2" : "gap-3 px-4"
+        className={`flex min-h-16 items-center border-b border-white/10 ${
+          isCollapsed ? "justify-center px-2" : "gap-3 px-3.5"
         }`}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
           <img src={prdsLogo} alt="PRDS" className="h-full w-full object-contain" />
         </span>
         <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
-          <p className="max-w-37.5 text-[12px] font-medium leading-4 text-slate-400">
-            Pharmaceutical Resources Distribution System
+          <p className="truncate text-sm font-black leading-4 text-white">PRDS</p>
+          <p className="mt-0.5 line-clamp-2 max-w-38 text-xs font-medium leading-4 text-slate-400">
+            Pharma Resource System
           </p>
         </div>
       </div>
 
       <nav
-        className={`prds-sidebar-scrollbar flex-1 space-y-1 overflow-x-hidden overflow-y-auto py-4 ${
+        className={`prds-sidebar-scrollbar flex-1 space-y-1.5 overflow-x-hidden overflow-y-auto py-4 ${
           isCollapsed ? "px-2" : "px-3"
         }`}
       >
         {allowedNavItems.map((item) => {
           const isActive = item.path === location.pathname;
-          const itemClass = `group relative flex w-full items-center rounded-lg py-3 text-left text-sm font-semibold transition ${
+          const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-semibold transition ${
             isActive
-              ? "bg-emerald-500/20 text-emerald-400"
-              : "text-slate-300 hover:bg-white/5 hover:text-white"
-          } ${isCollapsed ? "justify-center px-0" : "gap-3 px-4"}`;
+              ? "bg-emerald-950/80 text-emerald-400 shadow-[inset_3px_0_0_#10b981]"
+              : "text-slate-300 hover:bg-white/[0.07] hover:text-white"
+          } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3.5"}`;
           const label = (
             <>
               <SidebarIcon label={item.label} />
-              <span className={isCollapsed ? "sr-only" : ""}>{item.label}</span>
+              <span className={isCollapsed ? "sr-only" : "truncate"}>{item.label}</span>
               {isCollapsed && (
-                <span className="pointer-events-none absolute left-13 z-50 rounded-md bg-neutral-900 px-2 py-1 text-xs font-bold text-white opacity-0 shadow-lg transition group-hover:opacity-100">
+                <span className="pointer-events-none absolute left-12 z-50 whitespace-nowrap rounded-md border border-white/10 bg-neutral-900 px-2.5 py-1.5 text-xs font-bold text-white opacity-0 shadow-xl transition group-hover:opacity-100">
                   {item.label}
                 </span>
               )}
@@ -204,16 +205,16 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
       </nav>
 
       <div
-        className={`border-t border-white/10 py-5 ${
-          isCollapsed ? "px-2" : "px-4"
+        className={`border-t border-white/10 py-4 ${
+          isCollapsed ? "px-2" : "px-3.5"
         }`}
       >
-        <div className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
+        <div className={`flex items-center rounded-xl ${isCollapsed ? "justify-center" : "gap-3"}`}>
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-xs font-black text-white">
             {getInitials(profile)}
           </span>
           <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
-            <p className="truncate text-sm font-black">{fullName}</p>
+            <p className="truncate text-sm font-black leading-4 text-white">{fullName}</p>
             <p className="truncate text-xs font-medium text-slate-400">
               {roleLabels[profile?.role] || "Barangay Health Worker"}
             </p>
@@ -222,7 +223,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className="mx-auto mt-6 flex h-8 w-8 items-center justify-center rounded-full border border-white/70 text-slate-300 transition hover:border-emerald-400 hover:bg-white/5 hover:text-white"
+          className="mx-auto mt-5 flex h-8 w-8 items-center justify-center rounded-full border border-white/70 text-slate-300 transition hover:border-emerald-400 hover:bg-white/[0.08] hover:text-white"
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >

@@ -188,9 +188,11 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
         <button
           type="button"
           onClick={onSignOut}
-          className="hidden h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-bold text-neutral-700 hover:bg-neutral-50 sm:flex"
+          className="hidden h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3.5 text-sm font-black text-neutral-800 shadow-sm shadow-neutral-200/50 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-black sm:flex"
         >
-          <LogoutIcon />
+          <span className="flex h-5 w-5 items-center justify-center text-neutral-500">
+            <LogoutIcon />
+          </span>
           Logout
         </button>
       </div>
