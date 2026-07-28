@@ -144,22 +144,22 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
   return (
     <aside
       className={`sticky top-0 flex h-screen flex-col border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
-        isCollapsed ? "w-[58px]" : "w-[182px]"
+        isCollapsed ? "w-[58px]" : "w-[228px]"
       }`}
     >
       <div
-        className={`flex min-h-16 items-center border-b border-[#d8dadc] ${
-          isCollapsed ? "flex-col justify-center gap-2 px-2 py-3" : "gap-2.5 px-3"
+        className={`flex h-13.5 items-center border-b border-[#d8dadc] ${
+          isCollapsed ? "justify-center px-2" : "gap-2.5 px-3"
         }`}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className={`min-w-0 flex-1 items-center gap-2 ${isCollapsed ? "sr-only" : "flex"}`}>
           <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
             <img src={prdsLogo} alt="PRDS" className="h-full w-full object-contain" />
           </span>
-          <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
+          <div className="min-w-0">
             <p className="truncate text-sm font-black leading-4 text-[#0d1117]">PRDS</p>
-            <p className="truncate text-xs font-medium leading-4 text-[#42474e]">
-              Pharma Resource System
+            <p className="text-[11px] font-medium leading-3 text-[#42474e]">
+              Pharmaceutical Resources Distribution System
             </p>
           </div>
         </div>
