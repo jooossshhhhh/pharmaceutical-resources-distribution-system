@@ -21,7 +21,7 @@ export default function AdminShell({
     <main className="prds-admin-shell min-h-screen bg-[#f7f6f3] text-slate-950">
       <div
         className={`grid min-h-screen transition-[grid-template-columns] duration-300 ${
-          isSidebarCollapsed ? "grid-cols-[64px_1fr]" : "grid-cols-[228px_1fr]"
+          isSidebarCollapsed ? "grid-cols-[58px_1fr]" : "grid-cols-[182px_1fr]"
         }`}
       >
         <AdminSidebar

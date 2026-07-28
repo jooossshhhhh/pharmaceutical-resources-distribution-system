@@ -144,37 +144,50 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
   return (
     <aside
       className={`sticky top-0 flex h-screen flex-col border-r border-neutral-900 bg-[#050505] text-white transition-[width] duration-300 ${
-        isCollapsed ? "w-16" : "w-57"
+        isCollapsed ? "w-[58px]" : "w-[182px]"
       }`}
     >
       <div
         className={`flex min-h-16 items-center border-b border-white/10 ${
-          isCollapsed ? "justify-center px-2" : "gap-3 px-3.5"
+          isCollapsed ? "flex-col justify-center gap-2 px-2 py-3" : "gap-2.5 px-3"
         }`}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
-          <img src={prdsLogo} alt="PRDS" className="h-full w-full object-contain" />
-        </span>
-        <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
-          <p className="truncate text-sm font-black leading-4 text-white">PRDS</p>
-          <p className="mt-0.5 line-clamp-2 max-w-38 text-xs font-medium leading-4 text-slate-400">
-            Pharma Resource System
-          </p>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
+            <img src={prdsLogo} alt="PRDS" className="h-full w-full object-contain" />
+          </span>
+          <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
+            <p className="truncate text-sm font-black leading-4 text-white">PRDS</p>
+            <p className="truncate text-xs font-medium leading-4 text-slate-400">
+              Pharma Resource System
+            </p>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/[0.08] hover:text-white ${
+            isCollapsed ? "" : "-mr-1"
+          }`}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <HamburgerIcon />
+        </button>
       </div>
 
       <nav
-        className={`prds-sidebar-scrollbar flex-1 space-y-1.5 overflow-x-hidden overflow-y-auto py-4 ${
-          isCollapsed ? "px-2" : "px-3"
+        className={`prds-sidebar-scrollbar flex-1 space-y-1 overflow-x-hidden overflow-y-auto py-4 ${
+          isCollapsed ? "px-2" : "px-2.5"
         }`}
       >
         {allowedNavItems.map((item) => {
           const isActive = item.path === location.pathname;
-          const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-semibold transition ${
+          const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition ${
             isActive
-              ? "bg-emerald-950/80 text-emerald-400 shadow-[inset_3px_0_0_#10b981]"
-              : "text-slate-300 hover:bg-white/[0.07] hover:text-white"
-          } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3.5"}`;
+              ? "bg-emerald-950/90 text-emerald-400"
+              : "text-slate-200 hover:bg-white/[0.07] hover:text-white"
+          } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
           const label = (
             <>
               <SidebarIcon label={item.label} />
@@ -206,7 +219,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
 
       <div
         className={`border-t border-white/10 py-4 ${
-          isCollapsed ? "px-2" : "px-3.5"
+          isCollapsed ? "px-2" : "px-3"
         }`}
       >
         <div className={`flex items-center rounded-xl ${isCollapsed ? "justify-center" : "gap-3"}`}>
@@ -244,5 +257,24 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
         </button>
       </div>
     </aside>
+  );
+}
+
+function HamburgerIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="M5 7h14" />
+      <path d="M5 12h14" />
+      <path d="M5 17h14" />
+    </svg>
   );
 }
