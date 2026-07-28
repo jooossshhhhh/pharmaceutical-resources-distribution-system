@@ -67,6 +67,13 @@ const emptyRemoveLoginMethod = {
   password: "",
 };
 
+const emptyAddPhoneLogin = {
+  error: "",
+  isOpen: false,
+  isSending: false,
+  phoneNumber: "",
+};
+
 export default function ProfileSettingsModule() {
   const { profile, refreshProfile } = useAuth();
   const [authIdentities, setAuthIdentities] = useState([]);
@@ -80,6 +87,7 @@ export default function ProfileSettingsModule() {
   const [modalError, setModalError] = useState("");
   const [profileError, setProfileError] = useState("");
   const [form, setForm] = useState(emptyForm);
+  const [addPhoneLogin, setAddPhoneLogin] = useState(emptyAddPhoneLogin);
   const [phoneVerification, setPhoneVerification] = useState(emptyPhoneVerification);
   const [passwordVerification, setPasswordVerification] = useState(emptyPasswordVerification);
   const [removeLoginMethod, setRemoveLoginMethod] = useState(emptyRemoveLoginMethod);
@@ -381,23 +389,67 @@ export default function ProfileSettingsModule() {
     }
   };
 
-  const handleStartPhoneChange = async (phoneNumber) => {
+  const handleStartPhoneChange = async (phoneNumber, source = "profile-edit") => {
     setIsSaving(true);
     setModalError("");
 
     try {
       await updateUserPhone(phoneNumber);
       setIsEditing(false);
+      setAddPhoneLogin(emptyAddPhoneLogin);
       setPhoneVerification({
         ...emptyPhoneVerification,
         isOpen: true,
         phoneNumber,
+        source,
       });
     } catch (error) {
-      setModalError(getAuthErrorMessage(error));
+      const errorMessage = getAuthErrorMessage(error);
+      if (source === "login-method") {
+        setAddPhoneLogin((current) => ({
+          ...current,
+          error: errorMessage,
+        }));
+      } else {
+        setModalError(errorMessage);
+      }
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleAddPhoneLoginSubmit = async (event) => {
+    event.preventDefault();
+    const nextPhoneNumber = normalizePhoneNumber(addPhoneLogin.phoneNumber);
+
+    if (!isPhilippineMobileNumber(nextPhoneNumber)) {
+      setAddPhoneLogin((current) => ({
+        ...current,
+        error: "Phone number must use the 09XXXXXXXXX format.",
+      }));
+      return;
+    }
+
+    if (profile?.phone_number && nextPhoneNumber === normalizePhoneNumber(profile.phone_number)) {
+      setAddPhoneLogin((current) => ({
+        ...current,
+        error: "This phone number is already linked to your profile.",
+      }));
+      return;
+    }
+
+    setAddPhoneLogin((current) => ({
+      ...current,
+      error: "",
+      isSending: true,
+    }));
+
+    await handleStartPhoneChange(nextPhoneNumber, "login-method");
+
+    setAddPhoneLogin((current) => ({
+      ...current,
+      isSending: false,
+    }));
   };
 
   const handleVerifyPhoneChange = async (event) => {
@@ -415,7 +467,18 @@ export default function ProfileSettingsModule() {
         verificationCode: phoneVerification.code,
       });
 
-      await saveEditableProfileFields(phoneVerification.phoneNumber);
+      if (phoneVerification.source === "login-method") {
+        await updateOwnProfileContact({
+          email: linkedGmailEmail,
+          firstName: profile.first_name,
+          lastName: profile.last_name,
+          phoneNumber: phoneVerification.phoneNumber,
+        });
+        await refreshProfile?.();
+      } else {
+        await saveEditableProfileFields(phoneVerification.phoneNumber);
+      }
+
       const identities = await getUserIdentities();
       setAuthIdentities(identities);
       setPhoneVerification(emptyPhoneVerification);
@@ -477,7 +540,14 @@ export default function ProfileSettingsModule() {
     }
 
     if (loginMethodAction?.kind === "phone") {
-      startEditing();
+      setAddPhoneLogin({
+        ...emptyAddPhoneLogin,
+        isOpen: true,
+        phoneNumber: profile?.phone_number || "",
+      });
+      setMessage("");
+      setModalError("");
+      setProfileError("");
     }
   };
 
@@ -961,6 +1031,76 @@ export default function ProfileSettingsModule() {
         </div>
       )}
 
+      {addPhoneLogin.isOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-5">
+          <form
+            onSubmit={handleAddPhoneLoginSubmit}
+            className="w-full max-w-[460px] rounded-xl bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-5">
+              <div>
+                <h3 className="text-lg font-black text-black">Add Phone Number</h3>
+                <p className="mt-1 text-sm font-medium text-neutral-500">
+                  A verification code will be sent before this phone login is saved.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAddPhoneLogin(emptyAddPhoneLogin)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+                aria-label="Close add phone number"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              <ModalField
+                label="Phone Number"
+                name="add_phone_number"
+                value={addPhoneLogin.phoneNumber}
+                onChange={(event) =>
+                  setAddPhoneLogin((current) => ({
+                    ...current,
+                    error: "",
+                    phoneNumber: event.target.value,
+                  }))
+                }
+                placeholder="09XXXXXXXXX"
+              />
+              <p className="mt-2 text-xs font-semibold text-neutral-500">
+                Use your raw local number format, for example 09623702834.
+              </p>
+
+              {addPhoneLogin.error && (
+                <p className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                  {addPhoneLogin.error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-neutral-100 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => setAddPhoneLogin(emptyAddPhoneLogin)}
+                className="rounded-lg bg-neutral-50 px-5 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={addPhoneLogin.isSending || isSaving}
+                className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+              >
+                {addPhoneLogin.isSending || isSaving ? "Sending OTP..." : "Send OTP"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {phoneVerification.isOpen && (
         <OtpModal
           code={phoneVerification.code}
@@ -968,8 +1108,18 @@ export default function ProfileSettingsModule() {
           isBusy={phoneVerification.isVerifying}
           isResending={phoneVerification.isResending}
           onBack={() => {
+            const previousPhoneNumber = phoneVerification.phoneNumber;
+            const source = phoneVerification.source;
             setPhoneVerification(emptyPhoneVerification);
-            setIsEditing(true);
+            if (source === "login-method") {
+              setAddPhoneLogin({
+                ...emptyAddPhoneLogin,
+                isOpen: true,
+                phoneNumber: previousPhoneNumber,
+              });
+            } else {
+              setIsEditing(true);
+            }
           }}
           onChange={(code) =>
             setPhoneVerification((current) => ({ ...current, code }))
