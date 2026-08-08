@@ -13,6 +13,31 @@ const emptyMedicineForm = {
   unit_cost: "",
 };
 
+const UNIT_OF_MEASURE_OPTIONS = [
+  "tablet",
+  "capsule",
+  "caplet",
+  "vial",
+  "ampule",
+  "sachet",
+  "bottle",
+  "tube",
+  "syrup",
+  "suspension",
+  "drops",
+  "cream",
+  "ointment",
+  "gel",
+  "spray",
+  "inhaler",
+  "patch",
+  "suppository",
+  "injection",
+  "unit",
+];
+
+const CUSTOM_UNIT_VALUE = "__other__";
+
 const formatDateTime = (date) => {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -48,6 +73,48 @@ const normalizeMedicineText = (medicine) => {
     .toLowerCase();
 };
 
+const findDuplicateMedicines = ({ medicines, formValues, excludeId }) => {
+  const genericName = (formValues.generic_name || "").trim().toLowerCase();
+  const brandName = (formValues.brand_name || "").trim().toLowerCase();
+  const dosage = (formValues.dosage || "").trim().toLowerCase();
+  const unitOfMeasure = (formValues.unit_of_measure || "").trim().toLowerCase();
+
+  if (!genericName) {
+    return { exactMatches: [], nameMatches: [] };
+  }
+
+  const exactMatches = [];
+  const nameMatches = [];
+
+  medicines.forEach((medicine) => {
+    if (excludeId && medicine.id === excludeId) {
+      return;
+    }
+
+    const medicineGeneric = (medicine.generic_name || "").trim().toLowerCase();
+    const medicineBrand = (medicine.brand_name || "").trim().toLowerCase();
+    const medicineDosage = (medicine.dosage || "").trim().toLowerCase();
+    const medicineUnit = (medicine.unit_of_measure || "").trim().toLowerCase();
+
+    if (medicineGeneric === genericName) {
+      const isExact =
+        dosage &&
+        unitOfMeasure &&
+        medicineBrand === brandName &&
+        medicineDosage === dosage &&
+        medicineUnit === unitOfMeasure;
+
+      if (isExact) {
+        exactMatches.push(medicine);
+      } else {
+        nameMatches.push(medicine);
+      }
+    }
+  });
+
+  return { exactMatches, nameMatches };
+};
+
 export default function MedicinesModule() {
   const { profile } = useAuth();
   const [medicines, setMedicines] = useState([]);
@@ -57,6 +124,8 @@ export default function MedicinesModule() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [medicineError, setMedicineError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [rejectedDuplicate, setRejectedDuplicate] = useState(null);
   const [modalMode, setModalMode] = useState(null);
   const [modalMedicine, setModalMedicine] = useState(null);
   const [formValues, setFormValues] = useState(emptyMedicineForm);
@@ -120,10 +189,23 @@ export default function MedicinesModule() {
     return () => window.clearTimeout(timerId);
   }, []);
 
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setNotice("");
+    }, 6000);
+
+    return () => window.clearTimeout(timerId);
+  }, [notice]);
+
   const openCreateModal = () => {
     setModalMedicine(null);
     setFormValues(emptyMedicineForm);
     setMedicineError("");
+    setRejectedDuplicate(null);
     setModalMode("create");
   };
 
@@ -137,6 +219,7 @@ export default function MedicinesModule() {
       unit_cost: medicine.unit_cost ?? "",
     });
     setMedicineError("");
+    setRejectedDuplicate(null);
     setModalMode(mode);
   };
 
@@ -148,16 +231,31 @@ export default function MedicinesModule() {
     setModalMode(null);
     setModalMedicine(null);
     setFormValues(emptyMedicineForm);
+    setRejectedDuplicate(null);
+  };
+
+  const handleViewExistingMedicine = (medicineId) => {
+    setModalMode(null);
+    setModalMedicine(null);
+    setFormValues(emptyMedicineForm);
+    setRejectedDuplicate(null);
+    setSelectedMedicineId(medicineId);
   };
 
   const handleFieldChange = (event) => {
     const { name, value } = event.target;
+    setMedicineError("");
+    setRejectedDuplicate(null);
     setFormValues((currentValues) => ({ ...currentValues, [name]: value }));
   };
 
   const validateForm = () => {
     if (!formValues.generic_name.trim()) {
       return "Generic name is required.";
+    }
+
+    if (!formValues.brand_name.trim()) {
+      return "Brand name is required.";
     }
 
     if (!formValues.unit_of_measure.trim()) {
@@ -189,6 +287,32 @@ export default function MedicinesModule() {
       return;
     }
 
+    const { exactMatches, nameMatches } = findDuplicateMedicines({
+      excludeId: modalMedicine?.id,
+      formValues,
+      medicines,
+    });
+
+    if (exactMatches.length > 0) {
+      const duplicate = exactMatches[0];
+      const duplicateLabel = [
+        duplicate.generic_name,
+        duplicate.brand_name,
+        duplicate.dosage,
+        duplicate.unit_of_measure,
+      ]
+        .filter(Boolean)
+        .join(" / ");
+
+      setMedicineError(
+        `This medicine is already registered — ${duplicateLabel}. View the existing record to edit it instead.`
+      );
+      setRejectedDuplicate(duplicate);
+      return;
+    }
+
+    const sameGenericMatches = modalMode === "create" ? nameMatches : [];
+
     setIsSaving(true);
     setMedicineError("");
 
@@ -208,7 +332,29 @@ export default function MedicinesModule() {
     const { data, error } = await request;
 
     if (error) {
-      setMedicineError(error.message);
+      const isUniqueViolation =
+        /duplicate key|medicines_unique_definition/i.test(error.message || "");
+      if (isUniqueViolation) {
+        const matching = nameMatches.find(
+          (match) =>
+            (match.dosage || "").trim().toLowerCase() ===
+              (formValues.dosage || "").trim().toLowerCase() &&
+            (match.unit_of_measure || "").trim().toLowerCase() ===
+              (formValues.unit_of_measure || "").trim().toLowerCase()
+        );
+        const existingLabel = matching
+          ? [matching.generic_name, matching.brand_name, matching.dosage, matching.unit_of_measure]
+              .filter(Boolean)
+              .join(" / ")
+          : "an existing medicine";
+
+        setMedicineError(
+          `This medicine is already registered — ${existingLabel}. View the existing record to edit it instead.`
+        );
+        setRejectedDuplicate(matching || null);
+      } else {
+        setMedicineError(error.message);
+      }
       setIsSaving(false);
       return;
     }
@@ -216,6 +362,19 @@ export default function MedicinesModule() {
     setIsSaving(false);
     closeModal();
     await loadMedicines();
+
+    if (sameGenericMatches.length > 0) {
+      const existing = sameGenericMatches[0];
+      const existingLabel = [existing.generic_name, existing.brand_name, existing.dosage, existing.unit_of_measure]
+        .filter(Boolean)
+        .join(" / ");
+      const extraCount = sameGenericMatches.length - 1;
+      setNotice(
+        `Added ${payload.generic_name}. Note: a medicine with the same generic name already exists — ${existingLabel}${
+          extraCount > 0 ? ` (+${extraCount} more)` : ""
+        }.`
+      );
+    }
 
     if (data?.id) {
       setSelectedMedicineId(data.id);
@@ -232,25 +391,11 @@ export default function MedicinesModule() {
         </p>
       )}
 
-      <section className="max-w-3xl rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-        <label className="grid gap-1">
-          <span className="text-[10px] font-black uppercase tracking-wide text-neutral-500">
-            Medicine
-          </span>
-          <span className="relative block">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-              <SearchIcon />
-            </span>
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search medicine name, generic, dosage, or unit..."
-              className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            />
-          </span>
-        </label>
-      </section>
+      {notice && (
+        <p className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
+          {notice}
+        </p>
+      )}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_344px]">
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
@@ -258,7 +403,7 @@ export default function MedicinesModule() {
             <h2 className="text-base font-black text-black">
               Medicine Catalog{" "}
               <span className="font-semibold text-neutral-400">
-                ({sortedMedicines.length} items)
+                Showing {sortedMedicines.length} of {medicines.length} medicines
               </span>
             </h2>
             <button
@@ -269,6 +414,21 @@ export default function MedicinesModule() {
               <PlusIcon />
               Add Medicine
             </button>
+          </div>
+
+          <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-3">
+            <label className="relative flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                <SearchIcon />
+              </span>
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search medicine name, generic, dosage, or unit..."
+                className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
           </div>
 
           <div className="overflow-x-auto">
@@ -291,25 +451,54 @@ export default function MedicinesModule() {
                   </th>
                   <th className="px-5 py-3">Brand</th>
                   <th className="px-5 py-3">Dosage</th>
+                  <th className="px-5 py-3 text-right">Cost</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan="3"
-                      className="px-5 py-12 text-center text-sm font-bold text-neutral-500"
-                    >
-                      Loading medicines...
-                    </td>
-                  </tr>
+                  Array.from({ length: 5 }, (_, index) => (
+                    <MedicineRowSkeleton key={index} />
+                  ))
                 ) : sortedMedicines.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan="3"
-                      className="px-5 py-12 text-center text-sm font-bold text-neutral-500"
-                    >
-                      No medicines match the current filters.
+                    <td colSpan="4" className="px-5 py-12">
+                      <div className="flex flex-col items-center gap-3 text-center">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
+                          <PillIcon />
+                        </span>
+                        {medicines.length === 0 ? (
+                          <>
+                            <p className="text-sm font-black text-neutral-700">
+                              No medicines in the catalog yet.
+                            </p>
+                            <p className="max-w-[340px] text-sm font-medium text-neutral-500">
+                              Register medicines received at the Central Health Office so they
+                              can be stocked and dispensed.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={openCreateModal}
+                              className="mt-1 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
+                            >
+                              <PlusIcon />
+                              Add Medicine
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-black text-neutral-700">
+                              No medicines match the current filters.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setSearchTerm("")}
+                              className="mt-1 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700 hover:bg-emerald-100"
+                            >
+                              Clear search
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -342,6 +531,9 @@ export default function MedicinesModule() {
                             {medicine.dosage}
                           </span>
                         </td>
+                        <td className="px-5 py-4 text-right text-sm font-bold text-neutral-700">
+                          {formatCurrency(medicine.unit_cost)}
+                        </td>
                       </tr>
                     );
                   })
@@ -363,11 +555,13 @@ export default function MedicinesModule() {
           mode={modalMode}
           formValues={formValues}
           error={medicineError}
+          rejectedMedicine={rejectedDuplicate}
           isSaving={isSaving}
           onClose={closeModal}
           onChange={handleFieldChange}
           onSubmit={handleSaveMedicine}
           onEdit={() => setModalMode("edit")}
+          onViewExisting={handleViewExistingMedicine}
         />
       )}
     </AdminShell>
@@ -453,18 +647,25 @@ function MedicineModal({
   mode,
   formValues,
   error,
+  rejectedMedicine,
   isSaving,
   onClose,
   onChange,
   onSubmit,
   onEdit,
+  onViewExisting,
 }) {
   const isReadOnly = mode === "view";
   const title =
     mode === "create" ? "Add New Medicine" : mode === "edit" ? "Edit Medicine" : "Medicine Details";
 
+  const savedUnit = (formValues.unit_of_measure || "").trim().toLowerCase();
+  const [showCustomUnit, setShowCustomUnit] = useState(
+    savedUnit !== "" && !UNIT_OF_MEASURE_OPTIONS.includes(savedUnit)
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
       <form
         onSubmit={onSubmit}
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
@@ -472,9 +673,6 @@ function MedicineModal({
         <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
           <div>
             <h3 className="text-xl font-black text-black">{title}</h3>
-            <p className="text-sm font-medium text-neutral-500">
-              Based on the medicines table schema.
-            </p>
           </div>
           <button
             type="button"
@@ -488,9 +686,18 @@ function MedicineModal({
 
         <div className="prds-modal-scrollbar flex-1 overflow-y-auto px-6 py-5">
           {error && (
-            <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
-            </p>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm font-semibold text-red-700">{error}</p>
+              {rejectedMedicine && (
+                <button
+                  type="button"
+                  onClick={() => onViewExisting(rejectedMedicine.id)}
+                  className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-black text-red-800 hover:bg-red-200"
+                >
+                  View existing
+                </button>
+              )}
+            </div>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -508,16 +715,79 @@ function MedicineModal({
               value={formValues.brand_name}
               onChange={onChange}
               disabled={isReadOnly}
-              placeholder="Optional"
-            />
-            <Field
-              label="Unit of Measure"
-              name="unit_of_measure"
-              value={formValues.unit_of_measure}
-              onChange={onChange}
-              disabled={isReadOnly}
               required
             />
+            {isReadOnly ? (
+              <Field
+                label="Unit of Measure"
+                name="unit_of_measure"
+                value={formValues.unit_of_measure}
+                onChange={onChange}
+                disabled={isReadOnly}
+                required
+              />
+            ) : showCustomUnit ? (
+              <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
+                Unit of Measure
+                <span className="relative block">
+                  <input
+                    name="unit_of_measure"
+                    value={formValues.unit_of_measure}
+                    onChange={onChange}
+                    required
+                    placeholder="Type the unit of measure"
+                    className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustomUnit(false);
+                      onChange({ target: { name: "unit_of_measure", value: "" } });
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-neutral-100 px-2 py-1 text-xs font-bold text-neutral-600 hover:bg-neutral-200"
+                  >
+                    Use list
+                  </button>
+                </span>
+              </label>
+            ) : (
+              <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
+                Unit of Measure
+                <span className="relative block">
+                  <select
+                    name="unit_of_measure"
+                    value={
+                      UNIT_OF_MEASURE_OPTIONS.includes(savedUnit)
+                        ? formValues.unit_of_measure.trim().toLowerCase()
+                        : ""
+                    }
+                    onChange={(event) => {
+                      if (event.target.value === CUSTOM_UNIT_VALUE) {
+                        setShowCustomUnit(true);
+                        onChange({ target: { name: "unit_of_measure", value: "" } });
+                      } else {
+                        onChange(event);
+                      }
+                    }}
+                    required
+                    className="h-10 w-full appearance-none rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  >
+                    <option value="" disabled>
+                      Select a unit
+                    </option>
+                    {UNIT_OF_MEASURE_OPTIONS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_UNIT_VALUE}>Other…</option>
+                  </select>
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                    <ChevronIcon />
+                  </span>
+                </span>
+              </label>
+            )}
             <Field
               label="Dosage"
               name="dosage"
@@ -536,17 +806,9 @@ function MedicineModal({
               onChange={onChange}
               disabled={isReadOnly}
               placeholder="Optional"
+              prefix="PHP"
+              className="pl-11"
             />
-          </div>
-
-          <div className="mt-5 rounded-lg border border-neutral-200 bg-[#fbfaf8] p-4">
-            <p className="text-xs font-black uppercase tracking-wide text-neutral-500">
-              Unique Definition
-            </p>
-            <p className="mt-2 text-sm leading-6 text-neutral-600">
-              The database prevents duplicate medicines with the same generic
-              name, dosage, and unit of measure.
-            </p>
           </div>
         </div>
 
@@ -582,15 +844,42 @@ function MedicineModal({
   );
 }
 
-function Field({ label, ...props }) {
+function Field({ label, className = "", prefix, ...props }) {
   return (
     <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
       {label}
-      <input
-        {...props}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50 disabled:text-neutral-500"
-      />
+      <span className="relative block">
+        {prefix && (
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-neutral-400">
+            {prefix}
+          </span>
+        )}
+        <input
+          {...props}
+          className={`h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50 disabled:text-neutral-500 ${className}`}
+        />
+      </span>
     </label>
+  );
+}
+
+function MedicineRowSkeleton() {
+  return (
+    <tr>
+      <td className="px-5 py-4">
+        <div className="h-4 w-36 animate-pulse rounded bg-neutral-100" />
+        <div className="mt-2 h-3 w-20 animate-pulse rounded bg-neutral-100" />
+      </td>
+      <td className="px-5 py-4">
+        <div className="h-4 w-24 animate-pulse rounded bg-neutral-100" />
+      </td>
+      <td className="px-5 py-4">
+        <div className="h-5 w-16 animate-pulse rounded-full bg-neutral-100" />
+      </td>
+      <td className="px-5 py-4">
+        <div className="ml-auto h-4 w-14 animate-pulse rounded bg-neutral-100" />
+      </td>
+    </tr>
   );
 }
 
@@ -651,6 +940,23 @@ function PencilIcon() {
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
       <path d="M12 20h9" />
       <path d="m16.5 3.5 4 4L8 20l-5 1 1-5 12.5-12.5Z" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function PillIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M10.5 20.5 20.5 10.5a5 5 0 0 0-7-7l-10 10a5 5 0 0 0 7 7Z" />
+      <path d="m9 15 6-6" />
     </svg>
   );
 }

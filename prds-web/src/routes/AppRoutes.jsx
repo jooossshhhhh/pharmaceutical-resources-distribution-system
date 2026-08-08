@@ -9,7 +9,8 @@ import DashboardModule from "../modules/dashboard/DashboardModule";
 import ActivityLogsModule from "../modules/activity/ActivityLogsModule";
 import FacilitiesModule from "../modules/facilities/FacilitiesModule";
 import ForecastingModule from "../modules/forecasting/ForecastingModule";
-import InventoryModule from "../modules/inventory/InventoryModule";
+import BhwInventoryModule from "../modules/inventory/BhwInventoryModule";
+import ChoInventoryModule from "../modules/inventory/ChoInventoryModule";
 import MedicinesModule from "../modules/medicines/MedicinesModule";
 import NotificationsModule from "../modules/notifications/NotificationsModule";
 import ProfileSettingsModule from "../modules/profile/ProfileSettingsModule";
@@ -31,9 +32,31 @@ export default function AppRoutes() {
         <Route element={<ProtectedRoutes />}>
           <Route path="/dashboard" element={<DashboardModule />} />
           <Route path="/facilities" element={<FacilitiesModule />} />
-          <Route path="/medicines" element={<MedicinesModule />} />
+          <Route
+            path="/medicines"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_I", "PHARMA_II"]}>
+                <MedicinesModule />
+              </RoleGuard>
+            }
+          />
           <Route path="/suppliers" element={<SuppliersModule />} />
-          <Route path="/inventory" element={<InventoryModule />} />
+          <Route
+            path="/inventory"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_I", "PHARMA_II"]}>
+                <ChoInventoryModule />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/inventory-bhw"
+            element={
+              <RoleGuard allowedRoles={["BHW"]}>
+                <BhwInventoryModule />
+              </RoleGuard>
+            }
+          />
           <Route path="/requests" element={<RequestsModule />} />
           <Route path="/forecasting" element={<ForecastingModule />} />
           <Route path="/notifications" element={<NotificationsModule />} />
