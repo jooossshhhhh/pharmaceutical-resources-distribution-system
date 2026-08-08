@@ -6,6 +6,7 @@ create table profiles (
 
     email text unique,
     phone_number text,
+    avatar_url text,
 
     role user_role not null default 'BHW',
 
