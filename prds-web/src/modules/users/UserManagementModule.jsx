@@ -488,7 +488,7 @@ function ViewTabs({ activeView, onChange, pendingRequests }) {
           onClick={() => onChange(tab.id)}
           className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition ${
             activeView === tab.id
-              ? "bg-black text-white"
+              ? "bg-[#00a36c] text-white shadow-sm shadow-emerald-100"
               : "bg-neutral-50 text-neutral-700 hover:bg-neutral-100"
           }`}
         >
@@ -585,7 +585,7 @@ function FacilityRequestsPanel({ isLoading, isSaving, onReview, requests }) {
 
 function UserModal({ user, formValues, facilities, isSaving, error, onClose, onChange, onSave }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
       <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-900/20">
         <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-4">
           <div className="flex items-start gap-4">

@@ -17,6 +17,10 @@ const pageTitles = {
     title: "Inventory Management",
     subtitle: "Track medicine stock levels across all facilities",
   },
+  "/inventory-bhw": {
+    title: "My Facility Inventory",
+    subtitle: "View stock levels and consumption at your facility",
+  },
   "/requests": { title: "Requests", subtitle: "Review and process medicine requests" },
   "/transfers": { title: "Transfers", subtitle: "Track stock movement across facilities" },
   "/dispensing": { title: "Dispensing", subtitle: "Monitor patient medicine dispensing" },
@@ -140,25 +144,26 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   };
 
   return (
-    <header className="relative flex h-13.5 items-center justify-between border-b border-neutral-200 bg-white px-6">
+    <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-neutral-200 bg-white/95 px-6 shadow-sm shadow-neutral-200/50 backdrop-blur-sm">
       <div className="min-w-0">
-        <h1 className="truncate text-lg font-black tracking-tight text-black">
+        <h1 className="truncate text-lg font-black tracking-tight text-[#0d1117]">
           {pageInfo.title}
         </h1>
-        <p className="truncate text-xs font-medium text-neutral-500">
+        <p className="truncate text-xs font-medium text-[#42474e]">
           {pageInfo.subtitle}
         </p>
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="hidden min-w-29.5 items-center justify-center text-sm font-bold tabular-nums text-neutral-700 sm:flex">
+        <div className="hidden items-center gap-2 rounded-full border border-[#eff4ff] bg-[#eff4ff]/80 px-3.5 py-1.5 text-xs font-black tabular-nums tracking-wide text-[#0d1117] sm:flex">
+          <ClockIcon />
           {formattedTime}
         </div>
 
         <button
           type="button"
           onClick={() => setIsNotificationsOpen((isOpen) => !isOpen)}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
           aria-label="Open notifications"
         >
           <BellIcon />
@@ -175,10 +180,10 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
             setIsNotificationsOpen(false);
             navigate("/profile-settings");
           }}
-          className={`flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800 ${
+          className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
             location.pathname === "/profile-settings"
-              ? "border border-neutral-400 bg-white text-neutral-700"
-              : ""
+              ? "bg-[#eff4ff] text-[#0d1117] ring-1 ring-[#d8dadc]"
+              : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
           }`}
           aria-label="Open profile settings"
         >
@@ -198,10 +203,10 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
       </div>
 
       {isNotificationsOpen && (
-        <div className={`absolute ${notificationOffset} top-12.5 z-50 w-75.5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl shadow-neutral-200/70`}>
+        <div className={`absolute ${notificationOffset} top-12.5 z-50 w-75.5 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xl shadow-neutral-200/70`}>
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-black text-neutral-950">Notifications</p>
+              <p className="text-sm font-black text-[#0d1117]">Notifications</p>
               {unreadCount > 0 && (
                 <span className="rounded-full bg-orange-500 px-2 py-0.5 text-xs font-black text-white">
                   {unreadCount} new
@@ -337,17 +342,30 @@ function BellIcon() {
   );
 }
 
+function ClockIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5 text-[#00a36c]"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
-    <span
-      aria-hidden="true"
-      className="material-symbols-outlined text-[18px] leading-none"
-      style={{
-        fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
-      }}
-    >
-      settings
-    </span>
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
   );
 }
 

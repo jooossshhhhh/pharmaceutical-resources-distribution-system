@@ -371,7 +371,7 @@ export default function NotificationsModule() {
               setSpecificDate("");
               setStartDate("");
             }}
-            className="mt-5 h-10 w-full rounded-lg bg-black text-sm font-black text-white hover:bg-neutral-800"
+            className="mt-5 h-10 w-full rounded-lg bg-neutral-100 text-sm font-black text-neutral-700 hover:bg-neutral-200"
           >
             Reset Filters
           </button>
