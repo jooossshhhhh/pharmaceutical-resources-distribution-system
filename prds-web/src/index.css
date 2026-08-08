@@ -7,22 +7,62 @@
     "Segoe UI", sans-serif;
 }
 
+@keyframes prds-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.prds-fade-in {
+  animation: prds-fade-in 0.28s ease-out both;
+}
+
 html {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scrollbar-color: #42474e #f3efe9;
+  scrollbar-width: thin;
 }
 
 body {
   margin: 0;
   font-family: inherit;
+  scrollbar-color: #42474e #f3efe9;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #f3efe9;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #42474e;
+  border: 2px solid #f3efe9;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #00a36c;
 }
 
 .prds-admin-shell {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1100px 480px at 85% -8%, rgb(107 233 194 / 0.14), transparent 60%),
+    radial-gradient(900px 420px at -10% 0%, rgb(0 163 108 / 0.08), transparent 55%),
+    #f7f6f3;
 }
 
 .prds-admin-shell .font-black {
@@ -41,6 +81,30 @@ body {
 
 .prds-sidebar-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+.prds-main-scrollbar {
+  scrollbar-color: #42474e #f3efe9;
+  scrollbar-width: thin;
+}
+
+.prds-main-scrollbar::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.prds-main-scrollbar::-webkit-scrollbar-track {
+  background: #f3efe9;
+}
+
+.prds-main-scrollbar::-webkit-scrollbar-thumb {
+  background: #42474e;
+  border: 2px solid #f3efe9;
+  border-radius: 999px;
+}
+
+.prds-main-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #00a36c;
 }
 
 .prds-modal-scrollbar {
@@ -64,6 +128,15 @@ body {
 
 .prds-modal-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #6f6f6f;
+}
+
+.prds-card-hover {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.prds-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px -10px rgb(13 17 23 / 0.16);
 }
 
 .facilities-toolbar {
@@ -99,7 +172,7 @@ body {
   min-height: 420px;
   min-width: min(92vw, 420px);
   resize: both;
-  width: min(92vw, 680px);
+  width: min(94vw, 960px);
 }
 
 .facility-detail-stats {
@@ -157,4 +230,25 @@ body {
   .facilities-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+.prds-map-popup .leaflet-popup-content-wrapper {
+  border: 1px solid #e4e6e8;
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(13, 17, 23, 0.14);
+}
+
+.prds-map-popup .leaflet-popup-content {
+  margin: 0;
+  padding: 12px;
+  line-height: 1.4;
+}
+
+.prds-map-popup .leaflet-popup-tip {
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.prds-map-popup .leaflet-popup-close-button {
+  display: none;
 }
