@@ -7,9 +7,11 @@ const PROFILE_COLUMNS =
     last_name,
     email,
     phone_number,
+    avatar_url,
     role,
     facility_id,
     status,
+    created_at,
     facility:facilities(
       id,
       facility_name,
@@ -19,6 +21,8 @@ const PROFILE_COLUMNS =
       status
     )
   `;
+
+const AVATAR_BUCKET = "avatars";
 
 const normalizeProfile = (profile) => {
   if (!profile) {
@@ -239,4 +243,63 @@ export const getSupabaseProfile = async (supabaseUser) => {
   }
 
   return null;
+};
+
+export const getProfileAvatarUrl = async (profileId) => {
+  if (!profileId) {
+    return "";
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("avatar_url")
+      .eq("id", profileId)
+      .maybeSingle();
+
+    return error ? "" : (data?.avatar_url || "");
+  } catch {
+    return "";
+  }
+};
+
+export const updateOwnProfileAvatar = async (avatarUrl) => {
+  const { error } = await supabase.rpc("update_own_profile_avatar", {
+    p_avatar_url: avatarUrl || null,
+  });
+
+  if (error) {
+    throw error;
+  }
+};
+
+export const uploadProfileAvatar = async ({ file, userId }) => {
+  const extension = (file.name.split(".").pop() || "jpg").replace(/[^a-zA-Z0-9]/g, "");
+  const path = `${userId}/avatar-${Date.now()}.${extension}`;
+
+  const { error } = await supabase.storage
+    .from(AVATAR_BUCKET)
+    .upload(path, file, { cacheControl: "3600", upsert: true });
+
+  if (error) {
+    throw error;
+  }
+
+  const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
+
+  return data?.publicUrl || "";
+};
+
+export const removeProfileAvatar = async ({ userId }) => {
+  const { data, error } = await supabase.storage.from(AVATAR_BUCKET).list(userId, {
+    limit: 100,
+  });
+
+  if (error || !data?.length) {
+    return;
+  }
+
+  await supabase.storage
+    .from(AVATAR_BUCKET)
+    .remove(data.map((item) => `${userId}/${item.name}`));
 };

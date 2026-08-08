@@ -19,14 +19,16 @@ export const AuthProvider = ({ children }) => {
     const loadSupabaseProfile = async (session) => {
       const currentSupabaseUser = session?.user ?? null;
       setLoading(true);
-      setSupabaseUser(currentSupabaseUser);
       setProfile(null);
       setProfileError(null);
 
       if (!currentSupabaseUser) {
+        setSupabaseUser(null);
         setLoading(false);
         return;
       }
+
+      setSupabaseUser(currentSupabaseUser);
 
       try {
         const userProfile = await getSupabaseProfile(currentSupabaseUser);

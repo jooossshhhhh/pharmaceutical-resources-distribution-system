@@ -3,13 +3,17 @@ import test from "node:test";
 
 import {
   canRemoveLoginMethod,
+  getAuthLinkedPhoneNumber,
   getGoogleIdentityEmail,
   getLinkedGmailEmail,
   getLoginMethodAction,
   getLoginMethodStatusLabel,
   getPhoneChangeState,
+  getPhoneNumberErrorMessage,
   getReadableEmail,
   getSubmittedPhoneNumber,
+  isPhoneAlreadyRegisteredError,
+  maskPhoneNumber,
 } from "./profileSettingsUtils.js";
 
 const normalizePhoneNumber = (phoneNumber) => {
@@ -97,6 +101,33 @@ test("uses the Google identity as the linked Gmail source of truth", () => {
       profileEmail: "",
     }),
     "linked@gmail.com"
+  );
+});
+
+test("extracts the linked phone number from Supabase Auth user data", () => {
+  assert.equal(
+    getAuthLinkedPhoneNumber({
+      authUser: { phone: "+639623702834" },
+      identities: [],
+      normalizePhoneNumber,
+    }),
+    "09623702834"
+  );
+});
+
+test("falls back to the phone identity when auth user phone is not populated", () => {
+  assert.equal(
+    getAuthLinkedPhoneNumber({
+      authUser: {},
+      identities: [
+        {
+          provider: "phone",
+          identity_data: { phone: "639702347186" },
+        },
+      ],
+      normalizePhoneNumber,
+    }),
+    "09702347186"
   );
 });
 
@@ -206,5 +237,35 @@ test("requires verification when an existing phone number is changed", () => {
       nextPhoneNumber: "09702347186",
       requiresVerification: true,
     }
+  );
+});
+
+test("masks a full Philippine phone number for display", () => {
+  assert.equal(maskPhoneNumber("09623702834"), "0962•••••834");
+  assert.equal(maskPhoneNumber("0962 370 2834"), "0962•••••834");
+  assert.equal(maskPhoneNumber(""), "");
+});
+
+test("keeps short numbers unmasked when there is not enough to mask", () => {
+  assert.equal(maskPhoneNumber("0917"), "0917");
+  assert.equal(maskPhoneNumber(null), null);
+});
+
+test("explains the already-registered phone error instead of forwarding raw text", () => {
+  assert.equal(
+    isPhoneAlreadyRegisteredError(
+      new Error("A user with this phone number has already been registered")
+    ),
+    true
+  );
+  assert.equal(
+    getPhoneNumberErrorMessage(
+      new Error("A user with this phone number has already been registered")
+    ),
+    "This phone number is already linked to another account. If it is an old test or abandoned account, remove it in Supabase Auth before linking this number."
+  );
+  assert.equal(
+    getPhoneNumberErrorMessage(new Error("Phone OTP expired")),
+    "Phone OTP expired"
   );
 });

@@ -282,6 +282,14 @@ export const signInWithGoogle = async (redirectPath = "/") => {
   return data;
 };
 
+export const signOutOtherSessions = async () => {
+  const { error } = await supabaseAuth.auth.signOut({ scope: "others" });
+
+  if (error) {
+    throw error;
+  }
+};
+
 // LOGOUT
 export const logoutUser = async () => {
   await supabaseAuth.auth.signOut();

@@ -315,7 +315,7 @@ export default function RegisterPage() {
                     type="text"
                     inputMode="numeric"
                     maxLength={11}
-                    placeholder="09623702834"
+                    placeholder="09XXXXXXXXX"
                     value={phoneNumber}
                     onChange={(event) =>
                       setPhoneNumber(event.target.value.replace(/\D/g, ""))

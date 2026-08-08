@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import ModalShell from "../../components/ModalShell";
 import { ModalField } from "./ProfileFields";
 
 export default function PasswordModal({ authEmail, onChange, onClose, onSend, onSubmit, phoneNumber, state }) {
@@ -8,14 +9,14 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
   const updateState = (updates) => onChange((current) => ({ ...current, ...updates }));
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4 py-5">
+    <ModalShell labelledBy="password-modal-title" onClose={onClose}>
       <form
         onSubmit={state.step === "choose" ? onSend : onSubmit}
         className="w-full max-w-[500px] rounded-xl bg-white p-6 shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-black text-black">Change Password</h3>
+            <h3 id="password-modal-title" className="text-lg font-black text-black">Change Password</h3>
             <p className="mt-1 text-sm font-medium text-neutral-500">
               Use phone OTP or a Gmail reset link before setting a new password.
             </p>
@@ -104,7 +105,7 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
           </button>
         </div>
       </form>
-    </div>
+    </ModalShell>
   );
 }
 

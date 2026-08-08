@@ -1,3 +1,5 @@
+import ModalShell from "../../components/ModalShell";
+
 export default function RemoveLoginMethodModal({
   error,
   isRemoving,
@@ -8,13 +10,13 @@ export default function RemoveLoginMethodModal({
   password,
 }) {
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4 py-5">
+    <ModalShell labelledBy="remove-login-modal-title" onClose={onClose}>
       <form
         onSubmit={onSubmit}
         className="w-full max-w-[460px] overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <div className="border-b border-neutral-100 px-6 py-5">
-          <h3 className="text-lg font-black text-black">Remove {methodLabel}</h3>
+          <h3 id="remove-login-modal-title" className="text-lg font-black text-black">Remove {methodLabel}</h3>
           <p className="mt-1 text-sm font-medium text-neutral-500">
             Enter your current password to verify this account change.
           </p>
@@ -57,6 +59,6 @@ export default function RemoveLoginMethodModal({
           </button>
         </div>
       </form>
-    </div>
+    </ModalShell>
   );
 }

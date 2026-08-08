@@ -10,39 +10,6 @@ export const statusLabels = {
   DEACTIVATED: "Deactivated",
 };
 
-export const preferenceRows = [
-  {
-    label: "Email Notifications",
-    description: "Receive email updates for requests, transfers, and alerts",
-    icon: "mail",
-    enabled: true,
-  },
-  {
-    label: "Low Stock Alerts",
-    description: "Get notified when medicine stock falls below minimum",
-    icon: "alert",
-    enabled: true,
-  },
-  {
-    label: "Request Auto-Approval",
-    description: "Automatically approve routine monthly replenishments",
-    icon: "check",
-    enabled: false,
-  },
-  {
-    label: "Dark Mode",
-    description: "Switch to dark color theme for low-light environments",
-    icon: "moon",
-    enabled: false,
-  },
-  {
-    label: "Compact View",
-    description: "Use condensed layout with smaller text and spacing",
-    icon: "layout",
-    enabled: false,
-  },
-];
-
 export const emptyForm = {
   facility_id: "",
   facility_reason: "",
@@ -145,6 +112,34 @@ export const getIdentityByProvider = (identities = [], provider) => {
   return identities.find((identity) => identity.provider === provider) || null;
 };
 
+export const getAuthLinkedPhoneNumber = ({
+  authUser,
+  identities = [],
+  normalizePhoneNumber,
+}) => {
+  const phoneIdentity = identities.find((identity) => identity.provider === "phone");
+  const candidates = [
+    authUser?.phone,
+    phoneIdentity?.phone,
+    phoneIdentity?.identity_data?.phone,
+    phoneIdentity?.identity_data?.sub,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    const normalizedPhoneNumber = normalizePhoneNumber(String(candidate));
+
+    if (normalizedPhoneNumber) {
+      return normalizedPhoneNumber;
+    }
+  }
+
+  return "";
+};
+
 export const getLinkedGmailEmail = ({ identities = [], profileEmail = "" }) => {
   const googleIdentityEmails = identities
     .filter((identity) => identity.provider === "google")
@@ -226,6 +221,40 @@ export const getGoogleLinkErrorMessage = (errorDescription = "") => {
   }
 
   return errorDescription || "Google login was not linked. Please try again.";
+};
+
+export const maskPhoneNumber = (phoneNumber = "") => {
+  const digits = String(phoneNumber).replace(/\D/g, "");
+
+  if (!digits) {
+    return phoneNumber;
+  }
+
+  if (digits.length < 8) {
+    return digits;
+  }
+
+  return `${digits.slice(0, 4)}•••••${digits.slice(-3)}`;
+};
+
+export const getPhoneNumberErrorMessage = (error) => {
+  const message = error?.message || "Authentication failed. Please try again.";
+
+  if (isPhoneAlreadyRegisteredError(error)) {
+    return "This phone number is already linked to another account. If it is an old test or abandoned account, remove it in Supabase Auth before linking this number.";
+  }
+
+  return message;
+};
+
+export const isPhoneAlreadyRegisteredError = (error) => {
+  const message = error?.message || "";
+
+  return (
+    message.includes("already been registered") ||
+    message.includes("already registered") ||
+    message.includes("already exists")
+  );
 };
 
 export const getAuthCallbackParams = (url) => {

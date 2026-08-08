@@ -1,3 +1,9 @@
+import { useEffect, useMemo, useState } from "react";
+
+import ModalShell from "../../components/ModalShell";
+
+const OTP_EXPIRY_SECONDS = 120;
+
 export default function OtpModal({
   code,
   error,
@@ -11,13 +17,53 @@ export default function OtpModal({
   subtitle,
   title,
 }) {
-  return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4 py-5">
-      <form onSubmit={onSubmit} className="w-full max-w-[430px] rounded-xl bg-white p-6 shadow-2xl">
-        <h3 className="text-lg font-black text-black">{title}</h3>
-        <p className="mt-1 text-sm font-medium text-neutral-500">{subtitle}</p>
+  const [secondsRemaining, setSecondsRemaining] = useState(OTP_EXPIRY_SECONDS);
+  const formattedTimeRemaining = useMemo(() => {
+    const minutes = Math.floor(secondsRemaining / 60);
+    const seconds = String(secondsRemaining % 60).padStart(2, "0");
 
-        <label className="mt-6 grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
+    return `${minutes}:${seconds}`;
+  }, [secondsRemaining]);
+
+  useEffect(() => {
+    if (secondsRemaining <= 0) {
+      return undefined;
+    }
+
+    const timerId = window.setInterval(() => {
+      setSecondsRemaining((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [secondsRemaining]);
+
+  const handleResend = async () => {
+    await onResend?.();
+    setSecondsRemaining(OTP_EXPIRY_SECONDS);
+  };
+
+  return (
+    <ModalShell
+      labelledBy="otp-modal-title"
+      onClose={onBack}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
+      <form onSubmit={onSubmit} className="w-full max-w-[520px] rounded-xl bg-white px-6 py-8 shadow-2xl">
+        <div className="text-center">
+          <h3 id="otp-modal-title" className="text-3xl font-black tracking-tight text-[#0d1117]">{title}</h3>
+          <p className="mt-2 text-sm font-medium text-slate-600">{subtitle}</p>
+          <p
+            className={`mt-3 text-sm font-black ${
+              secondsRemaining === 0 ? "text-red-600" : "text-emerald-700"
+            }`}
+          >
+            {secondsRemaining === 0
+              ? "OTP expired"
+              : `OTP expires in ${formattedTimeRemaining}`}
+          </p>
+        </div>
+
+        <label className="mt-8 grid gap-3 text-xs font-black uppercase tracking-wide text-slate-600">
           Verification Code
           <input
             type="text"
@@ -25,7 +71,7 @@ export default function OtpModal({
             maxLength={6}
             value={code}
             onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
-            className="h-12 rounded-lg border border-neutral-200 bg-white px-3 text-center text-lg font-black tracking-[0.35em] text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            className="h-14 rounded-xl border border-slate-300 bg-white px-4 text-center text-xl font-black tracking-[0.45em] text-[#0d1117] shadow-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             required
           />
         </label>
@@ -38,27 +84,27 @@ export default function OtpModal({
 
         <button
           type="submit"
-          disabled={isBusy}
-          className="mt-5 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+          disabled={isBusy || secondsRemaining === 0}
+          className="mt-6 w-full rounded-xl bg-[#008a00] px-4 py-3.5 text-sm font-black text-white shadow-sm shadow-emerald-100 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
         >
           {isBusy ? "Verifying..." : submitLabel}
         </button>
         <button
           type="button"
-          onClick={onResend}
+          onClick={handleResend}
           disabled={isResending}
-          className="mt-3 w-full rounded-lg bg-neutral-50 px-4 py-3 text-sm font-bold text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-4 w-full rounded-lg px-4 py-2 text-sm font-black text-[#003b82] hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isResending ? "Resending..." : "Resend OTP"}
         </button>
         <button
           type="button"
           onClick={onBack}
-          className="mt-3 w-full rounded-lg px-4 py-3 text-sm font-bold text-neutral-500 hover:bg-neutral-50"
+          className="mt-1 w-full rounded-lg px-4 py-2 text-sm font-black text-[#003b82] hover:bg-[#eff4ff]"
         >
-          Back
+          Change phone number
         </button>
       </form>
-    </div>
+    </ModalShell>
   );
 }
