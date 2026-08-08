@@ -5,7 +5,7 @@ import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
 import ForecastMapPreview from "../dashboard/components/ForecastMapPreview";
-import { formatDateTime, formatNumber } from "../dashboard/dashboardUtils";
+import { buildFacilityStockStatus, buildFacilityDemand, formatDateTime, formatNumber } from "../dashboard/dashboardUtils";
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
 
@@ -100,6 +100,11 @@ export default function ForecastingModule() {
       .filter((row) => row.stockStatus.label !== "Stable")
       .slice(0, 8);
   }, [inventoryRows]);
+  const stockStatusByFacility = useMemo(
+    () => buildFacilityStockStatus(inventoryRows),
+    [inventoryRows]
+  );
+  const demandByFacility = useMemo(() => buildFacilityDemand(forecastRows), [forecastRows]);
   const consumptionRows = useMemo(() => {
     const historical = groupQuantitiesByMonth(dispensingRows, "dispense_date", "quantity");
     const forecasted = groupQuantitiesByMonth(forecastRows, "forecast_month", "predicted_quantity");
@@ -129,7 +134,7 @@ export default function ForecastingModule() {
         await Promise.all([
           supabase
             .from("facilities")
-            .select("id, facility_name, facility_code, facility_type, address, status")
+            .select("id, facility_name, facility_code, facility_type, address, status, latitude, longitude")
             .eq("status", "ACTIVE")
             .order("facility_name", { ascending: true }),
           supabase
@@ -230,6 +235,9 @@ export default function ForecastingModule() {
             facilities={facilities}
             forecastTotal={forecastTotal}
             lowStockCount={stockWatchRows.length}
+            stockStatusByFacility={stockStatusByFacility}
+            inventoryRows={inventoryRows}
+            demandByFacility={demandByFacility}
           />
 
           <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">

@@ -28,25 +28,25 @@ export default function RequestStatusChart({ rows }) {
     .join(", ");
 
   return (
-    <div className="grid items-center gap-6 sm:grid-cols-[132px_1fr]">
+    <div className="grid items-center gap-4 sm:grid-cols-[112px_1fr]">
       <div
-        className="relative mx-auto h-32 w-32 rounded-full"
+        className="relative mx-auto h-28 w-28 rounded-full"
         style={{ background: `conic-gradient(${gradient})` }}
       >
-        <div className="absolute inset-6 flex flex-col items-center justify-center rounded-full bg-white">
-          <span className="text-2xl font-black text-black">{formatNumber(total)}</span>
-          <span className="text-xs font-medium text-neutral-400">Total</span>
+        <div className="absolute inset-5 flex flex-col items-center justify-center rounded-full bg-white">
+          <span className="text-xl font-black text-black">{formatNumber(total)}</span>
+          <span className="text-[11px] font-medium text-neutral-400">Total</span>
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {statusRows.map((row) => {
           const percent = Math.round((row.value / total) * 100);
           const label =
             row.status.charAt(0) + row.status.slice(1).toLowerCase();
 
           return (
-            <div key={row.status} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
+            <div key={row.status} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 text-xs">
               <span className="flex min-w-0 items-center gap-2 font-medium text-neutral-600">
                 <span
                   className="h-2.5 w-2.5 rounded-full"

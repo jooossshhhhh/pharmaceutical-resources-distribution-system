@@ -24,6 +24,7 @@ const toneClasses = {
 export default function StatCard({
   description,
   icon,
+  isLoading = false,
   label,
   note,
   onClick,
@@ -37,15 +38,15 @@ export default function StatCard({
     <Element
       type={onClick ? "button" : undefined}
       onClick={onClick}
-      className={`group rounded-xl border border-[#d8dadc] bg-white p-4 text-left shadow-sm shadow-neutral-200/40 transition ${
+      className={`group rounded-xl border border-[#d8dadc] bg-white p-2.5 text-left shadow-sm shadow-neutral-200/40 transition ${
         onClick
           ? "cursor-pointer hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md hover:shadow-emerald-100"
           : ""
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2">
         <span
-          className={`flex h-9 w-9 items-center justify-center rounded-lg ${classes.icon}`}
+          className={`flex h-6 w-6 items-center justify-center rounded-lg ${classes.icon}`}
         >
           {icon}
         </span>
@@ -57,15 +58,21 @@ export default function StatCard({
           </span>
         )}
       </div>
-      <p className="mt-5 text-3xl font-black tracking-tight text-[#0d1117]">{value}</p>
-      <p className="mt-1 text-sm font-black text-[#42474e]">{label}</p>
+      <p className="mt-2 text-2xl font-black leading-7 tracking-tight text-[#0d1117]">
+        {isLoading ? (
+          <span className="inline-block h-7 w-16 animate-pulse rounded-md bg-neutral-100" />
+        ) : (
+          value
+        )}
+      </p>
+      <p className="mt-0.5 text-[12px] font-black text-[#42474e]">{label}</p>
       {description && (
-        <p className="mt-2 text-xs font-medium leading-4 text-neutral-500">
+        <p className="mt-1 line-clamp-2 text-[10px] font-medium leading-3.5 text-neutral-500">
           {description}
         </p>
       )}
       {onClick && (
-        <span className="mt-3 inline-flex items-center text-xs font-black text-emerald-700 opacity-0 transition group-hover:opacity-100">
+        <span className="mt-2 inline-flex items-center text-xs font-black text-emerald-700 opacity-0 transition group-hover:opacity-100">
           Open module -&gt;
         </span>
       )}

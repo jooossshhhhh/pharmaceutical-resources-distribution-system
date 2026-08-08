@@ -1,7 +1,8 @@
-export default function EmptyState({ label }) {
+export default function EmptyState({ hint, title = "No data yet" }) {
   return (
-    <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">
-      {label}
-    </p>
+    <div className="rounded-lg bg-neutral-50 px-3 py-5 text-center">
+      <p className="text-xs font-black text-neutral-600">{title}</p>
+      {hint && <p className="mt-1 text-[11px] font-medium leading-4 text-neutral-500">{hint}</p>}
+    </div>
   );
 }
