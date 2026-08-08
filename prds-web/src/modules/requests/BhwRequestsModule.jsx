@@ -229,7 +229,7 @@ export default function BhwRequestsModule() {
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="inline-flex h-11 items-center gap-2 rounded-lg bg-black px-4 text-sm font-black text-white shadow-sm hover:bg-neutral-800"
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
           >
             <PlusIcon />
             New Request
@@ -325,14 +325,16 @@ function MetricCard({ active, label, note, onClick, value }) {
       type="button"
       onClick={onClick}
       className={`rounded-xl border p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        active ? "border-neutral-900 bg-neutral-950 text-white" : "border-neutral-200 bg-white text-black"
+        active
+          ? "border-[#00a36c] bg-[#00a36c] text-white shadow-md shadow-emerald-100"
+          : "border-neutral-200 bg-white text-black"
       }`}
     >
-      <p className={`text-[10px] font-black uppercase tracking-[0.16em] ${active ? "text-blue-300" : "text-neutral-500"}`}>
+      <p className={`text-[10px] font-black uppercase tracking-[0.16em] ${active ? "text-emerald-50" : "text-neutral-500"}`}>
         {label}
       </p>
       <p className="mt-4 text-2xl font-black">{value}</p>
-      <p className={`mt-2 text-xs font-semibold ${active ? "text-neutral-400" : "text-neutral-500"}`}>
+      <p className={`mt-2 text-xs font-semibold ${active ? "text-white/70" : "text-neutral-500"}`}>
         {note}
       </p>
     </button>
@@ -407,7 +409,7 @@ function RequestTrackingModal({ onClose, request, stockMap }) {
   const totalQuantity = getRequestTotalQuantity(request);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <article className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
           <div className="flex gap-3">
@@ -597,7 +599,7 @@ function NewRequestModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <form
         onSubmit={onSubmit}
         className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl"

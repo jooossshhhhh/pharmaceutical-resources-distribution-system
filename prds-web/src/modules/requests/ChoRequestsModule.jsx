@@ -223,7 +223,7 @@ export default function ChoRequestsModule() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1050px] w-full border-collapse text-left">
+          <table className="min-w-262.5 w-full border-collapse text-left">
             <thead className="bg-neutral-50">
               <tr className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
                 <th className="px-4 py-3">Request ID</th>
@@ -300,20 +300,22 @@ function SummaryCard({ active = false, iconKey, label, note, onClick, value }) {
       type="button"
       onClick={onClick}
       className={`rounded-xl border p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        active ? "border-neutral-900 bg-neutral-950 text-white" : "border-neutral-200 bg-white text-black"
+        active
+          ? "border-[#00a36c] bg-[#00a36c] text-white shadow-md shadow-emerald-100"
+          : "border-neutral-200 bg-white text-black"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className={`text-xs font-black uppercase tracking-[0.14em] ${active ? "text-blue-300" : "text-neutral-500"}`}>
+          <p className={`text-xs font-black uppercase tracking-[0.14em] ${active ? "text-emerald-50" : "text-neutral-500"}`}>
             {label}
           </p>
           <p className="mt-5 text-3xl font-black">{value}</p>
-          <p className={`mt-1 text-xs font-semibold ${active ? "text-neutral-400" : "text-neutral-500"}`}>
+          <p className={`mt-1 text-xs font-semibold ${active ? "text-white/70" : "text-neutral-500"}`}>
             {note}
           </p>
         </div>
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${active ? "bg-blue-500 text-white" : "bg-neutral-50 text-neutral-500"}`}>
+        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${active ? "bg-white/20 text-white" : "bg-neutral-50 text-neutral-500"}`}>
           <SummaryIcon iconKey={iconKey} />
         </span>
       </div>
@@ -435,7 +437,7 @@ function RequestDetailsModal({
   const canReview = request.status === "PENDING";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <article className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">
