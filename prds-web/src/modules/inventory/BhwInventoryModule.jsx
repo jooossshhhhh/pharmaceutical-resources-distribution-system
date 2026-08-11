@@ -6,13 +6,11 @@ import ModalShell from "../../components/ModalShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
-import { formatFacilityType } from "../facilities/facilityFormat";
 import DemandPanel from "./demandPanel";
 import { buildChannelSeries, computeDaysOfSupply, computeStockOutDate } from "./demandUtils";
 import { useInventoryData } from "./inventoryData";
 import {
   AlertCircleIcon,
-  BuildingIcon,
   ClockIcon,
   Detail,
   DownloadIcon,
@@ -40,9 +38,7 @@ export default function BhwInventoryModule() {
   const data = useInventoryData({ isBhw: true });
 
   const {
-    ownFacilityName,
     today,
-    selectedFacility,
     consumptionByMedicine,
     summary,
     searchTerm,
@@ -76,32 +72,10 @@ export default function BhwInventoryModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm shadow-neutral-200/40">
-        <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-            <BuildingIcon />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#42474e]">
-              My Facility
-            </p>
-            <h2 className="mt-0.5 truncate text-lg font-black text-[#0d1117]">
-              {ownFacilityName}
-            </h2>
-            <p className="truncate text-sm font-medium text-neutral-500">
-              {selectedFacility
-                ? `${selectedFacility.facility_code} · ${formatFacilityType(selectedFacility.facility_type)}`
-                : "Stock at your assigned facility"}
-            </p>
-          </div>
-        </div>
-      </section>
-
       <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <MetricCard
           label="Total Items"
           value={formatNumber(summary.totalItems)}
-          sub={`at ${ownFacilityName}`}
           tone="emerald"
           onClick={() => toggleStockFilter("ALL")}
           active={stockFilter === "ALL"}
@@ -237,15 +211,15 @@ export default function BhwInventoryModule() {
 function BhwInventoryModal({
   mode,
   selectedItem,
-  relatedStock,
-  consumptionByMedicine,
+  relatedStock = [],
+  consumptionByMedicine = {},
   error,
   onClose,
 }) {
   const isReadOnly = mode === "view";
 
   const [demand, setDemand] = useState(null);
-  const [isDemandLoading, setIsDemandLoading] = useState(true);
+  const isDemandLoading = Boolean(selectedItem) && demand === null;
 
   useEffect(() => {
     if (!selectedItem) {
@@ -262,14 +236,21 @@ function BhwInventoryModal({
         .select("id, facility_id, medicine_id, quantity, dispensing_type, dispense_date")
         .eq("medicine_id", medicineId)
         .limit(2000)
-    ).then((dispensing) => {
-      if (!active) {
-        return;
-      }
+    )
+      .then((dispensing) => {
+        if (!active) {
+          return;
+        }
 
-      setDemand({ dispensing });
-      setIsDemandLoading(false);
-    });
+        setDemand({ dispensing: Array.isArray(dispensing) ? dispensing : [] });
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setDemand({ dispensing: [] });
+      });
 
     return () => {
       active = false;
@@ -277,7 +258,7 @@ function BhwInventoryModal({
   }, [selectedItem]);
 
   const channelSeries = useMemo(
-    () => (demand ? buildChannelSeries(demand.dispensing) : []),
+    () => (demand ? buildChannelSeries(demand.dispensing || []) : []),
     [demand]
   );
   const adc = consumptionByMedicine?.[selectedItem?.medicine_id] ?? null;
@@ -288,6 +269,7 @@ function BhwInventoryModal({
     <ModalShell
       labelledBy="bhw-inventory-modal-title"
       onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
       panelClassName="max-w-3xl"
     >
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">

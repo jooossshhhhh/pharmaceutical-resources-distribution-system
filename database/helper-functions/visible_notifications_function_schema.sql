@@ -124,4 +124,5 @@ as $$
 $$;
 
 revoke all on function public.get_visible_notifications() from public;
+grant execute on function public.get_visible_notifications() to anon;
 grant execute on function public.get_visible_notifications() to authenticated;

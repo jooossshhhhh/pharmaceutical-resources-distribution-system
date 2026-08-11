@@ -57,11 +57,11 @@ import {
   getIdentityByProvider,
   getLinkedGmailEmail,
   getLoginMethodAction,
-  getPhoneChangeState,
+getPhoneChangeState,
+  getPendingAuthPhoneNumber,
   getPhoneNumberErrorMessage,
   getRoleLabel,
   getStatusLabel,
-  isPhoneAlreadyRegisteredError,
   maskPhoneNumber,
 } from "./profileSettingsUtils";
 
@@ -497,11 +497,15 @@ export default function ProfileSettingsModule() {
     setModalError("");
 
     try {
-      const currentAuthUser = await getCurrentAuthUser();
+const currentAuthUser = await getCurrentAuthUser();
       const identities = await getUserIdentities();
       const currentAuthPhoneNumber = getAuthLinkedPhoneNumber({
         authUser: currentAuthUser,
         identities,
+        normalizePhoneNumber,
+      });
+      const pendingAuthPhoneNumber = getPendingAuthPhoneNumber({
+        authUser: currentAuthUser,
         normalizePhoneNumber,
       });
 
@@ -521,6 +525,18 @@ export default function ProfileSettingsModule() {
         return true;
       }
 
+      if (pendingAuthPhoneNumber && pendingAuthPhoneNumber === nextPhoneNumber) {
+        setIsEditing(false);
+        setAddPhoneLogin(emptyAddPhoneLogin);
+        setPhoneVerification({
+          ...emptyPhoneVerification,
+          isOpen: true,
+          phoneNumber: nextPhoneNumber,
+          source,
+        });
+        return true;
+      }
+
       await updateUserPhone(nextPhoneNumber);
       setIsEditing(false);
       setAddPhoneLogin(emptyAddPhoneLogin);
@@ -530,32 +546,46 @@ export default function ProfileSettingsModule() {
         phoneNumber: nextPhoneNumber,
         source,
       });
-      return true;
+return true;
     } catch (error) {
-      if (isPhoneAlreadyRegisteredError(error)) {
-        const currentAuthUser = await getCurrentAuthUser().catch(() => null);
-        const identities = await getUserIdentities().catch(() => []);
-        const currentAuthPhoneNumber = getAuthLinkedPhoneNumber({
-          authUser: currentAuthUser,
-          identities,
-          normalizePhoneNumber,
-        });
+      const currentAuthUser = await getCurrentAuthUser().catch(() => null);
+      const identities = await getUserIdentities().catch(() => []);
+      const currentAuthPhoneNumber = getAuthLinkedPhoneNumber({
+        authUser: currentAuthUser,
+        identities,
+        normalizePhoneNumber,
+      });
+      const pendingAuthPhoneNumber = getPendingAuthPhoneNumber({
+        authUser: currentAuthUser,
+        normalizePhoneNumber,
+      });
 
-        setAuthUser(currentAuthUser);
-        setAuthIdentities(identities);
+      setAuthUser(currentAuthUser);
+      setAuthIdentities(identities);
 
-        if (currentAuthPhoneNumber && currentAuthPhoneNumber === nextPhoneNumber) {
-          if (source === "login-method") {
-            await syncProfilePhone(nextPhoneNumber);
-            setAddPhoneLogin(emptyAddPhoneLogin);
-            setMessage("Phone login was already linked in Supabase Auth and has been synced to your profile.");
-          } else {
-            await saveEditableProfileFields(nextPhoneNumber);
-            setIsEditing(false);
-          }
-
-          return true;
+      if (currentAuthPhoneNumber && currentAuthPhoneNumber === nextPhoneNumber) {
+        if (source === "login-method") {
+          await syncProfilePhone(nextPhoneNumber);
+          setAddPhoneLogin(emptyAddPhoneLogin);
+          setMessage("Phone login was already linked in Supabase Auth and has been synced to your profile.");
+        } else {
+          await saveEditableProfileFields(nextPhoneNumber);
+          setIsEditing(false);
         }
+
+        return true;
+      }
+
+      if (pendingAuthPhoneNumber && pendingAuthPhoneNumber === nextPhoneNumber) {
+        setIsEditing(false);
+        setAddPhoneLogin(emptyAddPhoneLogin);
+        setPhoneVerification({
+          ...emptyPhoneVerification,
+          isOpen: true,
+          phoneNumber: nextPhoneNumber,
+          source,
+        });
+        return true;
       }
 
       const errorMessage = getPhoneNumberErrorMessage(error);
@@ -1390,6 +1420,7 @@ export default function ProfileSettingsModule() {
         <ModalShell
           labelledBy="add-phone-modal-title"
           onClose={() => setAddPhoneLogin(emptyAddPhoneLogin)}
+          overlayClassName="bg-white/95 backdrop-blur-sm"
         >
           <form
             onSubmit={handleAddPhoneLoginSubmit}

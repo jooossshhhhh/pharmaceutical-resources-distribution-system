@@ -24,7 +24,7 @@ const iconPaths = {
       <path d="M10 13h6M10 17h4" />
     </>
   ),
-  Transfers: (
+  Transfer: (
     <>
       <path d="M7 7h11l-3-3" />
       <path d="m18 7-3 3" />
@@ -93,12 +93,12 @@ const iconPaths = {
 
 const navItems = [
   { label: "Dashboard", path: "/dashboard" },
-  { label: "Inventory" },
+  { label: "Inventory", path: "/inventory" },
   { label: "Requests", path: "/requests" },
-  { label: "Transfers" },
+  { label: "Transfer", path: "/transfers" },
   { label: "Dispensing" },
   { label: "Medicines", path: "/medicines", roles: ["PHARMA_I", "PHARMA_II"] },
-  { label: "Facilities", path: "/facilities" },
+  { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"] },
   { label: "Patients" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
   { label: "Forecasting", path: "/forecasting" },
@@ -136,10 +136,10 @@ const roleLabels = {
 
 export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }) {
   const location = useLocation();
+  const inventoryPath = profile?.role === "BHW" ? "/inventory-bhw" : "/inventory";
   const fullName = `${profile?.first_name || "Pharma"} ${
     profile?.last_name || "User"
   }`.trim();
-  const inventoryPath = profile?.role === "BHW" ? "/inventory-bhw" : "/inventory";
   const allowedNavItems = getAllowedNavItems(navItems, profile?.role).map((item) =>
     item.label === "Inventory" ? { ...item, path: inventoryPath } : item
   );
@@ -147,7 +147,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
   return (
     <aside
       className={`sticky top-0 flex h-screen flex-col border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
-        isCollapsed ? "w-[58px]" : "w-[228px]"
+        isCollapsed ? "w-13" : "w-51"
       }`}
     >
       <div
@@ -187,14 +187,11 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
           const isActive = item.path === location.pathname;
           const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition ${
             isActive
-              ? "bg-[#6be9c2] text-[#0d1117] shadow-sm shadow-emerald-100"
+              ? "bg-[#6be9c2] text-[#0d1117]"
               : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
           } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
           const label = (
             <>
-              {isActive && !isCollapsed && (
-                <span className="absolute -left-2.5 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-[#00a36c]" />
-              )}
               <SidebarIcon label={item.label} />
               <span className={isCollapsed ? "sr-only" : "truncate"}>{item.label}</span>
               {isCollapsed && (
@@ -227,14 +224,8 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
           isCollapsed ? "px-2" : "px-3"
         }`}
       >
-        <Link
-          to="/profile-settings"
-          title="Profile settings"
-          className={`group flex items-center rounded-xl bg-[#eff4ff]/70 transition hover:bg-[#6be9c2]/70 ${
-            isCollapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2.5"
-          }`}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6be9c2] text-xs font-black text-[#0d1117]">
+        <div className={`flex items-center rounded-xl ${isCollapsed ? "justify-center" : "gap-3"}`}>
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6be9c2] text-xs font-black text-[#0d1117]">
             {getInitials(profile)}
           </span>
           <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
@@ -243,10 +234,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
               {roleLabels[profile?.role] || "Barangay Health Worker"}
             </p>
           </div>
-          <span className={`ml-auto shrink-0 text-[#42474e] transition group-hover:translate-x-0.5 ${isCollapsed ? "sr-only" : ""}`}>
-            <ChevronRightIcon />
-          </span>
-        </Link>
+        </div>
       </div>
     </aside>
   );
@@ -267,23 +255,6 @@ function HamburgerIcon() {
       <path d="M5 7h14" />
       <path d="M5 12h14" />
       <path d="M5 17h14" />
-    </svg>
-  );
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-    >
-      <path d="m9 6 6 6-6 6" />
     </svg>
   );
 }

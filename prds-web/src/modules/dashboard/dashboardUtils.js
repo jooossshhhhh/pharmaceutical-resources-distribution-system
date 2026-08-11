@@ -8,16 +8,19 @@ export const emptyStats = {
   expiringSoon: 0,
 };
 
-export const getDashboardRoleConfig = ({ role, facilityName = "" } = {}) => {
+export const getDashboardRoleConfig = ({ role, facilityName = "", facilityCode = "" } = {}) => {
   if (role === "BHW") {
     return {
       role,
       canReviewUsers: false,
       coverageLabel: "Assigned Facility Coverage",
       requestLabel: "My Facility Requests",
-      scopeLabel: `${facilityName || "Assigned facility"} facility view`,
-      subtitle: "Monitor requests, stock risks, and forecast trends for your assigned facility.",
-      title: "Facility Operations",
+      scopeLabel: facilityName
+        ? `${facilityName} facility view`
+        : "Assigned facility view",
+      subtitle:
+        facilityCode || "Monitor requests, stock risks, and forecast trends for your assigned facility.",
+      title: facilityName || "Facility Dashboard",
     };
   }
 
@@ -28,8 +31,9 @@ export const getDashboardRoleConfig = ({ role, facilityName = "" } = {}) => {
       coverageLabel: "City of Naga Health Center Coverage",
       requestLabel: "CHO Request Queue",
       scopeLabel: "CHO operations monitoring",
-      subtitle: "Track medicine requests, facility stock health, and distribution activity.",
-      title: "CHO Operations",
+      subtitle:
+        facilityCode || "Track medicine requests, facility stock health, and distribution activity.",
+      title: facilityName || "CHO Operations",
     };
   }
 
@@ -39,8 +43,9 @@ export const getDashboardRoleConfig = ({ role, facilityName = "" } = {}) => {
     coverageLabel: "City of Naga Health Center Coverage",
     requestLabel: "System Request Queue",
     scopeLabel: "System-wide CHO oversight",
-    subtitle: "Review requests, approvals, stock risks, forecasting, and facility activity.",
-    title: "Admin Overview",
+    subtitle:
+      facilityCode || "Review requests, approvals, stock risks, forecasting, and facility activity.",
+    title: facilityName || "Admin Overview",
   };
 };
 
@@ -75,25 +80,23 @@ export const getDashboardStatCards = ({ config, inventoryPath, stats }) => {
     });
   }
 
-  if (config?.role === "BHW") {
-    cards.push(
-      {
-        description: "Medicine batches expiring within 90 days.",
-        key: "expiringSoon",
-        label: "Expiring Soon",
-        tone: "amber",
-        to: inventoryPath,
-        value: stats.expiringSoon,
-      },
-      {
-        description: "Inventory and request activity for your assigned facility.",
-        key: "myFacility",
-        label: "My Facility",
-        tone: "blue",
-        to: "/facilities",
-        value: config.scopeLabel.replace(" facility view", ""),
-      }
-    );
+if (config?.role === "BHW") {
+    cards.push({
+      description: "Medicine batches expiring within 90 days.",
+      key: "expiringSoon",
+      label: "Expiring Soon",
+      tone: "amber",
+      to: inventoryPath,
+      value: stats.expiringSoon,
+    },
+    {
+      description: "Open your assigned facility inventory and request context.",
+      key: "myFacility",
+      label: "My Facility",
+      tone: "blue",
+      to: inventoryPath,
+      value: stats.activeFacilities || 1,
+    });
 
     return cards;
   }

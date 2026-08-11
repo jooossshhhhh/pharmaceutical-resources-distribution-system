@@ -89,7 +89,6 @@ const getStatIcon = (key) => {
     expiringSoon: iconMap.expiring,
     lowStock: iconMap.alerts,
     medicineCatalog: iconMap.medicine,
-    myFacility: iconMap.facilities,
     pendingApprovals: iconMap.approvals,
     pendingRequests: iconMap.requests,
     transfersCompleted: iconMap.transfers,
@@ -159,17 +158,29 @@ export default function DashboardModule() {
     () => forecastRows.reduce((sum, row) => sum + Number(row.predicted_quantity || 0), 0),
     [forecastRows]
   );
-  const myFacility = useMemo(
-    () => facilities.find((facility) => facility.id === myFacilityId) || facilities[0] || null,
-    [facilities, myFacilityId]
-  );
+  const myFacility = useMemo(() => {
+    const fromProfile = profile?.facility_name
+      ? {
+          facility_name: profile.facility_name,
+          facility_code: profile.facility_code || "",
+        }
+      : null;
+
+    return (
+      facilities.find((facility) => facility.id === myFacilityId) ||
+      fromProfile ||
+      facilities[0] ||
+      null
+    );
+  }, [facilities, myFacilityId, profile]);
   const dashboardConfig = useMemo(
     () =>
       getDashboardRoleConfig({
         facilityName: myFacility?.facility_name,
+        facilityCode: myFacility?.facility_code,
         role: profile?.role,
       }),
-    [myFacility?.facility_name, profile?.role]
+    [myFacility?.facility_code, myFacility?.facility_name, profile?.role]
   );
   const statCards = useMemo(
     () =>
@@ -415,10 +426,12 @@ export default function DashboardModule() {
       <section className="rounded-xl border border-[#d8dadc] bg-white px-3.5 py-3 shadow-sm shadow-neutral-200/40">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-              {dashboardConfig.scopeLabel}
-            </p>
-            <h2 className="mt-0.5 text-lg font-black tracking-tight text-[#0d1117]">
+            {dashboardConfig.scopeLabel && (
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                {dashboardConfig.scopeLabel}
+              </p>
+            )}
+            <h2 className="mt-0.5 text-xl font-black tracking-tight text-[#0d1117]">
               {dashboardConfig.title}
             </h2>
             <p className="mt-0.5 text-xs font-medium text-[#42474e]">
@@ -459,50 +472,52 @@ export default function DashboardModule() {
         ))}
       </section>
 
-      <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1.45fr)_minmax(240px,0.75fr)_minmax(240px,0.75fr)]">
-        <ForecastMapPreview
-          compact
-          className="xl:col-span-2"
-          demandByFacility={demandByFacility}
-          description={
-            isBhw
-              ? "Assigned facility location, demand, and stock status."
-              : "City-wide facility locations, demand, and stock status."
-          }
-          eyebrow="Forecasting Snapshot"
-          facilities={facilities}
-          forecastTotal={forecastTotal}
-          inventoryRows={inventoryRows}
-          lowStockCount={stats.lowStock}
-          previewMode
-          showExpand={false}
-          stockStatusByFacility={stockStatusByFacility}
-          title={dashboardConfig.coverageLabel}
-        />
+      <section className="mt-3 grid gap-3">
+        {!isBhw && (
+          <ForecastMapPreview
+            compact
+            fitToCoverage
+            mapClassName="min-h-[28rem] md:min-h-[32rem]"
+            demandByFacility={demandByFacility}
+            description="City-wide facility locations, demand, and stock status."
+            eyebrow="Forecasting Snapshot"
+            facilities={facilities}
+            forecastTotal={forecastTotal}
+            inventoryRows={inventoryRows}
+            lowStockCount={stats.lowStock}
+            previewMode
+            showExpand={false}
+            showMetrics={false}
+            stockStatusByFacility={stockStatusByFacility}
+            title={dashboardConfig.coverageLabel}
+          />
+        )}
 
-        <Panel
-          className="min-h-[220px]"
-          title="Request Status"
-          action={<p className="text-xs font-bold text-neutral-500">Current period</p>}
-        >
-          <RequestStatusChart rows={requestStatus} />
-        </Panel>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Panel
+            className="min-h-[220px]"
+            title="Request Status"
+            action={<p className="text-xs font-bold text-neutral-500">Current period</p>}
+          >
+            <RequestStatusChart rows={requestStatus} />
+          </Panel>
 
-        <Panel
-          className="min-h-[220px]"
-          title="Forecast Demand"
-          action={
-            <button
-              type="button"
-              onClick={() => navigate("/forecasting")}
-              className="text-xs font-black text-emerald-700 hover:text-emerald-800"
-            >
-              Full view
-            </button>
-          }
-        >
-          <ForecastDemandBars rows={forecastRows} />
-        </Panel>
+          <Panel
+            className="min-h-[220px]"
+            title="Forecast Demand"
+            action={
+              <button
+                type="button"
+                onClick={() => navigate("/forecasting")}
+                className="text-xs font-black text-emerald-700 hover:text-emerald-800"
+              >
+                Full view
+              </button>
+            }
+          >
+            <ForecastDemandBars rows={forecastRows} />
+          </Panel>
+        </div>
       </section>
 
       <section className="mt-3 grid gap-3 xl:grid-cols-2">

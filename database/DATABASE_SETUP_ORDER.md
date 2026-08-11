@@ -6,8 +6,8 @@
 
 ## 2. CORE TABLES
 
-* profiles_schema.sql
 * facilities_schema.sql
+* profiles_schema.sql
 * profile_facility_change_requests_schema.sql
 * medicines_schema.sql
 * suppliers_schema.sql
@@ -26,12 +26,14 @@
 
 * medicine_request_schema.sql
 * medicine_request_items_schema.sql
+* medicine_request_fulfillments_schema.sql
 
 
 ## 5. TRANSFERS
 
-* stock_transfers_schema.sql
+* stock_tranfers_schema.sql
 * stock_transfer_items_schema.sql
+* stock_transfer_fulfillments_schema.sql
 
 
 ## 6. DISPENSING
@@ -48,7 +50,7 @@
 
 ## 8. SYSTEM TABLES
 
-* notifications_schema.sql
+* notitficatoins_schema.sql
 * activity_logs_schema.sql
 * forecasting_schema.sql
 
@@ -57,6 +59,8 @@
 
 * helper_functions_schema.sql
 * auth_profile_trigger_schema.sql
+* visible_notifications_function_schema.sql
+* cho_inventory_medicines_function_schema.sql
 
 ## 10. INDEXES
 
@@ -68,16 +72,36 @@
 * views_schema.sql
 
 
-## 12. RLS POLICIES
+## 12. REALTIME
+
+* realtime_publication_schema.sql
+
+
+## 13. RLS POLICIES
 
 * medicines_rls_schema.sql
 * facilities_inventory_rls_schema.sql
-* medicine_requests_rls_schema.sql
+* medicine_reqeuests_rls_schema.sql
 * patients_dispensing_rls_schema.sql
 * profile_notifications_rls_schema.sql
 * profile_facility_change_requests_rls_schema.sql
 * program_forecasting_activitylogs_rls_schema.sql
-* stock_transfer_rls_schema.sql
+* stock_transfers_rls_schema.sql
+* suppliers_rls_schema.sql
 
+
+## 14. MIGRATIONS (run in order)
+
+* 2026-request-receipt-confirmation.sql
+* 2026-cho-bhw-stock-availability.sql
+* 2026-cho-request-batch-fulfillment.sql
+* 2026-cho-request-fulfillment-indexes.sql
+* 2026-inventory-features.sql
+* 2026-facilities-coordinates.sql
+* 2026-facilities-coordinates-cho-naga.sql
+* 2026-profile-avatars.sql
+* 2026-stock-transfer-batch-fulfillment.sql
+* 2026-stock-transfer-source-controlled-workflow.sql
+* 2026-stock-transfer-source-allocation-source-only.sql
 
 

@@ -11,8 +11,11 @@ export default function ForecastMapPreview({
   stockStatusByFacility = {},
   inventoryRows = null,
   demandByFacility = {},
+  fitToCoverage = false,
+  mapClassName = "",
   previewMode = false,
   showExpand = true,
+  showMetrics = true,
   title = "City of Naga Health Center Coverage",
 }) {
   const mappedCount = facilities.filter((facility) => {
@@ -20,6 +23,8 @@ export default function ForecastMapPreview({
     const longitude = Number(facility.longitude);
     return Number.isFinite(latitude) && Number.isFinite(longitude);
   }).length;
+
+  const mapHeightClass = mapClassName || (compact ? "min-h-80 md:min-h-72" : "min-h-72");
 
   return (
     <section className={`overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/50 ${className}`}>
@@ -37,22 +42,31 @@ export default function ForecastMapPreview({
         </div>
       </div>
 
-      <div className={`grid gap-3 ${compact ? "p-3 md:grid-cols-[minmax(0,1fr)_132px]" : "p-5 lg:grid-cols-[minmax(0,1fr)_180px]"}`}>
+      <div
+        className={
+          showMetrics
+            ? `grid gap-3 ${compact ? "p-3 md:grid-cols-[minmax(0,1fr)_132px]" : "p-5 lg:grid-cols-[minmax(0,1fr)_180px]"}`
+            : "grid gap-3 p-3"
+        }
+      >
         <FacilityMap
           controlsMode={previewMode ? "preview" : "full"}
           facilities={facilities}
+          fitToCoverage={fitToCoverage}
           stockStatusByFacility={stockStatusByFacility}
           inventoryRows={inventoryRows}
           demandByFacility={demandByFacility}
           showExpand={showExpand}
-          className={compact ? "min-h-72 md:min-h-64" : "min-h-72"}
+          className={mapHeightClass}
         />
 
-        <div className={`${compact ? "flex flex-col justify-between gap-2" : "grid gap-3"}`}>
-          <ForecastMetric compact={compact} label="Mapped Facilities" value={mappedCount} tone="emerald" />
-          <ForecastMetric compact={compact} label="Forecasted Demand" value={forecastTotal} tone="blue" />
-          <ForecastMetric compact={compact} label="Stock Watch Areas" value={lowStockCount} tone="orange" />
-        </div>
+        {showMetrics && (
+          <div className={`${compact ? "flex flex-col justify-between gap-2" : "grid gap-3"}`}>
+            <ForecastMetric compact={compact} label="Mapped Facilities" value={mappedCount} tone="emerald" />
+            <ForecastMetric compact={compact} label="Forecasted Demand" value={forecastTotal} tone="blue" />
+            <ForecastMetric compact={compact} label="Stock Watch Areas" value={lowStockCount} tone="orange" />
+          </div>
+        )}
       </div>
     </section>
   );

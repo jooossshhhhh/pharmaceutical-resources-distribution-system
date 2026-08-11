@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
+import ModalShell from "../../components/ModalShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import {
@@ -585,7 +586,11 @@ function FacilityRequestsPanel({ isLoading, isSaving, onReview, requests }) {
 
 function UserModal({ user, formValues, facilities, isSaving, error, onClose, onChange, onSave }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+    <ModalShell
+      labelledBy="user-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
       <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-900/20">
         <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-4">
           <div className="flex items-start gap-4">
@@ -596,7 +601,7 @@ function UserModal({ user, formValues, facilities, isSaving, error, onClose, onC
               <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
                 User Profile
               </p>
-              <h3 className="mt-1 truncate text-xl font-black text-black">{getFullName(user)}</h3>
+              <h3 id="user-modal-title" className="mt-1 truncate text-xl font-black text-black">{getFullName(user)}</h3>
               <p className="text-sm font-medium text-neutral-600">
                 {getDisplayEmail(user) || getDisplayPhone(user)}
               </p>
@@ -660,7 +665,7 @@ function UserModal({ user, formValues, facilities, isSaving, error, onClose, onC
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

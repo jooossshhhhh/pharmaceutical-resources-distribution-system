@@ -390,8 +390,8 @@ function ChoInventoryModal({
   facilities,
   medicines,
   suppliers,
-  relatedStock,
-  consumptionByMedicine,
+  relatedStock = [],
+  consumptionByMedicine = {},
   ownFacilityId,
   ownFacilityName,
   error,
@@ -426,12 +426,19 @@ function ChoInventoryModal({
 
     let active = true;
 
-    fetchStockHistory(selectedItem).then((rows) => {
-      if (!active) {
-        return;
-      }
-      setHistory(rows);
-    });
+    fetchStockHistory(selectedItem)
+      .then((rows) => {
+        if (!active) {
+          return;
+        }
+        setHistory(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setHistory([]);
+      });
 
     return () => {
       active = false;
@@ -451,7 +458,7 @@ function ChoInventoryModal({
   );
 
   const [demand, setDemand] = useState(null);
-  const [isDemandLoading, setIsDemandLoading] = useState(true);
+  const isDemandLoading = Boolean(selectedItem) && demand === null;
 
   useEffect(() => {
     if (!selectedItem) {
@@ -488,14 +495,25 @@ function ChoInventoryModal({
           .eq("medicine_id", medicineId)
           .eq("request.status", "PENDING")
       ),
-    ]).then(([dispensing, forecast, requests]) => {
-      if (!active) {
-        return;
-      }
+    ])
+      .then(([dispensing, forecast, requests]) => {
+        if (!active) {
+          return;
+        }
 
-      setDemand({ dispensing, forecast, requests });
-      setIsDemandLoading(false);
-    });
+        setDemand({
+          dispensing: Array.isArray(dispensing) ? dispensing : [],
+          forecast: Array.isArray(forecast) ? forecast : [],
+          requests: Array.isArray(requests) ? requests : [],
+        });
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setDemand({ dispensing: [], forecast: [], requests: [] });
+      });
 
     return () => {
       active = false;
@@ -503,19 +521,19 @@ function ChoInventoryModal({
   }, [selectedItem]);
 
   const channelSeries = useMemo(
-    () => (demand ? buildChannelSeries(demand.dispensing) : []),
+    () => (demand ? buildChannelSeries(demand.dispensing || []) : []),
     [demand]
   );
   const split = useMemo(
     () =>
-      demand ? sumDispensedByFacilityType(demand.dispensing, facilityTypeById) : null,
+      demand ? sumDispensedByFacilityType(demand.dispensing || [], facilityTypeById) : null,
     [demand, facilityTypeById]
   );
-  const forecast = useMemo(() => (demand ? forecastSummary(demand.forecast) : null), [demand]);
+  const forecast = useMemo(() => (demand ? forecastSummary(demand.forecast || []) : null), [demand]);
   const pendingRequests = useMemo(
     () =>
       demand
-        ? demand.requests.filter((item) => item.request?.status === "PENDING")
+        ? (demand.requests || []).filter((item) => item.request?.status === "PENDING")
         : [],
     [demand]
   );
@@ -528,6 +546,7 @@ function ChoInventoryModal({
     <ModalShell
       labelledBy="cho-inventory-modal-title"
       onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
       panelClassName="max-w-3xl"
     >
       <form
@@ -889,4 +908,3 @@ function ChoInventoryModal({
     </ModalShell>
   );
 }
-

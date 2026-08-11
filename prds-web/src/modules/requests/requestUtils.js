@@ -12,6 +12,14 @@ export const requestSortOptions = [
   { value: "priority", label: "Priority first" },
 ];
 
+export const dateRangeOptions = [
+  { value: "ALL", label: "All time" },
+  { value: "7D", label: "Last 7 days" },
+  { value: "30D", label: "Last 30 days" },
+  { value: "90D", label: "Last 90 days" },
+  { value: "MONTH", label: "This month" },
+];
+
 export const requestStatusLabels = {
   APPROVED: "Approved",
   COMPLETED: "Completed",
@@ -42,6 +50,61 @@ export const formatRequestDate = (dateValue) => {
   }).format(new Date(dateValue));
 };
 
+export const getRelativeTime = (dateValue) => {
+  if (!dateValue) {
+    return "";
+  }
+
+  const elapsedMs = Date.now() - new Date(dateValue).getTime();
+  const minutes = Math.floor(elapsedMs / 60000);
+
+  if (minutes < 1) {
+    return "just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+
+  const months = Math.floor(days / 30);
+
+  if (months < 12) {
+    return `${months}mo ago`;
+  }
+
+  return `${Math.floor(months / 12)}y ago`;
+};
+
+export const isRequestWithinDateRange = (request = {}, rangeKey = "ALL") => {
+  if (rangeKey === "ALL" || !request.request_date) {
+    return true;
+  }
+
+  const date = new Date(request.request_date);
+  const now = new Date();
+
+  if (rangeKey === "MONTH") {
+    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+  }
+
+  const days = Number(rangeKey.replace("D", "")) || 0;
+  const cutoff = now.getTime() - days * 86400000;
+
+  return date.getTime() >= cutoff;
+};
+
 export const getRequesterName = (request) => {
   return `${request.requester?.first_name || ""} ${request.requester?.last_name || ""}`.trim() || "Unknown requester";
 };
@@ -52,6 +115,19 @@ export const getItemLabel = (item) => {
   const dosage = medicine?.dosage ? ` ${medicine.dosage}` : "";
 
   return `${name}${dosage}`;
+};
+
+export const getMedicineFullLabel = (medicine = {}) => {
+  const genericName = medicine.generic_name || "No generic name";
+  const brandName = medicine.brand_name || "Generic";
+  const unit = medicine.unit_of_measure || "No unit";
+  const dosage = medicine.dosage || "No dosage";
+
+  return `${genericName} - ${brandName} - ${unit} - ${dosage}`;
+};
+
+export const getRequestItemFullLabel = (item = {}) => {
+  return getMedicineFullLabel(item.medicine || {});
 };
 
 export const getRequestTotalQuantity = (request) => {
@@ -98,6 +174,155 @@ export const getStockMap = (inventoryRows = []) => {
 
     return stockMap;
   }, new Map());
+};
+
+export const getChoAvailabilityMap = (medicines = []) => {
+  return medicines.reduce((availabilityMap, medicine) => {
+    availabilityMap.set(medicine.id, {
+      availableQuantity: Number(medicine.available_quantity || 0),
+      physicalQuantity: Number(medicine.physical_quantity || 0),
+      reservedQuantity: Number(medicine.reserved_quantity || 0),
+    });
+
+    return availabilityMap;
+  }, new Map());
+};
+
+export const validateChoRequestAvailability = (items = [], availabilityMap = new Map()) => {
+  for (const item of items) {
+    const availability = availabilityMap.get(item.medicine_id);
+    const requestedQuantity = Number(item.quantity || 0);
+
+    if (!availability || availability.availableQuantity <= 0) {
+      return "This medicine is not currently available at CHO.";
+    }
+
+    if (requestedQuantity > availability.availableQuantity) {
+      return `Requested quantity exceeds the ${availability.availableQuantity.toLocaleString()} units currently available at CHO.`;
+    }
+  }
+
+  return "";
+};
+
+export const buildFefoBatchAllocations = (requestItems = [], batches = []) => {
+  const batchesByMedicine = batches.reduce((batchMap, batch) => {
+    const medicineBatches = batchMap.get(batch.medicine_id) || [];
+    medicineBatches.push(batch);
+    batchMap.set(batch.medicine_id, medicineBatches);
+    return batchMap;
+  }, new Map());
+
+  batchesByMedicine.forEach((medicineBatches) => {
+    medicineBatches.sort((first, second) => {
+      const firstExpiry = first.expiration_date || "";
+      const secondExpiry = second.expiration_date || "";
+      const expiryComparison = firstExpiry.localeCompare(secondExpiry);
+
+      if (expiryComparison !== 0) {
+        return expiryComparison;
+      }
+
+      return (first.batch_number || "").localeCompare(second.batch_number || "");
+    });
+  });
+
+  return requestItems.flatMap((item) => {
+    let remainingQuantity = Number(item.quantity || 0);
+    const medicineBatches = batchesByMedicine.get(item.medicine_id) || [];
+    const allocations = [];
+
+    for (const batch of medicineBatches) {
+      if (remainingQuantity <= 0) {
+        break;
+      }
+
+      const allocatedQuantity = Math.min(remainingQuantity, Number(batch.quantity || 0));
+
+      if (allocatedQuantity > 0) {
+        allocations.push({
+          request_item_id: item.id,
+          source_inventory_id: batch.id,
+          quantity: allocatedQuantity,
+        });
+        remainingQuantity -= allocatedQuantity;
+      }
+    }
+
+    return allocations;
+  });
+};
+
+export const getAllocationValidationError = (
+  requestItems = [],
+  batches = [],
+  allocations = []
+) => {
+  const requestItemsById = new Map(requestItems.map((item) => [item.id, item]));
+  const batchesById = new Map(batches.map((batch) => [batch.id, batch]));
+  const allocatedByItem = new Map();
+  const allocatedByBatch = new Map();
+
+  for (const allocation of allocations) {
+    const item = requestItemsById.get(allocation.request_item_id);
+    const batch = batchesById.get(allocation.source_inventory_id);
+    const quantity = Number(allocation.quantity || 0);
+
+    if (!item || !batch) {
+      return "Every allocation must use a valid request item and CHO batch.";
+    }
+
+    if (quantity <= 0 || !Number.isInteger(quantity)) {
+      return "Batch allocation quantities must be positive whole numbers.";
+    }
+
+    if (batch.medicine_id !== item.medicine_id) {
+      return "Selected CHO batch does not match the requested medicine.";
+    }
+
+    allocatedByItem.set(item.id, (allocatedByItem.get(item.id) || 0) + quantity);
+    allocatedByBatch.set(batch.id, (allocatedByBatch.get(batch.id) || 0) + quantity);
+  }
+
+  for (const batch of batches) {
+    if ((allocatedByBatch.get(batch.id) || 0) > Number(batch.quantity || 0)) {
+      return "Batch allocation exceeds the selected CHO stock quantity.";
+    }
+  }
+
+  for (const item of requestItems) {
+    const requestedQuantity = Number(item.quantity || 0);
+
+    if ((allocatedByItem.get(item.id) || 0) !== requestedQuantity) {
+      return `Allocate exactly ${requestedQuantity.toLocaleString()} units for this request item before approving.`;
+    }
+  }
+
+  return "";
+};
+
+export const getLowStockRequestItems = (
+  facilityId,
+  stockMap = new Map(),
+  availabilityMap = new Map()
+) => {
+  const prefix = `${facilityId}:`;
+
+  return [...stockMap.entries()]
+    .filter(([key, stock]) => key.startsWith(prefix) && stock.quantity <= stock.threshold)
+    .map(([key, stock]) => {
+      const medicineId = key.slice(prefix.length);
+      const availableQuantity = availabilityMap.get(medicineId)?.availableQuantity || 0;
+      const suggestedQuantity = Math.max(Math.ceil(stock.threshold * 2), 1);
+
+      return {
+        availableQuantity,
+        medicine_id: medicineId,
+        quantity: String(Math.min(suggestedQuantity, availableQuantity)),
+      };
+    })
+    .filter((item) => item.availableQuantity > 0)
+    .map(({ medicine_id, quantity }) => ({ medicine_id, quantity }));
 };
 
 export const getItemStockStatus = (item, facilityId, stockMap) => {
@@ -164,9 +389,9 @@ export const getRequestTrackingSteps = (request = {}) => {
           : "current",
     },
     {
-      detail: status === "COMPLETED" ? "Fulfilled" : "For release",
+      detail: status === "COMPLETED" ? "Released to facility" : "Awaiting release",
       key: "in_transit",
-      label: "In-Transit",
+      label: "For Release",
       state:
         status === "COMPLETED"
           ? "complete"
@@ -175,12 +400,20 @@ export const getRequestTrackingSteps = (request = {}) => {
             : "pending",
     },
     {
-      detail: status === "COMPLETED" ? "Received" : "Pending",
+      detail: request.received_at ? formatRequestDate(request.received_at) : "Pending",
       key: "received",
       label: "Received",
       state: status === "COMPLETED" ? "complete" : "pending",
     },
   ];
+};
+
+export const requestContainsMedicine = (request = {}, medicineId = "") => {
+  if (!medicineId || medicineId === "ALL") {
+    return true;
+  }
+
+  return (request.items || []).some((item) => item.medicine_id === medicineId);
 };
 
 export const normalizeRequestErrorMessage = (message = "") => {
@@ -220,6 +453,50 @@ export const getFacilityRequestRating = (requests = []) => {
   ).length;
 
   return Math.round((resolvedRequests / requests.length) * 1000) / 10;
+};
+
+export const getAverageApprovalTimeLabel = (requests = []) => {
+  const timings = requests
+    .filter((request) =>
+      ["APPROVED", "COMPLETED"].includes(request.status) && request.approved_at
+    )
+    .map(
+      (request) =>
+        (new Date(request.approved_at).getTime() - new Date(request.request_date).getTime()) /
+        86400000
+    );
+
+  if (timings.length === 0) {
+    return "—";
+  }
+
+  const average = timings.reduce((total, timing) => total + timing, 0) / timings.length;
+
+  if (average < 1) {
+    return `${Math.max(Math.round(average * 24), 1)} hours`;
+  }
+
+  return `${average.toFixed(1)} days`;
+};
+
+export const buildRequestsCsv = (requests = []) => {
+  const escapeCell = (value) => {
+    const text = String(value ?? "");
+
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
+  const header = ["Request Number", "Date", "Status", "Items", "Total Quantity", "Remarks"];
+  const rows = requests.map((request) => [
+    getRequestNumber(request.id),
+    formatRequestDate(request.request_date),
+    request.status,
+    (request.items || []).map(getItemLabel).join("; "),
+    getRequestTotalQuantity(request),
+    request.remarks || "",
+  ]);
+
+  return [header, ...rows].map((row) => row.map(escapeCell).join(",")).join("\n");
 };
 
 export const matchesRequestFilters = (

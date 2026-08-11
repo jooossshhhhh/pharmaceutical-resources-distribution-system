@@ -167,13 +167,23 @@ export const buildInventoryImportPayloads = (
 };
 
 export const formatDateTime = (date) => {
+  if (!date) {
+    return "—";
+  }
+
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(date);
+  }).format(parsed);
 };
 
 export const formatDate = (dateString) => {
@@ -181,11 +191,17 @@ export const formatDate = (dateString) => {
     return "-";
   }
 
+  const parsed = new Date(dateString);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date(dateString));
+  }).format(parsed);
 };
 
 export const formatCurrency = (value) => {
@@ -235,11 +251,12 @@ export const getMedicineName = (item) => {
 };
 
 export const daysUntilExpiry = (dateString) => {
-  if (!dateString) {
+  const expiry = new Date(dateString);
+
+  if (!dateString || Number.isNaN(expiry.getTime())) {
     return null;
   }
 
-  const expiry = new Date(dateString);
   const now = new Date();
 
   return Math.ceil((expiry - now) / 86400000);

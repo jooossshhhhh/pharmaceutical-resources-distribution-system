@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
+import ModalShell from "../../components/ModalShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
@@ -665,14 +666,18 @@ function MedicineModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+    <ModalShell
+      labelledBy="medicine-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
       <form
         onSubmit={onSubmit}
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
           <div>
-            <h3 className="text-xl font-black text-black">{title}</h3>
+            <h3 id="medicine-modal-title" className="text-xl font-black text-black">{title}</h3>
           </div>
           <button
             type="button"
@@ -840,7 +845,7 @@ function MedicineModal({
           )}
         </div>
       </form>
-    </div>
+    </ModalShell>
   );
 }
 

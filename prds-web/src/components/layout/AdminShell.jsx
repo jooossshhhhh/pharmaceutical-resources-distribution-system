@@ -21,7 +21,7 @@ export default function AdminShell({
     <main className="prds-admin-shell min-h-screen bg-[#f7f6f3] text-slate-950">
       <div
         className={`grid min-h-screen transition-[grid-template-columns] duration-300 ${
-          isSidebarCollapsed ? "grid-cols-[58px_1fr]" : "grid-cols-[228px_1fr]"
+          isSidebarCollapsed ? "grid-cols-[52px_1fr]" : "grid-cols-[204px_1fr]"
         }`}
       >
         <AdminSidebar
@@ -35,8 +35,8 @@ export default function AdminShell({
             profile={profile}
             onSignOut={onSignOut}
           />
-          <section className="prds-main-scrollbar min-w-0 flex-1 overflow-auto px-6 py-6">
-            <div className="prds-fade-in mx-auto min-w-0 max-w-[1400px]">{children}</div>
+          <section className="prds-main-scrollbar min-w-0 flex-1 overflow-auto px-5 py-5">
+            <div className="prds-fade-in mx-auto min-w-0 max-w-[1280px]">{children}</div>
           </section>
         </div>
       </div>

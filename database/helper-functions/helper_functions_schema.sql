@@ -198,6 +198,7 @@ end;
 $$;
 
 revoke all on function update_own_profile_contact(text, text, text, text) from public;
+grant execute on function update_own_profile_contact(text, text, text, text) to anon;
 grant execute on function update_own_profile_contact(text, text, text, text) to authenticated;
 
 
@@ -223,6 +224,7 @@ end;
 $$;
 
 revoke all on function log_own_password_change() from public;
+grant execute on function log_own_password_change() to anon;
 grant execute on function log_own_password_change() to authenticated;
 
 
@@ -366,4 +368,5 @@ end;
 $$;
 
 revoke all on function review_profile_facility_change_request(uuid, facility_change_request_status) from public;
+grant execute on function review_profile_facility_change_request(uuid, facility_change_request_status) to anon;
 grant execute on function review_profile_facility_change_request(uuid, facility_change_request_status) to authenticated;

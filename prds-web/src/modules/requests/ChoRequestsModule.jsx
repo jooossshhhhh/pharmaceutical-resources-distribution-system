@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
+import ModalShell from "../../components/ModalShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { formatDateTime } from "../dashboard/dashboardUtils";
-import { getRequestsData, reviewMedicineRequest } from "./RequestsService";
 import {
+  getRequestReleaseBatches,
+  getRequestsData,
+  reviewMedicineRequest,
+} from "./RequestsService";
+import {
+  buildFefoBatchAllocations,
   formatRequestDate,
+  getAllocationValidationError,
   getItemLabel,
   getItemStockStatus,
   getPriorityTone,
@@ -73,6 +80,9 @@ export default function ChoRequestsModule() {
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [remarks, setRemarks] = useState("");
+  const [releaseBatches, setReleaseBatches] = useState([]);
+  const [releaseAllocations, setReleaseAllocations] = useState([]);
+  const [isReleaseLoading, setIsReleaseLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -125,9 +135,99 @@ export default function ChoRequestsModule() {
     return () => window.clearTimeout(timerId);
   }, []);
 
+  useEffect(() => {
+    if (!selectedRequestDetails || selectedRequestDetails.status !== "PENDING") {
+      return;
+    }
+
+    let isCurrent = true;
+
+    const loadReleaseBatches = async () => {
+      setIsReleaseLoading(true);
+      setError("");
+
+      try {
+        const batches = await getRequestReleaseBatches(selectedRequestDetails.id);
+
+        if (!isCurrent) {
+          return;
+        }
+
+        setReleaseBatches(batches);
+        setReleaseAllocations(
+          buildFefoBatchAllocations(selectedRequestDetails.items || [], batches)
+        );
+      } catch (loadError) {
+        if (isCurrent) {
+          setReleaseBatches([]);
+          setReleaseAllocations([]);
+          setError(loadError.message);
+        }
+      } finally {
+        if (isCurrent) {
+          setIsReleaseLoading(false);
+        }
+      }
+    };
+
+    loadReleaseBatches();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedRequestDetails]);
+
+  const handleReleaseAllocationChange = ({
+    requestItemId,
+    sourceInventoryId,
+    quantity,
+  }) => {
+    const numericQuantity = Number(quantity || 0);
+
+    setReleaseAllocations((currentAllocations) => {
+      const withoutCurrent = currentAllocations.filter(
+        (allocation) =>
+          !(
+            allocation.request_item_id === requestItemId &&
+            allocation.source_inventory_id === sourceInventoryId
+          )
+      );
+
+      if (!Number.isFinite(numericQuantity) || numericQuantity <= 0) {
+        return withoutCurrent;
+      }
+
+      return [
+        ...withoutCurrent,
+        {
+          request_item_id: requestItemId,
+          source_inventory_id: sourceInventoryId,
+          quantity: numericQuantity,
+        },
+      ];
+    });
+  };
+
   const handleReview = async (request, status) => {
     if (!profile?.id || isSaving) {
       return;
+    }
+
+    const activeAllocations = releaseAllocations.filter(
+      (allocation) => Number(allocation.quantity || 0) > 0
+    );
+
+    if (status === "APPROVED") {
+      const allocationError = getAllocationValidationError(
+        request.items || [],
+        releaseBatches,
+        activeAllocations
+      );
+
+      if (allocationError) {
+        setError(allocationError);
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -135,6 +235,7 @@ export default function ChoRequestsModule() {
 
     try {
       const updatedRequest = await reviewMedicineRequest({
+        allocations: activeAllocations,
         profileId: profile.id,
         remarks,
         requestId: request.id,
@@ -148,6 +249,9 @@ export default function ChoRequestsModule() {
       );
       setSelectedRequest(updatedRequest);
       setRemarks("");
+      setReleaseBatches([]);
+      setReleaseAllocations([]);
+      await loadRequests();
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -180,7 +284,7 @@ export default function ChoRequestsModule() {
       <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 px-4 py-4">
           <div>
-            <h2 className="text-base font-black text-black">Active Distribution Requests</h2>
+            <h2 className="text-base font-black text-black">Distribution Request</h2>
             <p className="mt-1 text-xs font-semibold text-neutral-500">
               Review, approve, reject, and track requests from all facilities.
             </p>
@@ -232,7 +336,7 @@ export default function ChoRequestsModule() {
                 <th className="px-4 py-3">Priority</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
@@ -255,6 +359,8 @@ export default function ChoRequestsModule() {
                     request={request}
                     onReview={handleReview}
                     onSelect={() => {
+                      setReleaseBatches([]);
+                      setReleaseAllocations([]);
                       setSelectedRequest(request);
                       setRemarks(request.remarks || "");
                     }}
@@ -282,8 +388,14 @@ export default function ChoRequestsModule() {
           onClose={() => {
             setSelectedRequest(null);
             setRemarks("");
+            setReleaseBatches([]);
+            setReleaseAllocations([]);
           }}
           onReview={handleReview}
+          isReleaseLoading={isReleaseLoading}
+          onReleaseAllocationChange={handleReleaseAllocationChange}
+          releaseAllocations={releaseAllocations}
+          releaseBatches={releaseBatches}
           remarks={remarks}
           request={selectedRequestDetails}
           setRemarks={setRemarks}
@@ -395,10 +507,10 @@ function RequestRow({ isSaving, onReview, onSelect, request }) {
               <button
                 type="button"
                 disabled={isSaving}
-                onClick={() => onReview(request, "APPROVED")}
+                onClick={onSelect}
                 className="h-8 rounded-lg bg-blue-600 px-3 text-xs font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
-                Approve
+                Review
               </button>
               <button
                 type="button"
@@ -426,8 +538,12 @@ function RequestRow({ isSaving, onReview, onSelect, request }) {
 
 function RequestDetailsModal({
   isSaving,
+  isReleaseLoading,
   onClose,
   onReview,
+  onReleaseAllocationChange,
+  releaseAllocations,
+  releaseBatches,
   remarks,
   request,
   setRemarks,
@@ -435,13 +551,29 @@ function RequestDetailsModal({
 }) {
   const priority = getRequestPriority(request);
   const canReview = request.status === "PENDING";
+  const allocationsByKey = new Map(
+    (releaseAllocations || []).map((allocation) => [
+      `${allocation.request_item_id}:${allocation.source_inventory_id}`,
+      Number(allocation.quantity || 0),
+    ])
+  );
+  const getAllocatedQuantity = (requestItemId, sourceInventoryId) =>
+    allocationsByKey.get(`${requestItemId}:${sourceInventoryId}`) || 0;
+  const getTotalAllocatedForItem = (requestItemId) =>
+    (releaseAllocations || [])
+      .filter((allocation) => allocation.request_item_id === requestItemId)
+      .reduce((total, allocation) => total + Number(allocation.quantity || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+    <ModalShell
+      labelledBy="request-review-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
       <article className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-black text-black">{getRequestNumber(request.id)}</h2>
+            <h2 id="request-review-modal-title" className="text-base font-black text-black">{getRequestNumber(request.id)}</h2>
             <span className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${requestStatusTones[request.status] || "bg-neutral-100 text-neutral-700"}`}>
               {requestStatusLabels[request.status] || request.status}
             </span>
@@ -521,6 +653,135 @@ function RequestDetailsModal({
             </div>
           </section>
 
+          {canReview && (
+            <section className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                    Batch Release
+                  </h3>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-neutral-500">
+                    FEFO is preselected. Adjust batches if CHO needs to release a specific stock lot.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">
+                  CHO stock
+                </span>
+              </div>
+
+              {isReleaseLoading ? (
+                <p className="mt-4 rounded-lg bg-white px-3 py-4 text-center text-sm font-bold text-neutral-500">
+                  Loading CHO batches...
+                </p>
+              ) : releaseBatches.length === 0 ? (
+                <p className="mt-4 rounded-lg border border-orange-100 bg-white px-3 py-4 text-center text-sm font-bold text-orange-700">
+                  No available CHO batches can fulfill this request.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-4">
+                  {(request.items || []).map((item) => {
+                    const itemBatches = releaseBatches.filter(
+                      (batch) => batch.request_item_id === item.id
+                    );
+                    const requestedQuantity = Number(item.quantity || 0);
+                    const allocatedQuantity = getTotalAllocatedForItem(item.id);
+                    const isFullyAllocated = allocatedQuantity === requestedQuantity;
+
+                    return (
+                      <div key={item.id} className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-3 py-3">
+                          <div>
+                            <p className="text-sm font-black text-black">{getItemLabel(item)}</p>
+                            <p className="text-xs font-semibold text-neutral-500">
+                              Requested: {requestedQuantity.toLocaleString()}{" "}
+                              {item.medicine?.unit_of_measure || "units"}
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                              isFullyAllocated
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-orange-100 text-orange-700"
+                            }`}
+                          >
+                            {allocatedQuantity.toLocaleString()} / {requestedQuantity.toLocaleString()} allocated
+                          </span>
+                        </div>
+
+                        {itemBatches.length === 0 ? (
+                          <p className="px-3 py-4 text-sm font-bold text-neutral-500">
+                            No CHO batch is available for this medicine.
+                          </p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="min-w-[680px] w-full border-collapse text-left text-xs">
+                              <thead className="bg-neutral-50 text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
+                                <tr>
+                                  <th className="px-3 py-2">Batch</th>
+                                  <th className="px-3 py-2">Supplier</th>
+                                  <th className="px-3 py-2">Available</th>
+                                  <th className="px-3 py-2">Expiry</th>
+                                  <th className="px-3 py-2 text-right">Release Qty</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-neutral-100">
+                                {itemBatches.map((batch) => {
+                                  const value = getAllocatedQuantity(
+                                    item.id,
+                                    batch.source_inventory_id
+                                  );
+
+                                  return (
+                                    <tr key={batch.source_inventory_id}>
+                                      <td className="px-3 py-2 font-black text-neutral-800">
+                                        {batch.batch_number}
+                                        {batch.recommended_quantity > 0 && (
+                                          <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700">
+                                            FEFO
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 font-semibold text-neutral-600">
+                                        {batch.supplier_name || "No supplier"}
+                                      </td>
+                                      <td className="px-3 py-2 font-semibold text-neutral-600">
+                                        {Number(batch.quantity || 0).toLocaleString()}
+                                      </td>
+                                      <td className="px-3 py-2 font-semibold text-neutral-600">
+                                        {formatRequestDate(batch.expiration_date)}
+                                      </td>
+                                      <td className="px-3 py-2 text-right">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max={batch.quantity}
+                                          disabled={isSaving}
+                                          value={value || ""}
+                                          onChange={(event) =>
+                                            onReleaseAllocationChange({
+                                              quantity: event.target.value,
+                                              requestItemId: item.id,
+                                              sourceInventoryId: batch.source_inventory_id,
+                                            })
+                                          }
+                                          className="h-9 w-24 rounded-lg border border-neutral-200 px-2 text-right text-xs font-black text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50"
+                                        />
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
           <section className="mt-5 grid gap-4 md:grid-cols-[1fr_220px]">
             <DetailPanel title="Activity Log">
               <TimelineItem
@@ -583,17 +844,17 @@ function RequestDetailsModal({
               </button>
               <button
                 type="button"
-                disabled={isSaving}
+                disabled={isSaving || isReleaseLoading}
                 onClick={() => onReview(request, "APPROVED")}
                 className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
-                Approve Request
+                Approve and Release
               </button>
             </>
           )}
         </footer>
       </article>
-    </div>
+    </ModalShell>
   );
 }
 

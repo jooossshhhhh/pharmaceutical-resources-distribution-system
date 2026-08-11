@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { useAuth } from "../../context/useAuth";
@@ -67,6 +67,29 @@ export function useInventoryData({ isBhw = false }) {
   const [modalMode, setModalMode] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [formValues, setFormValues] = useState(emptyInventoryForm);
+  const formSnapshotRef = useRef(null);
+
+  const EDITABLE_FIELDS = [
+    "facility_id",
+    "medicine_id",
+    "supplier_id",
+    "quantity",
+    "threshold",
+    "batch_number",
+    "date_received",
+    "expiration_date",
+  ];
+
+  const formHasChanges = () => {
+    const snapshot = formSnapshotRef.current;
+    if (!snapshot) {
+      return true;
+    }
+
+    return EDITABLE_FIELDS.some(
+      (field) => String(formValues[field] ?? "") !== String(snapshot[field] ?? "")
+    );
+  };
 
   const today = useMemo(() => formatDateTime(new Date()), []);
 
@@ -381,10 +404,12 @@ export function useInventoryData({ isBhw = false }) {
 
   const openCreateModal = () => {
     setSelectedItem(null);
-    setFormValues({
+    const initialValues = {
       ...emptyInventoryForm,
       facility_id: ownFacilityId || "",
-    });
+    };
+    setFormValues(initialValues);
+    formSnapshotRef.current = initialValues;
     setInventoryError("");
     setModalMode("create");
   };
@@ -478,7 +503,7 @@ export function useInventoryData({ isBhw = false }) {
 
   const openItemModal = (item, mode) => {
     setSelectedItem(item);
-    setFormValues({
+    const initialValues = {
       facility_id: item.facility_id,
       medicine_id: item.medicine_id,
       supplier_id: item.supplier_id,
@@ -487,7 +512,9 @@ export function useInventoryData({ isBhw = false }) {
       batch_number: item.batch_number || "",
       date_received: item.date_received || "",
       expiration_date: item.expiration_date || "",
-    });
+    };
+    setFormValues(initialValues);
+    formSnapshotRef.current = initialValues;
     setInventoryError("");
     setModalMode(mode);
   };
@@ -547,6 +574,14 @@ export function useInventoryData({ isBhw = false }) {
       return;
     }
 
+    const isEditing = Boolean(selectedItem?.id);
+
+    if (isEditing && !formHasChanges()) {
+      setInventoryError("");
+      closeModal();
+      return;
+    }
+
     setIsSaving(true);
     setInventoryError("");
 
@@ -562,12 +597,17 @@ export function useInventoryData({ isBhw = false }) {
       updated_at: new Date().toISOString(),
     };
 
-    const isEditing = Boolean(selectedItem?.id);
-    const saveRequest = isEditing
-      ? supabase.from("inventory").update(payload).eq("id", selectedItem.id)
-      : supabase.from("inventory").insert(payload);
-
-    const { error } = await saveRequest;
+    const { error } = isEditing
+      ? await supabase.rpc("update_inventory_batch", {
+          p_batch_number: payload.batch_number,
+          p_date_received: payload.date_received,
+          p_expiration_date: payload.expiration_date,
+          p_inventory_id: selectedItem.id,
+          p_quantity: payload.quantity,
+          p_supplier_id: payload.supplier_id,
+          p_threshold: payload.threshold,
+        })
+      : await supabase.from("inventory").insert(payload);
 
     if (error) {
       setInventoryError(error.message);
@@ -575,28 +615,28 @@ export function useInventoryData({ isBhw = false }) {
       return;
     }
 
-    const medicineForLog = medicines.find(
-      (medicine) => medicine.id === formValues.medicine_id
-    );
-    const facilityForLog = facilities.find(
-      (facility) => facility.id === formValues.facility_id
-    );
-    const medicineLabel = `${medicineForLog?.generic_name || "Medicine"} ${medicineForLog?.dosage || ""}`.trim();
-    const facilityLabel = facilityForLog?.facility_name || "facility";
+    if (!isEditing) {
+      const medicineForLog = medicines.find(
+        (medicine) => medicine.id === formValues.medicine_id
+      );
+      const facilityForLog = facilities.find(
+        (facility) => facility.id === formValues.facility_id
+      );
+      const medicineLabel = `${medicineForLog?.generic_name || "Medicine"} ${medicineForLog?.dosage || ""}`.trim();
+      const facilityLabel = facilityForLog?.facility_name || "facility";
 
-    const { error: logError } = await supabase.from("activity_logs").insert({
-      action: isEditing ? "Stock Updated" : "Stock Added",
-      details: isEditing
-        ? `${medicineLabel} (${payload.batch_number}) at ${facilityLabel} updated: ${payload.quantity} units, threshold ${payload.threshold}.`
-        : `${medicineLabel} (${payload.batch_number}) added at ${facilityLabel}: ${payload.quantity} units.`,
-      module: "Inventory",
-      user_id: profile?.id,
-    });
+      const { error: logError } = await supabase.from("activity_logs").insert({
+        action: "Stock Added",
+        details: `${medicineLabel} (${payload.batch_number}) added at ${facilityLabel}: ${payload.quantity} units.`,
+        module: "Inventory",
+        user_id: profile?.id,
+      });
 
-    if (logError) {
-      setInventoryError(logError.message);
-      setIsSaving(false);
-      return;
+      if (logError) {
+        setInventoryError(logError.message);
+        setIsSaving(false);
+        return;
+      }
     }
 
     setIsSaving(false);

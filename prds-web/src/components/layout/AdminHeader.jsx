@@ -18,17 +18,21 @@ const pageTitles = {
     subtitle: "Track medicine stock levels across all facilities",
   },
   "/inventory-bhw": {
-    title: "My Facility Inventory",
-    subtitle: "View stock levels and consumption at your facility",
+    title: "Facility Inventory",
+    subtitle: "View stock levels and consumption",
   },
-  "/requests": { title: "Requests", subtitle: "Review and process medicine requests" },
-  "/transfers": { title: "Transfers", subtitle: "Track stock movement across facilities" },
+  "/requests": { title: "Request", subtitle: "Review and process medicine requests" },
+  "/transfers": { title: "Transfer", subtitle: "Track stock movement across facilities" },
   "/dispensing": { title: "Dispensing", subtitle: "Monitor patient medicine dispensing" },
   "/medicines": {
     title: "Medicine Catalog",
     subtitle: "Browse and manage the full list of medicines and pricing",
   },
   "/facilities": { title: "Facilities", subtitle: "Manage healthcare facilities" },
+  "/suppliers": {
+    title: "Suppliers",
+    subtitle: "Manage supplier records and contact details",
+  },
   "/patients": { title: "Patients", subtitle: "Manage patient records" },
   "/forecasting": { title: "Forecasting", subtitle: "Review demand forecasts" },
   "/activity-logs": {
@@ -144,7 +148,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   };
 
   return (
-    <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-neutral-200 bg-white/95 px-6 shadow-sm shadow-neutral-200/50 backdrop-blur-sm">
+    <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-[#d8dadc] bg-[#f8f9ff] px-6 shadow-sm shadow-neutral-200/50">
       <div className="min-w-0">
         <h1 className="truncate text-lg font-black tracking-tight text-[#0d1117]">
           {pageInfo.title}
@@ -190,7 +194,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
           <SettingsIcon />
         </button>
 
-        <div className="hidden h-6 w-px bg-neutral-200 sm:block" />
+        <div className="hidden h-6 w-px bg-[#d8dadc] sm:block" />
 
         <button
           type="button"

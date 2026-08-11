@@ -35,7 +35,7 @@ const createFacilityIcon = (color, highlighted = false) => {
     : "";
 
   return L.divIcon({
-    className: "",
+    className: "prds-map-marker",
     html: `
       <span style="display:flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:9999px;background:${color};border:2px solid #ffffff;box-shadow:0 2px 8px rgba(13,17,23,0.4);${highlightStyle}">
         <span style="width:7px;height:7px;border-radius:9999px;background:#0d1117;"></span>
@@ -59,10 +59,18 @@ const matchesQuery = (facility, needle) =>
     .filter(Boolean)
     .some((value) => value.toLowerCase().includes(needle));
 
-function FitBounds({ positions }) {
+function FitBounds({ fitToCoverage = false, positions }) {
   const map = useMap();
 
   useEffect(() => {
+    if (fitToCoverage) {
+      map.fitBounds(
+        L.latLngBounds(NAGA_BOUNDS_SOUTH_WEST, NAGA_BOUNDS_NORTH_EAST),
+        { padding: [24, 24], maxZoom: 12 }
+      );
+      return;
+    }
+
     const bounds = positions.length > 0 ? L.latLngBounds(positions) : null;
 
     if (bounds) {
@@ -75,7 +83,7 @@ function FitBounds({ positions }) {
       L.latLngBounds(NAGA_BOUNDS_SOUTH_WEST, NAGA_BOUNDS_NORTH_EAST),
       { padding: [16, 16], maxZoom: 13 }
     );
-  }, [map, positions]);
+  }, [fitToCoverage, map, positions]);
 
   return null;
 }
@@ -141,20 +149,27 @@ function ToggleLegend({ tiers, activeKeys, counts, onToggle, title }) {
 
 function PreviewLegend({ counts }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#d8dadc] bg-white/95 px-2.5 py-1.5 shadow-md">
-      {STOCK_TIERS.map((tier) => (
-        <span
-          key={tier.key}
-          className="inline-flex items-center gap-1.5 text-[10px] font-black text-neutral-600"
-        >
+    <div className="rounded-xl border border-white/70 bg-white/75 px-3 py-2 shadow-lg shadow-neutral-900/10 backdrop-blur-md">
+      <p className="px-0.5 pb-1 text-[10px] font-black uppercase tracking-wide text-neutral-500">
+        Stock status
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        {STOCK_TIERS.map((tier) => (
           <span
-            className="h-2 w-2 rounded-full border border-white shadow-sm"
-            style={{ backgroundColor: tier.color }}
-          />
-          {tier.label}
-          <span className="text-neutral-400">{counts[tier.key] || 0}</span>
-        </span>
-      ))}
+            key={tier.key}
+            className="inline-flex items-center gap-1.5 text-[11px] font-black text-neutral-700"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full border border-white shadow-sm"
+              style={{ backgroundColor: tier.color }}
+            />
+            {tier.label}
+            <span className="rounded-full bg-white/80 px-1.5 text-[10px] font-black text-neutral-500">
+              {counts[tier.key] || 0}
+            </span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -190,6 +205,7 @@ export default function FacilityMap({
   inventoryRows = null,
   demandByFacility = {},
   className = "h-72",
+  fitToCoverage = false,
   showExpand = true,
   onExitFullscreen,
   onSelectFacility,
@@ -339,7 +355,7 @@ export default function FacilityMap({
         maxZoom={MAX_ZOOM}
         maxBounds={L.latLngBounds(NAGA_BOUNDS_SOUTH_WEST, NAGA_BOUNDS_NORTH_EAST)}
         maxBoundsViscosity={1}
-        scrollWheelZoom={false}
+        scrollWheelZoom={isPreview}
         zoomControl={false}
         className={`z-0 w-full ${className} rounded-xl border border-[#d8dadc]`}
       >
@@ -347,8 +363,8 @@ export default function FacilityMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png"
         />
-        {!isPreview && <ZoomControl position="bottomright" />}
-        <FitBounds positions={fitPositions} />
+        <ZoomControl position="bottomright" />
+        <FitBounds fitToCoverage={fitToCoverage} positions={fitPositions} />
         <FlyToFacility focus={focusPosition} />
 
         {visibleFacilities.map((facility) => {

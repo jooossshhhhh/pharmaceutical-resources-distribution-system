@@ -23,6 +23,8 @@
 html {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+  /* 14.5px base (90.6% of 16px) keeps the whole UI compact at 100% browser zoom. */
+  font-size: 14.5px;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -71,6 +73,15 @@ body {
 
 .prds-admin-shell .tracking-\[0\.16em\],
 .prds-admin-shell .tracking-\[0\.18em\] {
+  letter-spacing: 0.08em;
+}
+
+.prds-modal-root .font-black {
+  font-weight: 700;
+}
+
+.prds-modal-root .tracking-\[0\.16em\],
+.prds-modal-root .tracking-\[0\.18em\] {
   letter-spacing: 0.08em;
 }
 
@@ -234,13 +245,21 @@ body {
 
 .prds-map-popup .leaflet-popup-content-wrapper {
   border: 1px solid #e4e6e8;
-  border-radius: 12px;
-  box-shadow: 0 10px 28px rgba(13, 17, 23, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(13, 17, 23, 0.18), 0 2px 8px rgba(13, 17, 23, 0.06);
+  overflow: hidden;
+}
+
+.prds-map-popup .leaflet-popup-content-wrapper::before {
+  content: "";
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, #00a36c, #6be9c2);
 }
 
 .prds-map-popup .leaflet-popup-content {
   margin: 0;
-  padding: 12px;
+  padding: 13px 14px;
   line-height: 1.4;
 }
 
@@ -251,4 +270,15 @@ body {
 
 .prds-map-popup .leaflet-popup-close-button {
   display: none;
+}
+
+.prds-map-marker {
+  transition: transform 0.18s ease, filter 0.18s ease;
+  will-change: transform;
+}
+
+.prds-map-marker:hover {
+  transform: scale(1.18);
+  filter: drop-shadow(0 4px 6px rgba(13, 17, 23, 0.35));
+  z-index: 1000 !important;
 }

@@ -140,6 +140,16 @@ export const getAuthLinkedPhoneNumber = ({
   return "";
 };
 
+export const getPendingAuthPhoneNumber = ({ authUser, normalizePhoneNumber }) => {
+  const pendingPhoneNumber = authUser?.new_phone || "";
+
+  if (pendingPhoneNumber) {
+    return normalizePhoneNumber(String(pendingPhoneNumber));
+  }
+
+  return "";
+};
+
 export const getLinkedGmailEmail = ({ identities = [], profileEmail = "" }) => {
   const googleIdentityEmails = identities
     .filter((identity) => identity.provider === "google")
@@ -244,6 +254,10 @@ export const getPhoneNumberErrorMessage = (error) => {
     return "This phone number is already linked to another account. If it is an old test or abandoned account, remove it in Supabase Auth before linking this number.";
   }
 
+  if (isPhoneChangeAlreadyPendingError(error)) {
+    return "This phone number is already linked or awaiting verification on your account. Check your inbox for an SMS code, or resend it from the verification step.";
+  }
+
   return message;
 };
 
@@ -255,6 +269,12 @@ export const isPhoneAlreadyRegisteredError = (error) => {
     message.includes("already registered") ||
     message.includes("already exists")
   );
+};
+
+export const isPhoneChangeAlreadyPendingError = (error) => {
+  const message = error?.message || "";
+
+  return message.includes("should be different than current phone");
 };
 
 export const getAuthCallbackParams = (url) => {

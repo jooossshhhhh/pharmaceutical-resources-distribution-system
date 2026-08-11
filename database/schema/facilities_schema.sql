@@ -8,5 +8,23 @@ create table facilities (
 
     address text not null,
 
-    status facility_status not null default 'ACTIVE'
+    status facility_status not null default 'ACTIVE',
+
+    latitude numeric(10,7)
+        check (
+            latitude is null
+            or (
+                latitude >= -90
+                and latitude <= 90
+            )
+        ),
+
+    longitude numeric(10,7)
+        check (
+            longitude is null
+            or (
+                longitude >= -180
+                and longitude <= 180
+            )
+        )
 );

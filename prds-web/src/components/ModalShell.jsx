@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -76,12 +77,12 @@ export default function ModalShell({
     };
   }, []);
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
-      className="fixed inset-0 z-[90] flex items-center justify-center px-4 py-5"
+      className="prds-modal-root fixed inset-0 z-[90] flex items-center justify-center px-4 py-5"
     >
       <div className={`absolute inset-0 ${overlayClassName}`} aria-hidden="true" />
       <div
@@ -91,6 +92,7 @@ export default function ModalShell({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

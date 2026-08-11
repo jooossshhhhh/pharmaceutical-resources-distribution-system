@@ -1,27 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
+import ModalShell from "../../components/ModalShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { formatDateTime } from "../dashboard/dashboardUtils";
-import { createBhwMedicineRequest, getBhwRequestsData } from "./RequestsService";
 import {
+  confirmRequestReceived,
+  createBhwMedicineRequest,
+  getBhwRequestsData,
+  getChoInventoryMedicines,
+} from "./RequestsService";
+import {
+  buildRequestsCsv,
+  dateRangeOptions,
   formatRequestDate,
-  getCompletedRequestQuantity,
+  getChoAvailabilityMap,
   getDuplicateRequestMedicineIds,
-  getFacilityRequestRating,
   getItemStockStatus,
-  getItemLabel,
+  getLowStockRequestItems,
+  getMedicineFullLabel,
+  getRelativeTime,
+  getRequestItemFullLabel,
   getRequestNumber,
-  getRequestSummary,
   getRequestTotalQuantity,
   getRequestTrackingSteps,
   getStockMap,
+  isRequestWithinDateRange,
   matchesRequestFilters,
   normalizeRequestErrorMessage,
+  requestContainsMedicine,
+  requestSortOptions,
   requestStatusLabels,
+  requestStatuses,
   requestStatusTones,
   sortRequests,
+  validateChoRequestAvailability,
 } from "./requestUtils";
 
 const emptyItem = {
@@ -29,32 +43,7 @@ const emptyItem = {
   quantity: "",
 };
 
-const bhwCards = [
-  {
-    filter: "ALL",
-    key: "total",
-    label: "Total Requests",
-    note: "Facility request history",
-  },
-  {
-    filter: "PENDING",
-    key: "pending",
-    label: "Pending Approval",
-    note: "Awaiting CHO review",
-  },
-  {
-    filter: "COMPLETED",
-    key: "received",
-    label: "Total Items Rec.",
-    note: "Completed request quantity",
-  },
-  {
-    filter: "COMPLETED",
-    key: "rating",
-    label: "Facility Rating",
-    note: "Fulfillment score",
-  },
-];
+const ongoingRequestStatuses = ["PENDING", "APPROVED"];
 
 export default function BhwRequestsModule() {
   const { profile } = useAuth();
@@ -63,43 +52,96 @@ export default function BhwRequestsModule() {
   const [requests, setRequests] = useState([]);
   const [medicines, setMedicines] = useState([]);
   const [inventoryRows, setInventoryRows] = useState([]);
-  const [activeFilter, setActiveFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [medicineFilter, setMedicineFilter] = useState("ALL");
+  const [sortMode, setSortMode] = useState("newest");
+  const [dateRange, setDateRange] = useState("ALL");
   const [keyword, setKeyword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isReceiving, setIsReceiving] = useState(false);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOngoingModalOpen, setIsOngoingModalOpen] = useState(false);
   const [trackedRequest, setTrackedRequest] = useState(null);
+  const [confirmedRequestId, setConfirmedRequestId] = useState(null);
   const [remarks, setRemarks] = useState("");
   const [requestItems, setRequestItems] = useState([{ ...emptyItem }]);
 
   const today = useMemo(() => formatDateTime(new Date()), []);
-  const summary = useMemo(() => getRequestSummary(requests), [requests]);
-  const receivedQuantity = useMemo(() => getCompletedRequestQuantity(requests), [requests]);
-  const facilityRating = useMemo(() => getFacilityRequestRating(requests), [requests]);
   const stockMap = useMemo(() => getStockMap(inventoryRows), [inventoryRows]);
 
-  const cardValues = useMemo(
-    () => ({
-      pending: String(summary.pending).padStart(2, "0"),
-      rating: `${facilityRating.toFixed(1)}%`,
-      received: receivedQuantity.toLocaleString(),
-      total: summary.total,
-    }),
-    [facilityRating, receivedQuantity, summary.pending, summary.total]
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(requestStatuses.map((option) => [option.value, 0]));
+    requests.forEach((request) => {
+      if (counts[request.status] !== undefined) {
+        counts[request.status] += 1;
+      }
+    });
+    counts.ALL = requests.length;
+    return counts;
+  }, [requests]);
+
+  const ongoingRequests = useMemo(
+    () =>
+      sortRequests(
+        requests.filter((request) => ongoingRequestStatuses.includes(request.status)),
+        "newest"
+      ),
+    [requests]
   );
 
+  const choAvailabilityMap = useMemo(() => getChoAvailabilityMap(medicines), [medicines]);
+
   const filteredRequests = useMemo(() => {
-    const matchedRequests = requests.filter((request) =>
-      matchesRequestFilters(request, {
-        facilityId: profileFacilityId || "ALL",
-        keyword,
-        status: activeFilter,
-      })
+    const matchedRequests = requests.filter(
+      (request) =>
+        matchesRequestFilters(request, {
+          facilityId: profileFacilityId || "ALL",
+          keyword,
+          status: statusFilter,
+        }) &&
+        requestContainsMedicine(request, medicineFilter) &&
+        isRequestWithinDateRange(request, dateRange)
     );
 
-    return sortRequests(matchedRequests, "newest");
-  }, [activeFilter, keyword, profileFacilityId, requests]);
+    return sortRequests(matchedRequests, sortMode);
+  }, [dateRange, keyword, medicineFilter, profileFacilityId, requests, sortMode, statusFilter]);
+
+  const lowStockItems = useMemo(
+    () => getLowStockRequestItems(profileFacilityId, stockMap, choAvailabilityMap),
+    [choAvailabilityMap, profileFacilityId, stockMap]
+  );
+
+  const pendingRequestsByMedicine = useMemo(() => {
+    const pendingByMedicine = new Map();
+
+    requests.forEach((request) => {
+      if (request.status !== "PENDING") {
+        return;
+      }
+
+      (request.items || []).forEach((item) => {
+        if (!item.medicine_id) {
+          return;
+        }
+
+        if (!pendingByMedicine.has(item.medicine_id)) {
+          pendingByMedicine.set(item.medicine_id, []);
+        }
+
+        pendingByMedicine.get(item.medicine_id).push(getRequestNumber(request.id));
+      });
+    });
+
+    return pendingByMedicine;
+  }, [requests]);
+
+  const applyRequestsData = useCallback((data) => {
+    setRequests(data.requests);
+    setMedicines(data.medicines);
+    setInventoryRows(data.inventoryRows);
+  }, []);
 
   const loadRequests = useCallback(async () => {
     if (!profileFacilityId) {
@@ -115,15 +157,24 @@ export default function BhwRequestsModule() {
 
     try {
       const data = await getBhwRequestsData({ facilityId: profileFacilityId });
-      setRequests(data.requests);
-      setMedicines(data.medicines);
-      setInventoryRows(data.inventoryRows);
+      applyRequestsData(data);
     } catch (loadError) {
       setError(loadError.message);
     } finally {
       setIsLoading(false);
     }
-  }, [profileFacilityId]);
+  }, [applyRequestsData, profileFacilityId]);
+
+  const openNewRequestModal = async () => {
+    setError("");
+    setIsModalOpen(true);
+
+    try {
+      setMedicines(await getChoInventoryMedicines());
+    } catch (availabilityError) {
+      setError(availabilityError.message);
+    }
+  };
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -132,6 +183,14 @@ export default function BhwRequestsModule() {
 
     return () => window.clearTimeout(timerId);
   }, [loadRequests]);
+
+  const clearFilters = () => {
+    setStatusFilter("ALL");
+    setMedicineFilter("ALL");
+    setSortMode("newest");
+    setDateRange("ALL");
+    setKeyword("");
+  };
 
   const resetForm = () => {
     setRemarks("");
@@ -171,18 +230,27 @@ export default function BhwRequestsModule() {
       return;
     }
 
+    const availabilityError = validateChoRequestAvailability(
+      validItems,
+      choAvailabilityMap
+    );
+
+    if (availabilityError) {
+      setError(availabilityError);
+      return;
+    }
+
     setIsSaving(true);
     setError("");
 
     try {
-      await createBhwMedicineRequest({
-        facilityId: profileFacilityId,
+      const createdRequestId = await createBhwMedicineRequest({
         items: validItems,
-        profileId,
         remarks,
       });
       setIsModalOpen(false);
       resetForm();
+      setConfirmedRequestId(createdRequestId);
       await loadRequests();
     } catch (saveError) {
       setError(normalizeRequestErrorMessage(saveError.message));
@@ -190,6 +258,48 @@ export default function BhwRequestsModule() {
       setIsSaving(false);
     }
   };
+
+  const confirmReceipt = async () => {
+    if (!trackedRequest || !profileId) {
+      return;
+    }
+
+    setIsReceiving(true);
+    setError("");
+
+    try {
+      await confirmRequestReceived({ requestId: trackedRequest.id });
+      const data = await getBhwRequestsData({ facilityId: profileFacilityId });
+      applyRequestsData(data);
+
+      const updatedRequest =
+        data.requests.find((request) => request.id === trackedRequest.id) || null;
+
+      setTrackedRequest(updatedRequest);
+    } catch (receiptError) {
+      setError(normalizeRequestErrorMessage(receiptError.message));
+    } finally {
+      setIsReceiving(false);
+    }
+  };
+
+  const exportCsv = () => {
+    const csv = buildRequestsCsv(filteredRequests);
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `bhw-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const confirmedRequest = confirmedRequestId
+    ? requests.find((request) => request.id === confirmedRequestId) || null
+    : null;
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
@@ -204,31 +314,30 @@ export default function BhwRequestsModule() {
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-500">
             History Log Ref {profile?.facility?.facility_code || "Facility"}
           </p>
-          <h2 className="mt-2 text-2xl font-black tracking-tight text-black">
-            BHW Request History
-          </h2>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-black">Medicine Request</h2>
           <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-neutral-500">
-            Comprehensive log of medical supply requests for{" "}
+            Submit and track medical supply requests for{" "}
             {profile?.facility?.facility_name || "your assigned facility"}.
           </p>
         </div>
 
-        <div className="flex gap-3">
-          <label className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-              <SearchIcon />
-            </span>
-            <input
-              type="search"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="Filter logs..."
-              className="h-11 w-44 rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-semibold text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            />
-          </label>
+        <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => setIsOngoingModalOpen(true)}
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100"
+          >
+            <ClockIcon />
+            Ongoing Requests
+            {ongoingRequests.length > 0 && (
+              <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-black text-white">
+                {ongoingRequests.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={openNewRequestModal}
             className="inline-flex h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
           >
             <PlusIcon />
@@ -237,20 +346,88 @@ export default function BhwRequestsModule() {
         </div>
       </section>
 
-      <section className="mt-5 grid gap-4 lg:grid-cols-4">
-        {bhwCards.map((card) => (
-          <MetricCard
-            key={`${card.key}-${card.filter}`}
-            active={activeFilter === card.filter}
-            label={card.label}
-            note={card.note}
-            onClick={() => setActiveFilter(card.filter)}
-            value={cardValues[card.key]}
+      <section className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
+        <label className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+            <SearchIcon />
+          </span>
+          <input
+            type="search"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="Search by medicine..."
+            className="h-9 w-48 rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-xs font-semibold text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
           />
-        ))}
+        </label>
+        <SelectControl
+          ariaLabel="Filter by medicine"
+          label="Medicine"
+          onChange={setMedicineFilter}
+          options={[
+            { value: "ALL", label: "All medicines" },
+            ...medicines.map((medicine) => ({
+              value: medicine.id,
+              label: getMedicineFullLabel(medicine),
+            })),
+          ]}
+          value={medicineFilter}
+        />
+        <SelectControl
+          ariaLabel="Filter by status"
+          label="Status"
+          onChange={setStatusFilter}
+          options={requestStatuses.map((option) => ({
+            ...option,
+            label:
+              option.value === "ALL"
+                ? option.label
+                : `${option.label} (${statusCounts[option.value] || 0})`,
+          }))}
+          value={statusFilter}
+        />
+        <SelectControl
+          ariaLabel="Sort requests"
+          label="Sort"
+          onChange={setSortMode}
+          options={requestSortOptions}
+          value={sortMode}
+        />
+        <SelectControl
+          ariaLabel="Filter by date range"
+          label="Period"
+          onChange={setDateRange}
+          options={dateRangeOptions}
+          value={dateRange}
+        />
+        <span className="hidden text-xs font-semibold text-neutral-400 lg:inline">
+          Showing {filteredRequests.length} of {requests.length} requests
+        </span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={loadRequests}
+            disabled={isLoading}
+            title="Refresh request history"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshIcon />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={exportCsv}
+            disabled={filteredRequests.length === 0}
+            title="Export the current view as CSV"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <DownloadIcon />
+            Export CSV
+          </button>
+        </div>
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+      <section className="mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-[960px] w-full border-collapse text-left">
             <thead className="bg-neutral-50">
@@ -272,8 +449,12 @@ export default function BhwRequestsModule() {
                 </tr>
               ) : filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-14 text-center text-sm font-bold text-neutral-500">
-                    No requests match the current view.
+                  <td colSpan="6">
+                    <RequestsEmptyState
+                      hasAnyRequests={requests.length > 0}
+                      onClearFilters={clearFilters}
+                      onCreateRequest={openNewRequestModal}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -290,15 +471,30 @@ export default function BhwRequestsModule() {
         </div>
       </section>
 
+      {isOngoingModalOpen && (
+        <OngoingRequestsModal
+          onClose={() => setIsOngoingModalOpen(false)}
+          onOpenRequest={(request) => {
+            setIsOngoingModalOpen(false);
+            setTrackedRequest(request);
+          }}
+          requests={ongoingRequests}
+        />
+      )}
+
       {isModalOpen && (
         <NewRequestModal
+          choAvailabilityMap={choAvailabilityMap}
+          error={error}
           isSaving={isSaving}
+          lowStockItems={lowStockItems}
           medicines={medicines}
           onClose={() => {
             setIsModalOpen(false);
             resetForm();
           }}
           onSubmit={submitRequest}
+          pendingRequestsByMedicine={pendingRequestsByMedicine}
           remarks={remarks}
           requestItems={requestItems}
           setRemarks={setRemarks}
@@ -310,34 +506,81 @@ export default function BhwRequestsModule() {
 
       {trackedRequest && (
         <RequestTrackingModal
+          isReceiving={isReceiving}
           onClose={() => setTrackedRequest(null)}
+          onConfirmReceipt={confirmReceipt}
           request={trackedRequest}
           stockMap={stockMap}
+        />
+      )}
+
+      {confirmedRequest && (
+        <RequestConfirmationModal
+          onClose={() => setConfirmedRequestId(null)}
+          onTrack={() => {
+            setTrackedRequest(confirmedRequest);
+            setConfirmedRequestId(null);
+          }}
+          request={confirmedRequest}
         />
       )}
     </AdminShell>
   );
 }
 
-function MetricCard({ active, label, note, onClick, value }) {
+function SelectControl({ ariaLabel, label, onChange, options, value }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        active
-          ? "border-[#00a36c] bg-[#00a36c] text-white shadow-md shadow-emerald-100"
-          : "border-neutral-200 bg-white text-black"
-      }`}
-    >
-      <p className={`text-[10px] font-black uppercase tracking-[0.16em] ${active ? "text-emerald-50" : "text-neutral-500"}`}>
-        {label}
+    <label className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-neutral-400">
+      {label}
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-bold normal-case tracking-normal text-neutral-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function RequestsEmptyState({ hasAnyRequests, onClearFilters, onCreateRequest }) {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 py-14 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
+        <InboxIcon />
+      </span>
+      <p className="mt-4 text-sm font-black text-neutral-700">
+        {hasAnyRequests ? "No requests match the current filters." : "No requests yet"}
       </p>
-      <p className="mt-4 text-2xl font-black">{value}</p>
-      <p className={`mt-2 text-xs font-semibold ${active ? "text-white/70" : "text-neutral-500"}`}>
-        {note}
+      <p className="mt-1 max-w-sm text-xs font-semibold leading-5 text-neutral-500">
+        {hasAnyRequests
+          ? "Try adjusting the status, medicine, period, or keyword filters."
+          : "Submit your first medicine request for CHO review and replenishment."}
       </p>
-    </button>
+      {hasAnyRequests ? (
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="mt-4 h-9 rounded-lg border border-neutral-200 bg-white px-4 text-xs font-black text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700"
+        >
+          Clear filters
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onCreateRequest}
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-black text-white transition hover:bg-emerald-700"
+        >
+          <PlusIcon />
+          New Request
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -361,9 +604,14 @@ function BhwRequestRow({ onTrackRequest, request }) {
         {formatRequestDate(request.request_date)}
       </td>
       <td className="px-4 py-4">
-        <span className="rounded bg-neutral-100 px-2 py-1 text-[10px] font-black text-neutral-600">
-          {getRequestNumber(request.id)}
-        </span>
+        <div className="flex flex-col items-start gap-1">
+          <span className="rounded bg-neutral-100 px-2 py-1 text-[10px] font-black text-neutral-600">
+            {getRequestNumber(request.id)}
+          </span>
+          <span className="text-[10px] font-semibold text-neutral-400">
+            {getRelativeTime(request.request_date)}
+          </span>
+        </div>
       </td>
       <td className="px-4 py-4">
         {items.length === 0 ? (
@@ -375,7 +623,7 @@ function BhwRequestRow({ onTrackRequest, request }) {
                 key={item.id}
                 className="w-fit text-left text-sm font-black text-black underline-offset-4 group-hover:text-emerald-700"
               >
-                {getItemLabel(item)}
+                {getRequestItemFullLabel(item)}
               </span>
             ))}
           </div>
@@ -396,7 +644,104 @@ function BhwRequestRow({ onTrackRequest, request }) {
   );
 }
 
-function RequestTrackingModal({ onClose, request, stockMap }) {
+function OngoingRequestsModal({ onClose, onOpenRequest, requests }) {
+  return (
+    <ModalShell
+      labelledBy="ongoing-requests-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
+      <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
+          <div>
+            <h3 id="ongoing-requests-title" className="text-base font-black text-black">
+              Ongoing Requests
+            </h3>
+            <p className="mt-1 text-xs font-semibold text-neutral-500">
+              Requests awaiting CHO approval or release.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-800">
+            <CloseIcon />
+          </button>
+        </header>
+
+        <div className="prds-modal-scrollbar max-h-[60vh] overflow-y-auto p-4">
+          {requests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-500">
+                <ClockIcon />
+              </span>
+              <p className="mt-4 text-sm font-black text-neutral-700">No ongoing requests</p>
+              <p className="mt-1 max-w-xs text-xs font-semibold leading-5 text-neutral-500">
+                Newly submitted requests will appear here until they are approved and received.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {requests.map((request) => {
+                const items = request.items || [];
+                const totalQuantity = getRequestTotalQuantity(request);
+
+                return (
+                  <button
+                    key={request.id}
+                    type="button"
+                    onClick={() => onOpenRequest(request)}
+                    className="group rounded-xl border border-neutral-200 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/50"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-black text-neutral-900">
+                        {getRequestNumber(request.id)}
+                      </span>
+                      <span
+                        className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${requestStatusTones[request.status] || "bg-neutral-100 text-neutral-700"}`}
+                      >
+                        {requestStatusLabels[request.status] || request.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[11px] font-semibold text-neutral-500">
+                      {getRelativeTime(request.request_date)} · {items.length} item
+                      {items.length === 1 ? "" : "s"} · {totalQuantity.toLocaleString()} units
+                    </p>
+                    {items.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {items.map((item) => (
+                          <span
+                            key={item.id}
+                            className="rounded-md bg-neutral-100 px-2 py-1 text-[11px] font-bold text-neutral-600 group-hover:bg-white"
+                          >
+                            {getRequestItemFullLabel(item)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <footer className="flex items-center justify-between border-t border-neutral-100 px-5 py-4">
+          <p className="text-xs font-semibold text-neutral-500">
+            {requests.length} ongoing request{requests.length === 1 ? "" : "s"}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg bg-neutral-50 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-100"
+          >
+            Close
+          </button>
+        </footer>
+      </div>
+    </ModalShell>
+  );
+}
+
+function RequestTrackingModal({ isReceiving, onClose, onConfirmReceipt, request, stockMap }) {
+  const [awaitingReceipt, setAwaitingReceipt] = useState(false);
   const items = request.items || [];
   const primaryItem = items[0] || null;
   const steps = getRequestTrackingSteps(request);
@@ -406,20 +751,32 @@ function RequestTrackingModal({ onClose, request, stockMap }) {
   const approverName = request.approver
     ? `${request.approver.first_name || ""} ${request.approver.last_name || ""}`.trim()
     : "CHO staff";
+  const receiverName = request.receiver
+    ? `${request.receiver.first_name || ""} ${request.receiver.last_name || ""}`.trim()
+    : "facility staff";
   const totalQuantity = getRequestTotalQuantity(request);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-      <article className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+    <ModalShell
+      labelledBy="request-tracking-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
+      <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
           <div className="flex gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
               <BoxIcon />
             </span>
             <div>
-              <h2 className="text-base font-black text-black">{getRequestNumber(request.id)}</h2>
+              <h3 id="request-tracking-modal-title" className="text-base font-black text-black">
+                {getRequestNumber(request.id)}
+              </h3>
               <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-neutral-400">
                 {request.facility?.facility_code || "Facility"} / {items.length} item{items.length === 1 ? "" : "s"}
+              </p>
+              <p className="mt-0.5 text-[11px] font-semibold text-neutral-400">
+                Submitted {getRelativeTime(request.request_date)}
               </p>
             </div>
           </div>
@@ -430,9 +787,9 @@ function RequestTrackingModal({ onClose, request, stockMap }) {
 
         <div className="prds-modal-scrollbar max-h-[72vh] overflow-y-auto px-5 py-4">
           <section>
-            <h3 className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
-              Medicine Request Tracking
-            </h3>
+            <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">
+              Request Progress
+            </h4>
             <div className="mt-4 grid grid-cols-4 gap-2">
               {steps.map((step, index) => (
                 <TrackingStep
@@ -465,20 +822,39 @@ function RequestTrackingModal({ onClose, request, stockMap }) {
             />
           </section>
 
-          <section className="mt-5 rounded-xl bg-slate-950 p-4 text-white">
+          <section
+            className={`mt-5 rounded-xl p-4 text-white ${
+              request.status === "COMPLETED"
+                ? "bg-emerald-900"
+                : request.status === "REJECTED"
+                  ? "bg-red-900"
+                  : "bg-slate-950"
+            }`}
+          >
             <div className="flex items-start gap-3">
-              <span className="mt-0.5 text-blue-300">
+              <span className={request.status === "COMPLETED" ? "text-emerald-300" : "text-blue-300"}>
                 <ShieldIcon />
               </span>
               <div>
-                <h3 className="text-sm font-black">Request Confirmation</h3>
-                <p className="mt-1 text-xs font-semibold leading-5 text-slate-300">
-                  Track this request against the database record. Final receipt is
-                  available after CHO marks the request as completed.
+                <h4 className="text-sm font-black">
+                  {request.status === "COMPLETED"
+                    ? "Request Received"
+                    : request.status === "REJECTED"
+                      ? "Request Rejected"
+                      : "Request Review"}
+                </h4>
+                <p className="mt-1 text-xs font-semibold leading-5 text-white/70">
+                  {request.status === "COMPLETED"
+                    ? request.received_at
+                      ? `Received on ${formatRequestDate(request.received_at)} by ${receiverName}.`
+                      : "Request completed and confirmed by CHO."
+                    : request.status === "APPROVED"
+                      ? "CHO approved this request. Confirm receipt when the supplies arrive."
+                      : "Track this request against the database record. Final receipt is available after CHO marks the request as completed."}
                 </p>
               </div>
             </div>
-            <div className="mt-4 rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-300">
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-white/80">
               {request.remarks || "No CHO remarks recorded yet."}
             </div>
           </section>
@@ -500,10 +876,14 @@ function RequestTrackingModal({ onClose, request, stockMap }) {
                       className="grid gap-1 rounded-lg bg-white px-3 py-3 md:grid-cols-[1fr_auto]"
                     >
                       <div>
-                        <p className="font-black text-neutral-900">{getItemLabel(item)}</p>
+                        <p className="font-black text-neutral-900">
+                          {getRequestItemFullLabel(item)}
+                        </p>
                         <p className="text-xs font-semibold text-neutral-500">
-                          {item.medicine?.generic_name || "No generic name"} /{" "}
-                          {item.medicine?.unit_of_measure || "No unit"}
+                          Generic: {item.medicine?.generic_name || "No generic name"} / Brand:{" "}
+                          {item.medicine?.brand_name || "Generic"} / Unit:{" "}
+                          {item.medicine?.unit_of_measure || "No unit"} / Dosage:{" "}
+                          {item.medicine?.dosage || "No dosage"}
                         </p>
                       </div>
                       <p className="text-sm font-black text-neutral-800">
@@ -516,21 +896,118 @@ function RequestTrackingModal({ onClose, request, stockMap }) {
             </div>
             <TrackingDetail label="Facility" value={request.facility?.facility_name || "No facility"} />
             <TrackingDetail label="Request Date" value={formatRequestDate(request.request_date)} />
+            {request.status === "COMPLETED" && request.received_at && (
+              <TrackingDetail
+                label="Received On"
+                value={`${formatRequestDate(request.received_at)} · ${receiverName}`}
+              />
+            )}
           </section>
         </div>
 
-        <footer className="flex items-center justify-between border-t border-neutral-100 px-5 py-4">
-          <p className="text-xs font-semibold text-emerald-700">Live tracking active</p>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-5 py-4">
+          <p className="text-xs font-semibold text-neutral-500">
+            {request.status === "COMPLETED"
+              ? "Request completed and received."
+              : request.status === "APPROVED"
+                ? awaitingReceipt
+                  ? "Confirm receipt of this request?"
+                  : "This request is approved and awaiting confirmation."
+                : request.status === "REJECTED"
+                  ? "This request was rejected by CHO."
+                  : "This request is pending CHO review."}
+          </p>
+          <div className="flex items-center gap-2">
+            {request.status === "APPROVED" &&
+              (awaitingReceipt ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAwaitingReceipt(false)}
+                    disabled={isReceiving}
+                    className="h-10 rounded-lg bg-neutral-50 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onConfirmReceipt}
+                    disabled={isReceiving}
+                    className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isReceiving ? "Confirming..." : "Confirm Receipt"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAwaitingReceipt(true)}
+                  className="h-10 rounded-lg bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700"
+                >
+                  Mark as Received
+                </button>
+              ))}
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 rounded-lg bg-neutral-50 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-100"
+            >
+              Close
+            </button>
+          </div>
+        </footer>
+      </div>
+    </ModalShell>
+  );
+}
+
+function RequestConfirmationModal({ onClose, onTrack, request }) {
+  const totalQuantity = getRequestTotalQuantity(request);
+
+  return (
+    <ModalShell
+      labelledBy="request-confirmation-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
+      <div className="w-full max-w-md overflow-hidden rounded-xl bg-white text-center shadow-2xl">
+        <div className="px-6 pb-6 pt-8">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <CheckCircleIcon />
+          </span>
+          <h3 id="request-confirmation-modal-title" className="mt-4 text-lg font-black text-black">
+            Request Submitted
+          </h3>
+          <p className="mt-1 text-sm font-black text-emerald-700">
+            {getRequestNumber(request.id)}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-neutral-500">
+            {request.items?.length || 0} item{request.items?.length === 1 ? "" : "s"} ·{" "}
+            {totalQuantity.toLocaleString()} units requested
+          </p>
+          <p className="mx-auto mt-3 max-w-sm text-xs font-medium leading-5 text-neutral-500">
+            Your request is now under CHO review. You can track its status anytime from the
+            request history.
+          </p>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-neutral-100 px-6 py-4">
           <button
             type="button"
             onClick={onClose}
             className="h-10 rounded-lg bg-neutral-50 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-100"
           >
-            Close
+            Done
           </button>
-        </footer>
-      </article>
-    </div>
+          <button
+            type="button"
+            onClick={onTrack}
+            className="h-10 rounded-lg bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700"
+          >
+            Track Request
+          </button>
+        </div>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -579,11 +1056,15 @@ function TrackingDetail({ label, value }) {
 }
 
 function NewRequestModal({
+  choAvailabilityMap,
+  error,
   facilityId,
   isSaving,
+  lowStockItems,
   medicines,
   onClose,
   onSubmit,
+  pendingRequestsByMedicine,
   remarks,
   requestItems,
   setRemarks,
@@ -598,15 +1079,34 @@ function NewRequestModal({
     );
   };
 
+  const handleFormKeyDown = (event) => {
+    if (event.key === "Enter" && !["TEXTAREA", "SELECT", "BUTTON"].includes(event.target.tagName)) {
+      event.preventDefault();
+      event.currentTarget.requestSubmit();
+    }
+  };
+
+  const availabilityError = validateChoRequestAvailability(
+    requestItems.filter((item) => item.medicine_id && Number(item.quantity) > 0),
+    choAvailabilityMap
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+    <ModalShell
+      labelledBy="new-request-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
       <form
         onSubmit={onSubmit}
+        onKeyDown={handleFormKeyDown}
         className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <header className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
           <div>
-            <h2 className="text-lg font-black text-black">New Supply Request</h2>
+            <h3 id="new-request-modal-title" className="text-lg font-black text-black">
+              New Supply Request
+            </h3>
             <p className="mt-1 text-xs font-semibold text-neutral-500">
               Submit a medicine request for CHO review and replenishment.
             </p>
@@ -617,25 +1117,45 @@ function NewRequestModal({
         </header>
 
         <div className="prds-modal-scrollbar max-h-[72vh] overflow-y-auto p-5">
+          {error && (
+            <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+              {error}
+            </p>
+          )}
           <section>
-            <SectionTitle icon={<ClipboardIcon />} title="Item Specification" />
+            <div className="flex items-center justify-between gap-3">
+              <SectionTitle icon={<ClipboardIcon />} title="Item Specification" />
+              {lowStockItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setRequestItems(lowStockItems.map((item) => ({ ...item })))}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 text-[11px] font-black text-orange-700 transition hover:bg-orange-100"
+                  title="Add the medicines currently at or below their threshold"
+                >
+                  <AlertIcon />
+                  Add low-stock items ({lowStockItems.length})
+                </button>
+              )}
+            </div>
             <div className="mt-3 grid gap-4">
-            {requestItems.map((item, index) => (
-              <RequestItemFields
-                key={`request-item-${index}`}
-                canRemove={requestItems.length > 1}
-                facilityId={facilityId}
-                item={item}
-                medicines={medicines}
-                onRemove={() =>
-                  setRequestItems((currentItems) =>
-                    currentItems.filter((_, itemIndex) => itemIndex !== index)
-                  )
-                }
-                stockMap={stockMap}
-                updateItem={(field, value) => updateItem(index, field, value)}
-              />
-            ))}
+              {requestItems.map((item, index) => (
+                <RequestItemFields
+                  key={`request-item-${index}`}
+                  canRemove={requestItems.length > 1}
+                  choAvailabilityMap={choAvailabilityMap}
+                  facilityId={facilityId}
+                  item={item}
+                  medicines={medicines}
+                  onRemove={() =>
+                    setRequestItems((currentItems) =>
+                      currentItems.filter((_, itemIndex) => itemIndex !== index)
+                    )
+                  }
+                  pendingRequestsByMedicine={pendingRequestsByMedicine}
+                  stockMap={stockMap}
+                  updateItem={(field, value) => updateItem(index, field, value)}
+                />
+              ))}
             </div>
 
             <button
@@ -660,17 +1180,6 @@ function NewRequestModal({
               />
             </label>
           </section>
-
-          <div className="mt-5 flex gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
-            <span className="mt-0.5 shrink-0 text-blue-600">
-              <InfoIcon />
-            </span>
-            <p>
-              <span className="font-black">Procurement Notice:</span> Requests store only
-              medicines, quantities, and optional remarks from the database schema. CHO will
-              verify availability and approval status before fulfillment.
-            </p>
-          </div>
         </div>
 
         <footer className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-4">
@@ -683,23 +1192,25 @@ function NewRequestModal({
           </button>
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || Boolean(availabilityError)}
             className="h-10 rounded-lg bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
           >
             {isSaving ? "Submitting..." : "Submit Request"}
           </button>
         </footer>
       </form>
-    </div>
+    </ModalShell>
   );
 }
 
 function RequestItemFields({
   canRemove,
+  choAvailabilityMap,
   facilityId,
   item,
   medicines,
   onRemove,
+  pendingRequestsByMedicine,
   stockMap,
   updateItem,
 }) {
@@ -710,55 +1221,92 @@ function RequestItemFields({
     : { label: "Select a medicine", tone: "text-neutral-500" };
   const threshold = Number(stock?.threshold || 0);
   const quantity = Number(stock?.quantity || 0);
-  const progressValue = threshold > 0 ? Math.min((quantity / Math.max(threshold * 2, 1)) * 100, 100) : 0;
+  const pendingEntries = item.medicine_id
+    ? pendingRequestsByMedicine.get(item.medicine_id) || []
+    : [];
+  const requestedQuantity = Number(item.quantity || 0);
+  const choAvailability = item.medicine_id
+    ? choAvailabilityMap.get(item.medicine_id)
+    : null;
+  const availableQuantity = choAvailability?.availableQuantity ?? null;
+  const choExceedsRequest =
+    availableQuantity !== null && requestedQuantity > availableQuantity;
+  const choProgressValue = choAvailability?.physicalQuantity
+    ? Math.min((availableQuantity / choAvailability.physicalQuantity) * 100, 100)
+    : 0;
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
       <div className="grid gap-4 md:grid-cols-[1fr_220px]">
-        <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-          Select Medicine
-          <select
-            required
-            value={item.medicine_id}
-            onChange={(event) => updateItem("medicine_id", event.target.value)}
-            className="h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-          >
-            <option value="">Search item (e.g. Amoxicillin)</option>
-            {medicines.map((medicine) => (
-              <option key={medicine.id} value={medicine.id}>
-                {medicine.brand_name || medicine.generic_name} {medicine.dosage}
-              </option>
-            ))}
-          </select>
-          {selectedMedicine && (
-            <span className="text-xs font-semibold normal-case tracking-normal text-neutral-500">
-              {[selectedMedicine.generic_name, selectedMedicine.unit_of_measure]
-                .filter(Boolean)
-                .join(" / ")}
-            </span>
+        <div className="grid gap-2">
+          <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
+            Select Medicine
+            <select
+              required
+              value={item.medicine_id}
+              onChange={(event) => updateItem("medicine_id", event.target.value)}
+              className="h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="">Search item (e.g. Amoxicillin)</option>
+              {medicines.map((medicine) => (
+                <option key={medicine.id} value={medicine.id}>
+                  {getMedicineFullLabel(medicine)}
+                </option>
+              ))}
+            </select>
+            {selectedMedicine && (
+              <span className="mt-1.5 text-xs font-semibold normal-case tracking-normal text-neutral-500">
+                {getMedicineFullLabel(selectedMedicine)}
+              </span>
+            )}
+          </label>
+          {pendingEntries.length > 0 && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold normal-case tracking-normal text-amber-700">
+              Already on a pending request: {pendingEntries.join(", ")}. Submitting again may
+              delay approval.
+            </p>
           )}
-        </label>
+          {item.medicine_id && stock && (
+            <p className="text-[11px] font-semibold normal-case tracking-normal text-neutral-500">
+              Your facility: {quantity.toLocaleString()} units on hand · {stockStatus.label}; threshold {threshold.toLocaleString()}
+            </p>
+          )}
+        </div>
 
-        <div className="rounded-lg border border-neutral-200 bg-slate-50 p-3">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
-              In-Stock Availability
+              CHO Available to Request
             </span>
-            <span className={`text-xs font-black ${stockStatus.tone}`}>
-              {item.medicine_id && stock ? `${quantity.toLocaleString()} Units` : stockStatus.label}
+            <span className={`text-xs font-black ${choExceedsRequest ? "text-red-600" : "text-emerald-700"}`}>
+              {availableQuantity !== null
+                ? `${availableQuantity.toLocaleString()} units`
+                : "Select a medicine"}
             </span>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-200">
             <div
               className={`h-full rounded-full ${
-                quantity <= threshold ? "bg-orange-500" : "bg-blue-500"
+                choExceedsRequest ? "bg-red-500" : "bg-emerald-500"
               }`}
-              style={{ width: `${progressValue}%` }}
+              style={{ width: `${choProgressValue}%` }}
             />
           </div>
-          <p className="mt-2 text-[11px] font-semibold text-neutral-500">
-            Low stock alert threshold: {threshold.toLocaleString()} units
-          </p>
+          {choAvailability ? (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold text-neutral-500">
+              <span>Physical: {choAvailability.physicalQuantity.toLocaleString()}</span>
+              <span>Reserved: {choAvailability.reservedQuantity.toLocaleString()}</span>
+            </div>
+          ) : (
+            <p className="mt-2 text-[11px] font-semibold text-neutral-500">
+              Select a medicine to view current CHO availability.
+            </p>
+          )}
+          {choExceedsRequest && (
+            <p className="mt-2 text-[11px] font-bold text-red-600">
+              Reduce the quantity before submitting this request.
+            </p>
+          )}
         </div>
       </div>
 
@@ -768,23 +1316,49 @@ function RequestItemFields({
           <input
             required
             min="1"
+            max={availableQuantity ?? undefined}
             type="number"
             value={item.quantity}
             onChange={(event) => updateItem("quantity", event.target.value)}
             placeholder="0"
-            className="h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            className="h-11 w-28 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
           />
         </label>
 
-        {canRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="self-end rounded-lg px-3 py-2 text-xs font-black text-red-600 hover:bg-red-50"
-          >
-            Remove
-          </button>
-        )}
+        <div className="flex flex-col items-end justify-between gap-2">
+          {threshold > 0 && (
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wide text-neutral-400">
+                Quick fill
+              </span>
+              {[1, 2, 3].map((multiplier) => {
+                const suggested = Math.max(Math.ceil(threshold * multiplier), 1);
+
+                return (
+                  <button
+                    key={multiplier}
+                    type="button"
+                    onClick={() => updateItem("quantity", String(suggested))}
+                    title={`Suggest ${suggested.toLocaleString()} units`}
+                    className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700 transition hover:bg-blue-100"
+                  >
+                    {suggested.toLocaleString()}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {canRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="rounded-lg px-3 py-2 text-xs font-black text-red-600 hover:bg-red-50"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -817,11 +1391,10 @@ const TruckIcon = () => (
   </svg>
 );
 
-const InfoIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="10" />
-    <path d="M12 16v-4" />
-    <path d="M12 8h.01" />
+const AlertIcon = () => (
+  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M12 9v4M12 17h.01" />
+    <path d="M10.3 4.3 2.7 17.5A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.5L13.7 4.3a2 2 0 0 0-3.4 0Z" />
   </svg>
 );
 
@@ -845,6 +1418,35 @@ const CheckIcon = () => (
   </svg>
 );
 
+const CheckCircleIcon = () => (
+  <svg className="h-7 w-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" />
+    <path d="m8.5 12 2.5 2.5 5-5" />
+  </svg>
+);
+
+const InboxIcon = () => (
+  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+    <path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1Z" />
+  </svg>
+);
+
+const RefreshIcon = () => (
+  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+    <path d="M21 3v6h-6" />
+  </svg>
+);
+
+const DownloadIcon = () => (
+  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M12 15V3" />
+  </svg>
+);
+
 const SearchIcon = () => (
   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
     <circle cx="11" cy="11" r="8" />
@@ -863,5 +1465,12 @@ const CloseIcon = () => (
   <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
     <path d="M18 6 6 18" />
     <path d="m6 6 12 12" />
+  </svg>
+);
+
+const ClockIcon = () => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v6l4 2" />
   </svg>
 );

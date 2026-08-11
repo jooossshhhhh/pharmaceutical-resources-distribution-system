@@ -16,6 +16,7 @@ import NotificationsModule from "../modules/notifications/NotificationsModule";
 import ProfileSettingsModule from "../modules/profile/ProfileSettingsModule";
 import RequestsModule from "../modules/requests/RequestsModule";
 import SuppliersModule from "../modules/suppliers/SuppliersModule";
+import TransfersModule from "../modules/transfers/TransfersModule";
 import UserManagementModule from "../modules/users/UserManagementModule";
 import ProtectedRoutes from "./ProtectedRoutes";
 import RoleGuard from "./RoleGuard";
@@ -31,7 +32,14 @@ export default function AppRoutes() {
         <Route path="/pending-approval" element={<PendingApproval />} />
         <Route element={<ProtectedRoutes />}>
           <Route path="/dashboard" element={<DashboardModule />} />
-          <Route path="/facilities" element={<FacilitiesModule />} />
+          <Route
+            path="/facilities"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_I", "PHARMA_II"]}>
+                <FacilitiesModule />
+              </RoleGuard>
+            }
+          />
           <Route
             path="/medicines"
             element={
@@ -40,7 +48,14 @@ export default function AppRoutes() {
               </RoleGuard>
             }
           />
-          <Route path="/suppliers" element={<SuppliersModule />} />
+          <Route
+            path="/suppliers"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_II"]}>
+                <SuppliersModule />
+              </RoleGuard>
+            }
+          />
           <Route
             path="/inventory"
             element={
@@ -58,6 +73,7 @@ export default function AppRoutes() {
             }
           />
           <Route path="/requests" element={<RequestsModule />} />
+          <Route path="/transfers" element={<TransfersModule />} />
           <Route path="/forecasting" element={<ForecastingModule />} />
           <Route path="/notifications" element={<NotificationsModule />} />
           <Route path="/activity-logs" element={<ActivityLogsModule />} />

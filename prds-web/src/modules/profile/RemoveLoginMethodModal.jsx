@@ -10,7 +10,11 @@ export default function RemoveLoginMethodModal({
   password,
 }) {
   return (
-    <ModalShell labelledBy="remove-login-modal-title" onClose={onClose}>
+    <ModalShell
+      labelledBy="remove-login-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
       <form
         onSubmit={onSubmit}
         className="w-full max-w-[460px] overflow-hidden rounded-xl bg-white shadow-2xl"

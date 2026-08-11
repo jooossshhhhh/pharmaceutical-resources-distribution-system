@@ -1086,6 +1086,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
     <ModalShell
       labelledBy="facility-details-modal-title"
       onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
       panelClassName="w-full"
     >
       <div className="facility-details-modal flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-900/20">
@@ -1422,7 +1423,11 @@ function FacilityFormModal({
   onSubmit,
 }) {
   return (
-    <ModalShell labelledBy="facility-form-modal-title" onClose={onClose}>
+    <ModalShell
+      labelledBy="facility-form-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-white/95 backdrop-blur-sm"
+    >
       <form
         onSubmit={onSubmit}
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"

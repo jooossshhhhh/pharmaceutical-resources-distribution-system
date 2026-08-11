@@ -6,31 +6,31 @@ Purpose:
 Records medicine transfers between facilities.
 
 Supported Workflows:
-- CHO → Barangay
-- Barangay → Barangay (with CHO approval)
+- CHO to barangay health center
+- Barangay health center to barangay health center
+  with CHO approval and source-facility allocation
 
 Status Flow:
 
 PENDING
-    ↓
-APPROVED
-    ↓
-COMPLETED
+    -> APPROVED
+    -> READY_FOR_PICKUP
+    -> COMPLETED
 
 or
 
 PENDING
-    ↓
-REJECTED
+    -> REJECTED
 
 Business Rules:
 1. Every transfer has a source facility.
 2. Every transfer has a destination facility.
 3. Source and destination facilities must be different.
 4. Every transfer is requested by a user.
-5. Every transfer is approved by Pharma II.
-6. A completed transfer may record who received it.
-7. Facilities cannot be deleted while transfer records exist.
+5. Every transfer is reviewed by CHO pharmacy staff.
+6. Source facilities allocate stock after CHO approval.
+7. A completed transfer records who received it.
+8. Facilities cannot be deleted while transfer records exist.
 =====================================================
 */
 

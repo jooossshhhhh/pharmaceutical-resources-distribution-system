@@ -42,6 +42,7 @@ create type request_status as enum (
 create type transfer_status as enum (
     'PENDING',
     'APPROVED',
+    'READY_FOR_PICKUP',
     'REJECTED',
     'COMPLETED'
 );

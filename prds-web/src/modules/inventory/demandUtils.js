@@ -7,7 +7,13 @@ export const CHANNEL_META = {
 export const CHANNEL_ORDER = ["WALK_IN", "PROGRAM", "REQUEST"];
 
 const monthLabel = (date) => {
-  return new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(date));
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-US", { month: "short" }).format(parsed);
 };
 
 export const computeAdc = (rows = [], months = 3) => {
@@ -19,7 +25,10 @@ export const computeAdc = (rows = [], months = 3) => {
   const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const completeMonths = rows
-    .filter((row) => new Date(row.month) < currentMonthStart)
+    .filter((row) => {
+      const monthDate = new Date(row.month);
+      return monthDate < currentMonthStart && !Number.isNaN(monthDate.getTime());
+    })
     .sort((first, second) => new Date(second.month) - new Date(first.month))
     .slice(0, months);
 
@@ -77,6 +86,11 @@ export const buildChannelSeries = (rows = [], maxMonths = 6) => {
 
   rows.forEach((row) => {
     const date = new Date(row.dispense_date);
+
+    if (Number.isNaN(date.getTime())) {
+      return;
+    }
+
     const key = `${date.getFullYear()}-${date.getMonth()}`;
 
     if (!bucketsByKey.has(key)) {
