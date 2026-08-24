@@ -407,10 +407,38 @@ Implemented Role-Based Access Control:
 - Pharma I
 - Pharma II
 
+**PHASE 16 - WALK-IN DISPENSING LAYER**
+
+Activities Completed:
+
+Schema extensions to medicine_dispensing:
+
+- dispensing_transaction_id (uuid) - groups multiple batch rows into one claim transaction
+- voided_by (uuid -> profiles), voided_at (timestamptz), void_reason (text) - reversible-transaction audit trail
+
+Security Definer RPCs (granted to authenticated only):
+
+- dispense_walk_in(p_patient_id, p_items) - role and facility checks, patient row lock for concurrency, monthly claim guard (voided claims excluded), FEFO allocation across non-expired batches, atomic inventory deduction, activity logging, staff notifications
+- get_patient_monthly_claim_status(p_patient_id) - returns claimed_this_month for eligibility checks
+- void_dispensing_transaction(p_transaction_id, p_reason) - Pharma II only; restores all deducted batch quantities
+
+Performance Indexes:
+
+- idx_medicine_dispensing_facility_date (facility_id, dispense_date desc)
+- idx_medicine_dispensing_inventory_id
+- idx_medicine_dispensing_patient_date
+- idx_medicine_dispensing_transaction
+
+Purpose:  
+Enforce One Free Medicine Claim Per Month per patient (previously listed as Future Support in Phase 8) with FEFO traceability and voidable transactions.
+
+Verification:  
+All RPC paths smoke-tested live against Supabase (double-claim rejection, void-and-re-dispense cycle, multi-batch FEFO split, cross-facility BHW rejection).
+
 **PROJECT STATUS**
 
 Database Development Status:  
-COMPLETED
+COMPLETED (through Phase 16)
 
 Total Tables:  
 17
@@ -423,6 +451,9 @@ Total Views:
 
 Total Helper Functions:  
 5
+
+Business Logic RPCs:  
+3
 
 Realtime Tables:  
 4
