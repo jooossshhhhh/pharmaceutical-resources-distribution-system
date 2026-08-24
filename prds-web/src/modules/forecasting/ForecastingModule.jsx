@@ -1,142 +1,163 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
 import ForecastMapPreview from "../dashboard/components/ForecastMapPreview";
-import { buildFacilityStockStatus, buildFacilityDemand, formatDateTime, formatNumber } from "../dashboard/dashboardUtils";
+import {
+  buildFacilityDemand,
+  buildFacilityStockStatus,
+  formatDateTime,
+  formatNumber,
+} from "../dashboard/dashboardUtils";
+import ConsumptionTrendChart from "./components/charts/ConsumptionTrendChart";
+import ForecastComparisonChart from "./components/charts/ForecastComparisonChart";
+import ForecastMetricCard from "./components/ForecastMetricCard";
+import InventoryCoveragePanel from "./components/InventoryCoveragePanel";
+import MedicineTrendTable from "./components/MedicineTrendTable";
+import TopTrendingMedicines from "./components/TopTrendingMedicines";
+import { buildForecastAnalytics } from "./forecastingUtils";
 
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
+const ALL = "ALL";
 
-const calculateLinearRegression = (values) => {
-  if (values.length < 2) {
-    return { rSquared: 0, slope: 0 };
-  }
-
-  const n = values.length;
-  const sumX = values.reduce((sum, _, index) => sum + index, 0);
-  const sumY = values.reduce((sum, value) => sum + value, 0);
-  const sumXY = values.reduce((sum, value, index) => sum + index * value, 0);
-  const sumXX = values.reduce((sum, _, index) => sum + index * index, 0);
-  const denominator = n * sumXX - sumX * sumX;
-  const slope = denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
-  const intercept = (sumY - slope * sumX) / n;
-  const meanY = sumY / n;
-  const totalVariance = values.reduce((sum, value) => sum + (value - meanY) ** 2, 0);
-  const residualVariance = values.reduce(
-    (sum, value, index) => sum + (value - (slope * index + intercept)) ** 2,
-    0
-  );
-
-  return {
-    rSquared: totalVariance === 0 ? 1 : Math.max(0, 1 - residualVariance / totalVariance),
-    slope,
-  };
-};
-
-const groupQuantitiesByMonth = (rows, dateKey, quantityKey) => {
-  return rows.reduce((summary, row) => {
-    const rawDate = row[dateKey];
-    if (!rawDate) {
-      return summary;
-    }
-
-    const label = monthLabelFormatter.format(new Date(rawDate));
-    summary[label] = (summary[label] || 0) + Number(row[quantityKey] || 0);
-    return summary;
-  }, {});
-};
-
-const getStockStatus = (row) => {
-  const quantity = Number(row.quantity || 0);
-  const threshold = Number(row.threshold || 0);
-
-  if (quantity === 0 || quantity <= Math.max(1, threshold * 0.25)) {
-    return { label: "Critical", tone: "text-red-600", urgency: "In 24 Hours" };
-  }
-
-  if (quantity <= threshold) {
-    return { label: "Below Safety", tone: "text-orange-600", urgency: "In 3 Days" };
-  }
-
-  return { label: "Stable", tone: "text-emerald-700", urgency: "In 8 Days" };
+const metricIcons = {
+  demand: (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M4 19V5" />
+      <path d="M8 17V9" />
+      <path d="M12 17V7" />
+      <path d="M16 17v-5" />
+      <path d="M20 17V4" />
+    </svg>
+  ),
+  fit: (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M4 19c4-8 8-12 16-14" />
+      <path d="M4 19h16" />
+      <path d="M4 19V5" />
+    </svg>
+  ),
+  risk: (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <path d="M10.3 4.3 2.7 17.5A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.5L13.7 4.3a2 2 0 0 0-3.4 0Z" />
+    </svg>
+  ),
+  trend: (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="m3 17 6-6 4 4 7-8" />
+      <path d="M14 7h6v6" />
+    </svg>
+  ),
 };
 
 export default function ForecastingModule() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [facilities, setFacilities] = useState([]);
   const [forecastRows, setForecastRows] = useState([]);
   const [dispensingRows, setDispensingRows] = useState([]);
   const [inventoryRows, setInventoryRows] = useState([]);
   const [forecastError, setForecastError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [facilityFilter, setFacilityFilter] = useState(ALL);
+  const [medicineFilter, setMedicineFilter] = useState(ALL);
+  const [riskFilter, setRiskFilter] = useState(ALL);
+  const [monthWindow, setMonthWindow] = useState("6");
 
   const today = useMemo(() => formatDateTime(new Date()), []);
-  const forecastTotal = useMemo(
+  const isBhw = profile?.role === "BHW";
+  const assignedFacilityId = profile?.facility_id || null;
+
+  const selectedFacilityId = isBhw && assignedFacilityId ? assignedFacilityId : facilityFilter;
+
+  const filteredForecastRows = useMemo(
     () =>
-      forecastRows.reduce(
-        (sum, row) => sum + Number(row.predicted_quantity || 0),
-        0
+      filterRowsByScope(
+        filterRowsByMonthWindow(forecastRows, "forecast_month", monthWindow),
+        selectedFacilityId,
+        medicineFilter
       ),
-    [forecastRows]
+    [forecastRows, medicineFilter, monthWindow, selectedFacilityId]
   );
-  const uniqueForecastedMedicines = useMemo(
-    () => new Set(forecastRows.map((row) => row.medicine_id).filter(Boolean)).size,
-    [forecastRows]
+  const filteredDispensingRows = useMemo(
+    () =>
+      filterRowsByScope(
+        filterRowsByMonthWindow(dispensingRows, "month", monthWindow),
+        selectedFacilityId,
+        medicineFilter
+      ),
+    [dispensingRows, medicineFilter, monthWindow, selectedFacilityId]
   );
-  const regressionSummary = useMemo(() => {
-    const orderedValues = [...forecastRows]
-      .sort((first, second) => new Date(first.forecast_month) - new Date(second.forecast_month))
-      .map((row) => Number(row.predicted_quantity || 0));
+  const filteredInventoryRows = useMemo(
+    () => filterRowsByScope(inventoryRows, selectedFacilityId, medicineFilter),
+    [inventoryRows, medicineFilter, selectedFacilityId]
+  );
+  const visibleFacilities = useMemo(() => {
+    if (selectedFacilityId === ALL) {
+      return facilities;
+    }
 
-    return calculateLinearRegression(orderedValues);
-  }, [forecastRows]);
-  const stockWatchRows = useMemo(() => {
-    return inventoryRows
-      .map((row) => ({
-        ...row,
-        stockStatus: getStockStatus(row),
-      }))
-      .filter((row) => row.stockStatus.label !== "Stable")
-      .slice(0, 8);
-  }, [inventoryRows]);
+    return facilities.filter((facility) => facility.id === selectedFacilityId);
+  }, [facilities, selectedFacilityId]);
+  const analytics = useMemo(
+    () =>
+      buildForecastAnalytics({
+        dispensingRows: filteredDispensingRows,
+        forecastRows: filteredForecastRows,
+        inventoryRows: filteredInventoryRows,
+      }),
+    [filteredDispensingRows, filteredForecastRows, filteredInventoryRows]
+  );
+  const visibleTrendRows = useMemo(
+    () => filterRowsByRisk(analytics.trendRows, riskFilter),
+    [analytics.trendRows, riskFilter]
+  );
+  const visibleCoverageRows = useMemo(
+    () => filterRowsByRisk(analytics.coverageRows, riskFilter),
+    [analytics.coverageRows, riskFilter]
+  );
+  const visibleTrendingRows = useMemo(
+    () => filterRowsByRisk(analytics.trendingMedicines, riskFilter),
+    [analytics.trendingMedicines, riskFilter]
+  );
+  const medicineOptions = useMemo(
+    () =>
+      getMedicineOptions([...forecastRows, ...inventoryRows]).sort((first, second) =>
+        first.label.localeCompare(second.label)
+      ),
+    [forecastRows, inventoryRows]
+  );
   const stockStatusByFacility = useMemo(
-    () => buildFacilityStockStatus(inventoryRows),
-    [inventoryRows]
+    () => buildFacilityStockStatus(filteredInventoryRows),
+    [filteredInventoryRows]
   );
-  const demandByFacility = useMemo(() => buildFacilityDemand(forecastRows), [forecastRows]);
-  const consumptionRows = useMemo(() => {
-    const historical = groupQuantitiesByMonth(dispensingRows, "dispense_date", "quantity");
-    const forecasted = groupQuantitiesByMonth(forecastRows, "forecast_month", "predicted_quantity");
-    const labels = Array.from(new Set([...Object.keys(historical), ...Object.keys(forecasted)]))
-      .slice(-6);
+  const demandByFacility = useMemo(
+    () => buildFacilityDemand(filteredForecastRows),
+    [filteredForecastRows]
+  );
 
-    return labels.length > 0
-      ? labels.map((label) => ({
-          label,
-          historical: historical[label] || 0,
-          forecasted: forecasted[label] || 0,
-        }))
-      : [
-          { label: "Aug", historical: 120, forecasted: 138 },
-          { label: "Sep", historical: 150, forecasted: 158 },
-          { label: "Oct", historical: 132, forecasted: 149 },
-          { label: "Nov", historical: 168, forecasted: 181 },
-          { label: "Dec", historical: 175, forecasted: 194 },
-        ];
-  }, [dispensingRows, forecastRows]);
 
   useEffect(() => {
     let isMounted = true;
 
     const loadForecasting = async () => {
-      const [facilitiesResult, forecastResult, dispensingResult, inventoryResult] =
-        await Promise.all([
-          supabase
-            .from("facilities")
-            .select("id, facility_name, facility_code, facility_type, address, status, latitude, longitude")
-            .eq("status", "ACTIVE")
-            .order("facility_name", { ascending: true }),
+      setIsLoading(true);
+      setForecastError("");
+
+      const scope = (query) =>
+        isBhw && assignedFacilityId ? query.eq("facility_id", assignedFacilityId) : query;
+
+      const [facilitiesResult, forecastResult, dispensingResult, inventoryResult] = await Promise.all([
+        supabase
+          .from("facilities")
+          .select("id, facility_name, facility_code, facility_type, address, status, latitude, longitude")
+          .eq("status", "ACTIVE")
+          .order("facility_name", { ascending: true }),
+        scope(
           supabase
             .from("forecasting")
             .select(`
@@ -149,12 +170,15 @@ export default function ForecastingModule() {
               facility:facilities(facility_name, facility_code),
               medicine:medicines(generic_name, brand_name, dosage, unit_of_measure)
             `)
-            .order("forecast_month", { ascending: true }),
+            .order("forecast_month", { ascending: true })
+        ),
+        scope(
           supabase
-            .from("medicine_dispensing")
-            .select("id, facility_id, medicine_id, quantity, dispense_date")
-            .order("dispense_date", { ascending: true })
-            .limit(120),
+            .from("monthly_dispensing_summary")
+            .select("facility_id, medicine_id, month, total_dispensed")
+            .order("month", { ascending: true })
+        ),
+        scope(
           supabase
             .from("inventory")
             .select(`
@@ -163,11 +187,13 @@ export default function ForecastingModule() {
               medicine_id,
               quantity,
               threshold,
+              expiration_date,
               facility:facilities(facility_name, facility_code),
               medicine:medicines(generic_name, brand_name, dosage, unit_of_measure)
             `)
-            .order("quantity", { ascending: true }),
-        ]);
+            .order("quantity", { ascending: true })
+        ),
+      ]);
 
       if (!isMounted) {
         return;
@@ -179,13 +205,16 @@ export default function ForecastingModule() {
 
       if (firstError) {
         setForecastError(firstError.message);
+        setIsLoading(false);
         return;
       }
 
-      setFacilities(facilitiesResult.data || []);
+      const activeFacilities = facilitiesResult.data || [];
+      setFacilities(isBhw && assignedFacilityId ? activeFacilities.filter((facility) => facility.id === assignedFacilityId) : activeFacilities);
       setForecastRows(forecastResult.data || []);
       setDispensingRows(dispensingResult.data || []);
       setInventoryRows(inventoryResult.data || []);
+      setIsLoading(false);
     };
 
     loadForecasting();
@@ -193,221 +222,299 @@ export default function ForecastingModule() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [assignedFacilityId, isBhw]);
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
-      <div className="space-y-4">
+      <div className="space-y-3">
         {forecastError && (
           <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {forecastError}
           </p>
         )}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm shadow-neutral-200/40">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="mt-1 text-xl font-black tracking-tight text-[#0d1117]">
+                Medicine Forecast Analytics
+              </h2>
+              <p className="mt-1 max-w-3xl text-xs font-medium leading-5 text-[#42474e]">
+                Review monthly medicine consumption, projected demand, and inventory coverage across PRDS facilities.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => navigate("/inventory")}
+                className="rounded-lg border border-[#d8dadc] bg-white px-3.5 py-2 text-xs font-black text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+              >
+                Inventory
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/requests")}
+                className="rounded-lg bg-[#0d1117] px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-[#00a36c]"
+              >
+                Request Queue
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
           <ForecastMetricCard
+            description="Forecasted quantity from the selected month and facility scope."
+            icon={metricIcons.demand}
+            label="Projected Demand"
+            meta={`${analytics.uniqueMedicineCount} SKUs`}
+            tone="blue"
+            value={formatNumber(analytics.forecastTotal)}
+          />
+          <ForecastMetricCard
+            description="Medicines with positive regression slope in the selected range."
+            icon={metricIcons.trend}
+            label="Trending Up"
+            meta="Monthly slope"
+            tone="emerald"
+            value={formatNumber(analytics.increasingCount)}
+          />
+          <ForecastMetricCard
+            description="Inventory records with coverage or threshold risk."
+            icon={metricIcons.risk}
+            label="Stock Risk"
+            meta="Watchlist"
+            tone={analytics.riskRows.length > 0 ? "orange" : "emerald"}
+            value={formatNumber(analytics.riskRows.length)}
+          />
+          <ForecastMetricCard
+            description="Regression fit across projected monthly demand values."
+            icon={metricIcons.fit}
             label="Regression Fit"
-            value={`${Math.round(regressionSummary.rSquared * 100)}%`}
-            note={`Slope ${regressionSummary.slope >= 0 ? "+" : ""}${regressionSummary.slope.toFixed(1)}`}
-            progress={Math.round(regressionSummary.rSquared * 100)}
-          />
-          <ForecastMetricCard
-            label="Supply Gap Risk"
-            value={stockWatchRows.length > 0 ? "Watch" : "Stable"}
-            note={`${formatNumber(stockWatchRows.length)} items below safety`}
-            tone={stockWatchRows.length > 0 ? "orange" : "emerald"}
-          />
-          <ForecastMetricCard
-            label="30-Day Projected Volume"
-            value={formatNumber(forecastTotal)}
-            note="Across active health centers"
-          />
-          <ForecastMetricCard
-            label="SKU Forecast Records"
-            value={formatNumber(uniqueForecastedMedicines)}
-            note={`${formatNumber(forecastRows.length)} forecast rows`}
+            meta={`Slope ${analytics.regression.slope >= 0 ? "+" : ""}${analytics.regression.slope}`}
+            tone="amber"
+            value={`${Math.round(analytics.regression.rSquared * 100)}%`}
           />
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
-          <ForecastMapPreview
-            compact
-            facilities={facilities}
-            forecastTotal={forecastTotal}
-            lowStockCount={stockWatchRows.length}
-            stockStatusByFacility={stockStatusByFacility}
-            inventoryRows={inventoryRows}
-            demandByFacility={demandByFacility}
-          />
+        <ForecastFilters
+          facilities={facilities}
+          facilityFilter={selectedFacilityId}
+          isFacilityLocked={isBhw}
+          medicineFilter={medicineFilter}
+          medicineOptions={medicineOptions}
+          monthWindow={monthWindow}
+          riskFilter={riskFilter}
+          setFacilityFilter={setFacilityFilter}
+          setMedicineFilter={setMedicineFilter}
+          setMonthWindow={setMonthWindow}
+          setRiskFilter={setRiskFilter}
+        />
 
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
           <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
-            <div className="border-b border-neutral-100 px-4 py-3">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-neutral-500">
-                Consumption Trends
-              </p>
-              <h2 className="mt-1 text-base font-black text-[#0d1117]">
-                Historical vs Regression Forecast
-              </h2>
+            <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                  Consumption Trend
+                </p>
+                <h2 className="mt-1 text-base font-black text-[#0d1117]">Historical vs Regression Forecast</h2>
+              </div>
+              <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-xs font-black text-[#42474e]">
+                {monthWindow === ALL ? "All months" : `Last ${monthWindow} months`}
+              </span>
             </div>
             <div className="p-4">
-              <ConsumptionTrendChart rows={consumptionRows} />
-              <div className="mt-4 rounded-lg bg-[#f8f9ff] px-3 py-2.5 text-xs font-semibold leading-5 text-[#42474e]">
-                Trend values are rendered from dispensing records and forecast rows
-                generated through simple linear regression.
-              </div>
+              <ConsumptionTrendChart rows={analytics.monthlyRows} />
             </div>
           </section>
+
+          <ForecastComparisonChart rows={visibleTrendRows} />
         </section>
 
-        <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
-            <div>
-              <h2 className="text-base font-black text-[#0d1117]">
-                Critical Stock Watch (14-Day Window)
-              </h2>
-              <p className="mt-1 text-sm font-medium text-neutral-500">
-                Items below safety threshold based on current stock and consumption trend.
-              </p>
-            </div>
-            <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-xs font-black text-[#42474e]">
-              Showing {formatNumber(stockWatchRows.length)} critical items
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+          <ForecastMapPreview
+            compact
+            demandByFacility={demandByFacility}
+            description="Facility locations with stock status and projected demand context."
+            facilities={visibleFacilities}
+            forecastTotal={analytics.forecastTotal}
+            inventoryRows={filteredInventoryRows}
+            lowStockCount={analytics.riskRows.length}
+            mapClassName="min-h-[30rem] md:min-h-[32rem]"
+            previewMode
+            showExpand={false}
+            showMetrics={false}
+            stockStatusByFacility={stockStatusByFacility}
+            title="City of Naga Facility Coverage"
+          />
+
+          <InventoryCoveragePanel rows={visibleCoverageRows} />
+        </section>
+
+        <TopTrendingMedicines rows={visibleTrendingRows} />
+
+        <MedicineTrendTable rows={visibleTrendRows} />
+
+        {isLoading && (
+          <div className="fixed inset-x-0 bottom-4 z-20 flex justify-center pointer-events-none">
+            <span className="rounded-full border border-[#d8dadc] bg-white px-4 py-2 text-xs font-black text-[#42474e] shadow-lg">
+              Loading forecasting analytics...
             </span>
           </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left">
-              <thead className="bg-[#f8f9ff] text-xs font-black uppercase tracking-[0.14em] text-[#42474e]">
-                <tr>
-                  <th className="px-4 py-3">Facility</th>
-                  <th className="px-4 py-3">Medicine / SKU</th>
-                  <th className="px-4 py-3">Current Stock</th>
-                  <th className="px-4 py-3">Predicted Depletion</th>
-                  <th className="px-4 py-3">Review Trigger</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {stockWatchRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm font-semibold text-neutral-500">
-                      No critical stock records currently match the watch criteria.
-                    </td>
-                  </tr>
-                ) : (
-                  stockWatchRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-[#f8f9ff]">
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-black text-[#0d1117]">
-                          {row.facility?.facility_name || "Facility"}
-                        </p>
-                        <p className="text-xs font-medium text-neutral-500">
-                          {row.facility?.facility_code || "No code"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-black text-[#0d1117]">
-                          {row.medicine?.brand_name || row.medicine?.generic_name || "Medicine"}
-                        </p>
-                        <p className="text-xs font-medium text-neutral-500">
-                          {row.medicine?.dosage || "No dosage"} / {row.medicine?.unit_of_measure || "unit"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-sm font-black">
-                        <span className={row.stockStatus.tone}>
-                          {formatNumber(row.quantity)} Units
-                        </span>
-                        <span className="ml-2 text-xs font-semibold text-neutral-400">
-                          ({row.stockStatus.label})
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm font-black text-[#0d1117]">
-                        {row.stockStatus.urgency}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="rounded-full border border-[#d8dadc] bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-[#42474e]">
-                          Review request plan
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        )}
       </div>
     </AdminShell>
   );
 }
 
-function ForecastMetricCard({ label, note, progress, tone = "emerald", value }) {
-  const toneClass =
-    tone === "orange"
-      ? "bg-orange-50 text-orange-700"
-      : "bg-emerald-50 text-emerald-700";
-
+function ForecastFilters({
+  facilities,
+  facilityFilter,
+  isFacilityLocked,
+  medicineFilter,
+  medicineOptions,
+  monthWindow,
+  riskFilter,
+  setFacilityFilter,
+  setMedicineFilter,
+  setMonthWindow,
+  setRiskFilter,
+}) {
   return (
-    <article className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm shadow-neutral-200/40">
-      <p className="text-xs font-black uppercase tracking-[0.16em] text-[#42474e]">{label}</p>
-      <p className="mt-2 text-2xl font-black text-[#0d1117]">{value}</p>
-      <p className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-black ${toneClass}`}>
-        {note}
-      </p>
-      {Number.isFinite(progress) && (
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#eff4ff]">
-          <div
-            className="h-full rounded-full bg-[#6be9c2]"
-            style={{ width: `${Math.max(5, Math.min(100, progress))}%` }}
-          />
-        </div>
-      )}
-    </article>
+    <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm shadow-neutral-200/40">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <FilterField label="Facility">
+          <select
+            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 disabled:bg-[#f8f9ff] disabled:text-neutral-500"
+            disabled={isFacilityLocked}
+            value={facilityFilter}
+            onChange={(event) => setFacilityFilter(event.target.value)}
+          >
+            {!isFacilityLocked && <option value={ALL}>All Facilities</option>}
+            {facilities.map((facility) => (
+              <option key={facility.id} value={facility.id}>
+                {facility.facility_name}
+              </option>
+            ))}
+          </select>
+        </FilterField>
+
+        <FilterField label="Medicine">
+          <select
+            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
+            value={medicineFilter}
+            onChange={(event) => setMedicineFilter(event.target.value)}
+          >
+            <option value={ALL}>All Medicines</option>
+            {medicineOptions.map((medicine) => (
+              <option key={medicine.id} value={medicine.id}>
+                {medicine.label}
+              </option>
+            ))}
+          </select>
+        </FilterField>
+
+        <FilterField label="Risk Status">
+          <select
+            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
+            value={riskFilter}
+            onChange={(event) => setRiskFilter(event.target.value)}
+          >
+            <option value={ALL}>All Risk Levels</option>
+            <option value="Critical">Critical</option>
+            <option value="Low">Low</option>
+            <option value="Watch">Watch</option>
+            <option value="Stable">Stable</option>
+          </select>
+        </FilterField>
+
+        <FilterField label="Month Range">
+          <select
+            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
+            value={monthWindow}
+            onChange={(event) => setMonthWindow(event.target.value)}
+          >
+            <option value="3">Last 3 months</option>
+            <option value="6">Last 6 months</option>
+            <option value="12">Last 12 months</option>
+            <option value={ALL}>All months</option>
+          </select>
+        </FilterField>
+      </div>
+    </section>
   );
 }
 
-function ConsumptionTrendChart({ rows }) {
-  const maxValue = Math.max(
-    ...rows.flatMap((row) => [row.historical, row.forecasted]),
-    1
-  );
-
+function FilterField({ children, label }) {
   return (
-    <div className="space-y-4">
-      <div className="flex h-48 items-end gap-2.5 border-b border-l border-dashed border-neutral-200 px-2 pb-3">
-        {rows.map((row) => {
-          const historicalHeight = Math.max(8, Math.round((row.historical / maxValue) * 100));
-          const forecastHeight = Math.max(8, Math.round((row.forecasted / maxValue) * 100));
-
-          return (
-            <div key={row.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-              <div className="flex h-36 w-full items-end justify-center gap-1.5">
-                <span
-                  className="w-4 rounded-t bg-[#b8dce6]"
-                  style={{ height: `${historicalHeight}%` }}
-                  title={`Historical: ${formatNumber(row.historical)}`}
-                />
-                <span
-                  className="w-4 rounded-t bg-[#6be9c2]"
-                  style={{ height: `${forecastHeight}%` }}
-                  title={`Forecast: ${formatNumber(row.forecasted)}`}
-                />
-              </div>
-              <span className="text-xs font-black uppercase tracking-wide text-neutral-500">
-                {row.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex flex-wrap gap-4 text-xs font-bold">
-        <span className="flex items-center gap-2 text-[#42474e]">
-          <span className="h-2 w-4 rounded-full bg-[#b8dce6]" />
-          Historical consumption
-        </span>
-        <span className="flex items-center gap-2 text-emerald-700">
-          <span className="h-2 w-4 rounded-full bg-[#6be9c2]" />
-          Regression forecast
-        </span>
-      </div>
-    </div>
+    <label className="block">
+      <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#42474e]">
+        {label}
+      </span>
+      <span className="mt-1.5 block">{children}</span>
+    </label>
   );
 }
+
+const filterRowsByScope = (rows, facilityId, medicineId) => {
+  return rows.filter((row) => {
+    const facilityMatches = facilityId === ALL || row.facility_id === facilityId;
+    const medicineMatches = medicineId === ALL || row.medicine_id === medicineId;
+    return facilityMatches && medicineMatches;
+  });
+};
+
+const filterRowsByRisk = (rows, risk) => {
+  if (risk === ALL) {
+    return rows;
+  }
+
+  return rows.filter((row) => row.risk?.label === risk);
+};
+
+const filterRowsByMonthWindow = (rows, dateKey, monthWindow) => {
+  if (monthWindow === ALL) {
+    return rows;
+  }
+
+  const windowSize = Number(monthWindow);
+  const dates = rows
+    .map((row) => new Date(row?.[dateKey]))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((first, second) => first - second);
+
+  if (!Number.isFinite(windowSize) || dates.length === 0) {
+    return rows;
+  }
+
+  const latest = dates.at(-1);
+  const cutoff = new Date(latest.getFullYear(), latest.getMonth() - windowSize + 1, 1);
+
+  return rows.filter((row) => {
+    const date = new Date(row?.[dateKey]);
+    return !Number.isNaN(date.getTime()) && date >= cutoff;
+  });
+};
+
+const getMedicineOptions = (rows) => {
+  const optionMap = new Map();
+
+  rows.forEach((row) => {
+    if (!row.medicine_id || optionMap.has(row.medicine_id)) {
+      return;
+    }
+
+    const medicine = row.medicine || {};
+    const label = `${medicine.generic_name || "Medicine"} ${medicine.dosage || ""}`.trim();
+    optionMap.set(row.medicine_id, {
+      id: row.medicine_id,
+      label,
+    });
+  });
+
+  return Array.from(optionMap.values());
+};
+
+
+
