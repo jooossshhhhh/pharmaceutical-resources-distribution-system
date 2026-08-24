@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
+import ModalShell from "../../components/ModalShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
@@ -126,6 +127,7 @@ export default function MedicinesModule() {
   const [medicineError, setMedicineError] = useState("");
   const [notice, setNotice] = useState("");
   const [rejectedDuplicate, setRejectedDuplicate] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [modalMode, setModalMode] = useState(null);
   const [modalMedicine, setModalMedicine] = useState(null);
   const [formValues, setFormValues] = useState(emptyMedicineForm);
@@ -196,7 +198,7 @@ export default function MedicinesModule() {
 
     const timerId = window.setTimeout(() => {
       setNotice("");
-    }, 6000);
+    }, 15000);
 
     return () => window.clearTimeout(timerId);
   }, [notice]);
@@ -206,6 +208,7 @@ export default function MedicinesModule() {
     setFormValues(emptyMedicineForm);
     setMedicineError("");
     setRejectedDuplicate(null);
+    setFieldErrors({});
     setModalMode("create");
   };
 
@@ -220,6 +223,7 @@ export default function MedicinesModule() {
     });
     setMedicineError("");
     setRejectedDuplicate(null);
+    setFieldErrors({});
     setModalMode(mode);
   };
 
@@ -232,6 +236,7 @@ export default function MedicinesModule() {
     setModalMedicine(null);
     setFormValues(emptyMedicineForm);
     setRejectedDuplicate(null);
+    setFieldErrors({});
   };
 
   const handleViewExistingMedicine = (medicineId) => {
@@ -247,6 +252,31 @@ export default function MedicinesModule() {
     setMedicineError("");
     setRejectedDuplicate(null);
     setFormValues((currentValues) => ({ ...currentValues, [name]: value }));
+
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
+  };
+
+  const handleFieldBlur = (event) => {
+    const { name, value } = event.target;
+    const trimmed = (value || "").trim();
+
+    if (name === "generic_name" && !trimmed) {
+      setFieldErrors((prev) => ({ ...prev, generic_name: "Generic name is required." }));
+    } else if (name === "brand_name" && !trimmed) {
+      setFieldErrors((prev) => ({ ...prev, brand_name: "Brand name is required." }));
+    } else if (name === "unit_of_measure" && !trimmed) {
+      setFieldErrors((prev) => ({ ...prev, unit_of_measure: "Unit of measure is required." }));
+    } else if (name === "dosage" && !trimmed) {
+      setFieldErrors((prev) => ({ ...prev, dosage: "Dosage is required." }));
+    } else if (name === "unit_cost" && trimmed !== "" && Number(trimmed) < 0) {
+      setFieldErrors((prev) => ({ ...prev, unit_cost: "Unit cost cannot be negative." }));
+    }
   };
 
   const validateForm = () => {
@@ -423,6 +453,7 @@ export default function MedicinesModule() {
               </span>
               <input
                 type="search"
+                aria-label="Search medicines"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search medicine name, generic, dosage, or unit..."
@@ -434,7 +465,7 @@ export default function MedicinesModule() {
           <div className="overflow-x-auto">
             <table className="min-w-160 w-full border-collapse">
               <thead>
-                <tr className="border-b border-neutral-100 bg-white text-left text-[11px] font-black uppercase tracking-wide text-neutral-500">
+                <tr className="sticky top-0 z-10 border-b border-neutral-100 bg-white text-left text-[11px] font-black uppercase tracking-wide text-neutral-500">
                   <th className="px-5 py-3">
                     <button
                       type="button"
@@ -509,7 +540,7 @@ export default function MedicinesModule() {
                       <tr
                         key={medicine.id}
                         onClick={() => setSelectedMedicineId(medicine.id)}
-                        className={`cursor-pointer border-l-2 transition ${
+                        className={`cursor-pointer border-l-2 transition hover:-translate-y-px ${
                           isSelected
                             ? "border-l-emerald-500 bg-emerald-50"
                             : "border-l-transparent hover:bg-neutral-50"
@@ -554,11 +585,13 @@ export default function MedicinesModule() {
         <MedicineModal
           mode={modalMode}
           formValues={formValues}
+          fieldErrors={fieldErrors}
           error={medicineError}
           rejectedMedicine={rejectedDuplicate}
           isSaving={isSaving}
           onClose={closeModal}
           onChange={handleFieldChange}
+          onBlur={handleFieldBlur}
           onSubmit={handleSaveMedicine}
           onEdit={() => setModalMode("edit")}
           onViewExisting={handleViewExistingMedicine}
@@ -646,11 +679,13 @@ function MedicineDetailsPanel({ medicine, onView, onEdit }) {
 function MedicineModal({
   mode,
   formValues,
+  fieldErrors,
   error,
   rejectedMedicine,
   isSaving,
   onClose,
   onChange,
+  onBlur,
   onSubmit,
   onEdit,
   onViewExisting,
@@ -665,14 +700,14 @@ function MedicineModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+    <ModalShell labelledBy="medicine-modal-title" onClose={onClose} panelClassName="max-w-2xl">
       <form
         onSubmit={onSubmit}
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
           <div>
-            <h3 className="text-xl font-black text-black">{title}</h3>
+            <h3 id="medicine-modal-title" className="text-xl font-black text-black">{title}</h3>
           </div>
           <button
             type="button"
@@ -706,7 +741,9 @@ function MedicineModal({
               name="generic_name"
               value={formValues.generic_name}
               onChange={onChange}
+              onBlur={onBlur}
               disabled={isReadOnly}
+              error={fieldErrors.generic_name}
               required
             />
             <Field
@@ -714,7 +751,9 @@ function MedicineModal({
               name="brand_name"
               value={formValues.brand_name}
               onChange={onChange}
+              onBlur={onBlur}
               disabled={isReadOnly}
+              error={fieldErrors.brand_name}
               required
             />
             {isReadOnly ? (
@@ -724,6 +763,7 @@ function MedicineModal({
                 value={formValues.unit_of_measure}
                 onChange={onChange}
                 disabled={isReadOnly}
+                error={fieldErrors.unit_of_measure}
                 required
               />
             ) : showCustomUnit ? (
@@ -734,9 +774,14 @@ function MedicineModal({
                     name="unit_of_measure"
                     value={formValues.unit_of_measure}
                     onChange={onChange}
+                    onBlur={onBlur}
                     required
                     placeholder="Type the unit of measure"
-                    className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:ring-2 ${
+                      fieldErrors.unit_of_measure
+                        ? "border-red-300 focus:border-red-500 focus:ring-red-100"
+                        : "border-neutral-200 focus:border-emerald-500 focus:ring-emerald-100"
+                    }`}
                   />
                   <button
                     type="button"
@@ -749,6 +794,9 @@ function MedicineModal({
                     Use list
                   </button>
                 </span>
+                {fieldErrors.unit_of_measure && (
+                  <p className="text-xs font-semibold text-red-600">{fieldErrors.unit_of_measure}</p>
+                )}
               </label>
             ) : (
               <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
@@ -769,8 +817,13 @@ function MedicineModal({
                         onChange(event);
                       }
                     }}
+                    onBlur={onBlur}
                     required
-                    className="h-10 w-full appearance-none rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                    className={`h-10 w-full appearance-none rounded-lg border bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:ring-2 ${
+                      fieldErrors.unit_of_measure
+                        ? "border-red-300 focus:border-red-500 focus:ring-red-100"
+                        : "border-neutral-200 focus:border-emerald-500 focus:ring-emerald-100"
+                    }`}
                   >
                     <option value="" disabled>
                       Select a unit
@@ -786,6 +839,9 @@ function MedicineModal({
                     <ChevronIcon />
                   </span>
                 </span>
+                {fieldErrors.unit_of_measure && (
+                  <p className="text-xs font-semibold text-red-600">{fieldErrors.unit_of_measure}</p>
+                )}
               </label>
             )}
             <Field
@@ -793,7 +849,9 @@ function MedicineModal({
               name="dosage"
               value={formValues.dosage}
               onChange={onChange}
+              onBlur={onBlur}
               disabled={isReadOnly}
+              error={fieldErrors.dosage}
               required
             />
             <Field
@@ -804,10 +862,13 @@ function MedicineModal({
               step="0.01"
               value={formValues.unit_cost}
               onChange={onChange}
+              onBlur={onBlur}
               disabled={isReadOnly}
               placeholder="Optional"
               prefix="PHP"
               className="pl-11"
+              error={fieldErrors.unit_cost}
+              helper="Leave blank if unknown"
             />
           </div>
         </div>
@@ -840,13 +901,13 @@ function MedicineModal({
           )}
         </div>
       </form>
-    </div>
+    </ModalShell>
   );
 }
 
-function Field({ label, className = "", prefix, ...props }) {
+function Field({ label, className = "", prefix, error, helper, ...props }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
+    <label className="grid gap-1.5 text-xs font-black uppercase tracking-wide text-neutral-600">
       {label}
       <span className="relative block">
         {prefix && (
@@ -856,9 +917,15 @@ function Field({ label, className = "", prefix, ...props }) {
         )}
         <input
           {...props}
-          className={`h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50 disabled:text-neutral-500 ${className}`}
+          className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:ring-2 ${
+            error
+              ? "border-red-300 focus:border-red-500 focus:ring-red-100"
+              : "border-neutral-200 focus:border-emerald-500 focus:ring-emerald-100"
+          } disabled:bg-neutral-50 disabled:text-neutral-500 ${className}`}
         />
       </span>
+      {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
+      {!error && helper && <p className="text-xs font-medium text-neutral-400">{helper}</p>}
     </label>
   );
 }
