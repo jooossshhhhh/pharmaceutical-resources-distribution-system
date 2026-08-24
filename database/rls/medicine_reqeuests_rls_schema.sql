@@ -67,6 +67,11 @@ for insert
 
 with check (
     is_bhw()
+    and requested_by = (select auth.uid())
+    and facility_id = get_user_facility()
+    and status = 'PENDING'
+    and approved_by is null
+    and approved_at is null
 );
 
 

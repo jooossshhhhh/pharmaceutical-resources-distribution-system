@@ -102,6 +102,12 @@
 * 2026-profile-avatars.sql
 * 2026-stock-transfer-batch-fulfillment.sql
 * 2026-stock-transfer-source-controlled-workflow.sql
+* 2026-fix-confirm-stock-transfer-received-ambiguous-returning.sql
+* 2026-fix-confirm-stock-transfer-received-ambiguous-id-where.sql
 * 2026-stock-transfer-source-allocation-source-only.sql
-
+* 2026-patient-registration-logbook.sql
+* 2026-dispensing-walk-in-transactions.sql
+* 2026-dispensing-walk-in-rpcs.sql
+* 2026-dispensing-performance-indexes.sql
+* 2026-backend-audit-hardening.sql
 

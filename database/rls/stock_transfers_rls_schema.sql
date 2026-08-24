@@ -63,6 +63,14 @@ for insert
 
 with check (
     is_bhw()
+    and requested_by = (select auth.uid())
+    and destination_facility_id = get_user_facility()
+    and source_facility_id <> destination_facility_id
+    and status = 'PENDING'
+    and approved_by is null
+    and approved_at is null
+    and received_by is null
+    and received_at is null
 );
 
 

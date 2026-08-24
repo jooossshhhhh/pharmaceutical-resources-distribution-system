@@ -82,7 +82,8 @@ begin
     select r.*
       into request_record
       from public.medicine_requests r
-     where r.id = target_request_id;
+     where r.id = target_request_id
+     for update;
 
     if request_record.id is null then
         raise exception 'Medicine request not found.';
@@ -102,6 +103,7 @@ begin
                received_by = auth.uid(),
                received_at = now()
          where medicine_requests.id = target_request_id
+           and medicine_requests.status = 'APPROVED'
          returning
                medicine_requests.id,
                medicine_requests.status,

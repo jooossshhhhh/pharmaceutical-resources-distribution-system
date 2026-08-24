@@ -740,7 +740,6 @@ begin
       where sf.transfer_id = p_transfer_id
         and sf.destination_inventory_id is null
       order by i.expiration_date, i.date_received, i.id
-      for update of sf
     loop
       select coalesce(max(i.threshold), 0)
         into v_destination_threshold
@@ -774,13 +773,13 @@ begin
       do update set
         quantity = public.inventory.quantity + excluded.quantity,
         updated_at = now()
-      returning id into v_destination_inventory_id;
+      returning public.inventory.id into v_destination_inventory_id;
 
       update public.stock_transfer_fulfillments
          set destination_inventory_id = v_destination_inventory_id,
              received_by = v_caller_id,
              received_at = now()
-       where id = v_fulfillment.fulfillment_id;
+       where public.stock_transfer_fulfillments.id = v_fulfillment.fulfillment_id;
     end loop;
 
     update public.stock_transfers

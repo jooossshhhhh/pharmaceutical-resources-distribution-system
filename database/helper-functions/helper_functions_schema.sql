@@ -118,6 +118,20 @@ as $$
     select target_facility = get_user_facility();
 $$;
 
+revoke all on function get_current_profile_id() from public, anon;
+revoke all on function is_pharma_ii() from public, anon;
+revoke all on function is_pharma_i() from public, anon;
+revoke all on function is_bhw() from public, anon;
+revoke all on function get_user_facility() from public, anon;
+revoke all on function is_same_facility(uuid) from public, anon;
+
+grant execute on function get_current_profile_id() to authenticated;
+grant execute on function is_pharma_ii() to authenticated;
+grant execute on function is_pharma_i() to authenticated;
+grant execute on function is_bhw() to authenticated;
+grant execute on function get_user_facility() to authenticated;
+grant execute on function is_same_facility(uuid) to authenticated;
+
 
 -- ==========================================
 -- Safely update current user's editable profile fields
@@ -133,14 +147,20 @@ create or replace function update_own_profile_contact(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, auth
 as $$
 declare
-    v_profile profiles%rowtype;
+    v_profile public.profiles%rowtype;
+    v_auth_email text;
+    v_auth_phone text;
+    v_auth_phone_digits text;
+    v_auth_phone_local text;
     v_next_first_name text := trim(p_first_name);
     v_next_last_name text := trim(p_last_name);
     v_next_email text := nullif(trim(coalesce(p_email, '')), '');
     v_next_phone_number text := nullif(trim(coalesce(p_phone_number, '')), '');
+    v_next_phone_digits text;
+    v_next_phone_local text;
     v_details text[] := array[]::text[];
 begin
     if auth.uid() is null then
@@ -155,14 +175,68 @@ begin
         raise exception 'Last name is required';
     end if;
 
+    select email, phone
+    into v_auth_email, v_auth_phone
+    from auth.users
+    where id = auth.uid();
+
+    v_auth_phone_digits := regexp_replace(coalesce(v_auth_phone, ''), '[^0-9]', '', 'g');
+    v_auth_phone_local := case
+        when v_auth_phone_digits ~ '^63[0-9]{10}$' then '0' || substring(v_auth_phone_digits from 3)
+        when v_auth_phone_digits ~ '^09[0-9]{9}$' then v_auth_phone_digits
+        else null
+    end;
+
+    v_next_phone_digits := regexp_replace(coalesce(v_next_phone_number, ''), '[^0-9]', '', 'g');
+    v_next_phone_local := case
+        when v_next_phone_digits = '' then null
+        when v_next_phone_digits ~ '^63[0-9]{10}$' then '0' || substring(v_next_phone_digits from 3)
+        when v_next_phone_digits ~ '^09[0-9]{9}$' then v_next_phone_digits
+        else null
+    end;
+
+    if v_next_phone_number is not null and v_next_phone_local is null then
+        raise exception 'Phone number must use 09XXXXXXXXX format';
+    end if;
+
     select *
     into v_profile
-    from profiles
+    from public.profiles
     where id = auth.uid()
     for update;
 
     if not found then
         raise exception 'Profile not found';
+    end if;
+
+    if v_profile.email is distinct from v_next_email then
+        if v_next_email is null then
+            if v_auth_email is not null then
+                raise exception 'Remove Gmail login through Supabase Auth before clearing the profile email';
+            end if;
+        elsif lower(v_next_email) is distinct from lower(coalesce(v_auth_email, '')) then
+            raise exception 'Email updates require a verified Supabase Auth email';
+        end if;
+
+        v_details := array_append(
+            v_details,
+            'Gmail changed from "' || coalesce(v_profile.email, 'Not connected') || '" to "' || coalesce(v_next_email, 'Not connected') || '"'
+        );
+    end if;
+
+    if coalesce(v_profile.phone_number, '') is distinct from coalesce(v_next_phone_local, '') then
+        if v_next_phone_local is null then
+            if v_auth_phone_local is not null then
+                raise exception 'Remove phone login through Supabase Auth before clearing the profile phone number';
+            end if;
+        elsif v_next_phone_local is distinct from v_auth_phone_local then
+            raise exception 'Phone updates require verified Supabase Auth phone login';
+        end if;
+
+        v_details := array_append(
+            v_details,
+            'Phone number changed from "' || coalesce(v_profile.phone_number, 'Not connected') || '" to "' || coalesce(v_next_phone_local, 'Not connected') || '"'
+        );
     end if;
 
     if v_profile.first_name is distinct from v_next_first_name then
@@ -173,32 +247,23 @@ begin
         v_details := array_append(v_details, 'Last name changed from "' || coalesce(v_profile.last_name, '') || '" to "' || v_next_last_name || '"');
     end if;
 
-    if v_profile.email is distinct from v_next_email then
-        v_details := array_append(v_details, 'Gmail changed from "' || coalesce(v_profile.email, 'Not connected') || '" to "' || coalesce(v_next_email, 'Not connected') || '"');
-    end if;
-
-    if v_profile.phone_number is distinct from v_next_phone_number then
-        v_details := array_append(v_details, 'Phone number changed from "' || coalesce(v_profile.phone_number, 'Not connected') || '" to "' || coalesce(v_next_phone_number, 'Not connected') || '"');
-    end if;
-
-    update profiles
+    update public.profiles
     set
         first_name = v_next_first_name,
         last_name = v_next_last_name,
         email = v_next_email,
-        phone_number = v_next_phone_number,
+        phone_number = v_next_phone_local,
         updated_at = now()
     where id = auth.uid();
 
     if coalesce(array_length(v_details, 1), 0) > 0 then
-        insert into activity_logs (user_id, action, module, details)
+        insert into public.activity_logs (user_id, action, module, details)
         values (auth.uid(), 'Profile Updated', 'User Account', array_to_string(v_details, '; '));
     end if;
 end;
 $$;
 
 revoke all on function update_own_profile_contact(text, text, text, text) from public;
-grant execute on function update_own_profile_contact(text, text, text, text) to anon;
 grant execute on function update_own_profile_contact(text, text, text, text) to authenticated;
 
 
@@ -224,7 +289,6 @@ end;
 $$;
 
 revoke all on function log_own_password_change() from public;
-grant execute on function log_own_password_change() to anon;
 grant execute on function log_own_password_change() to authenticated;
 
 
@@ -284,6 +348,8 @@ drop trigger if exists on_profile_facility_change_requested on public.profile_fa
 create trigger on_profile_facility_change_requested
 after insert on public.profile_facility_change_requests
 for each row execute function notify_and_log_facility_change_request();
+
+revoke all on function notify_and_log_facility_change_request() from public, anon, authenticated;
 
 
 -- ==========================================
@@ -368,5 +434,4 @@ end;
 $$;
 
 revoke all on function review_profile_facility_change_request(uuid, facility_change_request_status) from public;
-grant execute on function review_profile_facility_change_request(uuid, facility_change_request_status) to anon;
 grant execute on function review_profile_facility_change_request(uuid, facility_change_request_status) to authenticated;
