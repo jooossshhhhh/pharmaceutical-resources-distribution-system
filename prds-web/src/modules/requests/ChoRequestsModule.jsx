@@ -16,7 +16,6 @@ import {
   getAllocationValidationError,
   getItemLabel,
   getItemStockStatus,
-  getPriorityTone,
   getRequestNumber,
   getRequestPriority,
   getRequestSummary,
@@ -26,16 +25,24 @@ import {
   matchesRequestFilters,
   requestSortOptions,
   requestStatusLabels,
-  requestStatusTones,
   sortRequests,
 } from "./requestUtils";
-
-const statusDotTones = {
-  APPROVED: "bg-blue-500",
-  COMPLETED: "bg-emerald-500",
-  PENDING: "bg-orange-500",
-  REJECTED: "bg-red-500",
-};
+import {
+  ActionButton,
+  CheckIcon as UiCheckIcon,
+  ClockIcon as UiClockIcon,
+  CloseIcon as UiCloseIcon,
+  RequestEmptyState,
+  RequestIcon as UiRequestIcon,
+  RequestMetricCard,
+  RequestPanel,
+  RequestPanelHeader,
+  RequestPriorityBadge,
+  RequestSearchInput,
+  RequestStatusBadge,
+  SortDropdown as RequestSortDropdown,
+  TransitIcon as UiTransitIcon,
+} from "./RequestUi";
 
 const summaryFilters = [
   {
@@ -75,6 +82,7 @@ export default function ChoRequestsModule() {
   const [inventoryRows, setInventoryRows] = useState([]);
   const [keyword, setKeyword] = useState("");
   const [facilityId, setFacilityId] = useState("ALL");
+  const [facilitySearch, setFacilitySearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("PENDING");
   const [sortMode, setSortMode] = useState("newest");
   const [isSortOpen, setIsSortOpen] = useState(false);
@@ -90,6 +98,34 @@ export default function ChoRequestsModule() {
   const today = useMemo(() => formatDateTime(new Date()), []);
   const stockMap = useMemo(() => getStockMap(inventoryRows), [inventoryRows]);
   const summary = useMemo(() => getRequestSummary(requests), [requests]);
+  const facilityRequestSummaries = useMemo(
+    () => buildFacilityRequestSummaries({ facilities, requests, summary }),
+    [facilities, requests, summary]
+  );
+  const visibleFacilitySummaries = useMemo(() => {
+    const normalizedSearch = facilitySearch.trim().toLowerCase();
+    const [allFacilities, ...facilityRows] = facilityRequestSummaries;
+
+    if (!normalizedSearch) {
+      return facilityRequestSummaries;
+    }
+
+    return [
+      allFacilities,
+      ...facilityRows.filter((facility) =>
+        [facility.name, facility.code, facility.type]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearch)
+      ),
+    ].filter(Boolean);
+  }, [facilityRequestSummaries, facilitySearch]);
+  const selectedFacilitySummary =
+    facilityRequestSummaries.find((facility) => facility.id === facilityId) ||
+    facilityRequestSummaries[0];
+  const showFacilityColumn = facilityId === "ALL";
+  const tableColumnCount = showFacilityColumn ? 7 : 6;
 
   const filteredRequests = useMemo(() => {
     const matchedRequests = requests.filter((request) =>
@@ -267,12 +303,12 @@ export default function ChoRequestsModule() {
         </p>
       )}
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {summaryFilters.map((filter) => (
-          <SummaryCard
+          <RequestMetricCard
             key={filter.status}
             active={statusFilter === filter.status}
-            iconKey={filter.icon}
+            icon={<SummaryIcon iconKey={filter.icon} />}
             label={filter.label}
             note={filter.note}
             onClick={() => setStatusFilter(filter.status)}
@@ -281,106 +317,111 @@ export default function ChoRequestsModule() {
         ))}
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 px-4 py-4">
-          <div>
-            <h2 className="text-base font-black text-black">Distribution Request</h2>
-            <p className="mt-1 text-xs font-semibold text-neutral-500">
-              Review, approve, reject, and track requests from all facilities.
-            </p>
-          </div>
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-            <div className="relative min-w-60 flex-1 lg:max-w-96">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                <SearchIcon />
+      <RequestPanel className="mt-4">
+        <RequestPanelHeader
+          eyebrow="CHO Command Center"
+          title="Distribution Request"
+          subtitle="Review, approve, reject, and track medicine requests from all facilities."
+          actions={
+            <>
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">
+                {selectedFacilitySummary?.name || "All Facilities"}
               </span>
-              <input
-                type="search"
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-                placeholder="Search request ID, facility, medicine..."
-                className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-              />
+              <span className="rounded-full bg-neutral-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-neutral-500">
+                {filteredRequests.length} shown
+              </span>
+            </>
+          }
+        />
+
+        <div className="lg:flex lg:min-h-128">
+          <FacilityRequestRail
+            facilities={visibleFacilitySummaries}
+            onSearchChange={setFacilitySearch}
+            onSelect={setFacilityId}
+            searchValue={facilitySearch}
+            selectedFacilityId={facilityId}
+          />
+
+          <div className="min-w-0 flex-1 bg-neutral-50/40 p-3">
+            <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <RequestSearchInput
+                  value={keyword}
+                  onChange={setKeyword}
+                  placeholder={showFacilityColumn ? "Search request ID, facility, requester, or medicine..." : "Search request ID, requester, or medicine..."}
+                />
+                <RequestSortDropdown
+                  isOpen={isSortOpen}
+                  onChange={(nextSortMode) => {
+                    setSortMode(nextSortMode);
+                    setIsSortOpen(false);
+                  }}
+                  onToggle={() => setIsSortOpen((isOpen) => !isOpen)}
+                  options={requestSortOptions}
+                  value={sortMode}
+                />
+              </div>
             </div>
-            <SelectFilter
-              value={facilityId}
-              onChange={setFacilityId}
-              options={[
-                { value: "ALL", label: "All Facilities" },
-                ...facilities.map((facility) => ({
-                  value: facility.id,
-                  label: facility.facility_name,
-                })),
-              ]}
-            />
-            <SortFilter
-              isOpen={isSortOpen}
-              onChange={(nextSortMode) => {
-                setSortMode(nextSortMode);
-                setIsSortOpen(false);
-              }}
-              onToggle={() => setIsSortOpen((isOpen) => !isOpen)}
-              options={requestSortOptions}
-              value={sortMode}
-            />
+
+            <div className="mt-3 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className={`${showFacilityColumn ? "min-w-[65rem]" : "min-w-[56rem]"} w-full border-collapse text-left`}>
+                  <thead className="bg-neutral-50">
+                    <tr className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
+                      <th className="px-4 py-3">Request ID</th>
+                      {showFacilityColumn && <th className="px-4 py-3">Facility</th>}
+                      <th className="px-4 py-3">Items</th>
+                      <th className="px-4 py-3">Priority</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan={tableColumnCount} className="px-4 py-14 text-center text-sm font-bold text-neutral-500">
+                          Loading medicine requests...
+                        </td>
+                      </tr>
+                    ) : filteredRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={tableColumnCount}><RequestEmptyState title="No requests match this view" description="Try another status card, facility, keyword, or sort direction." /></td>
+                      </tr>
+                    ) : (
+                      filteredRequests.map((request) => (
+                        <RequestRow
+                          key={request.id}
+                          request={request}
+                          onReview={handleReview}
+                          onSelect={() => {
+                            setReleaseBatches([]);
+                            setReleaseAllocations([]);
+                            setSelectedRequest(request);
+                            setRemarks(request.remarks || "");
+                          }}
+                          isSaving={isSaving}
+                          showFacilityColumn={showFacilityColumn}
+                        />
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-4 py-3 text-xs font-semibold text-neutral-500">
+                <span>
+                  Showing {filteredRequests.length} of {requests.length} requests
+                </span>
+                <span>
+                  {requestStatusLabels[statusFilter] || "All requests"} are shown from the selected facility scope.
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-262.5 w-full border-collapse text-left">
-            <thead className="bg-neutral-50">
-              <tr className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
-                <th className="px-4 py-3">Request ID</th>
-                <th className="px-4 py-3">Facility</th>
-                <th className="px-4 py-3">Items</th>
-                <th className="px-4 py-3">Priority</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan="7" className="px-4 py-14 text-center text-sm font-bold text-neutral-500">
-                    Loading medicine requests...
-                  </td>
-                </tr>
-              ) : filteredRequests.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="px-4 py-14 text-center text-sm font-bold text-neutral-500">
-                    No requests match the current filters.
-                  </td>
-                </tr>
-              ) : (
-                filteredRequests.map((request) => (
-                  <RequestRow
-                    key={request.id}
-                    request={request}
-                    onReview={handleReview}
-                    onSelect={() => {
-                      setReleaseBatches([]);
-                      setReleaseAllocations([]);
-                      setSelectedRequest(request);
-                      setRemarks(request.remarks || "");
-                    }}
-                    isSaving={isSaving}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-4 py-3 text-xs font-semibold text-neutral-500">
-          <span>
-            Showing {filteredRequests.length} of {requests.length} requests
-          </span>
-          <span>
-            {requestStatusLabels[statusFilter] || "All requests"} are shown from the selected facility scope.
-          </span>
-        </div>
-      </section>
+      </RequestPanel>
 
       {selectedRequestDetails && (
         <RequestDetailsModal
@@ -406,129 +447,243 @@ export default function ChoRequestsModule() {
   );
 }
 
-function SummaryCard({ active = false, iconKey, label, note, onClick, value }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        active
-          ? "border-[#00a36c] bg-[#00a36c] text-white shadow-md shadow-emerald-100"
-          : "border-neutral-200 bg-white text-black"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className={`text-xs font-black uppercase tracking-[0.14em] ${active ? "text-emerald-50" : "text-neutral-500"}`}>
-            {label}
-          </p>
-          <p className="mt-5 text-3xl font-black">{value}</p>
-          <p className={`mt-1 text-xs font-semibold ${active ? "text-white/70" : "text-neutral-500"}`}>
-            {note}
-          </p>
-        </div>
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${active ? "bg-white/20 text-white" : "bg-neutral-50 text-neutral-500"}`}>
-          <SummaryIcon iconKey={iconKey} />
-        </span>
-      </div>
-    </button>
-  );
+function buildFacilityRequestSummaries({ facilities = [], requests = [], summary = {} }) {
+  const facilitySummaries = facilities.map((facility) => ({
+    approved: 0,
+    code: facility.facility_code || "No code",
+    completed: 0,
+    id: facility.id,
+    name: facility.facility_name || "Unnamed facility",
+    pending: 0,
+    rejected: 0,
+    total: 0,
+    type: facility.facility_type || "Facility",
+  }));
+  const summariesById = new Map(facilitySummaries.map((facility) => [facility.id, facility]));
+
+  requests.forEach((request) => {
+    const facility = summariesById.get(request.facility_id);
+
+    if (!facility) {
+      return;
+    }
+
+    facility.total += 1;
+    facility.pending += request.status === "PENDING" ? 1 : 0;
+    facility.approved += request.status === "APPROVED" ? 1 : 0;
+    facility.completed += request.status === "COMPLETED" ? 1 : 0;
+    facility.rejected += request.status === "REJECTED" ? 1 : 0;
+  });
+
+  const sortedFacilities = facilitySummaries.sort((first, second) => {
+    const requestDelta = second.pending - first.pending || second.total - first.total;
+
+    if (requestDelta !== 0) {
+      return requestDelta;
+    }
+
+    return first.name.localeCompare(second.name);
+  });
+
+  return [
+    {
+      approved: Number(summary.inTransit || 0),
+      code: "CHO scope",
+      completed: Number(summary.completed || 0),
+      id: "ALL",
+      name: "All Facilities",
+      pending: Number(summary.pending || 0),
+      rejected: 0,
+      total: Number(summary.total || 0),
+      type: "System-wide",
+    },
+    ...sortedFacilities,
+  ];
 }
 
+function FacilityRequestRail({
+  facilities,
+  onSearchChange,
+  onSelect,
+  searchValue,
+  selectedFacilityId,
+}) {
+  return (
+    <aside className="border-b border-neutral-100 bg-[#f8f9ff]/75 p-3 lg:w-[18.5rem] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[19rem]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-black text-[#0d1117]">Facilities</h3>
+          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-500">
+            Search Facility
+          </p>
+        </div>
+      </div>
+
+      <label className="relative mt-3 block">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+          <RailSearchIcon />
+        </span>
+        <input
+          type="search"
+          aria-label="Search facility"
+          value={searchValue}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search facility"
+          className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-xs font-semibold text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        />
+      </label>
+
+      <div className="prds-modal-scrollbar mt-3 flex gap-2 overflow-x-auto pb-1 lg:max-h-[27rem] lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1">
+        {facilities.length === 0 ? (
+          <p className="min-w-56 rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-4 text-xs font-bold text-neutral-500 lg:min-w-0">
+            No facilities match this search.
+          </p>
+        ) : (
+          facilities.map((facility) => {
+            const isActive = selectedFacilityId === facility.id;
+            const processedCount = facility.approved + facility.completed;
+
+            return (
+              <button
+                key={facility.id}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => onSelect(facility.id)}
+                className={`relative min-w-[15rem] min-h-[4.75rem] shrink-0 overflow-hidden rounded-lg border px-3.5 py-2.5 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#6be9c2] focus-visible:ring-offset-1 lg:min-w-0 ${
+                  isActive
+                    ? "border-[#6be9c2] bg-[#6be9c2]/25 text-[#0d1117]"
+                    : "border-transparent bg-white/80 text-neutral-700 hover:border-emerald-100 hover:bg-white"
+                }`}
+              >
+                {isActive && <span className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-[#00a36c]" />}
+                <div className="flex items-start justify-between gap-2 pl-1.5">
+                  <div className="min-w-0 flex-1 pr-1">
+                    <p className="overflow-hidden text-[13px] font-black leading-5 text-[#0d1117] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                      {facility.name}
+                    </p>
+                    <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                      {facility.code} / {facility.type}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-black ${isActive ? "bg-white/75 text-[#0d1117]" : "bg-neutral-50/80 text-neutral-500"}`}>
+                    {facility.total}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between gap-2 pl-1.5 text-[10px] font-black uppercase tracking-wide">
+                  <span className="text-neutral-400">Total requests</span>
+                  {facility.pending > 0 ? (
+                    <span className="rounded-full bg-orange-50 px-2 py-0.5 text-orange-700 ring-1 ring-orange-100">
+                      {facility.pending} pending
+                    </span>
+                  ) : (
+                    <span className="text-emerald-700">{processedCount} processed</span>
+                  )}
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </aside>
+  );
+}
+function RailSearchIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
 function SummaryIcon({ iconKey }) {
   if (iconKey === "clock") {
-    return <ClockIcon />;
+    return <UiClockIcon />;
   }
 
   if (iconKey === "transit") {
-    return <TransitIcon />;
+    return <UiTransitIcon />;
   }
 
   if (iconKey === "check") {
-    return <CheckIcon />;
+    return <UiCheckIcon />;
   }
 
-  return <RequestIcon />;
+  return <UiRequestIcon />;
 }
 
-function RequestRow({ isSaving, onReview, onSelect, request }) {
+function RequestRow({ isSaving, onReview, onSelect, request, showFacilityColumn = true }) {
   const priority = getRequestPriority(request);
   const canReview = request.status === "PENDING";
+  const itemCount = request.items?.length || 0;
+  const totalQuantity = getRequestTotalQuantity(request);
 
   return (
-    <tr className="align-top text-sm hover:bg-neutral-50">
-      <td className="px-4 py-4">
+    <tr className="group align-top text-sm transition hover:bg-emerald-50/40">
+      <td className="px-4 py-3">
         <button
           type="button"
           onClick={onSelect}
-          className="text-left text-xs font-black text-blue-600 hover:text-blue-800"
+          className="text-left text-xs font-black text-blue-600 underline-offset-4 hover:text-blue-800 hover:underline"
         >
           {getRequestNumber(request.id)}
         </button>
-      </td>
-      <td className="px-4 py-4">
-        <p className="font-black text-black">{request.facility?.facility_name || "No facility"}</p>
-        <p className="mt-1 text-xs font-semibold text-neutral-500">
-          {request.facility?.facility_code || "No code"}
+        <p className="mt-1 text-[10px] font-semibold text-neutral-400">
+          {formatRequestDate(request.request_date)}
         </p>
+        {!showFacilityColumn && (
+          <p className="mt-1 text-[10px] font-bold text-neutral-500">
+            {getRequesterName(request)}
+          </p>
+        )}
       </td>
-      <td className="px-4 py-4">
+      {showFacilityColumn && (
+        <td className="px-4 py-3">
+          <p className="font-black text-black">{request.facility?.facility_name || "No facility"}</p>
+          <p className="mt-1 text-xs font-semibold text-neutral-500">
+            {request.facility?.facility_code || "No code"} / {getRequesterName(request)}
+          </p>
+        </td>
+      )}
+      <td className="px-4 py-3">
         <div className="space-y-1">
           {(request.items || []).slice(0, 2).map((item) => (
-            <p key={item.id} className="text-xs font-semibold text-neutral-700">
-              {getItemLabel(item)} ({item.quantity})
+            <p key={item.id} className="text-xs font-bold text-neutral-700">
+              {getItemLabel(item)} / {Number(item.quantity || 0).toLocaleString()} {item.medicine?.unit_of_measure || "units"}
             </p>
           ))}
-          {(request.items || []).length > 2 && (
-            <p className="text-xs font-bold text-neutral-400">
-              +{request.items.length - 2} more
-            </p>
+          {itemCount > 2 && (
+            <p className="text-xs font-bold text-neutral-400">+{itemCount - 2} more</p>
           )}
         </div>
+        <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-neutral-400">
+          {itemCount} line item{itemCount === 1 ? "" : "s"} / {totalQuantity.toLocaleString()} total
+        </p>
       </td>
-      <td className="px-4 py-4">
-        <span className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${getPriorityTone(priority)}`}>
-          {priority}
-        </span>
+      <td className="px-4 py-3">
+        <RequestPriorityBadge priority={priority} />
       </td>
-      <td className="px-4 py-4">
-        <span className="inline-flex items-center gap-2 text-xs font-black text-neutral-700">
-          <span className={`h-2 w-2 rounded-full ${statusDotTones[request.status] || "bg-neutral-300"}`} />
-          {requestStatusLabels[request.status] || request.status}
-        </span>
+      <td className="px-4 py-3">
+        <RequestStatusBadge status={request.status} />
       </td>
-      <td className="px-4 py-4 text-xs font-semibold text-neutral-600">
+      <td className="px-4 py-3 text-xs font-semibold text-neutral-600">
         {formatRequestDate(request.request_date)}
       </td>
-      <td className="px-4 py-4">
+      <td className="px-4 py-3">
         <div className="flex justify-end gap-2">
           {canReview ? (
             <>
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={onSelect}
-                className="h-8 rounded-lg bg-blue-600 px-3 text-xs font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
-              >
+              <ActionButton disabled={isSaving} onClick={onSelect} tone="primary">
                 Review
-              </button>
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => onReview(request, "REJECTED")}
-                className="h-8 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:text-neutral-300"
-              >
+              </ActionButton>
+              <ActionButton disabled={isSaving} onClick={() => onReview(request, "REJECTED")} tone="soft">
                 Reject
-              </button>
+              </ActionButton>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={onSelect}
-              className="h-8 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-blue-600 hover:bg-blue-50"
-            >
+            <ActionButton onClick={onSelect} tone="soft">
               Track
-            </button>
+            </ActionButton>
           )}
         </div>
       </td>
@@ -570,24 +725,20 @@ function RequestDetailsModal({
       onClose={onClose}
       overlayClassName="bg-white/95 backdrop-blur-sm"
     >
-      <article className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+      <article className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl shadow-neutral-900/20">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50/60 px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id="request-review-modal-title" className="text-base font-black text-black">{getRequestNumber(request.id)}</h2>
-            <span className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${requestStatusTones[request.status] || "bg-neutral-100 text-neutral-700"}`}>
-              {requestStatusLabels[request.status] || request.status}
-            </span>
-            <span className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${getPriorityTone(priority)}`}>
-              {priority} priority
-            </span>
+            <RequestStatusBadge status={request.status} />
+            <RequestPriorityBadge priority={priority} />
           </div>
           <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-800">
-            <CloseIcon />
+            <UiCloseIcon />
           </button>
         </header>
 
         <div className="prds-modal-scrollbar max-h-[72vh] overflow-y-auto p-5">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             <DetailPanel title="Facility Details">
               <p className="font-black text-black">{request.facility?.facility_name || "No facility"}</p>
               <p className="mt-1 text-sm font-semibold text-neutral-600">
@@ -860,7 +1011,7 @@ function RequestDetailsModal({
 
 function DetailPanel({ children, title }) {
   return (
-    <section className="rounded-lg bg-neutral-50 p-4">
+    <section className="rounded-xl border border-neutral-100 bg-neutral-50/80 p-4 shadow-sm">
       <h3 className="text-xs font-black uppercase tracking-[0.16em] text-neutral-500">{title}</h3>
       <div className="mt-3">{children}</div>
     </section>
@@ -878,120 +1029,7 @@ function TimelineItem({ active = false, detail, title }) {
   );
 }
 
-function SelectFilter({ onChange, options, value }) {
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
-}
 
-function SortFilter({ isOpen, onChange, onToggle, options, value }) {
-  const selectedOption = options.find((option) => option.value === value) || options[0];
 
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex h-10 min-w-38 items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none transition hover:bg-neutral-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-      >
-        <span className="inline-flex items-center gap-2">
-          <SortIcon />
-          {selectedOption.label}
-        </span>
-        <ChevronIcon />
-      </button>
 
-      {isOpen && (
-        <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl shadow-neutral-200/70">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold ${
-                option.value === value
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "text-neutral-700 hover:bg-neutral-50"
-              }`}
-            >
-              {option.label}
-              {option.value === value && <SmallCheckIcon />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
-const SearchIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <circle cx="11" cy="11" r="8" />
-    <path d="m21 21-4.3-4.3" />
-  </svg>
-);
-
-const SortIcon = () => (
-  <svg className="h-4 w-4 text-neutral-500" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M4 7h12" />
-    <path d="M4 12h8" />
-    <path d="M4 17h4" />
-  </svg>
-);
-
-const ChevronIcon = () => (
-  <svg className="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="m6 9 6 6 6-6" />
-  </svg>
-);
-
-const SmallCheckIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
-
-const RequestIcon = () => (
-  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
-    <path d="M7 3h8l4 4v14H7V3Z" />
-    <path d="M14 3v5h5M10 13h6M10 17h4" />
-  </svg>
-);
-
-const ClockIcon = () => (
-  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="8" />
-    <path d="M12 8v5l3 2" />
-  </svg>
-);
-
-const TransitIcon = () => (
-  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
-    <path d="M3 12h12" />
-    <path d="m12 7 5 5-5 5" />
-    <path d="M18 7h3v10h-3" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
-
-const CloseIcon = () => (
-  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M18 6 6 18" />
-    <path d="m6 6 12 12" />
-  </svg>
-);

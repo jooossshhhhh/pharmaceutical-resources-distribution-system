@@ -5,6 +5,7 @@ import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import {
   allocateStockTransferForPickup,
+  getOwnFacilityInventory,
   getStockTransferAllocationBatches,
   confirmStockTransferReceived,
   getTransferSourceAvailability,
@@ -12,8 +13,11 @@ import {
   submitBhwStockTransferRequest,
 } from "./TransfersService";
 import {
+  buildFefoInventoryRows,
   buildTransfersCsv,
   buildFefoTransferAllocations,
+  filterIncomingTransfers,
+  filterOutgoingTransfers,
   formatTransferDate,
   formatTransferNumber,
   getActiveTransferStatusFilter,
@@ -31,6 +35,11 @@ import {
   validateTransferAvailability,
 } from "./transferUtils";
 import {
+  getExpiryStatus,
+  getMedicineName,
+  getStockStatus,
+} from "../inventory/inventoryUtils";
+import {
   CheckIcon,
   Field,
   FilterChip,
@@ -44,6 +53,7 @@ import {
   StatusBadge,
   Textarea,
   TransferModal,
+  XIcon,
 } from "./TransferUi";
 
 const emptyRequestForm = {
@@ -56,6 +66,9 @@ const emptyRequestForm = {
 
 const getFacilityLabel = (facility) =>
   facility ? `${facility.facility_name} (${facility.facility_code})` : "Unknown facility";
+
+const getProfileName = (profile) =>
+  `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "Unknown user";
 
 function RequestTransferModal({
   availability,
@@ -265,18 +278,10 @@ function RequestTransferModal({
 }
 
 function TrackingModal({
-  allocationError,
-  allocations,
-  batches,
-  canAllocatePickup,
   canConfirmReceipt,
   isSaving,
-  onAllocationChange,
-  onAllocatePickup,
   onClose,
   onConfirmReceipt,
-  remarks,
-  setRemarks,
   transfer,
 }) {
   const steps = getTransferTrackingSteps(transfer);
@@ -349,6 +354,218 @@ function TrackingModal({
           <p className="mt-1 text-sm text-[#0d1117]">{transfer.remarks || "No admin notes yet."}</p>
         </div>
 
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+          >
+            Close
+          </button>
+          {canConfirmReceipt && (
+            <button
+              type="button"
+              onClick={onConfirmReceipt}
+              disabled={isSaving}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:opacity-60"
+            >
+              <CheckIcon /> Confirm Receipt
+            </button>
+          )}
+        </div>
+      </div>
+    </TransferModal>
+  );
+}
+
+function IncomingTransferModal({
+  allocationError,
+  allocations,
+  batches,
+  canAllocatePickup,
+  inventoryRows,
+  isSaving,
+  onAllocationChange,
+  onAllocatePickup,
+  onClose,
+  remarks,
+  setRemarks,
+  showInventory,
+  toggleInventory,
+  transfer,
+}) {
+  const steps = getTransferTrackingSteps(transfer);
+  const requesterName = getProfileName(transfer.requester);
+  const fefoRows = buildFefoInventoryRows(inventoryRows);
+
+  return (
+    <TransferModal
+      title={`${formatTransferNumber(transfer.id)} Incoming Transfer`}
+      subtitle={`${getFacilityLabel(transfer.destination)} is requesting your stock`}
+      onClose={onClose}
+      widthClass="max-w-5xl"
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+              Transfer Status
+            </p>
+            <h3 className="mt-1 text-lg font-bold text-[#0d1117]">{formatTransferNumber(transfer.id)}</h3>
+          </div>
+          <StatusBadge status={transfer.status} />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-4">
+          {steps.map((step) => (
+            <div
+              key={step.key}
+              className={`rounded-xl border p-4 ${
+                step.state === "complete"
+                  ? "border-[#6be9c2] bg-[#ecfff8]"
+                  : step.state === "current"
+                    ? "border-blue-200 bg-blue-50"
+                    : step.state === "rejected"
+                      ? "border-red-200 bg-red-50"
+                      : "border-[#e5e7eb] bg-white"
+              }`}
+            >
+              <p className="text-sm font-bold text-[#0d1117]">{step.label}</p>
+              <p className="mt-1 text-xs text-[#5f6673]">{step.detail}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+              Requesting Barangay
+            </p>
+            <p className="mt-1 text-sm font-bold text-[#0d1117]">
+              {getFacilityLabel(transfer.destination)}
+            </p>
+            <p className="mt-1 text-xs text-[#5f6673]">{transfer.destination?.address || "No address"}</p>
+          </div>
+          <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Requested By</p>
+            <p className="mt-1 text-sm font-bold text-[#0d1117]">{requesterName}</p>
+            <p className="mt-1 text-xs text-[#5f6673]">{transfer.requester?.role || "No role"}</p>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+              <tr>
+                <th className="px-4 py-3">Medicine</th>
+                <th className="px-4 py-3">Full Details</th>
+                <th className="px-4 py-3 text-right">Quantity</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#edf0f2]">
+              {(transfer.items || []).map((item) => (
+                <tr key={item.id}>
+                  <td className="px-4 py-3 font-bold text-[#0d1117]">{getTransferItemLabel(item)}</td>
+                  <td className="px-4 py-3 text-xs text-[#5f6673]">
+                    {getTransferMedicineFullLabel(item.medicine)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold text-[#0d1117]">
+                    {Number(item.quantity || 0).toLocaleString()} units
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <section className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+          <button
+            type="button"
+            onClick={toggleInventory}
+            className="flex w-full items-center justify-between gap-3 bg-white px-4 py-3 text-left transition hover:bg-[#f8f9ff]"
+          >
+            <span>
+              <span className="block text-sm font-bold text-[#0d1117]">My Full Inventory</span>
+              <span className="block text-xs text-[#5f6673]">
+                Every batch at your facility, ordered first-expiry-first-out, to help you decide what to release.
+              </span>
+            </span>
+            <span
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[#0d1117] transition ${showInventory ? "bg-[#6be9c2]" : "bg-white"}`}
+            >
+              {showInventory ? <XIcon /> : <PlusIcon />}
+            </span>
+          </button>
+          {showInventory && (
+            <div className="overflow-x-auto border-t border-[#e5e7eb]">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                  <tr>
+                    <th className="px-4 py-3">Medicine</th>
+                    <th className="px-4 py-3">Batch #</th>
+                    <th className="px-4 py-3">Supplier</th>
+                    <th className="px-4 py-3">Date Received</th>
+                    <th className="px-4 py-3">Expiration</th>
+                    <th className="px-4 py-3 text-right">Qty</th>
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#edf0f2]">
+                  {fefoRows.map((row) => {
+                    const expiry = getExpiryStatus(row);
+                    const stock = getStockStatus(row);
+
+                    return (
+                      <tr key={row.id}>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-[#0d1117]">{getMedicineName(row)}</p>
+                          <p className="text-xs text-[#5f6673]">
+                            {row.medicine?.brand_name || "Generic"} - {row.medicine?.unit_of_measure || "No unit"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-[#0d1117]">
+                          {row.batch_number || "No batch"}
+                        </td>
+                        <td className="px-4 py-3 text-[#5f6673]">{row.supplier?.supplier_name || "No supplier"}</td>
+                        <td className="px-4 py-3 text-[#5f6673]">{formatTransferDate(row.date_received)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${expiry.badgeClass}`}>
+                            {expiry.label}{" "}
+                            {expiry.days !== null
+                              ? expiry.days < 0
+                                ? `(${Math.abs(expiry.days)} days ago)`
+                                : `(${expiry.days} days)`
+                              : ""}
+                          </span>
+                          <p className="mt-1 text-xs text-[#5f6673]">{formatTransferDate(row.expiration_date)}</p>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-[#0d1117]">
+                          {Number(row.quantity || 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${stock.badgeClass}`}>
+                            {stock.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {fefoRows.length === 0 && (
+                <div className="p-6 text-center text-sm font-medium text-[#5f6673]">
+                  No inventory batches found at your facility.
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        <div className="rounded-xl border border-[#e5e7eb] bg-white p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Admin Notes</p>
+          <p className="mt-1 text-sm text-[#0d1117]">{transfer.remarks || "No admin notes yet."}</p>
+        </div>
+
         {canAllocatePickup && (
           <section className="rounded-xl border border-[#d8dadc] bg-white p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -370,11 +587,13 @@ function TrackingModal({
             </div>
 
             <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
                   <tr>
                     <th className="px-4 py-3">Medicine</th>
                     <th className="px-4 py-3">Batch</th>
+                    <th className="px-4 py-3">Supplier</th>
+                    <th className="px-4 py-3">Date Received</th>
                     <th className="px-4 py-3">Expiry</th>
                     <th className="px-4 py-3">Available</th>
                     <th className="px-4 py-3">Allocate Qty</th>
@@ -390,18 +609,24 @@ function TrackingModal({
                         entry.transfer_item_id === batch.transfer_item_id &&
                         entry.source_inventory_id === batch.source_inventory_id
                     );
+                    const expiry = getExpiryStatus({ expiration_date: batch.expiration_date });
 
                     return (
                       <tr key={`${batch.transfer_item_id}-${batch.source_inventory_id}`}>
                         <td className="px-4 py-3">
                           <p className="font-bold text-[#0d1117]">{getTransferItemLabel(item)}</p>
-                          <p className="text-xs text-[#5f6673]">{batch.supplier_name || "No supplier"}</p>
+                          <p className="text-xs text-[#5f6673]">{item?.medicine?.unit_of_measure || "No unit"}</p>
                         </td>
                         <td className="px-4 py-3 font-medium text-[#0d1117]">
                           {batch.batch_number || "No batch"}
                         </td>
-                        <td className="px-4 py-3 text-[#5f6673]">
-                          {formatTransferDate(batch.expiration_date)}
+                        <td className="px-4 py-3 text-[#5f6673]">{batch.supplier_name || "No supplier"}</td>
+                        <td className="px-4 py-3 text-[#5f6673]">{formatTransferDate(batch.date_received)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${expiry.badgeClass}`}>
+                            {expiry.label}
+                          </span>
+                          <p className="mt-1 text-xs text-[#5f6673]">{formatTransferDate(batch.expiration_date)}</p>
                         </td>
                         <td className="px-4 py-3 font-bold text-[#0d1117]">
                           {Number(batch.quantity || 0).toLocaleString()}
@@ -471,16 +696,6 @@ function TrackingModal({
               <CheckIcon /> Mark Ready for Pickup
             </button>
           )}
-          {canConfirmReceipt && (
-            <button
-              type="button"
-              onClick={onConfirmReceipt}
-              disabled={isSaving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:opacity-60"
-            >
-              <CheckIcon /> Confirm Receipt
-            </button>
-          )}
         </div>
       </div>
     </TransferModal>
@@ -491,11 +706,15 @@ export default function BhwTransfersModule() {
   const { profile } = useAuth();
   const [transfers, setTransfers] = useState([]);
   const [availability, setAvailability] = useState([]);
+  const [ownInventory, setOwnInventory] = useState([]);
+  const [viewMode, setViewMode] = useState("outgoing");
   const [filters, setFilters] = useState({ keyword: "", status: "ACTIVE", sort: "newest" });
   const [selectedTransfer, setSelectedTransfer] = useState(null);
+  const [selectedIncomingTransfer, setSelectedIncomingTransfer] = useState(null);
   const [allocationBatches, setAllocationBatches] = useState([]);
   const [allocations, setAllocations] = useState([]);
   const [allocationRemarks, setAllocationRemarks] = useState("");
+  const [showInventoryPanel, setShowInventoryPanel] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestForm, setRequestForm] = useState({ ...emptyRequestForm });
   const [isLoading, setIsLoading] = useState(true);
@@ -517,12 +736,14 @@ export default function BhwTransfersModule() {
     setIsLoading(true);
     setError("");
     try {
-      const [data, availabilityRows] = await Promise.all([
+      const [data, availabilityRows, inventoryRows] = await Promise.all([
         getTransfersData({ facilityId: profileFacilityId }),
         getTransferSourceAvailability(),
+        getOwnFacilityInventory(profileFacilityId),
       ]);
       setTransfers(data.transfers);
       setAvailability(availabilityRows);
+      setOwnInventory(inventoryRows);
     } catch (loadError) {
       setError(loadError.message || "Unable to load transfers.");
     } finally {
@@ -539,12 +760,12 @@ export default function BhwTransfersModule() {
   }, [loadData]);
 
   const canAllocateSelectedTransfer =
-    selectedTransfer?.status === "APPROVED" &&
-    selectedTransfer?.source_facility_id === profileFacilityId;
+    selectedIncomingTransfer?.status === "APPROVED" &&
+    selectedIncomingTransfer?.source_facility_id === profileFacilityId;
 
   useEffect(() => {
     const loadAllocationBatches = async () => {
-      if (!selectedTransfer || !canAllocateSelectedTransfer) {
+      if (!selectedIncomingTransfer || !canAllocateSelectedTransfer) {
         setAllocationBatches([]);
         setAllocations([]);
         setAllocationRemarks("");
@@ -553,9 +774,12 @@ export default function BhwTransfersModule() {
 
       setModalError("");
       try {
-        const batches = await getStockTransferAllocationBatches(selectedTransfer.id);
+        const batches = await getStockTransferAllocationBatches(selectedIncomingTransfer.id);
         setAllocationBatches(batches);
-        const fefoAllocations = buildFefoTransferAllocations(selectedTransfer.items || [], batches)
+        const fefoAllocations = buildFefoTransferAllocations(
+          selectedIncomingTransfer.items || [],
+          batches
+        )
           .map((allocation) => {
             const recommended = batches.find(
               (batch) =>
@@ -570,14 +794,14 @@ export default function BhwTransfersModule() {
           })
           .filter((allocation) => allocation.quantity > 0);
         setAllocations(fefoAllocations);
-        setAllocationRemarks(selectedTransfer.remarks || "");
+        setAllocationRemarks(selectedIncomingTransfer.remarks || "");
       } catch (batchError) {
         setModalError(batchError.message || "Unable to load source batches.");
       }
     };
 
     loadAllocationBatches();
-  }, [canAllocateSelectedTransfer, selectedTransfer]);
+  }, [canAllocateSelectedTransfer, selectedIncomingTransfer]);
 
   const filteredTransfers = useMemo(() => {
     const matched = transfers.filter((transfer) =>
@@ -592,6 +816,18 @@ export default function BhwTransfersModule() {
 
     return sortTransfers(matched, filters.sort);
   }, [filters, transfers]);
+
+  const outgoingTransfers = useMemo(
+    () => filterOutgoingTransfers(filteredTransfers, profileFacilityId),
+    [filteredTransfers, profileFacilityId]
+  );
+
+  const incomingTransfers = useMemo(
+    () => filterIncomingTransfers(filteredTransfers, profileFacilityId),
+    [filteredTransfers, profileFacilityId]
+  );
+
+  const visibleTransfers = viewMode === "incoming" ? incomingTransfers : outgoingTransfers;
 
   const updateRequestForm = (key, value) => {
     setRequestForm((current) => ({
@@ -667,7 +903,7 @@ export default function BhwTransfersModule() {
   };
 
   const handleAllocateForPickup = async () => {
-    if (!selectedTransfer) {
+    if (!selectedIncomingTransfer) {
       return;
     }
 
@@ -677,9 +913,9 @@ export default function BhwTransfersModule() {
       const updated = await allocateStockTransferForPickup({
         allocations,
         remarks: allocationRemarks,
-        transferId: selectedTransfer.id,
+        transferId: selectedIncomingTransfer.id,
       });
-      setSelectedTransfer(updated);
+      setSelectedIncomingTransfer(updated);
       await loadData();
     } catch (allocationError) {
       setModalError(allocationError.message || "Unable to mark transfer ready for pickup.");
@@ -689,12 +925,12 @@ export default function BhwTransfersModule() {
   };
 
   const exportHistory = () => {
-    const csv = buildTransfersCsv(filteredTransfers);
+    const csv = buildTransfersCsv(visibleTransfers);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "bhw-transfer-history.csv";
+    anchor.download = viewMode === "incoming" ? "bhw-incoming-transfers.csv" : "bhw-transfer-history.csv";
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -712,9 +948,9 @@ export default function BhwTransfersModule() {
 
   const isHistoryView = filters.status === "HISTORY";
   const allocationError =
-    selectedTransfer && canAllocateSelectedTransfer
+    selectedIncomingTransfer && canAllocateSelectedTransfer
       ? getTransferAllocationValidationError(
-          selectedTransfer.items || [],
+          selectedIncomingTransfer.items || [],
           allocationBatches,
           allocations
         )
@@ -737,10 +973,95 @@ export default function BhwTransfersModule() {
           <div>
             <h1 className="text-2xl font-bold text-[#0d1117]">Stock Transfer</h1>
             <p className="text-sm text-[#5f6673]">
-              Request stock from available facilities and track approval, release, and receipt status.
+              {viewMode === "incoming"
+                ? "Barangays requesting stock from your facility. Monitor approval, then allocate your batches for pickup."
+                : "Request stock from available facilities and track approval, release, and receipt status."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border border-[#d8dadc] bg-white p-0.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("outgoing");
+                  setFilters((current) => ({ ...current, status: "ACTIVE" }));
+                }}
+                className={`h-9 rounded-md px-4 text-sm font-bold transition ${
+                  viewMode === "outgoing"
+                    ? "bg-[#6be9c2] text-[#0d1117]"
+                    : "text-[#42474e] hover:bg-[#eff4ff]"
+                }`}
+              >
+                My Requests
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("incoming");
+                  setFilters((current) => ({ ...current, status: "ACTIVE" }));
+                }}
+                className={`h-9 rounded-md px-4 text-sm font-bold transition ${
+                  viewMode === "incoming"
+                    ? "bg-[#6be9c2] text-[#0d1117]"
+                    : "text-[#42474e] hover:bg-[#eff4ff]"
+                }`}
+              >
+                Incoming Requests
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRequestModal(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
+            >
+              <PlusIcon /> Request Transfer
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-4">
+            <div>
+              <h2 className="text-base font-bold text-[#0d1117]">
+                {viewMode === "incoming"
+                  ? isHistoryView
+                    ? "Incoming History"
+                    : "Incoming Requests"
+                  : isHistoryView || ["COMPLETED", "REJECTED"].includes(filters.status)
+                    ? "Transfer History"
+                    : "Transfer Queue"}
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 border-b border-[#e5e7eb] px-4 py-3">
+            <label className="relative min-w-0 flex-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
+                <SearchIcon />
+              </span>
+              <Input
+                value={filters.keyword}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, keyword: event.target.value }))
+                }
+                placeholder="Search transfer ID, facility, medicine..."
+                className="pl-9"
+              />
+            </label>
+            <SortToggleButton onClick={toggleSort} sort={filters.sort} />
+            {!isHistoryView && (
+              <Select
+                value={["ACTIVE", "PENDING", "APPROVED", "READY_FOR_PICKUP"].includes(filters.status) ? filters.status : "ACTIVE"}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="!w-auto shrink-0"
+              >
+                {transferQueueStatusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            )}
             <FilterChip
               active={false}
               icon={
@@ -756,63 +1077,11 @@ export default function BhwTransfersModule() {
             </FilterChip>
             <button
               type="button"
-              onClick={() => setShowRequestModal(true)}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
+              onClick={exportHistory}
+              className="h-10 shrink-0 rounded-lg border border-[#d8dadc] bg-white px-4 text-sm font-bold text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
             >
-              <PlusIcon /> Request Transfer
+              Export
             </button>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-4">
-            <div>
-              <h2 className="text-base font-bold text-[#0d1117]">
-                {isHistoryView || ["COMPLETED", "REJECTED"].includes(filters.status)
-                  ? "Transfer History"
-                  : "Transfer Queue"}
-              </h2>
-              
-            </div>
-            <div className="flex shrink-0 items-center justify-end gap-2">
-              {!isHistoryView && (
-                <Select
-                  value={["ACTIVE", "PENDING", "APPROVED", "READY_FOR_PICKUP"].includes(filters.status) ? filters.status : "ACTIVE"}
-                  onChange={(event) => setStatusFilter(event.target.value)}
-                  className="w-40 shrink-0"
-                >
-                  {transferQueueStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-              <button
-                type="button"
-                onClick={exportHistory}
-                className="h-10 shrink-0 rounded-lg border border-[#d8dadc] bg-white px-4 text-sm font-bold text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
-              >
-                Export
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-3 border-b border-[#e5e7eb] px-4 py-3 md:grid-cols-[1fr_auto]">
-            <label className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
-                <SearchIcon />
-              </span>
-              <Input
-                value={filters.keyword}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, keyword: event.target.value }))
-                }
-                placeholder="Search transfer ID, facility, medicine..."
-                className="pl-9"
-              />
-            </label>
-            <SortToggleButton onClick={toggleSort} sort={filters.sort} />
           </div>
 
           <div className="overflow-x-auto">
@@ -821,23 +1090,40 @@ export default function BhwTransfersModule() {
                 <tr>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Transfer ID</th>
-                  <th className="px-4 py-3">Source</th>
+                  {viewMode === "incoming" ? (
+                    <>
+                      <th className="px-4 py-3">Requesting Barangay</th>
+                      <th className="px-4 py-3">Requested By</th>
+                    </>
+                  ) : (
+                    <th className="px-4 py-3">Source</th>
+                  )}
                   <th className="px-4 py-3">Items Requested</th>
                   <th className="px-4 py-3">Quantity</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Admin Notes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#edf0f2]">
-                {filteredTransfers.map((transfer) => (
+                {visibleTransfers.map((transfer) => (
                   <tr
                     key={transfer.id}
                     className="cursor-pointer transition hover:bg-[#eff4ff]"
-                    onClick={() => setSelectedTransfer(transfer)}
+                    onClick={() =>
+                      viewMode === "incoming"
+                        ? setSelectedIncomingTransfer(transfer)
+                        : setSelectedTransfer(transfer)
+                    }
                   >
                     <td className="px-4 py-4 text-[#5f6673]">{formatTransferDate(transfer.created_at)}</td>
                     <td className="px-4 py-4 font-bold text-blue-700">{formatTransferNumber(transfer.id)}</td>
-                    <td className="px-4 py-4 text-[#0d1117]">{transfer.source?.facility_name}</td>
+                    {viewMode === "incoming" ? (
+                      <>
+                        <td className="px-4 py-4 text-[#0d1117]">{transfer.destination?.facility_name}</td>
+                        <td className="px-4 py-4 text-[#5f6673]">{getProfileName(transfer.requester)}</td>
+                      </>
+                    ) : (
+                      <td className="px-4 py-4 text-[#0d1117]">{transfer.source?.facility_name}</td>
+                    )}
                     <td className="px-4 py-4 font-bold text-[#0d1117]">
                       {(transfer.items || []).length > 0
                         ? (transfer.items || []).map(getTransferItemLabel).join(", ")
@@ -849,18 +1135,17 @@ export default function BhwTransfersModule() {
                     <td className="px-4 py-4">
                       <StatusBadge status={transfer.status} />
                     </td>
-                    <td className="px-4 py-4 italic text-[#5f6673]">
-                      {transfer.remarks || "No admin notes yet."}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {!isLoading && filteredTransfers.length === 0 && (
+          {!isLoading && visibleTransfers.length === 0 && (
             <div className="px-4 py-12 text-center text-sm font-medium text-[#5f6673]">
-              No transfers match the current filters.
+              {viewMode === "incoming"
+                ? "No barangays are currently requesting stock from your facility."
+                : "No transfers match the current filters."}
             </div>
           )}
           {isLoading && (
@@ -888,29 +1173,44 @@ export default function BhwTransfersModule() {
 
       {selectedTransfer && (
         <TrackingModal
-          allocationError={allocationError}
-          allocations={allocations}
-          batches={allocationBatches}
-          canAllocatePickup={canAllocateSelectedTransfer}
           canConfirmReceipt={
             selectedTransfer.status === "READY_FOR_PICKUP" &&
             selectedTransfer.destination_facility_id === profileFacilityId
           }
           isSaving={isSaving}
-          onAllocationChange={updateAllocation}
-          onAllocatePickup={handleAllocateForPickup}
           onClose={() => {
             setSelectedTransfer(null);
             setModalError("");
           }}
           onConfirmReceipt={handleConfirmReceipt}
-          remarks={allocationRemarks}
-          setRemarks={setAllocationRemarks}
           transfer={selectedTransfer}
         />
       )}
 
-      {modalError && selectedTransfer && (
+      {selectedIncomingTransfer && (
+        <IncomingTransferModal
+          allocationError={allocationError}
+          allocations={allocations}
+          batches={allocationBatches}
+          canAllocatePickup={canAllocateSelectedTransfer}
+          inventoryRows={ownInventory}
+          isSaving={isSaving}
+          onAllocationChange={updateAllocation}
+          onAllocatePickup={handleAllocateForPickup}
+          onClose={() => {
+            setSelectedIncomingTransfer(null);
+            setModalError("");
+            setShowInventoryPanel(false);
+          }}
+          remarks={allocationRemarks}
+          setRemarks={setAllocationRemarks}
+          showInventory={showInventoryPanel}
+          toggleInventory={() => setShowInventoryPanel((current) => !current)}
+          transfer={selectedIncomingTransfer}
+        />
+      )}
+
+      {modalError && (selectedTransfer || selectedIncomingTransfer) && (
         <div className="fixed bottom-5 right-5 z-[100] max-w-md rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 shadow-xl">
           {modalError}
         </div>

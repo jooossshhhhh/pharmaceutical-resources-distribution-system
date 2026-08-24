@@ -138,6 +138,36 @@ export const getTransferSourceAvailability = async ({ sourceFacilityId = null } 
   return data || [];
 };
 
+export const getOwnFacilityInventory = async (facilityId) => {
+  if (!facilityId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("inventory")
+    .select(`
+      id,
+      medicine_id,
+      supplier_id,
+      quantity,
+      threshold,
+      batch_number,
+      date_received,
+      expiration_date,
+      medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost),
+      supplier:suppliers(id, supplier_name)
+    `)
+    .eq("facility_id", facilityId)
+    .order("expiration_date", { ascending: true })
+    .order("date_received", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+};
+
 export const getStockTransferAllocationBatches = async (transferId) => {
   const { data, error } = await supabase.rpc("get_stock_transfer_allocation_batches", {
     p_transfer_id: transferId,

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
-import ModalShell from "../../components/ModalShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
@@ -472,7 +471,7 @@ export default function MedicinesModule() {
                             <p className="text-sm font-black text-neutral-700">
                               No medicines in the catalog yet.
                             </p>
-                            <p className="max-w-[340px] text-sm font-medium text-neutral-500">
+                            <p className="max-w-85 text-sm font-medium text-neutral-500">
                               Register medicines received at the Central Health Office so they
                               can be stocked and dispensed.
                             </p>
@@ -666,18 +665,14 @@ function MedicineModal({
   );
 
   return (
-    <ModalShell
-      labelledBy="medicine-modal-title"
-      onClose={onClose}
-      overlayClassName="bg-white/95 backdrop-blur-sm"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
       <form
         onSubmit={onSubmit}
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
           <div>
-            <h3 id="medicine-modal-title" className="text-xl font-black text-black">{title}</h3>
+            <h3 className="text-xl font-black text-black">{title}</h3>
           </div>
           <button
             type="button"
@@ -845,7 +840,7 @@ function MedicineModal({
           )}
         </div>
       </form>
-    </ModalShell>
+    </div>
   );
 }
 

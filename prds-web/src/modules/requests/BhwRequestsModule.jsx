@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import ModalShell from "../../components/ModalShell";
@@ -13,7 +13,6 @@ import {
 } from "./RequestsService";
 import {
   buildRequestsCsv,
-  dateRangeOptions,
   formatRequestDate,
   getChoAvailabilityMap,
   getDuplicateRequestMedicineIds,
@@ -26,17 +25,27 @@ import {
   getRequestTotalQuantity,
   getRequestTrackingSteps,
   getStockMap,
-  isRequestWithinDateRange,
   matchesRequestFilters,
   normalizeRequestErrorMessage,
-  requestContainsMedicine,
-  requestSortOptions,
   requestStatusLabels,
-  requestStatuses,
-  requestStatusTones,
   sortRequests,
   validateChoRequestAvailability,
 } from "./requestUtils";
+import { SortDirectionIcon } from "../transfers/TransferUi";
+import {
+  ActionButton,
+  ClockIcon as UiClockIcon,
+  DownloadIcon as UiDownloadIcon,
+  IconButton,
+  PlusIcon as UiPlusIcon,
+  RefreshIcon as UiRefreshIcon,
+  RequestEmptyState,
+  RequestPanel,
+  RequestPanelHeader,
+  RequestSearchInput,
+  RequestStatusBadge,
+  RequestToolbar,
+} from "./RequestUi";
 
 const emptyItem = {
   medicine_id: "",
@@ -44,6 +53,7 @@ const emptyItem = {
 };
 
 const ongoingRequestStatuses = ["PENDING", "APPROVED"];
+const historyRequestStatuses = ["COMPLETED", "REJECTED"];
 
 export default function BhwRequestsModule() {
   const { profile } = useAuth();
@@ -52,12 +62,10 @@ export default function BhwRequestsModule() {
   const [requests, setRequests] = useState([]);
   const [medicines, setMedicines] = useState([]);
   const [inventoryRows, setInventoryRows] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [medicineFilter, setMedicineFilter] = useState("ALL");
   const [sortMode, setSortMode] = useState("newest");
-  const [dateRange, setDateRange] = useState("ALL");
   const [keyword, setKeyword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
   const [error, setError] = useState("");
@@ -70,17 +78,6 @@ export default function BhwRequestsModule() {
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const stockMap = useMemo(() => getStockMap(inventoryRows), [inventoryRows]);
-
-  const statusCounts = useMemo(() => {
-    const counts = Object.fromEntries(requestStatuses.map((option) => [option.value, 0]));
-    requests.forEach((request) => {
-      if (counts[request.status] !== undefined) {
-        counts[request.status] += 1;
-      }
-    });
-    counts.ALL = requests.length;
-    return counts;
-  }, [requests]);
 
   const ongoingRequests = useMemo(
     () =>
@@ -96,17 +93,12 @@ export default function BhwRequestsModule() {
   const filteredRequests = useMemo(() => {
     const matchedRequests = requests.filter(
       (request) =>
-        matchesRequestFilters(request, {
-          facilityId: profileFacilityId || "ALL",
-          keyword,
-          status: statusFilter,
-        }) &&
-        requestContainsMedicine(request, medicineFilter) &&
-        isRequestWithinDateRange(request, dateRange)
+        historyRequestStatuses.includes(request.status) &&
+        matchesRequestFilters(request, { keyword })
     );
 
     return sortRequests(matchedRequests, sortMode);
-  }, [dateRange, keyword, medicineFilter, profileFacilityId, requests, sortMode, statusFilter]);
+  }, [keyword, requests, sortMode]);
 
   const lowStockItems = useMemo(
     () => getLowStockRequestItems(profileFacilityId, stockMap, choAvailabilityMap),
@@ -184,12 +176,22 @@ export default function BhwRequestsModule() {
     return () => window.clearTimeout(timerId);
   }, [loadRequests]);
 
+  const toggleSort = () => {
+    setSortMode((current) => (current === "newest" ? "oldest" : "newest"));
+  };
+
   const clearFilters = () => {
-    setStatusFilter("ALL");
-    setMedicineFilter("ALL");
     setSortMode("newest");
-    setDateRange("ALL");
     setKeyword("");
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadRequests();
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const resetForm = () => {
@@ -311,9 +313,6 @@ export default function BhwRequestsModule() {
 
       <section className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-500">
-            History Log Ref {profile?.facility?.facility_code || "Facility"}
-          </p>
           <h2 className="mt-2 text-2xl font-black tracking-tight text-black">Medicine Request</h2>
           <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-neutral-500">
             Submit and track medical supply requests for{" "}
@@ -321,113 +320,58 @@ export default function BhwRequestsModule() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => setIsOngoingModalOpen(true)}
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100"
-          >
-            <ClockIcon />
-            Ongoing Requests
-            {ongoingRequests.length > 0 && (
-              <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-black text-white">
-                {ongoingRequests.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={openNewRequestModal}
-            className="inline-flex h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
-          >
-            <PlusIcon />
-            New Request
-          </button>
-        </div>
+        <ActionButton onClick={openNewRequestModal} tone="dark">
+          <UiPlusIcon />
+          New Request
+        </ActionButton>
       </section>
 
-      <section className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
-        <label className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-            <SearchIcon />
-          </span>
-          <input
-            type="search"
+      <OngoingRequestsPanel
+        onOpenList={() => setIsOngoingModalOpen(true)}
+        onTrackRequest={setTrackedRequest}
+        requests={ongoingRequests}
+      />
+
+      <RequestPanel className="mt-4">
+        <RequestPanelHeader
+          title="Request History"
+          subtitle={`Completed and rejected medicine requests for ${profile?.facility?.facility_name || "your assigned facility"}.`}
+          actions={
+            <div className="flex items-center gap-2">
+              <IconButton
+                onClick={toggleSort}
+                title={sortMode === "newest" ? "Newest first" : "Oldest first"}
+              >
+                <SortDirectionIcon direction={sortMode} />
+              </IconButton>
+              <IconButton
+                onClick={handleRefresh}
+                disabled={isLoading}
+                title="Refresh request history"
+              >
+                <span className={isRefreshing ? "inline-block animate-spin" : ""}>
+                  <UiRefreshIcon />
+                </span>
+              </IconButton>
+              <ActionButton
+                onClick={exportCsv}
+                disabled={filteredRequests.length === 0}
+                tone="soft"
+              >
+                <UiDownloadIcon />
+                Export CSV
+              </ActionButton>
+            </div>
+          }
+        />
+        <RequestToolbar>
+          <RequestSearchInput
             value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="Search by medicine..."
-            className="h-9 w-48 rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-xs font-semibold text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            onChange={setKeyword}
+            placeholder="Search request ID, medicine, quantity, date, or status..."
           />
-        </label>
-        <SelectControl
-          ariaLabel="Filter by medicine"
-          label="Medicine"
-          onChange={setMedicineFilter}
-          options={[
-            { value: "ALL", label: "All medicines" },
-            ...medicines.map((medicine) => ({
-              value: medicine.id,
-              label: getMedicineFullLabel(medicine),
-            })),
-          ]}
-          value={medicineFilter}
-        />
-        <SelectControl
-          ariaLabel="Filter by status"
-          label="Status"
-          onChange={setStatusFilter}
-          options={requestStatuses.map((option) => ({
-            ...option,
-            label:
-              option.value === "ALL"
-                ? option.label
-                : `${option.label} (${statusCounts[option.value] || 0})`,
-          }))}
-          value={statusFilter}
-        />
-        <SelectControl
-          ariaLabel="Sort requests"
-          label="Sort"
-          onChange={setSortMode}
-          options={requestSortOptions}
-          value={sortMode}
-        />
-        <SelectControl
-          ariaLabel="Filter by date range"
-          label="Period"
-          onChange={setDateRange}
-          options={dateRangeOptions}
-          value={dateRange}
-        />
-        <span className="hidden text-xs font-semibold text-neutral-400 lg:inline">
-          Showing {filteredRequests.length} of {requests.length} requests
-        </span>
+        </RequestToolbar>
 
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={loadRequests}
-            disabled={isLoading}
-            title="Refresh request history"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshIcon />
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={exportCsv}
-            disabled={filteredRequests.length === 0}
-            title="Export the current view as CSV"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <DownloadIcon />
-            Export CSV
-          </button>
-        </div>
-      </section>
-
-      <section className="mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-[960px] w-full border-collapse text-left">
             <thead className="bg-neutral-50">
@@ -453,7 +397,6 @@ export default function BhwRequestsModule() {
                     <RequestsEmptyState
                       hasAnyRequests={requests.length > 0}
                       onClearFilters={clearFilters}
-                      onCreateRequest={openNewRequestModal}
                     />
                   </td>
                 </tr>
@@ -469,7 +412,7 @@ export default function BhwRequestsModule() {
             </tbody>
           </table>
         </div>
-      </section>
+      </RequestPanel>
 
       {isOngoingModalOpen && (
         <OngoingRequestsModal
@@ -528,27 +471,73 @@ export default function BhwRequestsModule() {
   );
 }
 
-function SelectControl({ ariaLabel, label, onChange, options, value }) {
+function OngoingRequestsPanel({ onOpenList, onTrackRequest, requests }) {
+  const visibleRequests = requests.slice(0, 3);
+
   return (
-    <label className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-neutral-400">
-      {label}
-      <select
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-9 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-bold normal-case tracking-normal text-neutral-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <RequestPanel className="mt-4">
+      <RequestPanelHeader
+        eyebrow="Active Request Tracking"
+        title="Ongoing Requests"
+        subtitle="Pending and approved requests that still need CHO action or receipt confirmation."
+        actions={
+          requests.length > 3 ? (
+            <ActionButton onClick={onOpenList} tone="soft">
+              View all {requests.length}
+            </ActionButton>
+          ) : null
+        }
+      />
+      {requests.length === 0 ? (
+        <RequestEmptyState
+          title="No ongoing requests"
+          description="Newly submitted requests appear here until CHO approves them and your facility confirms receipt."
+          icon={<UiClockIcon />}
+        />
+      ) : (
+        <div className="grid gap-3 p-4 lg:grid-cols-3">
+          {visibleRequests.map((request) => {
+            const totalQuantity = getRequestTotalQuantity(request);
+            const items = request.items || [];
+
+            return (
+              <button
+                key={request.id}
+                type="button"
+                onClick={() => onTrackRequest(request)}
+                className="group rounded-xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50/30 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black text-blue-600">{getRequestNumber(request.id)}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-neutral-400">
+                      {getRelativeTime(request.request_date)} / {items.length} item{items.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <RequestStatusBadge status={request.status} />
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  {items.slice(0, 2).map((item) => (
+                    <p key={item.id} className="truncate text-xs font-bold text-neutral-700">
+                      {getRequestItemFullLabel(item)}
+                    </p>
+                  ))}
+                  {items.length > 2 && (
+                    <p className="text-xs font-bold text-neutral-400">+{items.length - 2} more items</p>
+                  )}
+                </div>
+                <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-neutral-400">
+                  {totalQuantity.toLocaleString()} total units
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </RequestPanel>
   );
 }
-
-function RequestsEmptyState({ hasAnyRequests, onClearFilters, onCreateRequest }) {
+function RequestsEmptyState({ hasAnyRequests, onClearFilters }) {
   return (
     <div className="flex flex-col items-center justify-center px-4 py-14 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
@@ -559,25 +548,16 @@ function RequestsEmptyState({ hasAnyRequests, onClearFilters, onCreateRequest })
       </p>
       <p className="mt-1 max-w-sm text-xs font-semibold leading-5 text-neutral-500">
         {hasAnyRequests
-          ? "Try adjusting the status, medicine, period, or keyword filters."
+          ? "Try adjusting your keyword search."
           : "Submit your first medicine request for CHO review and replenishment."}
       </p>
-      {hasAnyRequests ? (
+      {hasAnyRequests && (
         <button
           type="button"
           onClick={onClearFilters}
           className="mt-4 h-9 rounded-lg border border-neutral-200 bg-white px-4 text-xs font-black text-neutral-600 transition hover:border-emerald-300 hover:text-emerald-700"
         >
           Clear filters
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onCreateRequest}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-black text-white transition hover:bg-emerald-700"
-        >
-          <PlusIcon />
-          New Request
         </button>
       )}
     </div>
@@ -633,9 +613,7 @@ function BhwRequestRow({ onTrackRequest, request }) {
         {totalQuantity.toLocaleString()} units
       </td>
       <td className="px-4 py-4">
-        <span className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${requestStatusTones[request.status] || "bg-neutral-100 text-neutral-700"}`}>
-          {requestStatusLabels[request.status] || request.status}
-        </span>
+        <RequestStatusBadge status={request.status} />
       </td>
       <td className="px-4 py-4 text-sm italic leading-6 text-neutral-600">
         {request.remarks || "No admin notes yet."}
@@ -694,15 +672,11 @@ function OngoingRequestsModal({ onClose, onOpenRequest, requests }) {
                       <span className="text-sm font-black text-neutral-900">
                         {getRequestNumber(request.id)}
                       </span>
-                      <span
-                        className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${requestStatusTones[request.status] || "bg-neutral-100 text-neutral-700"}`}
-                      >
-                        {requestStatusLabels[request.status] || request.status}
-                      </span>
+                      <RequestStatusBadge status={request.status} />
                     </div>
                     <p className="mt-2 text-[11px] font-semibold text-neutral-500">
-                      {getRelativeTime(request.request_date)} · {items.length} item
-                      {items.length === 1 ? "" : "s"} · {totalQuantity.toLocaleString()} units
+                      {getRelativeTime(request.request_date)} / {items.length} item
+                      {items.length === 1 ? "" : "s"} / {totalQuantity.toLocaleString()} units
                     </p>
                     {items.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -899,7 +873,7 @@ function RequestTrackingModal({ isReceiving, onClose, onConfirmReceipt, request,
             {request.status === "COMPLETED" && request.received_at && (
               <TrackingDetail
                 label="Received On"
-                value={`${formatRequestDate(request.received_at)} · ${receiverName}`}
+                value={`${formatRequestDate(request.received_at)} / ${receiverName}`}
               />
             )}
           </section>
@@ -982,7 +956,7 @@ function RequestConfirmationModal({ onClose, onTrack, request }) {
             {getRequestNumber(request.id)}
           </p>
           <p className="mt-1 text-xs font-semibold text-neutral-500">
-            {request.items?.length || 0} item{request.items?.length === 1 ? "" : "s"} ·{" "}
+            {request.items?.length || 0} item{request.items?.length === 1 ? "" : "s"} Â·{" "}
             {totalQuantity.toLocaleString()} units requested
           </p>
           <p className="mx-auto mt-3 max-w-sm text-xs font-medium leading-5 text-neutral-500">
@@ -1100,7 +1074,7 @@ function NewRequestModal({
       <form
         onSubmit={onSubmit}
         onKeyDown={handleFormKeyDown}
-        className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <header className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
           <div>
@@ -1236,8 +1210,8 @@ function RequestItemFields({
     : 0;
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="grid gap-2">
           <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
             Select Medicine
@@ -1268,12 +1242,12 @@ function RequestItemFields({
           )}
           {item.medicine_id && stock && (
             <p className="text-[11px] font-semibold normal-case tracking-normal text-neutral-500">
-              Your facility: {quantity.toLocaleString()} units on hand · {stockStatus.label}; threshold {threshold.toLocaleString()}
+              Your facility: {quantity.toLocaleString()} units on hand / {stockStatus.label}; threshold {threshold.toLocaleString()}
             </p>
           )}
         </div>
 
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+        <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
               CHO Available to Request
@@ -1293,9 +1267,10 @@ function RequestItemFields({
             />
           </div>
           {choAvailability ? (
-            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-bold text-neutral-500">
-              <span>Physical: {choAvailability.physicalQuantity.toLocaleString()}</span>
-              <span>Reserved: {choAvailability.reservedQuantity.toLocaleString()}</span>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] font-bold text-neutral-500">
+              <span className="rounded-lg bg-white px-2 py-1">Physical {choAvailability.physicalQuantity.toLocaleString()}</span>
+              <span className="rounded-lg bg-white px-2 py-1">Reserved {choAvailability.reservedQuantity.toLocaleString()}</span>
+              <span className="rounded-lg bg-white px-2 py-1 text-emerald-700">Balance {availableQuantity.toLocaleString()}</span>
             </div>
           ) : (
             <p className="mt-2 text-[11px] font-semibold text-neutral-500">
@@ -1432,34 +1407,6 @@ const InboxIcon = () => (
   </svg>
 );
 
-const RefreshIcon = () => (
-  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-    <path d="M21 3v6h-6" />
-  </svg>
-);
-
-const DownloadIcon = () => (
-  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <path d="m7 10 5 5 5-5" />
-    <path d="M12 15V3" />
-  </svg>
-);
-
-const SearchIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <circle cx="11" cy="11" r="8" />
-    <path d="m21 21-4.3-4.3" />
-  </svg>
-);
-
-const PlusIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M12 5v14" />
-    <path d="M5 12h14" />
-  </svg>
-);
 
 const CloseIcon = () => (
   <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
@@ -1467,10 +1414,14 @@ const CloseIcon = () => (
     <path d="m6 6 12 12" />
   </svg>
 );
-
 const ClockIcon = () => (
   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="10" />
     <path d="M12 6v6l4 2" />
   </svg>
 );
+
+
+
+
+

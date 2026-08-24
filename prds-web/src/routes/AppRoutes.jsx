@@ -6,6 +6,7 @@ import OTPVerification from "../features/auth/OTPVerification";
 import ForgotPassword from "../features/auth/ForgotPassword";
 import PendingApproval from "../features/auth/PendingApproval";
 import DashboardModule from "../modules/dashboard/DashboardModule";
+import DispensingModule from "../modules/dispensing/DispensingModule";
 import ActivityLogsModule from "../modules/activity/ActivityLogsModule";
 import FacilitiesModule from "../modules/facilities/FacilitiesModule";
 import ForecastingModule from "../modules/forecasting/ForecastingModule";
@@ -18,6 +19,8 @@ import RequestsModule from "../modules/requests/RequestsModule";
 import SuppliersModule from "../modules/suppliers/SuppliersModule";
 import TransfersModule from "../modules/transfers/TransfersModule";
 import UserManagementModule from "../modules/users/UserManagementModule";
+import PatientsModule from "../modules/patients/PatientsModule";
+import ComingSoonModule from "../modules/coming-soon/ComingSoonModule";
 import ProtectedRoutes from "./ProtectedRoutes";
 import RoleGuard from "./RoleGuard";
 
@@ -82,6 +85,19 @@ export default function AppRoutes() {
             element={
               <RoleGuard allowedRoles={["PHARMA_II"]}>
                 <UserManagementModule />
+              </RoleGuard>
+            }
+          />
+          <Route path="/patients" element={<PatientsModule />} />
+          <Route path="/dispensing" element={<DispensingModule />} />
+          <Route
+            path="/other-programs"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_I", "PHARMA_II"]}>
+                <ComingSoonModule
+                  title="Other Programs"
+                  description="Additional health programs and program medicines are under development and will be available soon."
+                />
               </RoleGuard>
             }
           />

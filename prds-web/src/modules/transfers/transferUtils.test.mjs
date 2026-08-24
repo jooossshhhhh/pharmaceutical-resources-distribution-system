@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildFefoInventoryRows,
   buildFefoTransferAllocations,
+  filterIncomingTransfers,
+  filterOutgoingTransfers,
   formatTransferNumber,
   getActiveTransferStatusFilter,
   getDuplicateTransferMedicineIds,
@@ -355,4 +358,50 @@ test("derives transfer tracking steps from status", () => {
   );
 
   assert.equal(getTransferTrackingSteps({ ...transfers[0], status: "REJECTED" })[1].state, "rejected");
+});
+
+test("filters transfers where the facility is the destination (outgoing)", () => {
+  const outgoing = filterOutgoingTransfers(transfers, "facility-a");
+
+  assert.deepEqual(
+    outgoing.map((transfer) => transfer.id),
+    [transfers[0].id, transfers[1].id, transfers[3].id]
+  );
+  assert.equal(filterOutgoingTransfers(transfers, "facility-unknown").length, 0);
+});
+
+test("filters transfers where the facility is the source (incoming)", () => {
+  const incoming = filterIncomingTransfers(transfers, "facility-a");
+
+  assert.deepEqual(
+    incoming.map((transfer) => transfer.id),
+    [transfers[2].id]
+  );
+  assert.equal(filterIncomingTransfers(transfers, "facility-unknown").length, 0);
+});
+
+test("orders inventory rows FEFO by expiration then date received", () => {
+  const rows = [
+    {
+      id: "inv-late",
+      expiration_date: "2027-12-01",
+      date_received: "2026-07-01",
+    },
+    {
+      id: "inv-same-expiry-older",
+      expiration_date: "2026-10-01",
+      date_received: "2026-01-01",
+    },
+    {
+      id: "inv-same-expiry-newer",
+      expiration_date: "2026-10-01",
+      date_received: "2026-06-01",
+    },
+  ];
+
+  assert.deepEqual(
+    buildFefoInventoryRows(rows).map((row) => row.id),
+    ["inv-same-expiry-older", "inv-same-expiry-newer", "inv-late"]
+  );
+  assert.deepEqual(buildFefoInventoryRows([]), []);
 });

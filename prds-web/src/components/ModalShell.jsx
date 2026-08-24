@@ -12,6 +12,7 @@ const FOCUSABLE_SELECTOR = [
 
 export default function ModalShell({
   children,
+  closing = false,
   labelledBy,
   onClose,
   overlayClassName = "bg-white/70",
@@ -84,11 +85,18 @@ export default function ModalShell({
       aria-labelledby={labelledBy}
       className="prds-modal-root fixed inset-0 z-[90] flex items-center justify-center px-4 py-5"
     >
-      <div className={`absolute inset-0 ${overlayClassName}`} aria-hidden="true" />
+      <div
+        className={`absolute inset-0 ${
+          closing ? "prds-modal-overlay-exit" : "prds-modal-overlay-enter"
+        } ${overlayClassName}`}
+        aria-hidden="true"
+      />
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`relative flex w-full flex-col items-center outline-none ${panelClassName || ""}`}
+        className={`relative flex w-full flex-col items-center outline-none ${
+          closing ? "prds-modal-panel-exit" : "prds-modal-panel-enter"
+        } ${panelClassName || ""}`}
       >
         {children}
       </div>

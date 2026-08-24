@@ -19,10 +19,10 @@ import {
   getTransferItemLabel,
   getTransferMedicineFullLabel,
   getTransferSummary,
+  getTransferTrackingSteps,
   getTransferTotalQuantity,
   matchesTransferFilters,
   sortTransfers,
-  transferQueueStatusOptions,
   validateTransferAvailability,
   getTransferAvailabilityMap,
 } from "./transferUtils";
@@ -51,6 +51,70 @@ const getFacilityLabel = (facility) =>
 const getProfileName = (profile) =>
   `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "Unknown user";
 
+const nextOwnerLabels = {
+  APPROVED: "Source allocation",
+  COMPLETED: "Archived",
+  PENDING: "CHO review",
+  READY_FOR_PICKUP: "Destination receipt",
+  REJECTED: "Archived",
+};
+
+const transferStageCards = [
+  {
+    detail: "Pending, approved, and pickup-ready transfers.",
+    label: "Active",
+    value: "ACTIVE",
+  },
+  {
+    detail: "Waiting for CHO approval.",
+    label: "Pending",
+    value: "PENDING",
+  },
+  {
+    detail: "Approved, awaiting source allocation.",
+    label: "Approved",
+    value: "APPROVED",
+  },
+  {
+    detail: "Allocated by source, awaiting receipt.",
+    label: "Ready for Pickup",
+    value: "READY_FOR_PICKUP",
+  },
+];
+
+const getStageCardCount = (summary, status) => {
+  if (status === "ACTIVE") {
+    return summary.pending + summary.approved + summary.readyForPickup;
+  }
+
+  if (status === "PENDING") {
+    return summary.pending;
+  }
+
+  if (status === "APPROVED") {
+    return summary.approved;
+  }
+
+  if (status === "READY_FOR_PICKUP") {
+    return summary.readyForPickup;
+  }
+
+  return 0;
+};
+
+const getItemsSummary = (transfer) => {
+  const items = transfer.items || [];
+  if (items.length === 0) {
+    return "No items";
+  }
+
+  if (items.length === 1) {
+    return getTransferItemLabel(items[0]);
+  }
+
+  return `${getTransferItemLabel(items[0])} + ${items.length - 1} more`;
+};
+
 function TransferDetailsModal({
   isSaving,
   onApprove,
@@ -60,6 +124,8 @@ function TransferDetailsModal({
   setRemarks,
   transfer,
 }) {
+  const trackingSteps = getTransferTrackingSteps(transfer);
+
   return (
     <TransferModal
       title={`${formatTransferNumber(transfer.id)} Transfer Details`}
@@ -67,7 +133,39 @@ function TransferDetailsModal({
       onClose={onClose}
       widthClass="max-w-5xl"
     >
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+      <section className="mb-4 rounded-2xl border border-[#d8dadc] bg-[#f8f9ff] p-4">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto] lg:items-center">
+          <div className="rounded-xl bg-white p-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
+              Source
+            </p>
+            <p className="mt-1 text-sm font-bold text-[#0d1117]">
+              {getFacilityLabel(transfer.source)}
+            </p>
+            <p className="mt-1 text-xs text-[#5f6673]">{transfer.source?.address || "No address"}</p>
+          </div>
+          <div className="hidden h-px bg-[#d8dadc] lg:block lg:w-10" />
+          <div className="rounded-xl bg-white p-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
+              Destination
+            </p>
+            <p className="mt-1 text-sm font-bold text-[#0d1117]">
+              {getFacilityLabel(transfer.destination)}
+            </p>
+            <p className="mt-1 text-xs text-[#5f6673]">
+              {transfer.destination?.address || "No address"}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <StatusBadge status={transfer.status} />
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#42474e]">
+              {nextOwnerLabels[transfer.status] || "Review"}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-xl border border-[#e5e7eb] bg-white p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -80,26 +178,8 @@ function TransferDetailsModal({
             </div>
             <StatusBadge status={transfer.status} />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg bg-[#f8f9ff] p-3">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                Source Facility
-              </p>
-              <p className="mt-1 text-sm font-bold text-[#0d1117]">{getFacilityLabel(transfer.source)}</p>
-              <p className="mt-1 text-xs text-[#5f6673]">{transfer.source?.address || "No address"}</p>
-            </div>
-            <div className="rounded-lg bg-[#f8f9ff] p-3">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                Destination Facility
-              </p>
-              <p className="mt-1 text-sm font-bold text-[#0d1117]">
-                {getFacilityLabel(transfer.destination)}
-              </p>
-              <p className="mt-1 text-xs text-[#5f6673]">{transfer.destination?.address || "No address"}</p>
-            </div>
-          </div>
 
-          <div className="mt-4 overflow-hidden rounded-xl border border-[#e5e7eb]">
+          <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
                 <tr>
@@ -130,19 +210,9 @@ function TransferDetailsModal({
             Activity Timeline
           </p>
           <div className="mt-4 space-y-3">
-            <TimelineItem label="Requested" value={formatTransferDate(transfer.created_at)} />
-            <TimelineItem
-              label="CHO Approved"
-              value={transfer.approved_at ? formatTransferDate(transfer.approved_at) : "Awaiting CHO action"}
-            />
-            <TimelineItem
-              label="Ready for Pickup"
-              value={transfer.transfer_date ? formatTransferDate(transfer.transfer_date) : "Awaiting source allocation"}
-            />
-            <TimelineItem
-              label="Received"
-              value={transfer.received_at ? formatTransferDate(transfer.received_at) : "Awaiting facility receipt"}
-            />
+            {trackingSteps.map((step) => (
+              <TimelineItem key={step.key} label={step.label} state={step.state} value={step.detail} />
+            ))}
           </div>
           <div className="mt-4 rounded-lg bg-white p-3">
             <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Requester</p>
@@ -204,10 +274,19 @@ function TransferDetailsModal({
   );
 }
 
-function TimelineItem({ label, value }) {
+function TimelineItem({ label, state, value }) {
+  const stateClasses = {
+    complete: "border-[#00a36c] bg-[#00a36c]",
+    current: "border-[#0ea5e9] bg-white ring-4 ring-blue-100",
+    pending: "border-[#d8dadc] bg-white",
+    rejected: "border-red-500 bg-red-500",
+  };
+
   return (
     <div className="flex gap-3">
-      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#00a36c]" />
+      <span
+        className={`mt-1 h-3 w-3 rounded-full border-2 ${stateClasses[state] || stateClasses.pending}`}
+      />
       <div>
         <p className="text-sm font-bold text-[#0d1117]">{label}</p>
         <p className="text-xs text-[#5f6673]">{value}</p>
@@ -245,7 +324,7 @@ function NewTransferModal({
   return (
     <TransferModal
       title="New Stock Transfer"
-      subtitle="Create a pending direct facility-to-facility transfer for CHO release."
+      subtitle="Create a pending facility-to-facility transfer for CHO review."
       onClose={onClose}
       widthClass="max-w-4xl"
     >
@@ -255,44 +334,56 @@ function NewTransferModal({
             {error}
           </div>
         )}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Source facility">
-            <Select
-              value={form.sourceFacilityId}
-              onChange={(event) => onChange("sourceFacilityId", event.target.value)}
-              required
-            >
-              <option value="">Select source</option>
-              {facilities.map((facility) => (
-                <option key={facility.id} value={facility.id}>
-                  {getFacilityLabel(facility)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Destination facility">
-            <Select
-              value={form.destinationFacilityId}
-              onChange={(event) => onChange("destinationFacilityId", event.target.value)}
-              required
-            >
-              <option value="">Select destination</option>
-              {facilities
-                .filter((facility) => facility.id !== form.sourceFacilityId)
-                .map((facility) => (
+        <section className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+          <div className="mb-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+              Route
+            </p>
+            <p className="mt-1 text-xs text-[#5f6673]">
+              Choose where stock will come from and which facility will receive it.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Source facility">
+              <Select
+                value={form.sourceFacilityId}
+                onChange={(event) => onChange("sourceFacilityId", event.target.value)}
+                required
+              >
+                <option value="">Select source</option>
+                {facilities.map((facility) => (
                   <option key={facility.id} value={facility.id}>
                     {getFacilityLabel(facility)}
                   </option>
                 ))}
-            </Select>
-          </Field>
-        </div>
+              </Select>
+            </Field>
+            <Field label="Destination facility">
+              <Select
+                value={form.destinationFacilityId}
+                onChange={(event) => onChange("destinationFacilityId", event.target.value)}
+                required
+              >
+                <option value="">Select destination</option>
+                {facilities
+                  .filter((facility) => facility.id !== form.sourceFacilityId)
+                  .map((facility) => (
+                    <option key={facility.id} value={facility.id}>
+                      {getFacilityLabel(facility)}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+          </div>
+        </section>
 
         <section className="rounded-xl border border-[#e5e7eb]">
           <div className="flex items-center justify-between border-b border-[#e5e7eb] px-4 py-3">
             <div>
               <h3 className="text-sm font-bold text-[#0d1117]">Transfer Items</h3>
-              <p className="text-xs text-[#5f6673]">Only medicines available at the source facility can be selected.</p>
+              <p className="text-xs text-[#5f6673]">
+                Medicine labels follow generic name, dosage, brand name, and unit of measure.
+              </p>
             </div>
             <button
               type="button"
@@ -306,7 +397,10 @@ function NewTransferModal({
             {form.items.map((item, index) => {
               const row = sourceMedicineOptions.find((option) => option.medicine_id === item.medicine_id);
               return (
-                <div key={index} className="grid gap-3 rounded-lg bg-[#f8f9ff] p-3 sm:grid-cols-[1fr_140px_40px]">
+                <div
+                  key={index}
+                  className="grid gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-3 sm:grid-cols-[1fr_140px_40px]"
+                >
                   <Field label="Medicine">
                     <Select
                       value={item.medicine_id}
@@ -321,13 +415,17 @@ function NewTransferModal({
                       ))}
                     </Select>
                     {row && (
-                      <p className="mt-1 text-xs text-[#5f6673]">
-                        Physical {Number(row.physical_quantity || 0).toLocaleString()} | Reserved{" "}
-                        {Number(row.reserved_quantity || 0).toLocaleString()} | Available{" "}
-                        <span className="font-bold text-[#008f68]">
-                          {Number(row.available_quantity || 0).toLocaleString()}
+                      <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                        <span className="rounded-lg bg-white px-2.5 py-1.5 font-bold text-[#42474e]">
+                          Physical {Number(row.physical_quantity || 0).toLocaleString()}
                         </span>
-                      </p>
+                        <span className="rounded-lg bg-white px-2.5 py-1.5 font-bold text-[#42474e]">
+                          Reserved {Number(row.reserved_quantity || 0).toLocaleString()}
+                        </span>
+                        <span className="rounded-lg bg-[#dffbf2] px-2.5 py-1.5 font-bold text-[#008f68]">
+                          Available {Number(row.available_quantity || 0).toLocaleString()}
+                        </span>
+                      </div>
                     )}
                   </Field>
                   <Field label="Quantity">
@@ -590,32 +688,18 @@ export default function ChoTransfersModule() {
           </div>
         )}
 
-        <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-4">
+        <section className="rounded-2xl border border-[#d8dadc] bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-base font-bold text-[#0d1117]">
-                {isHistoryView || ["COMPLETED", "REJECTED"].includes(filters.status)
-                  ? "Transfer History"
-                  : "Active Transfer Queue"}
-              </h2>
-              <p className="text-sm text-[#5f6673]">
-                {summary.pending} pending, {summary.approved} approved, {summary.readyForPickup} ready, {summary.completed + summary.rejected} archived.
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+                CHO command center
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-[#0d1117]">Stock Transfer</h2>
+              <p className="mt-1 text-sm text-[#5f6673]">
+                Review, approve, and monitor facility-to-facility stock transfers.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {!isHistoryView && (
-                <Select
-                  value={["ACTIVE", "PENDING", "APPROVED", "READY_FOR_PICKUP"].includes(filters.status) ? filters.status : "ACTIVE"}
-                  onChange={(event) => setStatusFilter(event.target.value)}
-                  className="w-40"
-                >
-                  {transferQueueStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
               <FilterChip
                 active={false}
                 icon={
@@ -632,11 +716,60 @@ export default function ChoTransfersModule() {
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68]"
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#0d1117]"
               >
                 <PlusIcon /> New Transfer
               </button>
             </div>
+          </div>
+
+          {!isHistoryView && (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {transferStageCards.map((card) => {
+                const active = filters.status === card.value;
+                return (
+                  <button
+                    key={card.value}
+                    type="button"
+                    onClick={() => setStatusFilter(card.value)}
+                    className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-[#6be9c2] ${
+                      active
+                        ? "border-[#6be9c2] bg-[#dffbf2] text-[#0d1117] shadow-sm"
+                        : "border-[#e5e7eb] bg-[#f8f9ff] text-[#42474e]"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-bold uppercase tracking-[0.18em]">
+                        {card.label}
+                      </span>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#0d1117]">
+                        {getStageCardCount(summary, card.value).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-[#5f6673]">{card.detail}</p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-4">
+            <div>
+              <h2 className="text-base font-bold text-[#0d1117]">
+                {isHistoryView || ["COMPLETED", "REJECTED"].includes(filters.status)
+                  ? "Transfer History"
+                  : "Active Transfer Queue"}
+              </h2>
+              <p className="text-sm text-[#5f6673]">
+                {summary.pending} pending, {summary.approved} approved, {summary.readyForPickup} ready, {summary.completed + summary.rejected} archived.
+              </p>
+            </div>
+            <span className="rounded-full bg-[#f8f9ff] px-3 py-1 text-xs font-bold text-[#42474e]">
+              {filteredTransfers.length.toLocaleString()} shown
+            </span>
           </div>
           <div className="grid gap-3 border-b border-[#e5e7eb] px-4 py-3 lg:grid-cols-[1fr_180px_180px_160px_auto]">
             <label className="relative">
@@ -698,16 +831,16 @@ export default function ChoTransfersModule() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[1080px] text-left text-sm">
               <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
                 <tr>
                   <th className="px-4 py-3">Transfer ID</th>
-                  <th className="px-4 py-3">Source</th>
-                  <th className="px-4 py-3">Destination</th>
+                  <th className="px-4 py-3">Route</th>
                   <th className="px-4 py-3">Items</th>
                   <th className="px-4 py-3">Quantity</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Next step</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
@@ -724,14 +857,18 @@ export default function ChoTransfersModule() {
                     <td className="px-4 py-4 font-bold text-blue-700">
                       {formatTransferNumber(transfer.id)}
                     </td>
-                    <td className="px-4 py-4 text-[#0d1117]">{transfer.source?.facility_name}</td>
-                    <td className="px-4 py-4 text-[#0d1117]">
-                      {transfer.destination?.facility_name}
+                    <td className="px-4 py-4">
+                      <div className="max-w-[18rem]">
+                        <p className="font-bold text-[#0d1117]">
+                          {transfer.source?.facility_name || "Unknown source"}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-[#5f6673]">
+                          to {transfer.destination?.facility_name || "Unknown destination"}
+                        </p>
+                      </div>
                     </td>
                     <td className="px-4 py-4 font-bold text-[#0d1117]">
-                      {(transfer.items || []).length > 0
-                        ? (transfer.items || []).map(getTransferItemLabel).join(", ")
-                        : "No items"}
+                      {getItemsSummary(transfer)}
                     </td>
                     <td className="px-4 py-4 text-[#0d1117]">
                       {getTransferTotalQuantity(transfer).toLocaleString()} units
@@ -741,6 +878,11 @@ export default function ChoTransfersModule() {
                     </td>
                     <td className="px-4 py-4 text-[#5f6673]">
                       {formatTransferDate(transfer.created_at)}
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="rounded-full bg-[#f8f9ff] px-2.5 py-1 text-xs font-bold text-[#42474e]">
+                        {nextOwnerLabels[transfer.status] || "Review"}
+                      </span>
                     </td>
                     <td className="px-4 py-4 text-right">
                       <button

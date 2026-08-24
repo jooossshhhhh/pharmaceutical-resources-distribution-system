@@ -538,8 +538,12 @@ export function useInventoryData({ isBhw = false }) {
   };
 
   const validateForm = () => {
-    if (!formValues.facility_id || !formValues.medicine_id || !formValues.supplier_id) {
-      return "Facility, medicine, and supplier are required.";
+    if (!formValues.facility_id) {
+      return "Inventory location could not be detected. Please reload the page and try again.";
+    }
+
+    if (!formValues.medicine_id || !formValues.supplier_id) {
+      return "Medicine and supplier are required.";
     }
 
     if (!formValues.batch_number.trim()) {

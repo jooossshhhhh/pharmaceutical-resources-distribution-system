@@ -250,6 +250,28 @@ export const sortTransfers = (transfers = [], sortMode = "newest") => {
   });
 };
 
+export const filterOutgoingTransfers = (transfers = [], facilityId = "") => {
+  return transfers.filter((transfer) => transfer.destination_facility_id === facilityId);
+};
+
+export const filterIncomingTransfers = (transfers = [], facilityId = "") => {
+  return transfers.filter((transfer) => transfer.source_facility_id === facilityId);
+};
+
+export const buildFefoInventoryRows = (rows = []) => {
+  return [...rows].sort((first, second) => {
+    const expiryComparison = (first.expiration_date || "").localeCompare(
+      second.expiration_date || ""
+    );
+
+    if (expiryComparison !== 0) {
+      return expiryComparison;
+    }
+
+    return (first.date_received || "").localeCompare(second.date_received || "");
+  });
+};
+
 export const getTransferAvailabilityMap = (availabilityRows = []) => {
   return availabilityRows.reduce((availabilityMap, row) => {
     availabilityMap.set(`${row.source_facility_id}:${row.medicine_id}`, {

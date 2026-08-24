@@ -15,26 +15,25 @@ import {
   NAGA_BOUNDS_SOUTH_WEST,
 } from "../../utils/nagaMap";
 import FacilityMap from "../dashboard/components/FacilityMap";
-import LocationPicker from "./LocationPicker";
+import { FacilityCard, FacilityCardSkeleton } from "./components/FacilityCard";
+import { FacilityFormModal } from "./components/FacilityFormModal";
+import { FacilityToolbar } from "./components/FacilityToolbar";
 import { formatFacilityType, formatStatus } from "./facilityFormat";
-
-const facilityTypes = [
-  { value: "CHO", label: "Central Health Office" },
-  { value: "HEALTH_CENTER", label: "Health Center" },
-];
-
-const facilityStatuses = [
-  { value: "ACTIVE", label: "Active" },
-  { value: "INACTIVE", label: "Inactive" },
-];
-
-const stockChipOptions = [
-  { value: "ALL", label: "All" },
-  { value: "HEALTHY", label: "Healthy" },
-  { value: "WATCH", label: "Watch" },
-  { value: "LOW", label: "Low" },
-  { value: "CRITICAL", label: "Critical" },
-];
+import {
+  buildFacilityView,
+  filterFacilities,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  getExpiryMeta,
+  getHealthMeta,
+  getMedicineName,
+  getRequestStatusMeta,
+  getStockPercent,
+  getStockStatus,
+  sortFacilities,
+} from "./facilityUtils";
 
 const emptyForm = {
   facility_name: "",
@@ -44,209 +43,6 @@ const emptyForm = {
   status: "ACTIVE",
   latitude: null,
   longitude: null,
-};
-
-const formatDateTime = (date) => {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-};
-
-const formatDate = (dateString) => {
-  if (!dateString) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(dateString));
-};
-
-const formatNumber = (value) => {
-  return new Intl.NumberFormat("en-US").format(Number(value || 0));
-};
-
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
-};
-
-const getStockStatus = (item) => {
-  const quantity = Number(item.quantity || 0);
-  const threshold = Number(item.threshold || 0);
-
-  if (quantity === 0 || quantity <= Math.max(1, Math.floor(threshold * 0.25))) {
-    return "CRITICAL";
-  }
-
-  if (quantity <= threshold) {
-    return "LOW";
-  }
-
-  if (quantity <= threshold * 1.5) {
-    return "WATCH";
-  }
-
-  return "HEALTHY";
-};
-
-const getStockPercent = (item) => {
-  const quantity = Number(item.quantity || 0);
-  const threshold = Number(item.threshold || 1);
-  const target = Math.max(threshold * 2, quantity, 1);
-
-  return Math.max(3, Math.min(100, Math.round((quantity / target) * 100)));
-};
-
-const getHealthMeta = (health) => {
-  const meta = {
-    HEALTHY: {
-      label: "Healthy",
-      barClass: "bg-emerald-500",
-      badgeClass: "bg-emerald-100 text-emerald-700",
-      iconClass: "bg-emerald-100 text-emerald-700",
-      topBorderClass: "border-t-emerald-500",
-    },
-    WATCH: {
-      label: "Watch",
-      barClass: "bg-amber-500",
-      badgeClass: "bg-amber-100 text-amber-700",
-      iconClass: "bg-amber-100 text-amber-700",
-      topBorderClass: "border-t-amber-500",
-    },
-    LOW: {
-      label: "Low Stock",
-      barClass: "bg-orange-500",
-      badgeClass: "bg-orange-100 text-orange-700",
-      iconClass: "bg-orange-100 text-orange-700",
-      topBorderClass: "border-t-orange-500",
-    },
-    CRITICAL: {
-      label: "Critical",
-      barClass: "bg-red-500",
-      badgeClass: "bg-red-100 text-red-700",
-      iconClass: "bg-red-100 text-red-700",
-      topBorderClass: "border-t-red-500",
-    },
-  };
-
-  return meta[health] || meta.WATCH;
-};
-
-const getExpiryMeta = (expirationDate) => {
-  if (!expirationDate) {
-    return null;
-  }
-
-  const days = Math.ceil((new Date(expirationDate).getTime() - Date.now()) / 86400000);
-
-  if (days < 0) {
-    return { label: "Expired", badgeClass: "bg-red-100 text-red-700" };
-  }
-
-  if (days <= 30) {
-    return {
-      label: days === 0 ? "Expires today" : `Exp. in ${days}d`,
-      badgeClass: "bg-red-100 text-red-700",
-    };
-  }
-
-  if (days <= 90) {
-    return { label: `Exp. in ${days}d`, badgeClass: "bg-amber-100 text-amber-700" };
-  }
-
-  return null;
-};
-
-const getMedicineName = (item) => {
-  const genericName = item.medicine?.generic_name || "Medicine";
-  const dosage = item.medicine?.dosage ? ` ${item.medicine.dosage}` : "";
-
-  return `${genericName}${dosage}`.trim();
-};
-
-const requestStatusMeta = {
-  PENDING: "bg-amber-100 text-amber-700",
-  APPROVED: "bg-emerald-100 text-emerald-700",
-  COMPLETED: "bg-blue-100 text-blue-700",
-  REJECTED: "bg-red-100 text-red-700",
-};
-
-const getRequestStatusMeta = (status) => {
-  return {
-    label: formatStatus(status),
-    badgeClass: requestStatusMeta[status] || "bg-neutral-100 text-neutral-600",
-  };
-};
-
-const buildFacilityView = (facility, related) => {
-  const inventoryRows = related.inventory.filter((item) => item.facility_id === facility.id);
-  const requestRows = related.requests.filter((request) => request.facility_id === facility.id);
-  const patientCount = related.patients.filter((patient) => patient.facility_id === facility.id).length;
-  const forecastRows = related.forecasts.filter((forecast) => forecast.facility_id === facility.id);
-
-  const stockCounts = inventoryRows.reduce(
-    (counts, item) => {
-      const status = getStockStatus(item);
-      counts[status] += 1;
-      counts.totalQuantity += Number(item.quantity || 0);
-      counts.totalValue += Number(item.quantity || 0) * Number(item.medicine?.unit_cost || 0);
-      return counts;
-    },
-    { HEALTHY: 0, WATCH: 0, LOW: 0, CRITICAL: 0, totalQuantity: 0, totalValue: 0 }
-  );
-
-  const healthPercent =
-    inventoryRows.length === 0
-      ? 0
-      : Math.round(
-          inventoryRows.reduce((sum, item) => sum + getStockPercent(item), 0) /
-            inventoryRows.length
-        );
-
-  const stockHealth =
-    stockCounts.CRITICAL > 0
-      ? "CRITICAL"
-      : stockCounts.LOW > 0
-        ? "LOW"
-        : healthPercent < 60
-          ? "WATCH"
-          : "HEALTHY";
-
-  const completedRequests = requestRows.filter(
-    (request) => request.status === "COMPLETED" || request.status === "APPROVED"
-  ).length;
-  const pendingRequests = requestRows.filter((request) => request.status === "PENDING").length;
-  const distributionRate =
-    requestRows.length === 0 ? 0 : Math.round((completedRequests / requestRows.length) * 100);
-
-  const forecastTotal = forecastRows.reduce(
-    (sum, forecast) => sum + Number(forecast.predicted_quantity || 0),
-    0
-  );
-
-  return {
-    ...facility,
-    inventoryRows,
-    requestRows,
-    forecastRows,
-    patientCount,
-    stockCounts,
-    healthPercent,
-    stockHealth,
-    distributionRate,
-    pendingRequests,
-    forecastTotal,
-  };
 };
 
 export default function FacilitiesModule() {
@@ -280,34 +76,10 @@ export default function FacilitiesModule() {
   }, [facilities, forecasts, inventory, patients, requests]);
 
   const filteredFacilities = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-
-    return enrichedFacilities
-      .filter((facility) => {
-        const searchableText = [
-          facility.facility_name,
-          facility.facility_code,
-          facility.address,
-          formatFacilityType(facility.facility_type),
-          facility.status,
-          getHealthMeta(facility.stockHealth).label,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return (
-          (!normalizedSearch || searchableText.includes(normalizedSearch)) &&
-          (stockFilter === "ALL" || facility.stockHealth === stockFilter)
-        );
-      })
-      .sort((firstFacility, secondFacility) => {
-        const comparison = firstFacility.facility_name.localeCompare(
-          secondFacility.facility_name
-        );
-
-        return sortDirection === "ASC" ? comparison : comparison * -1;
-      });
+    return sortFacilities(
+      filterFacilities(enrichedFacilities, { searchTerm, stockFilter }),
+      sortDirection
+    );
   }, [enrichedFacilities, searchTerm, sortDirection, stockFilter]);
 
   const captureSortPositions = () => {
@@ -595,83 +367,31 @@ export default function FacilitiesModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="facilities-toolbar">
-          <div className="facilities-toolbar-controls">
-            {viewMode === "list" && (
-              <label className="relative block w-full max-w-md">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                  <SearchIcon />
-                </span>
-                <input
-                  type="search"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by facility name, address, or code..."
-                  className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                />
-              </label>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              {viewMode === "list" && (
-                <button
-                  type="button"
-                  onClick={handleSortToggle}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
-                  aria-label={
-                    sortDirection === "ASC"
-                      ? "Sort facilities descending"
-                      : "Sort facilities ascending"
-                  }
-                  title={
-                    sortDirection === "ASC"
-                      ? "Sort descending"
-                      : "Sort ascending"
-                  }
-                >
-                  {sortDirection === "ASC" ? <SortAscendingIcon /> : <SortDescendingIcon />}
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="flex items-center rounded-lg border border-neutral-200 bg-white p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-black transition ${
-                  viewMode === "list"
-                    ? "bg-emerald-600 text-white shadow-sm"
-                    : "text-neutral-600 hover:bg-neutral-50"
-                }`}
-              >
-                <ListIcon />
-                List
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("map")}
-                className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-black transition ${
-                  viewMode === "map"
-                    ? "bg-emerald-600 text-white shadow-sm"
-                    : "text-neutral-600 hover:bg-neutral-50"
-                }`}
-              >
-                <MapViewIcon />
-                Map
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700"
-            >
-              <PlusIcon />
-              Add Facility
-            </button>
+      <section className="rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm">
+        <div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#007a52]">
+              Facility Command
+            </p>
+            <h2 className="mt-1 text-xl font-black text-[#0d1117]">Facilities</h2>
+            <p className="mt-1 max-w-2xl text-sm font-medium text-[#42474e]">
+              Manage healthcare facilities, stock health, request activity, and map coverage.
+            </p>
           </div>
         </div>
       </section>
+
+      <FacilityToolbar
+        viewMode={viewMode}
+        searchTerm={searchTerm}
+        stockFilter={stockFilter}
+        sortDirection={sortDirection}
+        onSearchChange={setSearchTerm}
+        onStockFilterChange={setStockFilter}
+        onSortToggle={handleSortToggle}
+        onViewModeChange={setViewMode}
+        onAddFacility={openCreateModal}
+      />
 
       {viewMode === "map" ? (
         <section className="mt-5">
@@ -707,33 +427,19 @@ export default function FacilitiesModule() {
       ) : (
         <>
           {!isLoading && enrichedFacilities.length > 0 && (
-            <p className="mt-5 text-sm font-semibold text-neutral-500">
-              Showing {filteredFacilities.length} of {enrichedFacilities.length} facilities
-            </p>
-          )}
-
-          {!isLoading && enrichedFacilities.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-                Stock health
-              </span>
-              {stockChipOptions.map((chip) => {
-                const isActive = stockFilter === chip.value;
-                return (
-                  <button
-                    key={chip.value}
-                    type="button"
-                    onClick={() => setStockFilter(chip.value)}
-                    className={`rounded-full border px-3 py-1 text-xs font-black transition ${
-                      isActive
-                        ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
-                        : "border-neutral-200 bg-white text-neutral-600 hover:border-emerald-500 hover:text-emerald-700"
-                    }`}
-                  >
-                    {chip.label}
-                  </button>
-                );
-              })}
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-neutral-500">
+              <p>
+                Showing {filteredFacilities.length} of {enrichedFacilities.length} facilities
+              </p>
+              {stockFilter !== "ALL" && (
+                <button
+                  type="button"
+                  onClick={() => setStockFilter("ALL")}
+                  className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  Clear health filter
+                </button>
+              )}
             </div>
           )}
 
@@ -823,123 +529,6 @@ export default function FacilitiesModule() {
   );
 }
 
-function FacilityCard({ facility, isSelected, onView, onViewOnMap }) {
-  const healthMeta = getHealthMeta(facility.stockHealth);
-  const alertCount = facility.stockCounts.CRITICAL + facility.stockCounts.LOW;
-
-  return (
-    <article
-      data-facility-id={facility.id}
-      className={`rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        isSelected
-          ? "border-emerald-400 ring-1 ring-emerald-200"
-          : "border-neutral-200"
-      } ${healthMeta.topBorderClass} border-t-4`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-base font-black text-black">
-            {facility.facility_name}
-          </h3>
-          <p className="text-sm font-medium text-neutral-500">
-            {formatFacilityType(facility.facility_type)}
-          </p>
-        </div>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-black ${facility.status === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>
-          {formatStatus(facility.status)}
-        </span>
-      </div>
-
-      <div className="mt-4 space-y-2 text-sm font-medium text-neutral-500">
-        <InfoLine icon={<LocationIcon />} text={facility.address} />
-        <InfoLine icon={<CodeIcon />} text={facility.facility_code} />
-        <InfoLine icon={<StockIcon />} text={`${facility.inventoryRows.length} inventory records`} />
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <MetricTile value={formatNumber(facility.stockCounts.totalQuantity)} label="Units" />
-        <MetricTile value={formatNumber(facility.requestRows.length)} label="Requests" />
-        <MetricTile value={formatNumber(facility.patientCount)} label="Patients" />
-      </div>
-
-      <div className="mt-4">
-        <div className="mb-2 flex items-center justify-between text-xs font-bold text-neutral-600">
-          <span>Stock Health</span>
-          <span>{facility.healthPercent}%</span>
-        </div>
-        <div className="h-1.5 rounded-full bg-neutral-100">
-          <div
-            className={`h-full rounded-full ${healthMeta.barClass}`}
-            style={{ width: `${facility.healthPercent}%` }}
-          />
-        </div>
-        <div className="mt-2 flex items-center justify-between">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${healthMeta.badgeClass}`}>
-            {healthMeta.label}
-          </span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-black ${
-              alertCount > 0
-                ? "bg-red-50 text-red-600"
-                : "bg-emerald-50 text-emerald-700"
-            }`}
-          >
-            {alertCount > 0 ? `${alertCount} alerts` : "No alerts"}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={onView}
-          className="h-10 w-full rounded-lg bg-emerald-50 text-sm font-black text-emerald-700 hover:bg-emerald-100"
-        >
-          View Details
-        </button>
-        <button
-          type="button"
-          onClick={onViewOnMap}
-          className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-neutral-200 text-sm font-black text-neutral-700 transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
-        >
-          <MapViewIcon />
-          View on Map
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function FacilityCardSkeleton() {
-  return (
-    <article className="animate-pulse rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="h-4 w-3/5 rounded bg-neutral-100" />
-          <div className="mt-2 h-3 w-2/5 rounded bg-neutral-100" />
-        </div>
-        <div className="h-5 w-16 rounded-full bg-neutral-100" />
-      </div>
-      <div className="mt-4 space-y-2">
-        <div className="h-3 w-full rounded bg-neutral-100" />
-        <div className="h-3 w-2/3 rounded bg-neutral-100" />
-        <div className="h-3 w-1/2 rounded bg-neutral-100" />
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <div className="h-14 rounded-lg bg-neutral-100" />
-        <div className="h-14 rounded-lg bg-neutral-100" />
-        <div className="h-14 rounded-lg bg-neutral-100" />
-      </div>
-      <div className="mt-4">
-        <div className="h-3 w-24 rounded bg-neutral-100" />
-        <div className="mt-2 h-1.5 rounded-full bg-neutral-100" />
-        <div className="mt-2 h-4 w-20 rounded bg-neutral-100" />
-      </div>
-      <div className="mt-4 h-10 rounded-lg bg-neutral-100" />
-    </article>
-  );
-}
-
 function FacilityMiniMap({ facility }) {
   const latitude = Number(facility?.latitude);
   const longitude = Number(facility?.longitude);
@@ -994,6 +583,9 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const inventorySectionRef = useRef(null);
+  const profileSectionRef = useRef(null);
+  const requestsSectionRef = useRef(null);
+  const forecastSectionRef = useRef(null);
   const healthMeta = getHealthMeta(facility.stockHealth);
   const stockRows = [...facility.inventoryRows]
     .sort((first, second) => getStockPercent(first) - getStockPercent(second))
@@ -1135,6 +727,24 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
             <DetailStat label="Patients" value={formatNumber(facility.patientCount)} icon={<UsersIcon />} />
           </div>
 
+          <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-neutral-200 bg-white p-2 shadow-sm">
+            {[
+              { label: "Overview", ref: profileSectionRef },
+              { label: "Inventory Health", ref: inventorySectionRef },
+              { label: "Requests", ref: requestsSectionRef },
+              { label: "Forecast", ref: forecastSectionRef },
+            ].map((section) => (
+              <button
+                key={section.label}
+                type="button"
+                onClick={() => section.ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className="rounded-lg px-3 py-1.5 text-xs font-black text-neutral-600 transition hover:bg-[#ecfff8] hover:text-[#007a52]"
+              >
+                {section.label}
+              </button>
+            ))}
+          </div>
+
           {attentionTotal > 0 && (
             <div
               className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
@@ -1192,7 +802,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
 
               <div className="facility-health-grid mt-4 grid gap-3">
                 <MiniStatus label="Healthy" value={facility.stockCounts.HEALTHY} colorClass="bg-emerald-500" />
-                <MiniStatus label="Watch" value={facility.stockCounts.WATCH} colorClass="bg-amber-500" />
+                <MiniStatus label="Warning" value={facility.stockCounts.WATCH} colorClass="bg-amber-500" />
                 <MiniStatus label="Low" value={facility.stockCounts.LOW} colorClass="bg-orange-500" />
                 <MiniStatus label="Critical" value={facility.stockCounts.CRITICAL} colorClass="bg-red-500" />
               </div>
@@ -1226,7 +836,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
             </section>
 
             <div className="grid gap-5">
-              <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+              <section ref={profileSectionRef} className="scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <h4 className="text-base font-black text-black">Facility Profile</h4>
                 <div className="mt-4 space-y-3">
                   <FacilityMiniMap facility={facility} />
@@ -1245,7 +855,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
                 </div>
               </section>
 
-              <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+              <section ref={requestsSectionRef} className="scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-base font-black text-black">Distribution</h4>
@@ -1314,7 +924,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
             </div>
           </div>
 
-          <section className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <section ref={forecastSectionRef} className="mt-4 scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h4 className="text-base font-black text-black">Demand Forecast</h4>
@@ -1412,132 +1022,6 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
   );
 }
 
-function FacilityFormModal({
-  editingFacility,
-  formValues,
-  error,
-  isSaving,
-  onClose,
-  onChange,
-  onPinChange,
-  onSubmit,
-}) {
-  return (
-    <ModalShell
-      labelledBy="facility-form-modal-title"
-      onClose={onClose}
-      overlayClassName="bg-white/95 backdrop-blur-sm"
-    >
-      <form
-        onSubmit={onSubmit}
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
-      >
-        <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
-          <div>
-            <h3 id="facility-form-modal-title" className="text-xl font-black text-black">
-              {editingFacility ? "Edit Facility" : "Add Facility"}
-            </h3>
-            <p className="text-sm font-medium text-neutral-500">
-              Fill in the required details and locate the facility on the map.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-            aria-label="Close facility form"
-          >
-            <XIcon />
-          </button>
-        </div>
-
-        <div className="prds-modal-scrollbar flex-1 overflow-y-auto px-6 py-5">
-          {error && (
-            <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
-            </p>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label="Facility Name"
-              name="facility_name"
-              value={formValues.facility_name}
-              onChange={onChange}
-              required
-            />
-            <Field
-              label="Facility Code"
-              name="facility_code"
-              value={formValues.facility_code}
-              onChange={onChange}
-              required
-            />
-            <SelectField
-              label="Facility Type"
-              name="facility_type"
-              value={formValues.facility_type}
-              onChange={onChange}
-              options={facilityTypes}
-            />
-            <SelectField
-              label="Status"
-              name="status"
-              value={formValues.status}
-              onChange={onChange}
-              options={facilityStatuses}
-            />
-          </div>
-
-          <label className="mt-4 grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
-            Address
-            <textarea
-              name="address"
-              value={formValues.address}
-              onChange={onChange}
-              rows="4"
-              required
-              className="resize-none rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            />
-          </label>
-
-          <div className="mt-4">
-            <LocationPicker
-              value={
-                formValues.latitude != null && formValues.longitude != null
-                  ? {
-                      latitude: formValues.latitude,
-                      longitude: formValues.longitude,
-                    }
-                  : null
-              }
-              label={formValues.facility_name || null}
-              onChange={onPinChange}
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 border-t border-neutral-100 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 rounded-lg bg-neutral-100 px-6 text-sm font-bold text-neutral-700 hover:bg-neutral-200"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="h-10 rounded-lg bg-emerald-600 px-6 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-          >
-            {isSaving ? "Saving..." : "Save Facility"}
-          </button>
-        </div>
-      </form>
-    </ModalShell>
-  );
-}
-
 function HealthGaugeCard({ percent, health }) {
   const colors = {
     HEALTHY: "#00a36c",
@@ -1622,45 +1106,6 @@ function ProfileLine({ label, value }) {
   );
 }
 
-function InfoLine({ icon, text }) {
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="text-neutral-400">{icon}</span>
-      <span className="truncate">{text}</span>
-    </div>
-  );
-}
-
-function Field({ label, ...props }) {
-  return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
-      {label}
-      <input
-        {...props}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-      />
-    </label>
-  );
-}
-
-function SelectField({ label, options, ...props }) {
-  return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
-      {label}
-      <select
-        {...props}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 function CurrencyIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
@@ -1699,71 +1144,12 @@ function SearchIcon() {
   );
 }
 
-function ListIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="M8 6h13M8 12h13M8 18h13" />
-      <path d="M3 6h.01M3 12h.01M3 18h.01" />
-    </svg>
-  );
-}
-
-function MapViewIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z" />
-      <path d="M9 3v15M15 6v15" />
-    </svg>
-  );
-}
-
-function SortAscendingIcon() {
-  return (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="M4 7h13" />
-      <path d="M4 12h9" />
-      <path d="M4 17h5" />
-      <path d="m17 14 3 3 3-3" />
-      <path d="M20 6v11" />
-    </svg>
-  );
-}
-
-function SortDescendingIcon() {
-  return (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="M4 7h5" />
-      <path d="M4 12h9" />
-      <path d="M4 17h13" />
-      <path d="m17 10 3-3 3 3" />
-      <path d="M20 18V7" />
-    </svg>
-  );
-}
-
 function FacilityIcon() {
   return (
     <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
       <path d="M4 21V8l8-5 8 5v13" />
       <path d="M9 21v-6h6v6" />
       <path d="M9 10h.01M15 10h.01" />
-    </svg>
-  );
-}
-
-function LocationIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z" />
-      <circle cx="12" cy="10" r="2" />
-    </svg>
-  );
-}
-
-function CodeIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="M4 7h16M4 12h10M4 17h7" />
     </svg>
   );
 }
@@ -1799,14 +1185,6 @@ function PencilIcon() {
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
       <path d="M12 20h9" />
       <path d="m16.5 3.5 4 4L8 20l-5 1 1-5 12.5-12.5Z" />
-    </svg>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }

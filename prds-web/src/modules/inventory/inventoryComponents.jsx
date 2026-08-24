@@ -3,13 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { computeDaysOfSupply } from "./demandUtils";
 import {
   formatDate,
+  formatDateTime,
   formatNumber,
   getExpiryStatus,
   getMedicineName,
   getStockStatus,
 } from "./inventoryUtils";
 
-export function MetricCard({ label, value, sub, tone, onClick, active, children }) {
+export function MetricCard({ label, value, sub, tone, onClick, active, children, compact = false }) {
   const toneClasses = {
     emerald: "bg-emerald-100 text-emerald-600",
     teal: "bg-teal-100 text-teal-600",
@@ -26,18 +27,36 @@ export function MetricCard({ label, value, sub, tone, onClick, active, children 
   return (
     <article
       onClick={onClick}
-      className={`group rounded-xl border bg-white p-3.5 text-left shadow-sm shadow-neutral-200/40 ${interactiveClass} ${activeClass}`}
+      className={`group rounded-xl border bg-white text-left shadow-sm shadow-neutral-200/40 ${
+        compact ? "p-3" : "p-3.5"
+      } ${interactiveClass} ${activeClass}`}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
       <div className="flex items-start justify-between gap-2.5">
-        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneClasses[tone]}`}>
+        <span
+          className={`flex items-center justify-center rounded-lg ${
+            compact ? "h-7 w-7" : "h-8 w-8"
+          } ${toneClasses[tone]}`}
+        >
           {children}
         </span>
       </div>
-      <p className="mt-4 text-2xl font-black tracking-tight text-[#0d1117]">{value}</p>
-      <p className="mt-0.5 text-sm font-black text-[#42474e]">{label}</p>
-      {sub && <p className="mt-1 text-xs font-medium leading-4 text-neutral-500">{sub}</p>}
+      <p
+        className={`font-black tracking-tight text-[#0d1117] ${
+          compact ? "mt-3 text-xl" : "mt-4 text-2xl"
+        }`}
+      >
+        {value}
+      </p>
+      <p className={`${compact ? "text-xs" : "text-sm"} mt-0.5 font-black text-[#42474e]`}>
+        {label}
+      </p>
+      {sub && (
+        <p className={`${compact ? "mt-0.5" : "mt-1"} text-xs font-medium leading-4 text-neutral-500`}>
+          {sub}
+        </p>
+      )}
     </article>
   );
 }
@@ -132,7 +151,15 @@ export function SelectField({ label, children, ...props }) {
   );
 }
 
-export function FacilityPicker({ facilities, value, onSelect }) {
+export function FacilityPicker({
+  facilities,
+  value,
+  onSelect,
+  compactSelected = false,
+  selectedLabel = null,
+  className = "",
+  dropdownClassName = "",
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const containerRef = useRef(null);
@@ -179,13 +206,22 @@ export function FacilityPicker({ facilities, value, onSelect }) {
   };
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-xs shrink-0">
+    <div
+      ref={containerRef}
+      className={`relative shrink-0 ${
+        compactSelected ? "w-full max-w-[11rem]" : "w-full max-w-xs"
+      } ${className}`}
+    >
       <button
         type="button"
         onClick={() => setIsOpen((current) => !current)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        className="flex h-10 w-full items-center gap-2.5 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-bold text-neutral-800 outline-none transition hover:border-emerald-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        className={`flex h-10 w-full items-center gap-2.5 rounded-lg border bg-white px-3 text-sm font-bold outline-none transition hover:border-emerald-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 ${
+          compactSelected && selectedFacility
+            ? "border-emerald-300 text-emerald-700"
+            : "border-neutral-200 text-neutral-800"
+        }`}
       >
         <span className="shrink-0 text-emerald-600">
           <BuildingIcon />
@@ -195,7 +231,14 @@ export function FacilityPicker({ facilities, value, onSelect }) {
             selectedFacility ? "text-neutral-800" : "text-neutral-400"
           }`}
         >
-          {selectedFacility ? selectedFacility.facility_name : "Select facility"}
+          {selectedLabel ||
+            (compactSelected
+              ? !selectedFacility || selectedFacility.id === "ALL"
+                ? "All Facilities"
+                : "Facility"
+              : selectedFacility
+                ? selectedFacility.facility_name
+                : "Select facility")}
         </span>
         <ChevronDownIcon
           className={`shrink-0 text-neutral-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -203,7 +246,9 @@ export function FacilityPicker({ facilities, value, onSelect }) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-20 mt-1.5 w-full overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xl">
+        <div
+          className={`absolute right-0 top-full z-20 mt-1.5 w-full overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xl ${dropdownClassName}`}
+        >
           <div className="flex items-center gap-2 border-b border-neutral-100 px-3 py-2.5">
             <span className="shrink-0 text-neutral-400">
               <SearchIcon />
@@ -250,7 +295,9 @@ export function FacilityPicker({ facilities, value, onSelect }) {
                           : "font-bold text-neutral-700 hover:bg-[#eff4ff] hover:text-[#0d1117]"
                       }`}
                     >
-                      <span className="min-w-0 flex-1 truncate">{facility.facility_name}</span>
+                      <span className="min-w-0 flex-1 whitespace-normal break-words leading-5">
+                        {facility.facility_name}
+                      </span>
                       {isSelected && (
                         <span className="shrink-0">
                           <CheckIcon />
@@ -305,14 +352,167 @@ export function InventoryTable({
   onPageChange,
   emptyHint,
   emptyAction,
+  variant = "default",
 }) {
+  if (variant === "choBatch") {
+    return (
+      <>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="sticky top-0 z-10 border-y border-neutral-100 bg-[#f7f6f3] text-[11px] font-black uppercase tracking-[0.14em] text-[#42474e]">
+              <tr>
+                <th className="w-[34%] px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onSort("medicine")}
+                    className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
+                  >
+                    Medicine
+                    <SortArrowIcon
+                      direction={sortKey === "medicine" ? sortDirection : null}
+                    />
+                  </button>
+                </th>
+                <th className="w-[38%] px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onSort("quantity")}
+                    className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
+                  >
+                    Batch Stock Level
+                    <SortArrowIcon
+                      direction={sortKey === "quantity" ? sortDirection : null}
+                    />
+                  </button>
+                </th>
+                <th className="w-[28%] px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onSort("expiration_date")}
+                    className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
+                  >
+                    Expiration Date
+                    <SortArrowIcon
+                      direction={sortKey === "expiration_date" ? sortDirection : null}
+                    />
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {isLoading ? (
+                Array.from({ length: 5 }, (_, index) => (
+                  <InventoryRowSkeleton key={index} columns={3} />
+                ))
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-14 text-center" colSpan="3">
+                    <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
+                      <InboxIcon />
+                    </span>
+                    <p className="font-bold text-neutral-500">No inventory records found.</p>
+                    <p className="mt-1 text-sm font-medium text-neutral-400">
+                      {hasActiveFilters
+                        ? "Try adjusting or clearing the current filters."
+                        : emptyHint || "Add stock to start tracking medicine inventory."}
+                    </p>
+                    {hasActiveFilters ? (
+                      <button
+                        type="button"
+                        onClick={onClearFilters}
+                        className="mt-4 rounded-lg bg-neutral-100 px-4 py-2 text-sm font-black text-neutral-700 hover:bg-neutral-200"
+                      >
+                        Clear filters
+                      </button>
+                    ) : (
+                      emptyAction
+                    )}
+                  </td>
+                </tr>
+              ) : (
+                rows.map((item) => (
+                    <tr
+                      key={item.id}
+                      onClick={() => onOpenItem(item)}
+                      className="group cursor-pointer transition hover:bg-emerald-50/35"
+                    >
+                      <td className="px-4 py-4 align-top">
+                        <p className="font-black text-[#0d1117]">{getMedicineName(item)}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-neutral-500">
+                          {item.medicine?.brand_name || "No brand"}
+                          {item.medicine?.unit_of_measure
+                            ? ` - ${item.medicine.unit_of_measure}`
+                            : ""}
+                        </p>
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex flex-col gap-2">
+                          <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-black text-[#0d1117]">
+                            {item.batch_number || "No batch"}
+                          </span>
+                          <div>
+                            <p className="text-sm font-black text-[#0d1117]">
+                              {formatNumber(item.quantity)}
+                              {item.medicine?.unit_of_measure
+                                ? ` ${item.medicine.unit_of_measure}`
+                                : ""}
+                            </p>
+                          </div>
+                          <StockLevelBar quantity={item.quantity} threshold={item.threshold} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <p className="text-sm font-black text-[#0d1117]">
+                          {formatDate(item.expiration_date)}
+                        </p>
+                      </td>
+                    </tr>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-4">
+          <p className="text-xs font-medium text-neutral-500">
+            Showing {totalCount > 0 ? (currentPage - 1) * 10 + 1 : 0} -{" "}
+            {Math.min(currentPage * 10, totalCount)} of {totalCount}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Previous page"
+            >
+              <ChevronLeftIcon />
+            </button>
+            <span className="rounded-lg bg-black px-3 py-1.5 text-xs font-black text-white">
+              {currentPage}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Next page"
+            >
+              <ChevronRightIcon />
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="min-w-[980px] w-full text-left text-sm">
           <thead className="sticky top-0 z-10 border-y border-neutral-100 bg-[#f7f6f3] text-[11px] font-black uppercase tracking-[0.14em] text-[#42474e]">
             <tr>
-              <th className="px-4 py-3">
+              <th className="min-w-[15rem] px-4 py-3">
                 <button
                   type="button"
                   onClick={() => onSort("medicine")}
@@ -324,7 +524,9 @@ export function InventoryTable({
                   />
                 </button>
               </th>
-              <th className="px-4 py-3">
+              <th className="px-4 py-3">Batch</th>
+              <th className="px-4 py-3">Supplier</th>
+              <th className="min-w-[12rem] px-4 py-3">
                 <button
                   type="button"
                   onClick={() => onSort("quantity")}
@@ -337,7 +539,7 @@ export function InventoryTable({
                 </button>
               </th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">
+              <th className="min-w-[10rem] px-4 py-3">
                 <button
                   type="button"
                   onClick={() => onSort("expiration_date")}
@@ -349,6 +551,18 @@ export function InventoryTable({
                   />
                 </button>
               </th>
+              <th className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => onSort("updated_at")}
+                  className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
+                >
+                  Updated
+                  <SortArrowIcon
+                    direction={sortKey === "updated_at" ? sortDirection : null}
+                  />
+                </button>
+              </th>
               <th className="w-12 px-4 py-3">
                 <span className="sr-only">Open details</span>
               </th>
@@ -356,10 +570,10 @@ export function InventoryTable({
           </thead>
           <tbody className="divide-y divide-neutral-100">
             {isLoading ? (
-              Array.from({ length: 5 }, (_, index) => <InventoryRowSkeleton key={index} columns={5} />)
+              Array.from({ length: 5 }, (_, index) => <InventoryRowSkeleton key={index} columns={8} />)
             ) : rows.length === 0 ? (
               <tr>
-                <td className="px-4 py-14 text-center" colSpan="5">
+                <td className="px-4 py-14 text-center" colSpan="8">
                   <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
                     <InboxIcon />
                   </span>
@@ -403,16 +617,29 @@ export function InventoryTable({
                     onClick={() => onOpenItem(item)}
                     className="group cursor-pointer transition hover:bg-neutral-50"
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <p className="font-black text-[#0d1117]">{getMedicineName(item)}</p>
                       <p className="text-xs font-medium text-neutral-400">
-                        {item.medicine?.brand_name || item.batch_number}
+                        {item.medicine?.brand_name || "No brand"}
                         {item.medicine?.unit_of_measure
                           ? ` · ${item.medicine.unit_of_measure}`
                           : ""}
                       </p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
+                      <p className="font-black text-[#0d1117]">
+                        {item.batch_number || "-"}
+                      </p>
+                      <p className="mt-0.5 text-xs font-medium text-neutral-400">
+                        Received {formatDate(item.date_received)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <p className="max-w-[11rem] truncate font-bold text-[#42474e]">
+                        {item.supplier?.supplier_name || "-"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 align-top">
                       <p
                         className={`text-sm font-black ${
                           status.key === "NORMAL" ? "text-[#0d1117]" : "text-red-500"
@@ -434,14 +661,14 @@ export function InventoryTable({
                       </p>
                       <StockLevelBar quantity={item.quantity} threshold={item.threshold} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <span
                         className={`rounded-full px-2.5 py-1 text-xs font-black ${status.badgeClass}`}
                       >
                         {status.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <span
                         className={`inline-block rounded-full px-2.5 py-1 text-xs font-black ${expiryStatus.badgeClass}`}
                       >
@@ -460,7 +687,12 @@ export function InventoryTable({
                         )}
                       </p>
                     </td>
-                    <td className="w-12 px-4 py-3">
+                    <td className="px-4 py-3 align-top">
+                      <p className="text-xs font-bold text-neutral-500">
+                        {formatDateTime(item.updated_at)}
+                      </p>
+                    </td>
+                    <td className="w-12 px-4 py-3 align-top">
                       <span className="flex items-center justify-center text-neutral-300 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
                         <ChevronRightIcon />
                       </span>
@@ -475,8 +707,8 @@ export function InventoryTable({
 
       <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-4">
         <p className="text-xs font-medium text-neutral-500">
-          Showing {totalCount > 0 ? (currentPage - 1) * 10 + 1 : 0}–
-          {Math.min(currentPage * 10, totalCount)} of {totalCount}
+            Showing {totalCount > 0 ? (currentPage - 1) * 10 + 1 : 0} -{" "}
+            {Math.min(currentPage * 10, totalCount)} of {totalCount}
         </p>
         <div className="flex items-center gap-2">
           <button

@@ -20,6 +20,62 @@
   animation: prds-fade-in 0.28s ease-out both;
 }
 
+@keyframes prds-modal-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes prds-modal-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes prds-modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes prds-modal-panel-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+.prds-modal-overlay-enter {
+  animation: prds-modal-overlay-in 0.2s ease-out both;
+}
+
+.prds-modal-overlay-exit {
+  animation: prds-modal-overlay-out 0.18s ease-in both;
+}
+
+.prds-modal-panel-enter {
+  animation: prds-modal-panel-in 0.22s ease-out both;
+}
+
+.prds-modal-panel-exit {
+  animation: prds-modal-panel-out 0.18s ease-in both;
+}
+
 html {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
@@ -281,4 +337,41 @@ body {
   transform: scale(1.18);
   filter: drop-shadow(0 4px 6px rgba(13, 17, 23, 0.35));
   z-index: 1000 !important;
+}
+
+@keyframes prds-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.prds-step-in {
+  animation: prds-step-in 0.24s ease-out both;
+}
+
+@keyframes prds-flash {
+  0% {
+    border-color: #6be9c2;
+    background-color: #ecfff8;
+  }
+  100% {
+    border-color: #e5e7eb;
+    background-color: #f8f9ff;
+  }
+}
+
+.prds-flash-once {
+  animation: prds-flash 0.9s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prds-step-in,
+  .prds-flash-once {
+    animation: none;
+  }
 }

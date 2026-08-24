@@ -511,7 +511,9 @@ export const matchesRequestFilters = (
     request.facility?.facility_name,
     request.facility?.facility_code,
     getRequesterName(request),
+    formatRequestDate(request.request_date),
     ...(request.items || []).map(getItemLabel),
+    ...(request.items || []).map((item) => String(item.quantity ?? "")),
   ]
     .filter(Boolean)
     .join(" ")

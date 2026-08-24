@@ -36,7 +36,7 @@ export default function AdminShell({
             onSignOut={onSignOut}
           />
           <section className="prds-main-scrollbar min-w-0 flex-1 overflow-auto px-5 py-5">
-            <div className="prds-fade-in mx-auto min-w-0 max-w-[1280px]">{children}</div>
+            <div className="mx-auto min-w-0 max-w-[1280px]">{children}</div>
           </section>
         </div>
       </div>

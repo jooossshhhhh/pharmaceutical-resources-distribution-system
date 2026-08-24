@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import prdsLogo from "../../assets/prds-logo-main.svg";
@@ -59,6 +60,12 @@ const iconPaths = {
       <path d="M19 8v6M16 11h6" />
     </>
   ),
+  "Other Programs": (
+    <>
+      <path d="M3 4h18v13H3z" />
+      <path d="M6 21h12M12 17v4" />
+    </>
+  ),
   "User Management": (
     <>
       <circle cx="9" cy="8" r="4" />
@@ -92,19 +99,22 @@ const iconPaths = {
 };
 
 const navItems = [
-  { label: "Dashboard", path: "/dashboard" },
-  { label: "Inventory", path: "/inventory" },
-  { label: "Requests", path: "/requests" },
-  { label: "Transfer", path: "/transfers" },
-  { label: "Dispensing" },
-  { label: "Medicines", path: "/medicines", roles: ["PHARMA_I", "PHARMA_II"] },
-  { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"] },
-  { label: "Patients" },
-  { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
-  { label: "Forecasting", path: "/forecasting" },
-  { label: "Activity Logs", path: "/activity-logs" },
-  { label: "Notifications", path: "/notifications" },
+  { label: "Dashboard", path: "/dashboard", category: "Overview" },
+  { label: "Inventory", path: "/inventory", category: "Operations" },
+  { label: "Requests", path: "/requests", category: "Operations" },
+  { label: "Transfer", path: "/transfers", category: "Operations" },
+  { label: "Dispensing", path: "/dispensing", category: "Operations" },
+  { label: "Patients", path: "/patients", category: "Operations" },
+  { label: "Medicines", path: "/medicines", roles: ["PHARMA_I", "PHARMA_II"], category: "Medicine & Planning" },
+  { label: "Forecasting", path: "/forecasting", category: "Medicine & Planning" },
+  { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
+  { label: "User Management", path: "/users", roles: ["PHARMA_II"], category: "Administration" },
+  { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
+  { label: "Activity Logs", path: "/activity-logs", category: "System" },
+  { label: "Notifications", path: "/notifications", category: "System" },
 ];
+
+const navGroupOrder = ["Overview", "Operations", "Medicine & Planning", "Administration", "System"];
 
 const SidebarIcon = ({ label }) => (
   <svg
@@ -136,18 +146,62 @@ const roleLabels = {
 
 export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }) {
   const location = useLocation();
-  const inventoryPath = profile?.role === "BHW" ? "/inventory-bhw" : "/inventory";
   const fullName = `${profile?.first_name || "Pharma"} ${
     profile?.last_name || "User"
   }`.trim();
+  const inventoryPath = profile?.role === "BHW" ? "/inventory-bhw" : "/inventory";
   const allowedNavItems = getAllowedNavItems(navItems, profile?.role).map((item) =>
     item.label === "Inventory" ? { ...item, path: inventoryPath } : item
   );
+  const navGroups = navGroupOrder
+    .map((category) => ({
+      category,
+      items: allowedNavItems.filter((item) => item.category === category),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem("prds-sidebar-collapsed-categories");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const activeCategory = navGroups.find((group) =>
+    group.items.some((item) => item.path === location.pathname)
+  )?.category;
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "prds-sidebar-collapsed-categories",
+        JSON.stringify([...collapsedGroups])
+      );
+    } catch {
+      // ignore storage write failures
+    }
+  }, [collapsedGroups]);
+
+  const toggleGroup = (category) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+
+      return next;
+    });
+  };
 
   return (
     <aside
       className={`sticky top-0 flex h-screen flex-col border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
-        isCollapsed ? "w-13" : "w-51"
+        isCollapsed ? "w-14.5" : "w-57"
       }`}
     >
       <div
@@ -168,7 +222,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117] ${
+          className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117] ${
             isCollapsed ? "" : "-mr-1"
           }`}
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -183,38 +237,82 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
           isCollapsed ? "px-2" : "px-2.5"
         }`}
       >
-        {allowedNavItems.map((item) => {
-          const isActive = item.path === location.pathname;
-          const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition ${
-            isActive
-              ? "bg-[#6be9c2] text-[#0d1117]"
-              : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
-          } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
-          const label = (
-            <>
-              <SidebarIcon label={item.label} />
-              <span className={isCollapsed ? "sr-only" : "truncate"}>{item.label}</span>
-              {isCollapsed && (
-                <span className="pointer-events-none absolute left-12 z-50 whitespace-nowrap rounded-md border border-[#d8dadc] bg-white px-2.5 py-1.5 text-xs font-bold text-[#0d1117] opacity-0 shadow-xl transition group-hover:opacity-100">
-                  {item.label}
-                </span>
-              )}
-            </>
-          );
+        {navGroups.map((group, groupIndex) => {
+          const isOpen =
+              isCollapsed || group.category === activeCategory || !collapsedGroups.has(group.category);
 
-          return item.path ? (
-            <Link key={item.label} to={item.path} className={itemClass} title={item.label}>
-              {label}
-            </Link>
-          ) : (
-            <button
-              key={item.label}
-              type="button"
-              className={`${itemClass} cursor-default`}
-              title={item.label}
-            >
-              {label}
-            </button>
+          return (
+            <div key={group.category}>
+              {!isCollapsed && (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.category)}
+                  aria-expanded={isOpen}
+                  aria-controls={`nav-group-${group.category}`}
+                  className={`flex w-full cursor-pointer items-center justify-between px-3 pb-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[#8a93a3] transition hover:text-[#0d1117] ${
+                    groupIndex === 0 ? "pt-1.5" : "pt-4"
+                  }`}
+                >
+                  {group.category}
+                  <ChevronDownIcon
+                    className={`transition-transform duration-200 ${
+                      isOpen ? "" : "-rotate-90"
+                    }`}
+                  />
+                </button>
+              )}
+              <div
+                className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+                  isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                }`}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <div
+                    id={`nav-group-${group.category}`}
+                    aria-hidden={!isOpen}
+                    inert={!isOpen}
+                    className={`space-y-1 transition-opacity duration-200 ${
+                      isOpen ? "opacity-100" : "opacity-0"
+                    }`}
+                  >
+                    {group.items.map((item) => {
+                      const isActive = item.path === location.pathname;
+                      const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition ${
+                        isActive
+                          ? "bg-[#6be9c2] text-[#0d1117]"
+                          : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
+                      } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
+                      const label = (
+                        <>
+                          <SidebarIcon label={item.label} />
+                          <span className={isCollapsed ? "sr-only" : "truncate"}>{item.label}</span>
+                          {isCollapsed && (
+                            <span className="pointer-events-none absolute left-12 z-50 whitespace-nowrap rounded-md border border-[#d8dadc] bg-white px-2.5 py-1.5 text-xs font-bold text-[#0d1117] opacity-0 shadow-xl transition group-hover:opacity-100">
+                              {item.label}
+                            </span>
+                          )}
+                        </>
+                      );
+
+                      return item.path ? (
+                        <Link key={item.label} to={item.path} className={itemClass} title={item.label}>
+                          {label}
+                        </Link>
+                      ) : (
+                        <button
+                          key={item.label}
+                          type="button"
+                          className={`${itemClass} cursor-default`}
+                          title={item.label}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
           );
         })}
       </nav>
@@ -237,6 +335,23 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
         </div>
       </div>
     </aside>
+  );
+}
+
+function ChevronDownIcon({ className = "" }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={`h-3 w-3 shrink-0 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   );
 }
 

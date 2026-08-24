@@ -141,6 +141,29 @@ test("filters requests by keyword, facility, and status", () => {
   );
 });
 
+test("searches requests by quantity and formatted date", () => {
+  assert.equal(
+    matchesRequestFilters(requests[0], { keyword: "600", status: "ALL" }),
+    true
+  );
+  assert.equal(
+    matchesRequestFilters(requests[1], { keyword: "50", status: "ALL" }),
+    true
+  );
+  assert.equal(
+    matchesRequestFilters(requests[0], { keyword: "Jul", status: "ALL" }),
+    true
+  );
+  assert.equal(
+    matchesRequestFilters(requests[0], { keyword: "2026", status: "ALL" }),
+    true
+  );
+  assert.equal(
+    matchesRequestFilters(requests[2], { keyword: "Jul 25", status: "ALL" }),
+    true
+  );
+});
+
 test("sorts requests by newest and priority", () => {
   assert.deepEqual(
     sortRequests(requests, "newest").map((request) => request.id),
