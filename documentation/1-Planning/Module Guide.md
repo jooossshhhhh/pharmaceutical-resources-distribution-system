@@ -355,7 +355,7 @@ Provides demand forecasting and inventory coverage analysis using simple linear 
 **12. Notifications**
 
 **Purpose**
-A notification center that aggregates system-generated alerts: low-stock warnings, request status changes, transfer status changes, facility-related events, and system announcements. Notifications are role-scoped — BHW sees only their facility's notifications; CHO roles see broader scopes.
+A notification center that aggregates system-generated alerts: low-stock warnings, request status changes, transfer status changes, facility-related events, and system announcements. Notifications are role-scoped — BHW sees only their facility's notifications; CHO roles see broader scopes. `
 
 **Process**
 1. Notifications are loaded from the `notifications` table, filtered by the user's role and facility.

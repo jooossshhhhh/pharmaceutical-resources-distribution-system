@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# opencode config (contains API keys)
+opencode.json
+opencode.jsonc
+
 # Dependencies
 node_modules/
 **/node_modules/
