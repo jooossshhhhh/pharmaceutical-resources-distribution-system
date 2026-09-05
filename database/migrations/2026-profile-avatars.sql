@@ -113,6 +113,5 @@ begin
 end;
 $$;
 
-revoke all on function update_own_profile_avatar(text) from public;
-grant execute on function update_own_profile_avatar(text) to anon;
+revoke all on function update_own_profile_avatar(text) from public, anon;
 grant execute on function update_own_profile_avatar(text) to authenticated;

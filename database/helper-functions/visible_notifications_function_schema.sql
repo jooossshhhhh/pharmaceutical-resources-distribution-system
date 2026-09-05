@@ -123,6 +123,5 @@ as $$
   order by created_at desc;
 $$;
 
-revoke all on function public.get_visible_notifications() from public;
-grant execute on function public.get_visible_notifications() to anon;
+revoke all on function public.get_visible_notifications() from public, anon;
 grant execute on function public.get_visible_notifications() to authenticated;

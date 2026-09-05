@@ -79,6 +79,9 @@ to authenticated
 with check (
     id = auth.uid()
     and status = 'PENDING'
+    and role in ('BHW', 'PHARMA_I')
+    and approved_by is null
+    and approved_at is null
 );
 
 

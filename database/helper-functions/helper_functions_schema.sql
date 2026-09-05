@@ -35,10 +35,14 @@ set search_path = public
 as $$
     select exists (
         select 1
-        from profiles
-        where id = get_current_profile_id()
-        and role = 'PHARMA_II'
-        and status = 'ACTIVE'
+        from profiles p
+        join facilities f
+          on f.id = p.facility_id
+        where p.id = get_current_profile_id()
+        and p.role = 'PHARMA_II'
+        and p.status = 'ACTIVE'
+        and f.status = 'ACTIVE'
+        and f.facility_type = 'CHO'
     );
 $$;
 
@@ -98,7 +102,8 @@ set search_path = public
 as $$
     select facility_id
     from profiles
-    where id = get_current_profile_id();
+    where id = get_current_profile_id()
+      and status = 'ACTIVE';
 $$;
 
 
@@ -203,10 +208,11 @@ begin
     into v_profile
     from public.profiles
     where id = auth.uid()
+      and status = 'ACTIVE'
     for update;
 
     if not found then
-        raise exception 'Profile not found';
+        raise exception 'An active profile is required to update contact details';
     end if;
 
     if v_profile.email is distinct from v_next_email then
@@ -263,7 +269,7 @@ begin
 end;
 $$;
 
-revoke all on function update_own_profile_contact(text, text, text, text) from public;
+revoke all on function update_own_profile_contact(text, text, text, text) from public, anon;
 grant execute on function update_own_profile_contact(text, text, text, text) to authenticated;
 
 
@@ -435,3 +441,110 @@ $$;
 
 revoke all on function review_profile_facility_change_request(uuid, facility_change_request_status) from public;
 grant execute on function review_profile_facility_change_request(uuid, facility_change_request_status) to authenticated;
+
+
+-- ==========================================
+-- Prevent accidental lockout of all active
+-- CHO-assigned Pharmacist II accounts.
+-- ==========================================
+
+create or replace function prevent_last_active_pharma_ii_lockout()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_was_active_cho_pharma_ii boolean := false;
+    v_will_remain_active_cho_pharma_ii boolean := false;
+    v_other_active_cho_pharma_ii_count integer := 0;
+begin
+    if tg_op = 'UPDATE' then
+        select exists (
+            select 1
+            from facilities f
+            where f.id = old.facility_id
+              and old.role = 'PHARMA_II'
+              and old.status = 'ACTIVE'
+              and f.status = 'ACTIVE'
+              and f.facility_type = 'CHO'
+        )
+        into v_was_active_cho_pharma_ii;
+
+        if not v_was_active_cho_pharma_ii then
+            return new;
+        end if;
+
+        select exists (
+            select 1
+            from facilities f
+            where f.id = new.facility_id
+              and new.role = 'PHARMA_II'
+              and new.status = 'ACTIVE'
+              and f.status = 'ACTIVE'
+              and f.facility_type = 'CHO'
+        )
+        into v_will_remain_active_cho_pharma_ii;
+
+        if v_will_remain_active_cho_pharma_ii then
+            return new;
+        end if;
+    elsif tg_op = 'DELETE' then
+        select exists (
+            select 1
+            from facilities f
+            where f.id = old.facility_id
+              and old.role = 'PHARMA_II'
+              and old.status = 'ACTIVE'
+              and f.status = 'ACTIVE'
+              and f.facility_type = 'CHO'
+        )
+        into v_was_active_cho_pharma_ii;
+
+        if not v_was_active_cho_pharma_ii then
+            return old;
+        end if;
+    end if;
+
+    select count(*)::integer
+    into v_other_active_cho_pharma_ii_count
+    from profiles p
+    join facilities f
+      on f.id = p.facility_id
+    where p.id <> old.id
+      and p.role = 'PHARMA_II'
+      and p.status = 'ACTIVE'
+      and f.status = 'ACTIVE'
+      and f.facility_type = 'CHO';
+
+    if v_other_active_cho_pharma_ii_count = 0 then
+        raise exception 'At least one active Pharmacist II assigned to CHO must remain.';
+    end if;
+
+    if tg_op = 'DELETE' then
+        return old;
+    end if;
+
+    return new;
+end;
+$$;
+
+revoke all on function prevent_last_active_pharma_ii_lockout() from public, anon, authenticated;
+
+drop trigger if exists prevent_last_active_pharma_ii_lockout_on_update
+on public.profiles;
+
+create trigger prevent_last_active_pharma_ii_lockout_on_update
+before update of role, status, facility_id
+on public.profiles
+for each row
+execute function prevent_last_active_pharma_ii_lockout();
+
+drop trigger if exists prevent_last_active_pharma_ii_lockout_on_delete
+on public.profiles;
+
+create trigger prevent_last_active_pharma_ii_lockout_on_delete
+before delete
+on public.profiles
+for each row
+execute function prevent_last_active_pharma_ii_lockout();
