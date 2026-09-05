@@ -7,8 +7,8 @@ import {
   getInitials,
   getRoleLabel,
 } from "../userManagementUtils";
-import { RoleBadge, UserStatusBadge } from "./UserManagementBadges";
-import { UserIcon } from "./UserManagementIcons";
+import { RoleBadge, UserStatusBadge } from "../components/UserManagementBadges";
+import { UserIcon } from "../components/UserManagementIcons";
 
 export default function UserAccountsTable({ isLoading, onSelectUser, users }) {
   return (

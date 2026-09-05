@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import FacilityRequestsPanel from "./components/FacilityRequestsPanel";
-import UserAccountsTable from "./components/UserAccountsTable";
-import UserManagementModal from "./components/UserManagementModal";
+import AccountsView from "./accounts/AccountsView";
+import ManageAccountModal from "./accounts/ManageAccountModal";
+import ChangeRequestsView from "./change-requests/ChangeRequestsView";
 import UserManagementToolbar from "./components/UserManagementToolbar";
 import UserSummaryCards from "./components/UserSummaryCards";
 import {
@@ -13,6 +14,8 @@ import {
   filterFacilityRequests,
   filterUsers,
   formatDateTime,
+  getUserManagementPathForView,
+  getUserManagementViewFromPath,
 } from "./userManagementUtils";
 import {
   getUserManagementData,
@@ -28,13 +31,17 @@ const emptyForm = {
 
 export default function UserManagementModule() {
   const { profile } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [facilityRequests, setFacilityRequests] = useState([]);
-  const [activeView, setActiveView] = useState("accounts");
+  const activeView = getUserManagementViewFromPath(location.pathname);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [roleFilter, setRoleFilter] = useState("ALL");
+  const [requestStatusFilter, setRequestStatusFilter] = useState("ALL");
+  const [requestDateFilter, setRequestDateFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [userError, setUserError] = useState("");
@@ -46,10 +53,6 @@ export default function UserManagementModule() {
   const visibleUsers = useMemo(() => {
     return users.filter((user) => user.id !== profile?.id);
   }, [profile?.id, users]);
-
-  const pendingFacilityRequests = useMemo(() => {
-    return facilityRequests.filter((request) => request.status === "PENDING");
-  }, [facilityRequests]);
 
   const summary = useMemo(() => {
     return buildUserSummary(visibleUsers, facilityRequests);
@@ -64,8 +67,12 @@ export default function UserManagementModule() {
   }, [roleFilter, searchTerm, statusFilter, visibleUsers]);
 
   const filteredFacilityRequests = useMemo(() => {
-    return filterFacilityRequests(facilityRequests, searchTerm);
-  }, [facilityRequests, searchTerm]);
+    return filterFacilityRequests(facilityRequests, {
+      dateFilter: requestDateFilter,
+      searchTerm,
+      statusFilter: requestStatusFilter,
+    });
+  }, [facilityRequests, requestDateFilter, requestStatusFilter, searchTerm]);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -87,13 +94,15 @@ export default function UserManagementModule() {
     loadUsers();
   }, []);
 
-  const selectStatus = (nextStatus) => {
-    setActiveView("accounts");
-    setStatusFilter(nextStatus);
-  };
+  useEffect(() => {
+    if (location.pathname === "/users") {
+      navigate(getUserManagementPathForView("accounts"), { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
-  const showFacilityRequests = () => {
-    setActiveView("requests");
+  const selectStatus = (nextStatus) => {
+    navigate(getUserManagementPathForView("accounts"));
+    setStatusFilter(nextStatus);
   };
 
   const openUserModal = (user) => {
@@ -186,42 +195,48 @@ export default function UserManagementModule() {
           </p>
         ) : null}
 
-        <UserSummaryCards
-          activeView={activeView}
-          onSelectRequests={showFacilityRequests}
-          onSelectStatus={selectStatus}
-          statusFilter={statusFilter}
-          summary={summary}
-        />
-
-        <UserManagementToolbar
-          activeView={activeView}
-          onRoleFilterChange={setRoleFilter}
-          onSearchChange={setSearchTerm}
-          onViewChange={setActiveView}
-          pendingRequests={pendingFacilityRequests.length}
-          roleFilter={roleFilter}
-          searchTerm={searchTerm}
-        />
+        {activeView === "accounts" ? (
+          <UserSummaryCards
+            onSelectStatus={selectStatus}
+            statusFilter={statusFilter}
+            summary={summary}
+          />
+        ) : null}
 
         {activeView === "accounts" ? (
-          <UserAccountsTable
+          <UserManagementToolbar
+            activeView={activeView}
+            onRoleFilterChange={setRoleFilter}
+            onSearchChange={setSearchTerm}
+            roleFilter={roleFilter}
+            searchTerm={searchTerm}
+          />
+        ) : null}
+
+        {activeView === "accounts" ? (
+          <AccountsView
             isLoading={isLoading}
             onSelectUser={openUserModal}
             users={filteredUsers}
           />
         ) : (
-          <FacilityRequestsPanel
+          <ChangeRequestsView
+            dateFilter={requestDateFilter}
             isLoading={isLoading}
             isSaving={isSaving}
+            onDateFilterChange={setRequestDateFilter}
+            onSearchChange={setSearchTerm}
             onReview={handleReviewFacilityRequest}
+            onStatusFilterChange={setRequestStatusFilter}
             requests={filteredFacilityRequests}
+            searchTerm={searchTerm}
+            statusFilter={requestStatusFilter}
           />
         )}
       </div>
 
       {selectedUser ? (
-        <UserManagementModal
+        <ManageAccountModal
           error={userError}
           facilities={facilities}
           formValues={formValues}

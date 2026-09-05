@@ -12,8 +12,25 @@ export const statusOptions = [
   { value: "DEACTIVATED", label: "Deactivated" },
 ];
 
+export const userManagementSubmodules = [
+  {
+    description: "Review user accounts, roles, status, and facility assignment.",
+    id: "accounts",
+    label: "Accounts",
+    path: "/users/accounts",
+  },
+  {
+    description: "Review facility reassignment requests from profile settings.",
+    id: "change-requests",
+    label: "Facility Changes",
+    path: "/users/change-requests",
+  },
+];
+
 export const moduleAccess = {
   "/users": ["PHARMA_II"],
+  "/users/accounts": ["PHARMA_II"],
+  "/users/change-requests": ["PHARMA_II"],
   "/suppliers": ["PHARMA_II"],
   "/facilities": ["PHARMA_I", "PHARMA_II"],
 };
@@ -29,13 +46,32 @@ export const canAccessModule = (role, path) => {
 };
 
 export const getAllowedNavItems = (items, role) => {
-  return items.filter((item) => {
+  return items
+    .map((item) => ({
+      ...item,
+      children: item.children?.filter((child) => {
+        if (child.roles?.length) {
+          return child.roles.includes(role);
+        }
+
+        return canAccessModule(role, child.path);
+      }),
+    }))
+    .filter((item) => {
     if (item.roles?.length) {
       return item.roles.includes(role);
     }
 
     return canAccessModule(role, item.path);
   });
+};
+
+export const getUserManagementViewFromPath = (pathname = "") => {
+  return pathname.startsWith("/users/change-requests") ? "change-requests" : "accounts";
+};
+
+export const getUserManagementPathForView = (view) => {
+  return userManagementSubmodules.find((submodule) => submodule.id === view)?.path || "/users/accounts";
 };
 
 export const formatDateTime = (date) => {
@@ -62,6 +98,20 @@ export const formatDate = (dateString) => {
     month: "short",
     day: "numeric",
   }).format(new Date(dateString));
+};
+
+export const toDateInputValue = (dateString) => {
+  if (!dateString) {
+    return "";
+  }
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
 export const getRoleLabel = (role) => {
@@ -163,7 +213,11 @@ export const filterUsers = (users, { roleFilter = "ALL", searchTerm = "", status
   });
 };
 
-export const filterFacilityRequests = (requests, searchTerm = "") => {
+export const filterFacilityRequests = (requests, searchTermOrOptions = "") => {
+  const searchTerm =
+    typeof searchTermOrOptions === "string" ? searchTermOrOptions : searchTermOrOptions.searchTerm || "";
+  const dateFilter = typeof searchTermOrOptions === "string" ? "" : searchTermOrOptions.dateFilter || "";
+  const statusFilter = typeof searchTermOrOptions === "string" ? "ALL" : searchTermOrOptions.statusFilter || "ALL";
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
   return requests.filter((request) => {
@@ -175,11 +229,25 @@ export const filterFacilityRequests = (requests, searchTerm = "") => {
       request.requested_facility?.facility_code,
       request.reason,
       request.status,
+      formatDate(request.created_at),
+      formatDateTime(request.created_at),
+      toDateInputValue(request.created_at),
+      formatDate(request.reviewed_at),
+      formatDateTime(request.reviewed_at),
+      toDateInputValue(request.reviewed_at),
     ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
+    const matchesDate =
+      !dateFilter ||
+      toDateInputValue(request.created_at) === dateFilter ||
+      toDateInputValue(request.reviewed_at) === dateFilter;
 
-    return !normalizedSearch || searchableText.includes(normalizedSearch);
+    return (
+      (!normalizedSearch || searchableText.includes(normalizedSearch)) &&
+      (statusFilter === "ALL" || request.status === statusFilter) &&
+      matchesDate
+    );
   });
 };

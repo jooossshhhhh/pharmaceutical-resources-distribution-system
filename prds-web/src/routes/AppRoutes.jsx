@@ -88,6 +88,22 @@ export default function AppRoutes() {
               </RoleGuard>
             }
           />
+          <Route
+            path="/users/accounts"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_II"]}>
+                <UserManagementModule />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/users/change-requests"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_II"]}>
+                <UserManagementModule />
+              </RoleGuard>
+            }
+          />
           <Route path="/patients" element={<PatientsModule />} />
           <Route path="/dispensing" element={<DispensingModule />} />
           <Route

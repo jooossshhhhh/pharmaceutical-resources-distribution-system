@@ -47,6 +47,14 @@ const pageTitles = {
     title: "User Management",
     subtitle: "Review accounts, approvals, roles, and facility assignments",
   },
+  "/users/accounts": {
+    title: "User Management",
+    subtitle: "Review accounts, approvals, roles, and facility assignments",
+  },
+  "/users/change-requests": {
+    title: "Facility Changes",
+    subtitle: "Review requested facility updates from user profile settings",
+  },
   "/profile-settings": {
     title: "Profile & Settings",
     subtitle: "Manage your account and system preferences",

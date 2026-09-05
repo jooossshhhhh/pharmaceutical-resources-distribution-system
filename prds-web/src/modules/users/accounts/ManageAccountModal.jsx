@@ -9,9 +9,9 @@ import {
   roleOptions,
   statusOptions,
 } from "../userManagementUtils";
-import { UserStatusBadge } from "./UserManagementBadges";
+import { UserStatusBadge } from "../components/UserManagementBadges";
 
-export default function UserManagementModal({
+export default function ManageAccountModal({
   error,
   facilities,
   formValues,
@@ -44,7 +44,7 @@ export default function UserManagementModal({
                 <UserStatusBadge status={user.status} />
               </div>
               <p className="mt-1 text-sm font-semibold text-neutral-600">
-                {getRoleLabel(user.role)} · {getDisplayEmail(user) || getDisplayPhone(user) || "No login method shown"}
+                {getRoleLabel(user.role)} - {getDisplayEmail(user) || getDisplayPhone(user) || "No login method shown"}
               </p>
             </div>
           </div>

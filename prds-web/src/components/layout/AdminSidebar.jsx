@@ -108,7 +108,16 @@ const navItems = [
   { label: "Medicines", path: "/medicines", roles: ["PHARMA_I", "PHARMA_II"], category: "Medicine & Planning" },
   { label: "Forecasting", path: "/forecasting", category: "Medicine & Planning" },
   { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
-  { label: "User Management", path: "/users", roles: ["PHARMA_II"], category: "Administration" },
+  {
+    label: "User Management",
+    path: "/users",
+    roles: ["PHARMA_II"],
+    category: "Administration",
+    children: [
+      { label: "Accounts", path: "/users/accounts", roles: ["PHARMA_II"] },
+      { label: "Facility Changes", path: "/users/change-requests", roles: ["PHARMA_II"] },
+    ],
+  },
   { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
   { label: "Activity Logs", path: "/activity-logs", category: "System" },
   { label: "Notifications", path: "/notifications", category: "System" },
@@ -144,6 +153,22 @@ const roleLabels = {
   BHW: "Barangay Health Worker",
 };
 
+const isActiveNavItem = (itemPath, currentPath) => {
+  if (itemPath === "/users") {
+    return currentPath === "/users" || currentPath.startsWith("/users/");
+  }
+
+  return itemPath === currentPath;
+};
+
+const isExactActiveNavItem = (itemPath, currentPath) => {
+  if (itemPath === "/users/accounts") {
+    return currentPath === "/users" || currentPath === "/users/accounts";
+  }
+
+  return itemPath === currentPath;
+};
+
 export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }) {
   const location = useLocation();
   const fullName = `${profile?.first_name || "Pharma"} ${
@@ -170,7 +195,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
   });
 
   const activeCategory = navGroups.find((group) =>
-    group.items.some((item) => item.path === location.pathname)
+    group.items.some((item) => isActiveNavItem(item.path, location.pathname))
   )?.category;
 
   useEffect(() => {
@@ -276,7 +301,8 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
                     }`}
                   >
                     {group.items.map((item) => {
-                      const isActive = item.path === location.pathname;
+                      const isActive = isActiveNavItem(item.path, location.pathname);
+                      const hasChildren = item.children?.length > 0;
                       const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition ${
                         isActive
                           ? "bg-[#6be9c2] text-[#0d1117]"
@@ -294,19 +320,47 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
                         </>
                       );
 
-                      return item.path ? (
-                        <Link key={item.label} to={item.path} className={itemClass} title={item.label}>
-                          {label}
-                        </Link>
-                      ) : (
-                        <button
-                          key={item.label}
-                          type="button"
-                          className={`${itemClass} cursor-default`}
-                          title={item.label}
-                        >
-                          {label}
-                        </button>
+                      return (
+                        <div key={item.label}>
+                          {item.path ? (
+                            <Link to={item.path} className={itemClass} title={item.label}>
+                              {label}
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`${itemClass} cursor-default`}
+                              title={item.label}
+                            >
+                              {label}
+                            </button>
+                          )}
+
+                          {hasChildren && !isCollapsed && isActive ? (
+                            <div className={`ml-4 mt-1 grid gap-1 border-l border-[#d8dadc] pl-3 transition-opacity duration-200 ${
+                              isActive ? "opacity-100" : "opacity-70"
+                            }`}>
+                              {item.children.map((child) => {
+                                const isChildActive = isExactActiveNavItem(child.path, location.pathname);
+
+                                return (
+                                  <Link
+                                    key={child.path}
+                                    to={child.path}
+                                    className={`flex h-8 items-center rounded-md px-3 text-xs font-bold transition ${
+                                      isChildActive
+                                        ? "bg-[#e8fff7] text-[#007f5f] ring-1 ring-[#6be9c2]/40"
+                                        : "text-[#6b7280] hover:bg-[#eff4ff] hover:text-[#0d1117]"
+                                    }`}
+                                    title={child.label}
+                                  >
+                                    <span className="truncate">{child.label}</span>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
                       );
                     })}
                   </div>

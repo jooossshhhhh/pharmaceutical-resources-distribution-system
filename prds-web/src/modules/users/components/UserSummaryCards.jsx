@@ -1,4 +1,4 @@
-import { AlertIcon, BanIcon, CheckIcon, RequestIcon, SwapIcon, UserIcon } from "./UserManagementIcons";
+import { AlertIcon, BanIcon, CheckIcon, RequestIcon, UserIcon } from "./UserManagementIcons";
 
 const toneClasses = {
   amber: "bg-amber-50 text-amber-700 ring-amber-100",
@@ -11,15 +11,14 @@ const toneClasses = {
 const iconMap = {
   active: CheckIcon,
   deactivated: BanIcon,
-  facilityRequests: SwapIcon,
   pending: AlertIcon,
   total: UserIcon,
 };
 
-export default function UserSummaryCards({ activeView, onSelectRequests, onSelectStatus, statusFilter, summary }) {
+export default function UserSummaryCards({ onSelectStatus, statusFilter, summary }) {
   const cards = [
     {
-      active: activeView === "accounts" && statusFilter === "ALL",
+      active: statusFilter === "ALL",
       description: "All reviewable accounts",
       id: "total",
       label: "Total Users",
@@ -28,7 +27,7 @@ export default function UserSummaryCards({ activeView, onSelectRequests, onSelec
       value: summary.total,
     },
     {
-      active: activeView === "accounts" && statusFilter === "PENDING",
+      active: statusFilter === "PENDING",
       description: "Waiting for approval",
       id: "pending",
       label: "Pending Approval",
@@ -37,7 +36,7 @@ export default function UserSummaryCards({ activeView, onSelectRequests, onSelec
       value: summary.pending,
     },
     {
-      active: activeView === "accounts" && statusFilter === "ACTIVE",
+      active: statusFilter === "ACTIVE",
       description: "Can access PRDS",
       id: "active",
       label: "Active",
@@ -46,7 +45,7 @@ export default function UserSummaryCards({ activeView, onSelectRequests, onSelec
       value: summary.active,
     },
     {
-      active: activeView === "accounts" && statusFilter === "DEACTIVATED",
+      active: statusFilter === "DEACTIVATED",
       description: "Access disabled",
       id: "deactivated",
       label: "Deactivated",
@@ -54,19 +53,10 @@ export default function UserSummaryCards({ activeView, onSelectRequests, onSelec
       tone: "neutral",
       value: summary.deactivated,
     },
-    {
-      active: activeView === "requests",
-      description: "Facility changes to review",
-      id: "facilityRequests",
-      label: "Facility Requests",
-      onClick: onSelectRequests,
-      tone: "emerald",
-      value: summary.facilityRequests,
-    },
   ];
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => {
         const Icon = iconMap[card.id] || RequestIcon;
 
