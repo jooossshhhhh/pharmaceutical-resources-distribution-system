@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -14,11 +13,6 @@ import { formatNumber } from "../../../dashboard/dashboardUtils";
 import { chartColors, chartFont } from "./chartTheme";
 
 export default function ForecastComparisonChart({ rows = [] }) {
-  const [visibleSeries, setVisibleSeries] = useState({
-    latestUse: true,
-    projectedUse: true,
-  });
-
   const chartRows = rows.slice(0, 8).map((row) => ({
     label: `${row.genericName} ${row.dosage}`.trim(),
     latestUse: row.latestHistorical,
@@ -30,9 +24,9 @@ export default function ForecastComparisonChart({ rows = [] }) {
       <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-            Demand Comparison
+            Use Comparison
           </p>
-          <h2 className="mt-1 text-base font-black text-[#0d1117]">Latest Use vs Projected Use</h2>
+          <h2 className="mt-1 text-base font-black text-[#0d1117]">Recent Use vs Expected Use</h2>
         </div>
       </div>
 
@@ -68,29 +62,19 @@ export default function ForecastComparisonChart({ rows = [] }) {
               <Legend
                 iconType="circle"
                 wrapperStyle={{ color: chartColors.text, fontSize: 12, fontWeight: 800 }}
-                onClick={(entry) =>
-                  setVisibleSeries((current) => ({
-                    ...current,
-                    [entry.dataKey]: !current[entry.dataKey],
-                  }))
-                }
               />
-              {visibleSeries.latestUse && (
-                <Bar
-                  dataKey="latestUse"
-                  fill={chartColors.actual}
-                  name="Latest use"
-                  radius={[6, 6, 0, 0]}
-                />
-              )}
-              {visibleSeries.projectedUse && (
-                <Bar
-                  dataKey="projectedUse"
-                  fill={chartColors.forecast}
-                  name="Projected use"
-                  radius={[6, 6, 0, 0]}
-                />
-              )}
+              <Bar
+                dataKey="latestUse"
+                fill={chartColors.actual}
+                name="Latest use"
+                radius={[6, 6, 0, 0]}
+              />
+              <Bar
+                dataKey="projectedUse"
+                fill={chartColors.forecast}
+                name="Expected use"
+                radius={[6, 6, 0, 0]}
+              />
             </BarChart>
           </ResponsiveContainer>
         )}

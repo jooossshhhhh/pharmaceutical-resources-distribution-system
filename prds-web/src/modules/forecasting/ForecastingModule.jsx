@@ -240,7 +240,7 @@ export default function ForecastingModule() {
                 Medicine Forecast Analytics
               </h2>
               <p className="mt-1 max-w-3xl text-xs font-medium leading-5 text-[#42474e]">
-                Review monthly medicine consumption, projected demand, and inventory coverage across PRDS facilities.
+                Review monthly medicine use, expected use, and stock coverage across PRDS facilities.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -264,34 +264,34 @@ export default function ForecastingModule() {
 
         <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
           <ForecastMetricCard
-            description="Forecasted quantity from the selected month and facility scope."
+            description="Expected units from the selected month and facility scope."
             icon={metricIcons.demand}
-            label="Projected Demand"
+            label="Expected Use"
             meta={`${analytics.uniqueMedicineCount} SKUs`}
             tone="blue"
             value={formatNumber(analytics.forecastTotal)}
           />
           <ForecastMetricCard
-            description="Medicines with positive regression slope in the selected range."
+            description="Medicines with higher expected use in the selected range."
             icon={metricIcons.trend}
-            label="Trending Up"
-            meta="Monthly slope"
+            label="Increasing Use"
+            meta="Monthly Change"
             tone="emerald"
             value={formatNumber(analytics.increasingCount)}
           />
           <ForecastMetricCard
-            description="Inventory records with coverage or threshold risk."
+            description="Inventory records that may need stock review."
             icon={metricIcons.risk}
-            label="Stock Risk"
-            meta="Watchlist"
+            label="Stock Needs"
+            meta="Needs Review"
             tone={analytics.riskRows.length > 0 ? "orange" : "emerald"}
             value={formatNumber(analytics.riskRows.length)}
           />
           <ForecastMetricCard
-            description="Regression fit across projected monthly demand values."
+            description="How closely the estimate follows recent expected use values."
             icon={metricIcons.fit}
-            label="Regression Fit"
-            meta={`Slope ${analytics.regression.slope >= 0 ? "+" : ""}${analytics.regression.slope}`}
+            label="Estimate Reliability"
+            meta={`Monthly Change ${analytics.regression.slope >= 0 ? "+" : ""}${analytics.regression.slope}`}
             tone="amber"
             value={`${Math.round(analytics.regression.rSquared * 100)}%`}
           />
@@ -311,6 +311,18 @@ export default function ForecastingModule() {
           setRiskFilter={setRiskFilter}
         />
 
+        <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm shadow-neutral-200/40">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+            Forecast Summary
+          </p>
+          <p className="mt-1 text-sm font-black text-[#0d1117]">
+            {analytics.interpretation.sentence}
+          </p>
+          <p className="mt-1 text-xs font-medium leading-5 text-[#42474e]">
+            {analytics.interpretation.details}
+          </p>
+        </section>
+
         <section className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
           <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
             <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
@@ -318,7 +330,7 @@ export default function ForecastingModule() {
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
                   Consumption Trend
                 </p>
-                <h2 className="mt-1 text-base font-black text-[#0d1117]">Historical vs Regression Forecast</h2>
+                <h2 className="mt-1 text-base font-black text-[#0d1117]">Medicine Use and Forecast</h2>
               </div>
               <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-xs font-black text-[#42474e]">
                 {monthWindow === ALL ? "All months" : `Last ${monthWindow} months`}
@@ -336,7 +348,7 @@ export default function ForecastingModule() {
           <ForecastMapPreview
             compact
             demandByFacility={demandByFacility}
-            description="Facility locations with stock status and projected demand context."
+            description="Facility locations with stock status and expected use context."
             facilities={visibleFacilities}
             forecastTotal={analytics.forecastTotal}
             inventoryRows={filteredInventoryRows}
@@ -381,24 +393,27 @@ function ForecastFilters({
   setMonthWindow,
   setRiskFilter,
 }) {
+  const showFacilityFilter = !isFacilityLocked;
+
   return (
     <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm shadow-neutral-200/40">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <FilterField label="Facility">
-          <select
-            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 disabled:bg-[#f8f9ff] disabled:text-neutral-500"
-            disabled={isFacilityLocked}
-            value={facilityFilter}
-            onChange={(event) => setFacilityFilter(event.target.value)}
-          >
-            {!isFacilityLocked && <option value={ALL}>All Facilities</option>}
-            {facilities.map((facility) => (
-              <option key={facility.id} value={facility.id}>
-                {facility.facility_name}
-              </option>
-            ))}
-          </select>
-        </FilterField>
+      <div className={`grid gap-3 md:grid-cols-2 ${showFacilityFilter ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+        {showFacilityFilter && (
+          <FilterField label="Facility">
+            <select
+              className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
+              value={facilityFilter}
+              onChange={(event) => setFacilityFilter(event.target.value)}
+            >
+              <option value={ALL}>All Facilities</option>
+              {facilities.map((facility) => (
+                <option key={facility.id} value={facility.id}>
+                  {facility.facility_name}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+        )}
 
         <FilterField label="Medicine">
           <select
@@ -415,17 +430,17 @@ function ForecastFilters({
           </select>
         </FilterField>
 
-        <FilterField label="Risk Status">
+        <FilterField label="Stock Status">
           <select
             className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
             value={riskFilter}
             onChange={(event) => setRiskFilter(event.target.value)}
           >
-            <option value={ALL}>All Risk Levels</option>
+            <option value={ALL}>All Stock Statuses</option>
             <option value="Critical">Critical</option>
-            <option value="Low">Low</option>
-            <option value="Watch">Watch</option>
-            <option value="Stable">Stable</option>
+            <option value="Low Stock">Low Stock</option>
+            <option value="Monitor Stock">Monitor Stock</option>
+            <option value="Enough Stock">Enough Stock</option>
           </select>
         </FilterField>
 

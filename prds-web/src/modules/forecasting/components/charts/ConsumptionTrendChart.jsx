@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -14,11 +14,6 @@ import { formatNumber } from "../../../dashboard/dashboardUtils";
 import { chartColors, chartFont } from "./chartTheme";
 
 export default function ConsumptionTrendChart({ rows = [] }) {
-  const [visibleSeries, setVisibleSeries] = useState({
-    actual: true,
-    forecast: true,
-  });
-
   const chartRows = useMemo(
     () =>
       rows.map((row) => ({
@@ -35,7 +30,7 @@ export default function ConsumptionTrendChart({ rows = [] }) {
         <div>
           <p className="text-sm font-black text-[#0d1117]">No consumption data yet</p>
           <p className="mt-1 text-xs font-medium text-[#42474e]">
-            Monthly medicine use and forecast records will appear here.
+            Monthly medicine use and expected use records will appear here.
           </p>
         </div>
       </div>
@@ -72,36 +67,26 @@ export default function ConsumptionTrendChart({ rows = [] }) {
           <Legend
             iconType="circle"
             wrapperStyle={{ color: chartColors.text, fontSize: 12, fontWeight: 800 }}
-            onClick={(entry) =>
-              setVisibleSeries((current) => ({
-                ...current,
-                [entry.dataKey]: !current[entry.dataKey],
-              }))
-            }
           />
-          {visibleSeries.actual && (
-            <Line
-              dataKey="actual"
-              dot={{ r: 3 }}
-              name="Dispensed"
-              stroke={chartColors.actual}
-              strokeWidth={3}
-              type="monotone"
-              connectNulls={false}
-            />
-          )}
-          {visibleSeries.forecast && (
-            <Line
-              dataKey="forecast"
-              dot={{ r: 3 }}
-              name="Forecast"
-              stroke={chartColors.forecast}
-              strokeDasharray="6 5"
-              strokeWidth={3}
-              type="monotone"
-              connectNulls={false}
-            />
-          )}
+          <Line
+            dataKey="actual"
+            dot={{ r: 3 }}
+            name="Dispensed"
+            stroke={chartColors.actual}
+            strokeWidth={3}
+            type="monotone"
+            connectNulls={false}
+          />
+          <Line
+            dataKey="forecast"
+            dot={{ r: 3 }}
+            name="Expected use"
+            stroke={chartColors.forecast}
+            strokeDasharray="6 5"
+            strokeWidth={3}
+            type="monotone"
+            connectNulls={false}
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>

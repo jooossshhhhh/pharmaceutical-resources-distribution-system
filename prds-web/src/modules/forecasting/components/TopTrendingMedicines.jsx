@@ -9,7 +9,7 @@ export default function TopTrendingMedicines({ rows = [] }) {
       <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-            Trend Watch
+            Use Changes
           </p>
           <h2 className="mt-1 text-base font-black text-[#0d1117]">Medicines Trending This Month</h2>
         </div>
@@ -37,7 +37,7 @@ export default function TopTrendingMedicines({ rows = [] }) {
                       {index + 1}. {row.genericName} {row.dosage}
                     </p>
                     <p className="truncate text-xs font-medium text-neutral-500">
-                      {row.brandName || "No brand"} - {formatNumber(row.projectedDemand)} projected
+                      {row.brandName || "No brand"} - {formatNumber(row.projectedDemand)} expected
                     </p>
                   </div>
                   <span className={`shrink-0 text-sm font-black ${row.forecastSlope >= 0 ? "text-emerald-700" : "text-red-600"}`}>

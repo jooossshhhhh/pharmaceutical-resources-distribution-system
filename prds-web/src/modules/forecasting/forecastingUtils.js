@@ -62,20 +62,73 @@ export const buildForecastAnalytics = ({
     (sum, row) => sum + Number(row.predicted_quantity || 0),
     0
   );
-  const riskRows = coverageRows.filter((row) => row.risk.label !== "Stable");
+  const riskRows = coverageRows.filter((row) => row.risk.label !== "Enough Stock");
   const increasingCount = trendRows.filter((row) => row.direction === "Increasing").length;
+  const decliningCount = trendRows.filter((row) => row.direction === "Declining").length;
   const regression = calculateLinearRegression(monthlyRows.map((row) => row.forecasted));
+  const interpretation = buildForecastInterpretation({
+    decliningCount,
+    forecastTotal,
+    increasingCount,
+    monthlyRows,
+    riskRows,
+  });
 
   return {
     coverageRows,
+    decliningCount,
     forecastTotal,
     increasingCount,
+    interpretation,
     monthlyRows,
     regression,
     riskRows,
     trendRows,
     trendingMedicines,
     uniqueMedicineCount: trendRows.length,
+  };
+};
+
+export const buildForecastInterpretation = ({
+  decliningCount = 0,
+  forecastTotal = 0,
+  increasingCount = 0,
+  monthlyRows = [],
+  riskRows = [],
+} = {}) => {
+  const recordsUsed = monthlyRows.filter((row) => Number(row.historical || 0) > 0 || Number(row.forecasted || 0) > 0).length;
+
+  if (recordsUsed < 2) {
+    return {
+      sentence: "There are not enough records yet to estimate next month clearly.",
+      details: `${recordsUsed} month${recordsUsed === 1 ? "" : "s"} with use or forecast records.`,
+    };
+  }
+
+  if (riskRows.length > 0) {
+    return {
+      sentence: "Some medicines may need stock review before the next month.",
+      details: `${riskRows.length} medicine${riskRows.length === 1 ? "" : "s"} need attention from ${formatNumberForText(forecastTotal)} expected units.`,
+    };
+  }
+
+  if (increasingCount > 0) {
+    return {
+      sentence: "Medicine use is increasing. Review if current stock is enough for next month.",
+      details: `${increasingCount} medicine${increasingCount === 1 ? "" : "s"} show increasing use.`,
+    };
+  }
+
+  if (decliningCount > 0) {
+    return {
+      sentence: "Medicine use is decreasing. Restocking may be lower unless requests increase.",
+      details: `${decliningCount} medicine${decliningCount === 1 ? "" : "s"} show lower expected use.`,
+    };
+  }
+
+  return {
+    sentence: "Medicine use is stable. Current stock appears enough based on recent records.",
+    details: `${formatNumberForText(forecastTotal)} expected units across the selected records.`,
   };
 };
 
@@ -200,28 +253,28 @@ const riskMeta = {
   Low: {
     badgeClass: "bg-orange-100 text-orange-700",
     barClass: "bg-orange-500",
-    label: "Low",
+    label: "Low Stock",
     textClass: "text-orange-700",
   },
   Stable: {
     badgeClass: "bg-emerald-100 text-emerald-700",
     barClass: "bg-[#6be9c2]",
-    label: "Stable",
+    label: "Enough Stock",
     textClass: "text-emerald-700",
   },
   Watch: {
     badgeClass: "bg-amber-100 text-amber-700",
     barClass: "bg-amber-500",
-    label: "Watch",
+    label: "Monitor Stock",
     textClass: "text-amber-700",
   },
 };
 
 const riskRank = {
   Critical: 0,
-  Low: 1,
-  Watch: 2,
-  Stable: 3,
+  "Low Stock": 1,
+  "Monitor Stock": 2,
+  "Enough Stock": 3,
 };
 
 const groupRowsByMonth = (rows, dateKey, quantityKey) => {
@@ -320,3 +373,5 @@ const roundMetric = (value) => {
 
   return Math.round(value * 100) / 100;
 };
+
+const formatNumberForText = (value) => Number(value || 0).toLocaleString();

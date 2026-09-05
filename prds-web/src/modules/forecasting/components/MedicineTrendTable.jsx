@@ -8,7 +8,7 @@ export default function MedicineTrendTable({ rows = [] }) {
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
             Medicine Forecast
           </p>
-          <h2 className="mt-1 text-base font-black text-[#0d1117]">Monthly Trend Ranking</h2>
+          <h2 className="mt-1 text-base font-black text-[#0d1117]">Monthly Use Ranking</h2>
         </div>
         <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-xs font-black text-[#42474e]">
           {formatNumber(rows.length)} medicines
@@ -21,10 +21,10 @@ export default function MedicineTrendTable({ rows = [] }) {
             <tr>
               <th className="px-4 py-3">Medicine</th>
               <th className="px-4 py-3">Latest Use</th>
-              <th className="px-4 py-3">Projected Demand</th>
-              <th className="px-4 py-3">Trend Slope</th>
+              <th className="px-4 py-3">Expected Use</th>
+              <th className="px-4 py-3">Monthly Change</th>
               <th className="px-4 py-3">Stock</th>
-              <th className="px-4 py-3">Risk</th>
+              <th className="px-4 py-3">Stock Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">

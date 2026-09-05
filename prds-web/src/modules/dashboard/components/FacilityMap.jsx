@@ -17,8 +17,8 @@ const MAX_ZOOM = 18;
 
 const STOCK_TIERS = [
   { key: "CRITICAL", label: "Critical", color: "#ef4444" },
-  { key: "LOW", label: "Low", color: "#f97316" },
-  { key: "WATCH", label: "Watch", color: "#f59e0b" },
+  { key: "LOW", label: "Low Stock", color: "#f97316" },
+  { key: "WATCH", label: "Monitor Stock", color: "#f59e0b" },
   { key: "HEALTHY", label: "Healthy", color: "#00a36c" },
 ];
 
@@ -357,11 +357,16 @@ export default function FacilityMap({
         maxBoundsViscosity={1}
         scrollWheelZoom={isPreview}
         zoomControl={false}
-        className={`z-0 w-full ${className} rounded-xl border border-[#d8dadc]`}
+        className={`z-0 w-full bg-[#eef1f4] ${className} rounded-xl border border-[#d8dadc]`}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png"
+          attribution="Tiles &copy; Esri"
+          eventHandlers={{
+            tileerror: (event) => {
+              event.tile.style.display = "none";
+            },
+          }}
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
         />
         <ZoomControl position="bottomright" />
         <FitBounds fitToCoverage={fitToCoverage} positions={fitPositions} />
@@ -386,7 +391,7 @@ export default function FacilityMap({
                   <p className="text-xs font-black text-[#0d1117]">{facility.facility_name}</p>
                   <p className="text-[11px] font-semibold text-neutral-500">
                     {colorMode === "demand"
-                      ? `${formatNumber(demand)} forecasted demand`
+                      ? `${formatNumber(demand)} expected use`
                       : `${status} stock`}
                   </p>
                 </div>
@@ -546,7 +551,7 @@ export default function FacilityMap({
           <PreviewLegend counts={statusCounts} />
         ) : (
           <ToggleLegend
-            title={colorMode === "demand" ? "Forecast demand" : "Stock status"}
+            title={colorMode === "demand" ? "Expected use" : "Stock status"}
             tiers={colorMode === "demand" ? DEMAND_TIERS : STOCK_TIERS}
             activeKeys={
               colorMode === "demand"

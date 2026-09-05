@@ -20,7 +20,7 @@ export const clampToNagaBounds = (latitude, longitude) => {
 export const isWithinNagaBounds = (latitude, longitude) => {
   return (
     latitude >= NAGA_BOUNDS.minLat &&
-    latitude <= NAGA_BOUNDS.maxLat &&
+    latitude <= NAGA_BOUNDS.maxLat && 
     longitude >= NAGA_BOUNDS.minLon &&
     longitude <= NAGA_BOUNDS.maxLon
   );

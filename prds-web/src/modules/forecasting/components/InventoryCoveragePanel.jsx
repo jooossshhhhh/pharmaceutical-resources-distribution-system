@@ -8,9 +8,9 @@ export default function InventoryCoveragePanel({ rows = [] }) {
       <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-            Inventory Coverage
+            Stock Coverage
           </p>
-          <h2 className="mt-1 text-base font-black text-[#0d1117]">Forecast Stock Risk</h2>
+          <h2 className="mt-1 text-base font-black text-[#0d1117]">Stock Coverage</h2>
         </div>
         <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-xs font-black text-[#42474e]">
           {formatNumber(rows.length)} tracked
@@ -23,7 +23,7 @@ export default function InventoryCoveragePanel({ rows = [] }) {
             <div>
               <p className="text-sm font-black text-[#0d1117]">No inventory coverage data</p>
               <p className="mt-1 text-xs font-medium text-neutral-500">
-                Current stock and forecast demand will appear here.
+                Current stock and expected use will appear here.
               </p>
             </div>
           </div>
@@ -49,7 +49,7 @@ export default function InventoryCoveragePanel({ rows = [] }) {
 
                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                   <Metric label="Stock" value={formatNumber(row.currentStock)} />
-                  <Metric label="Forecast" value={formatNumber(row.projectedDemand)} />
+                  <Metric label="Expected Use" value={formatNumber(row.projectedDemand)} />
                   <Metric
                     label="Coverage"
                     value={row.coverageMonths == null ? "No demand" : `${row.coverageMonths} mo`}

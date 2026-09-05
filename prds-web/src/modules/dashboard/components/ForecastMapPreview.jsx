@@ -63,8 +63,8 @@ export default function ForecastMapPreview({
         {showMetrics && (
           <div className={`${compact ? "flex flex-col justify-between gap-2" : "grid gap-3"}`}>
             <ForecastMetric compact={compact} label="Mapped Facilities" value={mappedCount} tone="emerald" />
-            <ForecastMetric compact={compact} label="Forecasted Demand" value={forecastTotal} tone="blue" />
-            <ForecastMetric compact={compact} label="Stock Watch Areas" value={lowStockCount} tone="orange" />
+            <ForecastMetric compact={compact} label="Expected Use" value={forecastTotal} tone="blue" />
+            <ForecastMetric compact={compact} label="Stock Areas to Review" value={lowStockCount} tone="orange" />
           </div>
         )}
       </div>
