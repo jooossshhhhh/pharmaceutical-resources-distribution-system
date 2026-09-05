@@ -26,15 +26,10 @@ export function AuditSummaryCard({
 
   const content = (
     <>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
         <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClass}`}>
           {icon}
         </span>
-        {isActive && (
-          <span className="rounded-full bg-[#6be9c2] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#0d1117]">
-            Active
-          </span>
-        )}
       </div>
       <p className="mt-4 text-2xl font-black tabular-nums text-[#0d1117]">
         {count}
@@ -63,7 +58,7 @@ export function AuditSummaryCard({
 
 export function AuditFilterPanel({ children, onReset, title }) {
   return (
-    <aside className={`${cardBase} h-fit p-4`}>
+    <aside className={`${cardBase} h-fit min-w-0 overflow-hidden p-4`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.14em] text-[#00a36c]">
@@ -73,7 +68,7 @@ export function AuditFilterPanel({ children, onReset, title }) {
         </div>
         <FilterIcon className="h-4 w-4 text-[#42474e]" />
       </div>
-      <div className="mt-4 grid gap-4">{children}</div>
+      <div className="mt-4 grid min-w-0 gap-4">{children}</div>
       <button
         type="button"
         onClick={onReset}
@@ -87,9 +82,9 @@ export function AuditFilterPanel({ children, onReset, title }) {
 
 export function AuditSearchField({ label, onChange, placeholder, value }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
+    <label className="grid min-w-0 gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
       {label}
-      <div className="relative">
+      <div className="relative min-w-0">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
           <SearchIcon />
         </span>
@@ -98,7 +93,7 @@ export function AuditSearchField({ label, onChange, placeholder, value }) {
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium normal-case tracking-normal text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
+          className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium normal-case tracking-normal text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
         />
       </div>
     </label>
@@ -107,7 +102,7 @@ export function AuditSearchField({ label, onChange, placeholder, value }) {
 
 export function AuditRadioGroup({ label, name, onChange, options, value }) {
   return (
-    <fieldset>
+    <fieldset className="min-w-0">
       <legend className="text-xs font-black uppercase tracking-wide text-[#42474e]">
         {label}
       </legend>
@@ -115,7 +110,7 @@ export function AuditRadioGroup({ label, name, onChange, options, value }) {
         {options.map((option) => (
           <label
             key={option.value}
-            className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-bold transition ${
+            className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-bold transition ${
               value === option.value
                 ? "bg-emerald-50 text-[#0d1117]"
                 : "text-[#42474e] hover:bg-[#eff4ff]"
@@ -128,7 +123,7 @@ export function AuditRadioGroup({ label, name, onChange, options, value }) {
               onChange={() => onChange(option.value)}
               className="h-4 w-4 accent-[#00a36c]"
             />
-            {option.label}
+            <span className="min-w-0 break-words">{option.label}</span>
           </label>
         ))}
       </div>
@@ -168,12 +163,12 @@ export function AuditChipBar({ options, value, onChange }) {
 
 export function AuditSelectField({ label, onChange, options, value }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
+    <label className="grid min-w-0 gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
       {label}
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
+        className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -187,13 +182,13 @@ export function AuditSelectField({ label, onChange, options, value }) {
 
 export function AuditDateField({ label, onChange, value }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
+    <label className="grid min-w-0 gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
       {label}
       <input
         type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
+        className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
       />
     </label>
   );
@@ -201,6 +196,7 @@ export function AuditDateField({ label, onChange, value }) {
 
 export function AuditListPanel({
   action,
+  bodyClassName = "max-h-[68vh]",
   children,
   count,
   emptyDescription,
@@ -221,7 +217,7 @@ export function AuditListPanel({
         </div>
         {action}
       </div>
-      <div className="prds-modal-scrollbar max-h-[68vh] overflow-y-auto p-4">
+      <div className={`prds-modal-scrollbar min-w-0 overflow-y-auto p-4 ${bodyClassName}`}>
         {isLoading ? (
           <AuditSkeletonList />
         ) : count === 0 ? (
@@ -236,7 +232,7 @@ export function AuditListPanel({
 
 export function AuditTimeline({ children }) {
   return (
-    <div className="relative space-y-5 before:absolute before:bottom-0 before:left-3 before:top-3 before:w-px before:bg-neutral-200">
+    <div className="relative min-w-0 space-y-5 before:absolute before:bottom-0 before:left-3 before:top-3 before:w-px before:bg-neutral-200">
       {children}
     </div>
   );
@@ -244,18 +240,20 @@ export function AuditTimeline({ children }) {
 
 export function AuditDateGroup({ children, label }) {
   return (
-    <section className="relative pl-8">
+    <section className="relative min-w-0 pl-8">
       <div className="sticky top-0 z-10 mb-2 inline-flex rounded-full border border-neutral-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#42474e] shadow-sm">
         {label}
       </div>
-      <div className="space-y-3">{children}</div>
+      <div className="min-w-0 space-y-3">{children}</div>
     </section>
   );
 }
 
 export function AuditEventShell({ children, isUnread = false, tone = "emerald" }) {
-  const dotClass = isUnread ? "bg-[#00a36c]" : "bg-neutral-300";
-  const borderClass = isUnread ? "border-[#6be9c2] bg-emerald-50/50" : "border-neutral-200 bg-white";
+  const dotClass = "bg-neutral-300";
+  const borderClass = isUnread
+    ? "border-neutral-200 border-l-[#6be9c2] border-l-4 bg-white"
+    : "border-neutral-200 bg-white";
   const toneClass = {
     amber: "ring-amber-200",
     blue: "ring-blue-200",
@@ -265,9 +263,9 @@ export function AuditEventShell({ children, isUnread = false, tone = "emerald" }
   }[tone];
 
   return (
-    <article className="relative">
+    <article className="relative min-w-0">
       <span className={`absolute -left-7 top-4 h-3.5 w-3.5 rounded-full border-4 border-white shadow-sm ring-1 ${toneClass} ${dotClass}`} />
-      <div className={`rounded-xl border p-4 shadow-sm transition hover:shadow-md ${borderClass}`}>
+      <div className={`min-w-0 rounded-xl border p-4 shadow-sm transition hover:shadow-md ${borderClass}`}>
         {children}
       </div>
     </article>
@@ -292,9 +290,11 @@ export function AuditBadge({ children, tone = "slate" }) {
 
 export function AuditMetaRow({ items }) {
   return (
-    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-[#42474e]">
+    <div className="mt-3 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-[#42474e]">
       {items.filter(Boolean).map((item, index) => (
-        <span key={`${item}-${index}`}>{item}</span>
+        <span key={`${item}-${index}`} className="min-w-0 break-words [overflow-wrap:anywhere]">
+          {item}
+        </span>
       ))}
     </div>
   );
