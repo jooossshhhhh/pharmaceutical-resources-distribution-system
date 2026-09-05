@@ -6,7 +6,6 @@ import { logoutUser } from "../../features/auth/AuthService";
 import { formatDateTime } from "../dashboard/dashboardUtils";
 import {
   AuditBadge,
-  AuditChipBar,
   AuditDateField,
   AuditDateGroup,
   AuditEventShell,
@@ -14,22 +13,22 @@ import {
   AuditIcon,
   AuditListPanel,
   AuditMetaRow,
-  AuditRadioGroup,
   AuditSearchField,
   AuditSelectField,
   AuditTimeline,
   CheckIcon,
 } from "../shared/AuditInboxUi";
 import { groupItemsByDate, getRelativeTime } from "../shared/AuditInboxUtils";
-import { getNotificationData, markOwnNotificationsRead } from "./NotificationService";
+import {
+  getNotificationData,
+  updateOwnNotificationReadStatus,
+} from "./NotificationService";
 import {
   getNotificationCategory,
   getNotificationPanelLabel,
   getVisibleNotifications,
   matchesNotificationFilters,
-  notificationCategories,
   notificationDateModes,
-  notificationReadFilters,
 } from "./notificationUtils";
 
 const roleFilterOptions = [
@@ -45,9 +44,8 @@ const roleLabels = {
   BHW: "Barangay Health Worker",
 };
 
-const notificationChipFilters = [
+const notificationTypeFilters = [
   { value: "all", label: "All" },
-  { value: "unread", label: "Unread" },
   { value: "requests", label: "Requests" },
   { value: "transfers", label: "Transfers" },
   { value: "low_stock", label: "Low Stock" },
@@ -98,12 +96,11 @@ export default function NotificationsModule() {
   const [dateMode, setDateMode] = useState("all");
   const [endDate, setEndDate] = useState("");
   const [facilityId, setFacilityId] = useState("ALL");
-  const [readFilter, setReadFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [specificDate, setSpecificDate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [savingNotificationId, setSavingNotificationId] = useState("");
   const [error, setError] = useState("");
 
   const today = useMemo(() => formatDateTime(new Date()), []);
@@ -150,7 +147,7 @@ export default function NotificationsModule() {
         endDate,
         facilityId: effectiveFacilityId,
         keyword,
-        readFilter,
+        readFilter: "all",
         roleFilter,
         specificDate,
         startDate,
@@ -163,49 +160,11 @@ export default function NotificationsModule() {
     effectiveFacilityId,
     keyword,
     profileId,
-    readFilter,
     roleFilter,
     specificDate,
     startDate,
     visibleNotifications,
   ]);
-
-  const unreadOwnCount = useMemo(() => {
-    return notifications.filter((notification) => {
-      return notification.user_id === profileId && !notification.is_read;
-    }).length;
-  }, [notifications, profileId]);
-
-  const chipOptions = useMemo(() => {
-    const countByChip = (chip) => {
-      if (chip.value === "all") {
-        return visibleNotifications.length;
-      }
-
-      if (chip.value === "unread") {
-        return visibleNotifications.filter((notification) => !notification.is_read).length;
-      }
-
-      return visibleNotifications.filter((notification) => {
-        return matchesNotificationFilters(notification, {
-          category: chip.value,
-          currentUserId: profileId,
-          dateMode: "all",
-          facilityId: "ALL",
-          keyword: "",
-          readFilter: "all",
-          roleFilter: "ALL",
-        });
-      }).length;
-    };
-
-    return notificationChipFilters.map((chip) => ({
-      ...chip,
-      count: countByChip(chip),
-    }));
-  }, [profileId, visibleNotifications]);
-
-  const activeChip = readFilter === "unread" ? "unread" : category;
 
   const groupedNotifications = useMemo(() => {
     return groupItemsByDate(filteredNotifications, (notification) => notification.created_at);
@@ -214,11 +173,12 @@ export default function NotificationsModule() {
   const panelLabel = useMemo(() => {
     return getNotificationPanelLabel({
       category,
+      categoryOptions: notificationTypeFilters,
       dateMode,
       endDate,
       facilities,
       facilityId: effectiveFacilityId,
-      readFilter,
+      readFilter: "all",
       roleFilter,
       roleOptions: allowedRoleOptions,
       specificDate,
@@ -231,7 +191,6 @@ export default function NotificationsModule() {
     endDate,
     effectiveFacilityId,
     facilities,
-    readFilter,
     roleFilter,
     specificDate,
     startDate,
@@ -260,27 +219,36 @@ export default function NotificationsModule() {
     return () => window.clearTimeout(timerId);
   }, []);
 
-  const markAllAsRead = async () => {
-    if (!profileId || unreadOwnCount === 0 || isSaving) {
+  const toggleNotificationReadStatus = async (notification) => {
+    if (
+      !profileId ||
+      notification.user_id !== profileId ||
+      savingNotificationId
+    ) {
       return;
     }
 
-    setIsSaving(true);
+    const nextIsRead = !notification.is_read;
+    setSavingNotificationId(notification.id);
     setError("");
 
     try {
-      await markOwnNotificationsRead({ profileId });
+      await updateOwnNotificationReadStatus({
+        isRead: nextIsRead,
+        notificationId: notification.id,
+        profileId,
+      });
       setNotifications((currentNotifications) =>
-        currentNotifications.map((notification) =>
-          notification.user_id === profileId
-            ? { ...notification, is_read: true }
-            : notification
+        currentNotifications.map((currentNotification) =>
+          currentNotification.id === notification.id
+            ? { ...currentNotification, is_read: nextIsRead }
+            : currentNotification
         )
       );
     } catch (saveError) {
       setError(saveError.message);
     } finally {
-      setIsSaving(false);
+      setSavingNotificationId("");
     }
   };
 
@@ -290,21 +258,9 @@ export default function NotificationsModule() {
     setDateMode("all");
     setEndDate("");
     setFacilityId("ALL");
-    setReadFilter("all");
     setRoleFilter("ALL");
     setSpecificDate("");
     setStartDate("");
-  };
-
-  const handleChipChange = (nextChip) => {
-    if (nextChip === "unread") {
-      setCategory("all");
-      setReadFilter("unread");
-      return;
-    }
-
-    setCategory(nextChip);
-    setReadFilter("all");
   };
 
   return (
@@ -316,63 +272,48 @@ export default function NotificationsModule() {
       )}
 
       <div className="space-y-4">
-        <AuditChipBar
-          options={chipOptions}
-          value={activeChip}
-          onChange={handleChipChange}
-        />
-
-        <div className="grid items-start gap-5 xl:grid-cols-[270px_1fr]">
+        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[14rem_minmax(0,1fr)]">
           <AuditFilterPanel title="Notifications" onReset={resetFilters}>
             <AuditSearchField
-              label="Search Keywords"
+              label="Search"
               value={keyword}
               onChange={setKeyword}
               placeholder="Search notifications..."
             />
 
-            <AuditRadioGroup
-              label="Notification Category"
-              name="notification-category"
+            <AuditSelectField
+              label="Type"
               value={category}
-              onChange={(nextCategory) => {
-                setCategory(nextCategory);
-                if (nextCategory !== "all") {
-                  setReadFilter("all");
-                }
-              }}
-              options={notificationCategories}
+              onChange={setCategory}
+              options={notificationTypeFilters}
             />
 
-            <AuditSelectField
-              label="Read Status"
-              value={readFilter}
-              onChange={setReadFilter}
-              options={notificationReadFilters}
-            />
+            {profileRole !== "BHW" && (
+              <AuditSelectField
+                label="Role"
+                value={roleFilter}
+                onChange={setRoleFilter}
+                options={allowedRoleOptions}
+              />
+            )}
+
+            {profileRole !== "BHW" && (
+              <AuditSelectField
+                label="Facility"
+                value={facilityId}
+                onChange={setFacilityId}
+                options={[
+                  { value: "ALL", label: "All visible facilities" },
+                  ...allowedFacilities.map((facility) => ({
+                    value: facility.id,
+                    label: facility.facility_name,
+                  })),
+                ]}
+              />
+            )}
 
             <AuditSelectField
-              label="Filter by Role"
-              value={roleFilter}
-              onChange={setRoleFilter}
-              options={allowedRoleOptions}
-            />
-
-            <AuditSelectField
-              label="Filter by Facility"
-              value={facilityId}
-              onChange={setFacilityId}
-              options={[
-                { value: "ALL", label: "All visible facilities" },
-                ...allowedFacilities.map((facility) => ({
-                  value: facility.id,
-                  label: facility.facility_name,
-                })),
-              ]}
-            />
-
-            <AuditSelectField
-              label="Date Filter"
+              label="Date"
               value={dateMode}
               onChange={setDateMode}
               options={notificationDateModes}
@@ -407,24 +348,20 @@ export default function NotificationsModule() {
             count={filteredNotifications.length}
             isLoading={isLoading}
             emptyTitle="No notifications match this view"
-            emptyDescription="Try another notification type, status, facility, role, keyword, or date range."
-            action={
-              <button
-                type="button"
-                onClick={markAllAsRead}
-                disabled={unreadOwnCount === 0 || isSaving}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-black text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:text-neutral-400"
-              >
-                <CheckIcon />
-                {isSaving ? "Updating" : "Mark mine read"}
-              </button>
-            }
+            emptyDescription="Try another notification type, facility, role, keyword, or date range."
+            bodyClassName="max-h-[calc(100dvh-9rem)]"
           >
             <AuditTimeline>
               {groupedNotifications.map((group) => (
                 <AuditDateGroup key={group.label} label={group.label}>
                   {group.items.map((notification) => (
-                    <NotificationCard key={notification.id} notification={notification} />
+                    <NotificationCard
+                      key={notification.id}
+                      currentUserId={profileId}
+                      isSaving={savingNotificationId === notification.id}
+                      notification={notification}
+                      onToggleRead={toggleNotificationReadStatus}
+                    />
                   ))}
                 </AuditDateGroup>
               ))}
@@ -436,35 +373,60 @@ export default function NotificationsModule() {
   );
 }
 
-function NotificationCard({ notification }) {
+function NotificationCard({
+  currentUserId,
+  isSaving,
+  notification,
+  onToggleRead,
+}) {
   const category = getNotificationCategory(notification);
   const meta = getNotificationMeta(category);
+  const canUpdateReadStatus = notification.user_id === currentUserId;
 
   return (
     <AuditEventShell isUnread={!notification.is_read} tone={meta.tone}>
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
         <AuditIcon tone={meta.tone}>{meta.icon}</AuditIcon>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm font-black text-[#0d1117]">{notification.title}</h3>
+                <h3 className="min-w-0 break-words text-sm font-black text-[#0d1117] [overflow-wrap:anywhere]">
+                  {notification.title}
+                </h3>
                 <AuditBadge tone={meta.tone}>{meta.label}</AuditBadge>
-                {!notification.is_read && (
-                  <span className="h-2 w-2 rounded-full bg-[#00a36c]" />
-                )}
               </div>
-              <p className="mt-1 text-sm leading-6 text-[#42474e]">
+              <p className="mt-1 min-w-0 break-words text-sm leading-6 text-[#42474e] [overflow-wrap:anywhere]">
                 {notification.message}
               </p>
             </div>
-            <div className="text-right">
+            <div className="shrink-0 text-left lg:text-right">
               <p className="text-xs font-black text-[#0d1117]">
                 {getRelativeTime(notification.created_at)}
               </p>
               <p className="mt-1 text-[11px] font-semibold text-neutral-400">
                 {formatDateTime(new Date(notification.created_at))}
               </p>
+              {canUpdateReadStatus && (
+                <button
+                  type="button"
+                  onClick={() => onToggleRead(notification)}
+                  disabled={isSaving}
+                  aria-label={
+                    notification.is_read
+                      ? "Mark notification as unread"
+                      : "Mark notification as read"
+                  }
+                  className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-[11px] font-black text-[#0d1117] transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:text-neutral-400"
+                >
+                  {!notification.is_read && <CheckIcon />}
+                  {isSaving
+                    ? "Saving"
+                    : notification.is_read
+                      ? "Mark unread"
+                      : "Mark read"}
+                </button>
+              )}
             </div>
           </div>
           <AuditMetaRow

@@ -276,7 +276,7 @@ export default function ActivityLogsModule() {
           )}
         </AuditSummaryGrid>
 
-        <div className="grid items-start gap-5 xl:grid-cols-[270px_1fr]">
+        <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(16rem,17rem)_minmax(0,1fr)]">
           <AuditFilterPanel title="Activity Logs" onReset={resetFilters}>
             <AuditSearchField
               label="Search Keywords"
@@ -381,20 +381,24 @@ function ActivityLogCard({ log }) {
 
   return (
     <AuditEventShell tone={tone}>
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
         <AuditIcon tone={tone}>
           <ActivityIcon />
         </AuditIcon>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm font-black text-[#0d1117]">{log.action}</h3>
+                <h3 className="min-w-0 break-words text-sm font-black text-[#0d1117] [overflow-wrap:anywhere]">
+                  {log.action}
+                </h3>
                 <AuditBadge tone={tone}>{log.module}</AuditBadge>
               </div>
-              <p className="mt-1 text-sm leading-6 text-[#42474e]">{log.details}</p>
+              <p className="mt-1 min-w-0 break-words text-sm leading-6 text-[#42474e] [overflow-wrap:anywhere]">
+                {log.details}
+              </p>
             </div>
-            <div className="text-right">
+            <div className="shrink-0 text-left lg:text-right">
               <p className="text-xs font-black text-[#0d1117]">
                 {getRelativeTime(log.created_at)}
               </p>

@@ -22,12 +22,16 @@ export const getNotificationData = async () => {
   };
 };
 
-export const markOwnNotificationsRead = async ({ profileId }) => {
+export const updateOwnNotificationReadStatus = async ({
+  isRead,
+  notificationId,
+  profileId,
+}) => {
   const { error } = await supabase
     .from("notifications")
-    .update({ is_read: true })
-    .eq("user_id", profileId)
-    .eq("is_read", false);
+    .update({ is_read: isRead })
+    .eq("id", notificationId)
+    .eq("user_id", profileId);
 
   if (error) {
     throw error;
