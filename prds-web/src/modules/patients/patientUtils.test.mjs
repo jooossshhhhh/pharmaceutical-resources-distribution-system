@@ -4,15 +4,19 @@ import test from "node:test";
 import {
   buildPatientsCsv,
   calculateAge,
+  filterPatientsByArchiveMode,
   findDuplicatePatients,
+  formatPatientArchivedAt,
   formatPatientAge,
   formatPatientCode,
   formatPatientDateOfBirth,
   formatPatientName,
   formatPatientRegisteredAt,
   getPatientSortLabel,
+  isArchivedPatient,
   matchesPatientFilters,
   normalizePatientText,
+  PATIENT_ARCHIVE_MODES,
   sortPatients,
   validatePatientForm,
 } from "./patientUtils.js";
@@ -240,4 +244,49 @@ test("validatePatientForm checks required fields", () => {
     }),
     ""
   );
+});
+
+test("archive helpers separate active and archived records", () => {
+  const patients = [
+    { id: "active", archived_at: null },
+    { id: "archived", archived_at: "2026-09-05T08:00:00Z" },
+  ];
+
+  assert.equal(formatPatientArchivedAt("2026-09-05T08:00:00Z"), "Sep 5, 2026");
+  assert.equal(isArchivedPatient(patients[0]), false);
+  assert.equal(isArchivedPatient(patients[1]), true);
+  assert.deepEqual(
+    filterPatientsByArchiveMode({ patients }).map((patient) => patient.id),
+    ["active"]
+  );
+  assert.deepEqual(
+    filterPatientsByArchiveMode({
+      archiveMode: PATIENT_ARCHIVE_MODES.archived,
+      patients,
+    }).map((patient) => patient.id),
+    ["archived"]
+  );
+  assert.deepEqual(
+    filterPatientsByArchiveMode({
+      archiveMode: PATIENT_ARCHIVE_MODES.all,
+      patients,
+    }).map((patient) => patient.id),
+    ["active", "archived"]
+  );
+});
+
+test("buildPatientsCsv adds archive fields for archive export", () => {
+  const archivedPatient = {
+    ...samplePatient,
+    archive_reason: "Duplicate registration",
+    archived_at: "2026-09-05T08:00:00Z",
+  };
+  const csv = buildPatientsCsv({
+    archiveMode: PATIENT_ARCHIVE_MODES.archived,
+    patients: [archivedPatient],
+  });
+
+  assert.equal(csv.split("\n")[0].includes("Archived"), true);
+  assert.match(csv, /Duplicate registration/);
+  assert.match(csv, /Sep 5, 2026/);
 });

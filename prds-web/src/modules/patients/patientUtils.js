@@ -5,6 +5,12 @@ export const PATIENT_GENDER_OPTIONS = [
   { value: "FEMALE", label: "Female" },
 ];
 
+export const PATIENT_ARCHIVE_MODES = {
+  active: "active",
+  archived: "archived",
+  all: "all",
+};
+
 export const normalizePatientText = (value = "") =>
   (value || "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -84,6 +90,18 @@ export const formatPatientRegisteredAt = (createdAt) => {
   }).format(new Date(createdAt));
 };
 
+export const formatPatientArchivedAt = (archivedAt) => {
+  if (!archivedAt) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(archivedAt));
+};
+
 export const formatPatientContact = (contactNumber) => {
   if (!contactNumber) {
     return "—";
@@ -128,6 +146,24 @@ export const matchesPatientFilters = ({ patient, query, facilityId }) => {
   }
 
   return true;
+};
+
+export const isArchivedPatient = (patient = {}) => {
+  return Boolean(patient.archived_at);
+};
+
+export const filterPatientsByArchiveMode = ({
+  archiveMode = PATIENT_ARCHIVE_MODES.active,
+  patients = [],
+}) => {
+  if (archiveMode === PATIENT_ARCHIVE_MODES.all) {
+    return patients;
+  }
+
+  return patients.filter((patient) => {
+    const isArchived = isArchivedPatient(patient);
+    return archiveMode === PATIENT_ARCHIVE_MODES.archived ? isArchived : !isArchived;
+  });
 };
 
 export const findDuplicatePatients = ({ patients, formValues, excludeId }) => {
@@ -185,7 +221,7 @@ export const getPatientSortLabel = (sortMode) => {
   return sortMode === "desc" ? "Z–A" : "A–Z";
 };
 
-export const buildPatientsCsv = ({ patients }) => {
+export const buildPatientsCsv = ({ archiveMode = PATIENT_ARCHIVE_MODES.active, patients }) => {
   const headers = [
     "Patient Code",
     "Full Name",
@@ -197,6 +233,11 @@ export const buildPatientsCsv = ({ patients }) => {
     "Facility",
     "Registered",
   ];
+  const includeArchiveFields = archiveMode === PATIENT_ARCHIVE_MODES.archived;
+
+  if (includeArchiveFields) {
+    headers.push("Archived", "Archive Reason");
+  }
 
   const escapeCell = (value) => {
     const text = value === null || value === undefined ? "" : String(value);
@@ -204,7 +245,7 @@ export const buildPatientsCsv = ({ patients }) => {
   };
 
   const rows = (patients || []).map((patient) => {
-    return [
+    const row = [
       patient.patient_code || "",
       formatPatientName(patient),
       patient.gender || "",
@@ -214,9 +255,13 @@ export const buildPatientsCsv = ({ patients }) => {
       patient.address || "",
       patient.facility?.facility_name || "",
       formatPatientRegisteredAt(patient.created_at),
-    ]
-      .map(escapeCell)
-      .join(",");
+    ];
+
+    if (includeArchiveFields) {
+      row.push(formatPatientArchivedAt(patient.archived_at), patient.archive_reason || "");
+    }
+
+    return row.map(escapeCell).join(",");
   });
 
   return [headers.map(escapeCell).join(","), ...rows].join("\n");

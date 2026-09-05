@@ -23,7 +23,7 @@ export default function ChoPatientsModule() {
 
   const loadPatients = useCallback(async () => {
     try {
-      const rows = await getPatients();
+      const rows = await getPatients({ archiveMode: "all" });
       setPatients(rows);
       setError("");
     } catch (errorMessage) {
@@ -63,6 +63,7 @@ export default function ChoPatientsModule() {
         <div className="h-80 animate-pulse rounded-xl border border-[#d8dadc] bg-white/60" />
       ) : (
         <PatientRegistry
+          canArchive={["PHARMA_I", "PHARMA_II"].includes(profile?.role)}
           canDelete={profile?.role === "PHARMA_II"}
           facilities={facilities}
           isCho

@@ -82,6 +82,7 @@ export default function BhwPatientsModule() {
         <div className="h-80 animate-pulse rounded-xl border border-[#d8dadc] bg-white/60" />
       ) : (
         <PatientRegistry
+          canArchive={false}
           canDelete={false}
           facilities={ownFacility}
           isCho={false}

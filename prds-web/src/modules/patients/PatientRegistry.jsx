@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { createPatient, deletePatient, updatePatient } from "./PatientsService";
+import {
+  archivePatient,
+  createPatient,
+  deleteArchivedPatient,
+  restorePatient,
+  updatePatient,
+} from "./PatientsService";
 import {
   ExportIcon,
   Input,
   PatientDetailsPanel,
   PatientFormModal,
+  PatientConfirmModal,
   PatientTable,
   PlusIcon,
   SearchIcon,
@@ -14,9 +21,11 @@ import {
 } from "./patientComponents";
 import {
   buildPatientsCsv,
+  filterPatientsByArchiveMode,
   findDuplicatePatients,
   formatPatientName,
   matchesPatientFilters,
+  PATIENT_ARCHIVE_MODES,
   sortPatients,
   validatePatientForm,
 } from "./patientUtils";
@@ -34,6 +43,7 @@ const emptyPatientForm = {
 };
 
 export default function PatientRegistry({
+  canArchive,
   canDelete,
   facilities,
   isCho,
@@ -42,6 +52,7 @@ export default function PatientRegistry({
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [facilityFilter, setFacilityFilter] = useState("");
+  const [archiveMode, setArchiveMode] = useState(PATIENT_ARCHIVE_MODES.active);
   const [sortMode, setSortMode] = useState("asc");
   const [selectedId, setSelectedId] = useState("");
   const [modalMode, setModalMode] = useState(null);
@@ -50,17 +61,27 @@ export default function PatientRegistry({
   const [formValues, setFormValues] = useState(emptyPatientForm);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [archiveReason, setArchiveReason] = useState("");
   const [notice, setNotice] = useState("");
 
+  const visiblePatients = useMemo(() => {
+    return filterPatientsByArchiveMode({
+      archiveMode: isCho ? archiveMode : PATIENT_ARCHIVE_MODES.active,
+      patients,
+    });
+  }, [archiveMode, isCho, patients]);
+
   const filteredPatients = useMemo(() => {
-    return (patients || []).filter((patient) =>
+    return visiblePatients.filter((patient) =>
       matchesPatientFilters({
         facilityId: isCho ? facilityFilter || null : null,
         patient,
         query: searchTerm,
       })
     );
-  }, [facilityFilter, isCho, patients, searchTerm]);
+  }, [facilityFilter, isCho, searchTerm, visiblePatients]);
 
   const sortedPatients = useMemo(
     () => sortPatients({ patients: filteredPatients, sortMode }),
@@ -84,6 +105,7 @@ export default function PatientRegistry({
   }, [notice]);
 
   const openCreateModal = () => {
+    setArchiveMode(PATIENT_ARCHIVE_MODES.active);
     setFormValues({ ...emptyPatientForm, facility_id: isCho ? "" : facilities[0]?.id || "" });
     setError("");
     setNotice("");
@@ -141,6 +163,15 @@ export default function PatientRegistry({
 
   const toggleSort = () => {
     setSortMode((current) => (current === "asc" ? "desc" : "asc"));
+  };
+
+  const toggleArchiveMode = () => {
+    setArchiveMode((currentMode) =>
+      currentMode === PATIENT_ARCHIVE_MODES.archived
+        ? PATIENT_ARCHIVE_MODES.active
+        : PATIENT_ARCHIVE_MODES.archived
+    );
+    handleClearSelection();
   };
 
   const handleSavePatient = async (event) => {
@@ -208,31 +239,80 @@ export default function PatientRegistry({
     }
   };
 
+  const handleArchivePatient = async () => {
+    if (!selectedPatient || !canArchive) {
+      return;
+    }
+
+    setArchiveReason("");
+    setError("");
+    setConfirmAction({ patient: selectedPatient, type: "archive" });
+  };
+
+  const handleRestorePatient = async () => {
+    if (!selectedPatient || !canArchive) {
+      return;
+    }
+
+    setError("");
+    setConfirmAction({ patient: selectedPatient, type: "restore" });
+  };
+
   const handleDeletePatient = async () => {
-    if (!selectedPatient) {
+    if (!selectedPatient || !canDelete || archiveMode !== PATIENT_ARCHIVE_MODES.archived) {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Delete patient record for ${formatPatientName(selectedPatient)}? This cannot be undone.`
-    );
+    setError("");
+    setConfirmAction({ patient: selectedPatient, type: "delete" });
+  };
 
-    if (!confirmed) {
+  const closeConfirmModal = (force = false) => {
+    if (isConfirming && !force) {
       return;
     }
+
+    setConfirmAction(null);
+    setArchiveReason("");
+    setError("");
+  };
+
+  const confirmPatientAction = async () => {
+    if (!confirmAction?.patient) {
+      return;
+    }
+
+    setIsConfirming(true);
+    setError("");
 
     try {
-      await deletePatient(selectedPatient.id);
+      if (confirmAction.type === "archive") {
+        await archivePatient(confirmAction.patient.id, { reason: archiveReason });
+        setNotice("Patient archived.");
+      }
+
+      if (confirmAction.type === "restore") {
+        await restorePatient(confirmAction.patient.id);
+        setNotice("Patient restored.");
+      }
+
+      if (confirmAction.type === "delete") {
+        await deleteArchivedPatient(confirmAction.patient.id);
+        setNotice("Patient permanently deleted.");
+      }
+
+      closeConfirmModal(true);
       handleClearSelection();
-      setNotice("Patient record deleted.");
       await loadPatients();
     } catch (errorMessage) {
       setError(errorMessage instanceof Error ? errorMessage.message : String(errorMessage));
+    } finally {
+      setIsConfirming(false);
     }
   };
 
   const handleExportCsv = () => {
-    const csv = buildPatientsCsv({ patients: sortedPatients });
+    const csv = buildPatientsCsv({ archiveMode, patients: sortedPatients });
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -274,10 +354,24 @@ export default function PatientRegistry({
             <div>
               <h2 className="text-base font-bold text-[#0d1117]">Patient Logbook</h2>
               <p className="mt-0.5 text-xs text-[#5f6673]">
-                Showing {sortedPatients.length} of {patients.length} patients
+                Showing {sortedPatients.length} of {visiblePatients.length} {archiveMode} patients
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {isCho && (
+                <button
+                  type="button"
+                  onClick={toggleArchiveMode}
+                  className={`inline-flex h-9 items-center rounded-lg border px-3 text-xs font-bold shadow-sm transition ${
+                    archiveMode === PATIENT_ARCHIVE_MODES.archived
+                      ? "border-black bg-black text-white"
+                      : "border-[#d8dadc] bg-white text-[#0d1117] hover:bg-[#eff4ff]"
+                  }`}
+                  aria-pressed={archiveMode === PATIENT_ARCHIVE_MODES.archived}
+                >
+                  Archive
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -286,14 +380,16 @@ export default function PatientRegistry({
                 <ExportIcon />
                 Export
               </button>
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
-              >
-                <PlusIcon />
-                Register Patient
-              </button>
+              {archiveMode === PATIENT_ARCHIVE_MODES.active && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
+                >
+                  <PlusIcon />
+                  Register Patient
+                </button>
+              )}
             </div>
           </div>
 
@@ -343,6 +439,7 @@ export default function PatientRegistry({
                 </tr>
               </thead>
               <PatientTable
+                archiveMode={archiveMode}
                 isCho={isCho}
                 isLoading={false}
                 onSelect={handleRowSelect}
@@ -368,10 +465,14 @@ export default function PatientRegistry({
               }`}
             >
               <PatientDetailsPanel
+                archiveMode={archiveMode}
+                canArchive={canArchive}
                 canDelete={canDelete}
+                onArchive={handleArchivePatient}
                 onBack={handleClearSelection}
                 onDelete={handleDeletePatient}
                 onEdit={() => openEditModal(panelPatient)}
+                onRestore={handleRestorePatient}
                 patient={panelPatient}
               />
             </div>
@@ -391,6 +492,19 @@ export default function PatientRegistry({
           onClose={closeModal}
           onChange={handleFieldChange}
           onSubmit={handleSavePatient}
+        />
+      )}
+
+      {confirmAction && (
+        <PatientConfirmModal
+          actionType={confirmAction.type}
+          archiveReason={archiveReason}
+          error={error}
+          isSaving={isConfirming}
+          onCancel={closeConfirmModal}
+          onConfirm={confirmPatientAction}
+          onReasonChange={setArchiveReason}
+          patientName={formatPatientName(confirmAction.patient)}
         />
       )}
     </div>

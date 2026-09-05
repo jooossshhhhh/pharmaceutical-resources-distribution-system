@@ -1,6 +1,7 @@
 import ModalShell from "../../components/ModalShell";
 import {
   formatPatientAge,
+  formatPatientArchivedAt,
   formatPatientCode,
   formatPatientContact,
   formatPatientDateOfBirth,
@@ -110,6 +111,15 @@ export const TrashIcon = () => (
   </svg>
 );
 
+export const ArchiveIcon = () => (
+  <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+    <path d="M4 7h16" />
+    <path d="M6 7v12h12V7" />
+    <path d="M9 11h6" />
+    <path d="M8 3h8l2 4H6l2-4Z" />
+  </svg>
+);
+
 export const BackIcon = () => (
   <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
     <path d="m15 5-7 7 7 7" />
@@ -188,7 +198,7 @@ export function PatientTableSkeleton({ rows = 5 }) {
   ));
 }
 
-export function PatientTable({ isCho, isLoading, onSelect, patients, selectedId }) {
+export function PatientTable({ archiveMode = "active", isCho, isLoading, onSelect, patients, selectedId }) {
   if (isLoading) {
     return (
       <tbody className="divide-y divide-[#edf0f2]">
@@ -238,7 +248,9 @@ export function PatientTable({ isCho, isLoading, onSelect, patients, selectedId 
             <td className="px-4 py-3.5">
               <p className="text-sm font-bold text-[#0d1117]">{formatPatientName(patient)}</p>
               <p className="text-xs text-[#5f6673]">
-                {patient.address || "No address on file"}
+                {archiveMode === "archived"
+                  ? `Archived ${formatPatientArchivedAt(patient.archived_at)}${patient.archive_reason ? ` - ${patient.archive_reason}` : ""}`
+                  : patient.address || "No address on file"}
               </p>
             </td>
             <td className="px-4 py-3.5">
@@ -260,10 +272,14 @@ export function PatientTable({ isCho, isLoading, onSelect, patients, selectedId 
 }
 
 export function PatientDetailsPanel({
+  archiveMode = "active",
+  canArchive,
   canDelete,
+  onArchive,
   onBack,
   onDelete,
   onEdit,
+  onRestore,
   patient,
 }) {
   if (!patient) {
@@ -281,6 +297,8 @@ export function PatientDetailsPanel({
       </div>
     );
   }
+
+  const isArchived = archiveMode === "archived";
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-[#d8dadc] bg-white shadow-sm">
@@ -343,6 +361,13 @@ export function PatientDetailsPanel({
         </div>
 
         <div className="mt-6 space-y-3">
+          {isArchived && (
+            <>
+              <DetailLine label="Archived" value={formatPatientArchivedAt(patient.archived_at)} />
+              <DetailLine label="Archive Reason" value={patient.archive_reason || "No reason provided"} />
+              <DetailLine label="Archived by" value={patient.archived_by ? "CHO staff" : "-"} />
+            </>
+          )}
           <DetailLine label="Registered by" value={getRegisteredByName(patient.registered_by)} />
           <DetailLine label="Registered" value={formatPatientRegisteredAt(patient.created_at)} />
           <DetailLine label="Full Name" value={formatPatientName(patient)} />
@@ -351,26 +376,174 @@ export function PatientDetailsPanel({
       </div>
 
       <div className="flex gap-3 border-t border-[#e5e7eb] px-5 py-4">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-black text-sm font-bold text-white transition hover:bg-[#0d1117]"
-        >
-          <PencilIcon />
-          Edit
-        </button>
-        {canDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600 transition hover:bg-red-50"
-          >
-            <TrashIcon />
-            Delete
-          </button>
+        {isArchived ? (
+          <>
+            {canArchive && (
+              <button
+                type="button"
+                onClick={onRestore}
+                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-black text-sm font-bold text-white transition hover:bg-[#0d1117]"
+              >
+                <BackIcon />
+                Restore
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600 transition hover:bg-red-50"
+              >
+                <TrashIcon />
+                Delete permanently
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-black text-sm font-bold text-white transition hover:bg-[#0d1117]"
+            >
+              <PencilIcon />
+              Edit
+            </button>
+            {canArchive && (
+              <button
+                type="button"
+                onClick={onArchive}
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-amber-200 px-4 text-sm font-bold text-amber-700 transition hover:bg-amber-50"
+              >
+                <ArchiveIcon />
+                Archive
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+export function PatientConfirmModal({
+  actionType,
+  archiveReason,
+  error,
+  isSaving,
+  onCancel,
+  onConfirm,
+  onReasonChange,
+  patientName,
+}) {
+  const copy = {
+    archive: {
+      title: "Archive Patient",
+      description: "This patient will be hidden from the active list, but their dispensing history will stay preserved.",
+      icon: <ArchiveIcon />,
+      confirmLabel: "Archive Patient",
+      buttonClass: "bg-black text-white hover:bg-[#0d1117]",
+    },
+    restore: {
+      title: "Restore Patient",
+      description: "This patient will return to the active patient list.",
+      icon: <BackIcon />,
+      confirmLabel: "Restore Patient",
+      buttonClass: "bg-black text-white hover:bg-[#0d1117]",
+    },
+    delete: {
+      title: "Delete Permanently",
+      description:
+        "Warning: this action cannot be undone. Deletion is only possible when there is no dispensing or patient medicine history.",
+      icon: <TrashIcon />,
+      confirmLabel: "Delete Permanently",
+      buttonClass: "bg-red-600 text-white hover:bg-red-700",
+    },
+  }[actionType];
+
+  if (!copy) {
+    return null;
+  }
+
+  return (
+    <ModalShell
+      labelledBy="patient-confirm-modal-title"
+      onClose={onCancel}
+      overlayClassName="bg-black/45"
+      panelClassName="max-w-md"
+    >
+      <div className="w-full rounded-xl border border-[#d8dadc] bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span
+              className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                actionType === "delete"
+                  ? "bg-red-50 text-red-600"
+                  : "bg-[#dffbf2] text-[#008f68]"
+              }`}
+            >
+              {copy.icon}
+            </span>
+            <div>
+              <h2 id="patient-confirm-modal-title" className="text-lg font-bold text-[#0d1117]">
+                {copy.title}
+              </h2>
+              <p className="mt-0.5 text-sm font-semibold text-[#42474e]">{patientName}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSaving}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Close confirmation"
+          >
+            <XIcon />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          <p className="text-sm leading-6 text-[#42474e]">{copy.description}</p>
+
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold leading-6 text-red-700">
+              {error}
+            </div>
+          )}
+
+          {actionType === "archive" && (
+            <Field label="Reason for archive">
+              <textarea
+                value={archiveReason}
+                onChange={(event) => onReasonChange(event.target.value)}
+                className="min-h-24 w-full resize-none rounded-lg border border-[#d8dadc] bg-white px-3 py-2 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
+                placeholder="Optional note for audit history"
+              />
+            </Field>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-[#e5e7eb] px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSaving}
+            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSaving}
+            className={`inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-neutral-400 ${copy.buttonClass}`}
+          >
+            {copy.icon}
+            {isSaving ? "Saving..." : copy.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </ModalShell>
   );
 }
 
