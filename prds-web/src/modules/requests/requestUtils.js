@@ -431,9 +431,10 @@ export const getRequestSummary = (requests = []) => {
       summary.pending += request.status === "PENDING" ? 1 : 0;
       summary.inTransit += request.status === "APPROVED" ? 1 : 0;
       summary.completed += request.status === "COMPLETED" ? 1 : 0;
+      summary.rejected += request.status === "REJECTED" ? 1 : 0;
       return summary;
     },
-    { completed: 0, inTransit: 0, pending: 0, total: 0 }
+    { completed: 0, inTransit: 0, pending: 0, rejected: 0, total: 0 }
   );
 };
 
@@ -501,8 +502,12 @@ export const buildRequestsCsv = (requests = []) => {
 
 export const matchesRequestFilters = (
   request,
-  { facilityId = "ALL", keyword = "", status = "ALL" }
+  { dateRange = "ALL", facilityId = "ALL", keyword = "", status = "ALL" }
 ) => {
+  if (!isRequestWithinDateRange(request, dateRange)) {
+    return false;
+  }
+
   const normalizedKeyword = keyword.trim().toLowerCase();
   const searchableText = [
     getRequestNumber(request.id),

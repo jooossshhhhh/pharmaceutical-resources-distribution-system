@@ -49,6 +49,7 @@ export function RequestMetricCard({
     <Component
       type={onClick ? "button" : undefined}
       onClick={onClick}
+      aria-pressed={onClick ? active : undefined}
       className={`group rounded-xl border px-4 py-3 text-left shadow-sm transition-all duration-200 ${
         active
           ? "border-[#6be9c2] bg-[#6be9c2] text-[#0d1117] shadow-md shadow-emerald-100"
@@ -197,6 +198,8 @@ export function SortDropdown({ isOpen, onChange, onToggle, options, value }) {
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
         className="flex h-10 min-w-[9.5rem] items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none transition hover:bg-neutral-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
       >
         <span className="inline-flex items-center gap-2">

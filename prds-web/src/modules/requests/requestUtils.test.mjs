@@ -107,6 +107,7 @@ test("summarizes request statuses", () => {
     completed: 1,
     inTransit: 1,
     pending: 1,
+    rejected: 0,
     total: 3,
   });
 });

@@ -73,6 +73,13 @@ const summaryFilters = [
     status: "COMPLETED",
     valueKey: "completed",
   },
+  {
+    icon: "rejected",
+    label: "Rejected",
+    note: "Declined requests",
+    status: "REJECTED",
+    valueKey: "rejected",
+  },
 ];
 
 export default function ChoRequestsModule() {
@@ -94,6 +101,12 @@ export default function ChoRequestsModule() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [reviewError, setReviewError] = useState("");
+  const [releaseError, setReleaseError] = useState("");
+
+  const activeSortOptions = statusFilter === "PENDING"
+    ? requestSortOptions
+    : requestSortOptions.filter((o) => o.value !== "priority");
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const stockMap = useMemo(() => getStockMap(inventoryRows), [inventoryRows]);
@@ -178,9 +191,9 @@ export default function ChoRequestsModule() {
 
     let isCurrent = true;
 
-    const loadReleaseBatches = async () => {
+const loadReleaseBatches = async () => {
       setIsReleaseLoading(true);
-      setError("");
+      setReleaseError("");
 
       try {
         const batches = await getRequestReleaseBatches(selectedRequestDetails.id);
@@ -197,7 +210,7 @@ export default function ChoRequestsModule() {
         if (isCurrent) {
           setReleaseBatches([]);
           setReleaseAllocations([]);
-          setError(loadError.message);
+          setReleaseError(loadError.message);
         }
       } finally {
         if (isCurrent) {
@@ -261,7 +274,7 @@ export default function ChoRequestsModule() {
       );
 
       if (allocationError) {
-        setError(allocationError);
+        setReviewError(allocationError);
         return;
       }
     }
@@ -283,13 +296,14 @@ export default function ChoRequestsModule() {
           currentRequest.id === updatedRequest.id ? updatedRequest : currentRequest
         )
       );
-      setSelectedRequest(updatedRequest);
+setSelectedRequest(updatedRequest);
       setRemarks("");
+      setReviewError("");
       setReleaseBatches([]);
       setReleaseAllocations([]);
       await loadRequests();
     } catch (saveError) {
-      setError(saveError.message);
+      setReviewError(saveError.message);
     } finally {
       setIsSaving(false);
     }
@@ -303,7 +317,7 @@ export default function ChoRequestsModule() {
         </p>
       )}
 
-      <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
         {summaryFilters.map((filter) => (
           <RequestMetricCard
             key={filter.status}
@@ -358,7 +372,7 @@ export default function ChoRequestsModule() {
                     setIsSortOpen(false);
                   }}
                   onToggle={() => setIsSortOpen((isOpen) => !isOpen)}
-                  options={requestSortOptions}
+                  options={activeSortOptions}
                   value={sortMode}
                 />
               </div>
@@ -394,7 +408,7 @@ export default function ChoRequestsModule() {
                         <RequestRow
                           key={request.id}
                           request={request}
-                          onReview={handleReview}
+                          request={request}
                           onSelect={() => {
                             setReleaseBatches([]);
                             setReleaseAllocations([]);
@@ -423,14 +437,14 @@ export default function ChoRequestsModule() {
         </div>
       </RequestPanel>
 
-      {selectedRequestDetails && (
+{selectedRequestDetails && (
         <RequestDetailsModal
           isSaving={isSaving}
           onClose={() => {
             setSelectedRequest(null);
             setRemarks("");
-            setReleaseBatches([]);
-            setReleaseAllocations([]);
+setReleaseBatches([]);
+        setReleaseAllocations([]);
           }}
           onReview={handleReview}
           isReleaseLoading={isReleaseLoading}
@@ -441,6 +455,8 @@ export default function ChoRequestsModule() {
           request={selectedRequestDetails}
           setRemarks={setRemarks}
           stockMap={stockMap}
+          releaseError={releaseError}
+          reviewError={reviewError}
         />
       )}
     </AdminShell>
@@ -609,6 +625,10 @@ function SummaryIcon({ iconKey }) {
     return <UiCheckIcon />;
   }
 
+  if (iconKey === "rejected") {
+    return <UiCloseIcon />;
+  }
+
   return <UiRequestIcon />;
 }
 
@@ -620,23 +640,20 @@ function RequestRow({ isSaving, onReview, onSelect, request, showFacilityColumn 
 
   return (
     <tr className="group align-top text-sm transition hover:bg-emerald-50/40">
-      <td className="px-4 py-3">
-        <button
-          type="button"
-          onClick={onSelect}
-          className="text-left text-xs font-black text-blue-600 underline-offset-4 hover:text-blue-800 hover:underline"
-        >
-          {getRequestNumber(request.id)}
-        </button>
-        <p className="mt-1 text-[10px] font-semibold text-neutral-400">
-          {formatRequestDate(request.request_date)}
-        </p>
-        {!showFacilityColumn && (
-          <p className="mt-1 text-[10px] font-bold text-neutral-500">
-            {getRequesterName(request)}
-          </p>
-        )}
-      </td>
+<td className="px-4 py-3">
+            <button
+              type="button"
+              onClick={onSelect}
+              className="text-left text-xs font-black text-blue-600 underline-offset-4 hover:text-blue-800 hover:underline"
+            >
+              {getRequestNumber(request.id)}
+            </button>
+            {!showFacilityColumn && (
+              <p className="mt-1 text-[10px] font-bold text-neutral-500">
+                {getRequesterName(request)}
+              </p>
+            )}
+          </td>
       {showFacilityColumn && (
         <td className="px-4 py-3">
           <p className="font-black text-black">{request.facility?.facility_name || "No facility"}</p>
@@ -671,20 +688,15 @@ function RequestRow({ isSaving, onReview, onSelect, request, showFacilityColumn 
       </td>
       <td className="px-4 py-3">
         <div className="flex justify-end gap-2">
-          {canReview ? (
-            <>
-              <ActionButton disabled={isSaving} onClick={onSelect} tone="primary">
-                Review
-              </ActionButton>
-              <ActionButton disabled={isSaving} onClick={() => onReview(request, "REJECTED")} tone="soft">
-                Reject
-              </ActionButton>
-            </>
-          ) : (
-            <ActionButton onClick={onSelect} tone="soft">
-              Track
-            </ActionButton>
-          )}
+{canReview ? (
+  <ActionButton disabled={isSaving} onClick={onSelect} tone="primary">
+    Review
+  </ActionButton>
+) : (
+  <ActionButton onClick={onSelect} tone="soft">
+    Track
+  </ActionButton>
+)}
         </div>
       </td>
     </tr>
@@ -703,6 +715,8 @@ function RequestDetailsModal({
   request,
   setRemarks,
   stockMap,
+  releaseError,
+  reviewError,
 }) {
   const priority = getRequestPriority(request);
   const canReview = request.status === "PENDING";
@@ -718,6 +732,12 @@ function RequestDetailsModal({
     (releaseAllocations || [])
       .filter((allocation) => allocation.request_item_id === requestItemId)
       .reduce((total, allocation) => total + Number(allocation.quantity || 0), 0);
+
+  const allAllocated = request.items?.length
+    ? request.items.every(
+        (item) => getTotalAllocatedForItem(item.id) === Number(item.quantity || 0)
+      )
+    : true;
 
   return (
     <ModalShell
@@ -736,6 +756,10 @@ function RequestDetailsModal({
             <UiCloseIcon />
           </button>
         </header>
+
+        <p role="alert" className="mt-2 text-sm font-semibold text-orange-700">
+          {reviewError}
+        </p>
 
         <div className="prds-modal-scrollbar max-h-[72vh] overflow-y-auto p-5">
           <div className="grid gap-3 md:grid-cols-2">
@@ -824,6 +848,10 @@ function RequestDetailsModal({
                 <p className="mt-4 rounded-lg bg-white px-3 py-4 text-center text-sm font-bold text-neutral-500">
                   Loading CHO batches...
                 </p>
+              ) : releaseError ? (
+                <p className="mt-4 rounded-lg border border-orange-100 bg-white px-3 py-4 text-center text-sm font-bold text-orange-700">
+                  Failed to load CHO batches. Please try again.
+                </p>
               ) : releaseBatches.length === 0 ? (
                 <p className="mt-4 rounded-lg border border-orange-100 bg-white px-3 py-4 text-center text-sm font-bold text-orange-700">
                   No available CHO batches can fulfill this request.
@@ -848,15 +876,20 @@ function RequestDetailsModal({
                               {item.medicine?.unit_of_measure || "units"}
                             </p>
                           </div>
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
-                              isFullyAllocated
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-orange-100 text-orange-700"
-                            }`}
-                          >
-                            {allocatedQuantity.toLocaleString()} / {requestedQuantity.toLocaleString()} allocated
-                          </span>
+<span
+                              className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                                isFullyAllocated
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-orange-100 text-orange-700"
+                              }`}
+                            >
+                              {allocatedQuantity.toLocaleString()} / {requestedQuantity.toLocaleString()} allocated
+                            </span>
+                          {!isFullyAllocated && (
+                            <p className="mt-1 text-xs font-bold text-red-600">
+                              Needs {requestedQuantity - allocatedQuantity} more units
+                            </p>
+                          )}
                         </div>
 
                         {itemBatches.length === 0 ? (
@@ -995,7 +1028,7 @@ function RequestDetailsModal({
               </button>
               <button
                 type="button"
-                disabled={isSaving || isReleaseLoading}
+                disabled={isSaving || isReleaseLoading || !allAllocated || releaseError}
                 onClick={() => onReview(request, "APPROVED")}
                 className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
