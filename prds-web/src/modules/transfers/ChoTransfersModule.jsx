@@ -29,7 +29,6 @@ import {
 import {
   CheckIcon,
   Field,
-  FilterChip,
   HistoryIcon,
   Input,
   PlusIcon,
@@ -490,7 +489,6 @@ export default function ChoTransfersModule() {
   const { profile } = useAuth();
   const [transfers, setTransfers] = useState([]);
   const [facilities, setFacilities] = useState([]);
-  const [medicines, setMedicines] = useState([]);
   const [availability, setAvailability] = useState([]);
   const [filters, setFilters] = useState({
     destinationFacilityId: "ALL",
@@ -500,7 +498,7 @@ export default function ChoTransfersModule() {
     status: "ACTIVE",
     sort: "newest",
   });
-  const [selectedTransfer, setSelectedTransfer] = useState(null);
+const [selectedTransfer, setSelectedTransfer] = useState(null);
   const [reviewRemarks, setReviewRemarks] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -529,7 +527,6 @@ export default function ChoTransfersModule() {
       ]);
       setTransfers(data.transfers);
       setFacilities(data.facilities);
-      setMedicines(data.medicines);
       setAvailability(availabilityRows);
     } catch (loadError) {
       setError(loadError.message || "Unable to load transfers.");
@@ -555,40 +552,16 @@ export default function ChoTransfersModule() {
       })
     );
 
-    return sortTransfers(matched, filters.sort);
+return sortTransfers(matched, filters.sort);
   }, [filters, transfers]);
 
-  const medicineOptions = useMemo(() => {
-    const medicineMap = new Map();
-    transfers.forEach((transfer) => {
-      (transfer.items || []).forEach((item) => {
-        if (item.medicine) {
-          medicineMap.set(item.medicine_id, item.medicine);
-        }
-      });
-    });
-    medicines.forEach((medicine) => medicineMap.set(medicine.id, medicine));
-    return [...medicineMap.entries()].map(([id, medicine]) => ({ id, ...medicine }));
-  }, [medicines, transfers]);
-
-  const setStatusFilter = (status) => {
+const setStatusFilter = (status) => {
     setFilters((current) => ({ ...current, status: getTransferActionTabStatus(status) }));
-  };
-
-  const toggleSort = () => {
-    setFilters((current) => ({
-      ...current,
-      sort: current.sort === "newest" ? "oldest" : "newest",
-    }));
   };
 
   const isHistoryView = filters.status === "HISTORY";
 
-  const toggleHistoryView = () => {
-    setStatusFilter(isHistoryView ? "ACTIVE" : "HISTORY");
-  };
-
-  const updateCreateForm = (key, value) => {
+const updateCreateForm = (key, value) => {
     setCreateForm((current) => ({
       ...current,
       [key]: value,
@@ -700,19 +673,32 @@ export default function ChoTransfersModule() {
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <FilterChip
-                active={false}
-                icon={
-                  <span className="transition-all duration-200">
-                    {isHistoryView ? <QueueIcon /> : <HistoryIcon />}
-                  </span>
-                }
-                onClick={toggleHistoryView}
-              >
-                <span className="transition-all duration-200">
-                  {isHistoryView ? "Queue" : "History"}
-                </span>
-              </FilterChip>
+              <div className="inline-flex rounded-lg border border-[#d8dadc] bg-[#f7f6f3] p-1">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("ACTIVE")}
+                  className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-bold transition ${
+                    !isHistoryView
+                      ? "bg-black text-white shadow-sm"
+                      : "text-[#42474e] hover:bg-white"
+                  }`}
+                  aria-pressed={!isHistoryView}
+                >
+                  <QueueIcon /> Queue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("HISTORY")}
+                  className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-bold transition ${
+                    isHistoryView
+                      ? "bg-black text-white shadow-sm"
+                      : "text-[#42474e] hover:bg-white"
+                  }`}
+                  aria-pressed={isHistoryView}
+                >
+                  <HistoryIcon /> History
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
@@ -771,67 +757,35 @@ export default function ChoTransfersModule() {
               {filteredTransfers.length.toLocaleString()} shown
             </span>
           </div>
-          <div className="grid gap-3 border-b border-[#e5e7eb] px-4 py-3 lg:grid-cols-[1fr_180px_180px_160px_auto]">
-            <label className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
-                <SearchIcon />
-              </span>
-              <Input
-                value={filters.keyword}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, keyword: event.target.value }))
+          <div className="border-b border-[#e5e7eb] px-4 py-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <label className="relative min-w-0 flex-1">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
+                  <SearchIcon />
+                </span>
+                <Input
+                  value={filters.keyword}
+                  onChange={(event) =>
+                    setFilters((current) => ({ ...current, keyword: event.target.value }))
+                  }
+                  placeholder="Search transfer ID, facility, medicine..."
+                  className="pl-9"
+                />
+              </label>
+<SortToggleButton
+                onClick={() =>
+                  setFilters((current) => ({
+                    ...current,
+                    sort: current.sort === "newest" ? "oldest" : "newest",
+                  }))
                 }
-                placeholder="Search transfer ID, facility, medicine..."
-                className="pl-9"
+                sort={filters.sort}
               />
-            </label>
-            <Select
-              value={filters.sourceFacilityId}
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, sourceFacilityId: event.target.value }))
-              }
-            >
-              <option value="ALL">All sources</option>
-              {facilities.map((facility) => (
-                <option key={facility.id} value={facility.id}>
-                  {facility.facility_name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={filters.destinationFacilityId}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  destinationFacilityId: event.target.value,
-                }))
-              }
-            >
-              <option value="ALL">All destinations</option>
-              {facilities.map((facility) => (
-                <option key={facility.id} value={facility.id}>
-                  {facility.facility_name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={filters.medicineId}
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, medicineId: event.target.value }))
-              }
-            >
-              <option value="ALL">All medicines</option>
-              {medicineOptions.map((medicine) => (
-                <option key={medicine.id} value={medicine.id}>
-                  {medicine.brand_name || medicine.generic_name} {medicine.dosage}
-                </option>
-              ))}
-            </Select>
-            <SortToggleButton onClick={toggleSort} sort={filters.sort} />
+            </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-left text-sm">
+            <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
                 <tr>
                   <th className="px-4 py-3">Transfer ID</th>
@@ -854,39 +808,44 @@ export default function ChoTransfersModule() {
                       setReviewRemarks(transfer.remarks || "");
                     }}
                   >
-                    <td className="px-4 py-4 font-bold text-blue-700">
+                    <td className="whitespace-nowrap px-4 py-3 font-bold text-blue-700">
                       {formatTransferNumber(transfer.id)}
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="max-w-[18rem]">
-                        <p className="font-bold text-[#0d1117]">
+                    <td className="px-4 py-3">
+                      <div className="max-w-[18rem] break-words">
+                        <p className="font-bold leading-snug text-[#0d1117]">
                           {transfer.source?.facility_name || "Unknown source"}
                         </p>
-                        <p className="mt-1 text-xs font-medium text-[#5f6673]">
+                        <p className="mt-1 break-words text-xs font-medium leading-relaxed text-[#5f6673]">
                           to {transfer.destination?.facility_name || "Unknown destination"}
                         </p>
                       </div>
                     </td>
-                    <td className="px-4 py-4 font-bold text-[#0d1117]">
+                    <td className="max-w-[18rem] break-words px-4 py-3 font-bold leading-snug text-[#0d1117]">
                       {getItemsSummary(transfer)}
                     </td>
-                    <td className="px-4 py-4 text-[#0d1117]">
+                    <td className="whitespace-nowrap px-4 py-3 text-[#0d1117]">
                       {getTransferTotalQuantity(transfer).toLocaleString()} units
                     </td>
-                    <td className="px-4 py-4">
+                    <td className="whitespace-nowrap px-4 py-3">
                       <StatusBadge status={transfer.status} />
                     </td>
-                    <td className="px-4 py-4 text-[#5f6673]">
+                    <td className="whitespace-nowrap px-4 py-3 text-[#5f6673]">
                       {formatTransferDate(transfer.created_at)}
                     </td>
-                    <td className="px-4 py-4">
+                    <td className="whitespace-nowrap px-4 py-3">
                       <span className="rounded-full bg-[#f8f9ff] px-2.5 py-1 text-xs font-bold text-[#42474e]">
                         {nextOwnerLabels[transfer.status] || "Review"}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
                       <button
                         type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedTransfer(transfer);
+                          setReviewRemarks(transfer.remarks || "");
+                        }}
                         className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#008f68] transition hover:bg-[#dffbf2]"
                       >
                         {transfer.status === "PENDING" ? "Review" : "View"}
