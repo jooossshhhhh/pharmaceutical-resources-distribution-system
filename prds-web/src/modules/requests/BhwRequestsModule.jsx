@@ -1227,7 +1227,7 @@ function ChoAvailabilitySummary({ error, isLoading, medicines, onRetry }) {
         <div>
           <SectionTitle icon={<BoxIcon />} title="CHO Stock Availability" />
           <p className="mt-1 text-xs font-semibold leading-5 text-neutral-500">
-            These are medicines currently requestable from active CHO stock.
+            Live requestable stock from the Central Health Office.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-right">
@@ -1271,23 +1271,7 @@ function ChoAvailabilitySummary({ error, isLoading, medicines, onRetry }) {
             Retry
           </button>
         </div>
-      ) : medicines.length > 0 ? (
-        <div className="prds-modal-scrollbar mt-3 grid max-h-28 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
-          {medicines.map((medicine) => (
-            <div
-              key={medicine.id}
-              className="min-w-0 rounded-lg border border-white bg-white px-3 py-2 shadow-sm"
-            >
-              <p className="truncate text-xs font-black text-neutral-900" title={getMedicineFullLabel(medicine)}>
-                {getMedicineFullLabel(medicine)}
-              </p>
-              <p className="mt-1 text-[11px] font-bold text-emerald-700">
-                {Number(medicine.available_quantity || 0).toLocaleString()} units can request
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : (
+      ) : medicines.length > 0 ? null : (
         <div className="mt-3 rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-3">
           <p className="text-xs font-bold text-neutral-700">
             No unexpired CHO stock is currently requestable.
@@ -1333,7 +1317,6 @@ function RequestItemFields({
   stockMap,
   updateItem,
 }) {
-  const selectedMedicine = medicines.find((medicine) => medicine.id === item.medicine_id);
   const stock = stockMap.get(`${facilityId}:${item.medicine_id}`);
   const stockStatus = item.medicine_id
     ? getItemStockStatus(item, facilityId, stockMap)
@@ -1374,15 +1357,10 @@ function RequestItemFields({
               </option>
               {medicines.map((medicine) => (
                 <option key={medicine.id} value={medicine.id}>
-                  {`${getMedicineFullLabel(medicine)} — ${Number(medicine.available_quantity || 0).toLocaleString()} units available`}
+                  {getMedicineFullLabel(medicine)}
                 </option>
               ))}
             </select>
-            {selectedMedicine && (
-              <span className="mt-1.5 text-xs font-semibold normal-case tracking-normal text-neutral-500">
-                {getMedicineFullLabel(selectedMedicine)}
-              </span>
-            )}
           </label>
           {pendingEntries.length > 0 && (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold normal-case tracking-normal text-amber-700">
@@ -1398,21 +1376,26 @@ function RequestItemFields({
         </div>
 
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
-              CHO Stock Available
-            </span>
-            <span className={`text-xs font-black ${choExceedsRequest ? "text-red-600" : "text-emerald-700"}`}>
-              {availableQuantity !== null
-                ? `${availableQuantity.toLocaleString()} units`
-                : "Choose medicine"}
-            </span>
-          </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-200">
+          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
+            CHO Stock Available
+          </span>
+          <div
+            className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-200"
+            role="progressbar"
+            aria-label={
+              availableQuantity !== null && choAvailability
+                ? `Can request ${availableQuantity.toLocaleString()} of ${choAvailability.physicalQuantity.toLocaleString()} units`
+                : "CHO stock availability"
+            }
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow={choProgressValue}
+          >
             <div
               className={`h-full rounded-full ${
                 choExceedsRequest ? "bg-red-500" : "bg-emerald-500"
               }`}
+              aria-hidden="true"
               style={{ width: `${choProgressValue}%` }}
             />
           </div>
