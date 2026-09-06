@@ -67,6 +67,8 @@ export default function BhwRequestsModule() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isMedicinesLoading, setIsMedicinesLoading] = useState(false);
+  const [medicinesError, setMedicinesError] = useState("");
   const [isReceiving, setIsReceiving] = useState(false);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -157,15 +159,24 @@ export default function BhwRequestsModule() {
     }
   }, [applyRequestsData, profileFacilityId]);
 
-  const openNewRequestModal = async () => {
-    setError("");
-    setIsModalOpen(true);
+  const loadMedicines = useCallback(async () => {
+    setIsMedicinesLoading(true);
+    setMedicinesError("");
 
     try {
       setMedicines(await getChoInventoryMedicines());
     } catch (availabilityError) {
-      setError(availabilityError.message);
+      setMedicines([]);
+      setMedicinesError(normalizeRequestErrorMessage(availabilityError.message));
+    } finally {
+      setIsMedicinesLoading(false);
     }
+  }, []);
+
+  const openNewRequestModal = async () => {
+    setError("");
+    setIsModalOpen(true);
+    await loadMedicines();
   };
 
   useEffect(() => {
@@ -429,13 +440,16 @@ export default function BhwRequestsModule() {
         <NewRequestModal
           choAvailabilityMap={choAvailabilityMap}
           error={error}
+          isMedicinesLoading={isMedicinesLoading}
           isSaving={isSaving}
           lowStockItems={lowStockItems}
           medicines={medicines}
+          medicinesError={medicinesError}
           onClose={() => {
             setIsModalOpen(false);
             resetForm();
           }}
+          onRetryMedicines={loadMedicines}
           onSubmit={submitRequest}
           pendingRequestsByMedicine={pendingRequestsByMedicine}
           remarks={remarks}
@@ -1033,10 +1047,13 @@ function NewRequestModal({
   choAvailabilityMap,
   error,
   facilityId,
+  isMedicinesLoading,
   isSaving,
   lowStockItems,
   medicines,
+  medicinesError,
   onClose,
+  onRetryMedicines,
   onSubmit,
   pendingRequestsByMedicine,
   remarks,
@@ -1074,7 +1091,7 @@ function NewRequestModal({
       <form
         onSubmit={onSubmit}
         onKeyDown={handleFormKeyDown}
-        className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl"
       >
         <header className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
           <div>
@@ -1082,10 +1099,15 @@ function NewRequestModal({
               New Supply Request
             </h3>
             <p className="mt-1 text-xs font-semibold text-neutral-500">
-              Submit a medicine request for CHO review and replenishment.
+              Choose medicines from CHO stock, enter the quantity needed, then submit for review.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 place-items-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+            aria-label="Close request form"
+          >
             <CloseIcon />
           </button>
         </header>
@@ -1096,9 +1118,15 @@ function NewRequestModal({
               {error}
             </p>
           )}
+          <ChoAvailabilitySummary
+            error={medicinesError}
+            isLoading={isMedicinesLoading}
+            medicines={medicines}
+            onRetry={onRetryMedicines}
+          />
           <section>
             <div className="flex items-center justify-between gap-3">
-              <SectionTitle icon={<ClipboardIcon />} title="Item Specification" />
+              <SectionTitle icon={<ClipboardIcon />} title="Medicines to Request" />
               {lowStockItems.length > 0 && (
                 <button
                   type="button"
@@ -1118,6 +1146,7 @@ function NewRequestModal({
                   canRemove={requestItems.length > 1}
                   choAvailabilityMap={choAvailabilityMap}
                   facilityId={facilityId}
+                  isMedicinesLoading={isMedicinesLoading}
                   item={item}
                   medicines={medicines}
                   onRemove={() =>
@@ -1142,14 +1171,14 @@ function NewRequestModal({
           </section>
 
           <section className="mt-5">
-            <SectionTitle icon={<TruckIcon />} title="Request Details" />
+            <SectionTitle icon={<TruckIcon />} title="Notes" />
             <label className="mt-3 grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-              Notes and handling instructions
+              Reason or handling notes
               <textarea
                 value={remarks}
                 onChange={(event) => setRemarks(event.target.value)}
                 rows="4"
-                placeholder="e.g. Current stock is below threshold, urgent monthly replenishment needed..."
+                placeholder="Example: Current stock is low and needed for monthly medicine release."
                 className="resize-none rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium normal-case tracking-normal text-neutral-700 outline-none placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </label>
@@ -1166,10 +1195,15 @@ function NewRequestModal({
           </button>
           <button
             type="submit"
-            disabled={isSaving || Boolean(availabilityError)}
+            disabled={
+              isSaving ||
+              isMedicinesLoading ||
+              medicines.length === 0 ||
+              Boolean(availabilityError)
+            }
             className="h-10 rounded-lg bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
           >
-            {isSaving ? "Submitting..." : "Submit Request"}
+            {isSaving ? "Submitting..." : "Submit Supply Request"}
           </button>
         </footer>
       </form>
@@ -1177,10 +1211,121 @@ function NewRequestModal({
   );
 }
 
+function ChoAvailabilitySummary({ error, isLoading, medicines, onRetry }) {
+  const totals = medicines.reduce(
+    (summary, medicine) => ({
+      available: summary.available + Number(medicine.available_quantity || 0),
+      onHand: summary.onHand + Number(medicine.physical_quantity || 0),
+      requested: summary.requested + Number(medicine.reserved_quantity || 0),
+    }),
+    { available: 0, onHand: 0, requested: 0 }
+  );
+
+  return (
+    <section className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <SectionTitle icon={<BoxIcon />} title="CHO Stock Availability" />
+          <p className="mt-1 text-xs font-semibold leading-5 text-neutral-500">
+            These are medicines currently requestable from active CHO stock.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-right">
+          <StockMetric
+            label="Medicines"
+            value={isLoading || error ? "–" : medicines.length.toLocaleString()}
+          />
+          <StockMetric
+            label="Can request"
+            value={isLoading || error ? "–" : totals.available.toLocaleString()}
+          />
+          <StockMetric
+            label="Already requested"
+            value={isLoading || error ? "–" : totals.requested.toLocaleString()}
+          />
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3].map((item) => (
+            <div
+              key={item}
+              className="min-w-0 animate-pulse rounded-lg border border-white bg-white px-3 py-2 shadow-sm"
+              aria-hidden="true"
+            >
+              <div className="h-3 w-3/4 rounded bg-neutral-200" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-neutral-200" />
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3">
+          <p className="min-w-0 text-xs font-bold leading-5 text-red-700">{error}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 text-[11px] font-black text-red-700 transition hover:bg-red-50"
+          >
+            <UiRefreshIcon />
+            Retry
+          </button>
+        </div>
+      ) : medicines.length > 0 ? (
+        <div className="prds-modal-scrollbar mt-3 grid max-h-28 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+          {medicines.map((medicine) => (
+            <div
+              key={medicine.id}
+              className="min-w-0 rounded-lg border border-white bg-white px-3 py-2 shadow-sm"
+            >
+              <p className="truncate text-xs font-black text-neutral-900" title={getMedicineFullLabel(medicine)}>
+                {getMedicineFullLabel(medicine)}
+              </p>
+              <p className="mt-1 text-[11px] font-bold text-emerald-700">
+                {Number(medicine.available_quantity || 0).toLocaleString()} units can request
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-3">
+          <p className="text-xs font-bold text-neutral-700">
+            No unexpired CHO stock is currently requestable.
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-neutral-500">
+            CHO stock may be expired or depleted, so the requestable list is empty. Ask the CHO to
+            replenish stock, then refresh to load the updated availability.
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 text-[11px] font-black text-neutral-700 transition hover:bg-neutral-50"
+          >
+            <UiRefreshIcon />
+            Refresh stock
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StockMetric({ label, value }) {
+  return (
+    <div className="min-w-24 rounded-lg bg-white px-3 py-2 shadow-sm">
+      <p className="text-sm font-black text-neutral-950">{value}</p>
+      <p className="mt-0.5 text-[10px] font-black uppercase tracking-wide text-neutral-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
 function RequestItemFields({
   canRemove,
   choAvailabilityMap,
   facilityId,
+  isMedicinesLoading,
   item,
   medicines,
   onRemove,
@@ -1211,20 +1356,25 @@ function RequestItemFields({
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
         <div className="grid gap-2">
           <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-            Select Medicine
+            Medicine
             <select
               required
+              disabled={isMedicinesLoading}
               value={item.medicine_id}
               onChange={(event) => updateItem("medicine_id", event.target.value)}
-              className="h-11 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              className="h-11 min-w-0 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-neutral-100"
             >
-              <option value="">Search item (e.g. Amoxicillin)</option>
+              <option value="">
+                {isMedicinesLoading
+                  ? "Loading CHO stock..."
+                  : "Choose a medicine from CHO stock"}
+              </option>
               {medicines.map((medicine) => (
                 <option key={medicine.id} value={medicine.id}>
-                  {getMedicineFullLabel(medicine)}
+                  {`${getMedicineFullLabel(medicine)} — ${Number(medicine.available_quantity || 0).toLocaleString()} units available`}
                 </option>
               ))}
             </select>
@@ -1242,20 +1392,20 @@ function RequestItemFields({
           )}
           {item.medicine_id && stock && (
             <p className="text-[11px] font-semibold normal-case tracking-normal text-neutral-500">
-              Your facility: {quantity.toLocaleString()} units on hand / {stockStatus.label}; threshold {threshold.toLocaleString()}
+              Your facility has {quantity.toLocaleString()} units on hand. Status: {stockStatus.label}. Threshold: {threshold.toLocaleString()}.
             </p>
           )}
         </div>
 
-        <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
-              CHO Available to Request
+              CHO Stock Available
             </span>
             <span className={`text-xs font-black ${choExceedsRequest ? "text-red-600" : "text-emerald-700"}`}>
               {availableQuantity !== null
                 ? `${availableQuantity.toLocaleString()} units`
-                : "Select a medicine"}
+                : "Choose medicine"}
             </span>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-200">
@@ -1267,14 +1417,14 @@ function RequestItemFields({
             />
           </div>
           {choAvailability ? (
-            <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] font-bold text-neutral-500">
-              <span className="rounded-lg bg-white px-2 py-1">Physical {choAvailability.physicalQuantity.toLocaleString()}</span>
-              <span className="rounded-lg bg-white px-2 py-1">Reserved {choAvailability.reservedQuantity.toLocaleString()}</span>
-              <span className="rounded-lg bg-white px-2 py-1 text-emerald-700">Balance {availableQuantity.toLocaleString()}</span>
+            <div className="mt-3 grid gap-2 text-[10px] font-bold text-neutral-500 sm:grid-cols-3">
+              <span className="rounded-lg bg-white px-2 py-1">On hand {choAvailability.physicalQuantity.toLocaleString()}</span>
+              <span className="rounded-lg bg-white px-2 py-1">Already requested {choAvailability.reservedQuantity.toLocaleString()}</span>
+              <span className="rounded-lg bg-white px-2 py-1 text-emerald-700">Can request {availableQuantity.toLocaleString()}</span>
             </div>
           ) : (
             <p className="mt-2 text-[11px] font-semibold text-neutral-500">
-              Select a medicine to view current CHO availability.
+              Choose a medicine to see how much CHO can still release.
             </p>
           )}
           {choExceedsRequest && (
@@ -1287,7 +1437,7 @@ function RequestItemFields({
 
       <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
         <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-          Requested Quantity
+          Quantity needed
           <input
             required
             min="1"
@@ -1298,6 +1448,9 @@ function RequestItemFields({
             placeholder="0"
             className="h-11 w-28 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
           />
+          <span className="text-[11px] font-semibold normal-case tracking-normal text-neutral-500">
+            Enter a whole number. It cannot be more than the CHO stock available.
+          </span>
         </label>
 
         <div className="flex flex-col items-end justify-between gap-2">
