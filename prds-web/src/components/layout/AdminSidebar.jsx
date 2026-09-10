@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import prdsLogo from "../../assets/prds-logo-main.svg";
@@ -51,6 +50,13 @@ const iconPaths = {
       <path d="M5 21V7l7-4 7 4v14" />
       <path d="M9 21v-6h6v6" />
       <path d="M9 10h.01M15 10h.01" />
+    </>
+  ),
+  Suppliers: (
+    <>
+      <path d="M4 7h16v12H4z" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M8 13h8" />
     </>
   ),
   Patients: (
@@ -108,6 +114,7 @@ const navItems = [
   { label: "Medicines", path: "/medicines", roles: ["PHARMA_I", "PHARMA_II"], category: "Medicine & Planning" },
   { label: "Forecasting", path: "/forecasting", category: "Medicine & Planning" },
   { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
+  { label: "Suppliers", path: "/suppliers", roles: ["PHARMA_II"], category: "Administration" },
   {
     label: "User Management",
     path: "/users",
@@ -185,44 +192,6 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
     }))
     .filter((group) => group.items.length > 0);
 
-  const [collapsedGroups, setCollapsedGroups] = useState(() => {
-    try {
-      const stored = window.localStorage.getItem("prds-sidebar-collapsed-categories");
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-
-  const activeCategory = navGroups.find((group) =>
-    group.items.some((item) => isActiveNavItem(item.path, location.pathname))
-  )?.category;
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        "prds-sidebar-collapsed-categories",
-        JSON.stringify([...collapsedGroups])
-      );
-    } catch {
-      // ignore storage write failures
-    }
-  }, [collapsedGroups]);
-
-  const toggleGroup = (category) => {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
-      }
-
-      return next;
-    });
-  };
-
   return (
     <aside
       className={`sticky top-0 flex h-screen flex-col border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
@@ -263,43 +232,18 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
         }`}
       >
         {navGroups.map((group, groupIndex) => {
-          const isOpen =
-              isCollapsed || group.category === activeCategory || !collapsedGroups.has(group.category);
-
           return (
             <div key={group.category}>
               {!isCollapsed && (
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.category)}
-                  aria-expanded={isOpen}
-                  aria-controls={`nav-group-${group.category}`}
-                  className={`flex w-full cursor-pointer items-center justify-between px-3 pb-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[#8a93a3] transition hover:text-[#0d1117] ${
+                <p
+                  className={`px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#8a93a3] ${
                     groupIndex === 0 ? "pt-1.5" : "pt-4"
                   }`}
                 >
                   {group.category}
-                  <ChevronDownIcon
-                    className={`transition-transform duration-200 ${
-                      isOpen ? "" : "-rotate-90"
-                    }`}
-                  />
-                </button>
+                </p>
               )}
-              <div
-                className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
-                  isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-                }`}
-              >
-                <div className="min-h-0 overflow-hidden">
-                  <div
-                    id={`nav-group-${group.category}`}
-                    aria-hidden={!isOpen}
-                    inert={!isOpen}
-                    className={`space-y-1 transition-opacity duration-200 ${
-                      isOpen ? "opacity-100" : "opacity-0"
-                    }`}
-                  >
+              <div className="space-y-1">
                     {group.items.map((item) => {
                       const isActive = isActiveNavItem(item.path, location.pathname);
                       const hasChildren = item.children?.length > 0;
@@ -363,8 +307,6 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
                         </div>
                       );
                     })}
-                  </div>
-                </div>
               </div>
             </div>
           );
@@ -389,23 +331,6 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
         </div>
       </div>
     </aside>
-  );
-}
-
-function ChevronDownIcon({ className = "" }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={`h-3 w-3 shrink-0 ${className}`}
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
   );
 }
 
