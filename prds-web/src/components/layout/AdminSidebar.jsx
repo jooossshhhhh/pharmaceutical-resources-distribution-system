@@ -194,7 +194,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
 
   return (
     <aside
-      className={`sticky top-0 flex h-screen flex-col border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
+      className={`flex h-screen flex-col border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
         isCollapsed ? "w-14.5" : "w-57"
       }`}
     >
