@@ -267,13 +267,52 @@ export const buildPatientsCsv = ({ archiveMode = PATIENT_ARCHIVE_MODES.active, p
   return [headers.map(escapeCell).join(","), ...rows].join("\n");
 };
 
+export const isValidPatientName = (value = "") => {
+  const trimmed = String(value || "").trim();
+  return /^[A-Za-z]+(?: [A-Za-z]+)*$/.test(trimmed);
+};
+
+export const normalizePatientContactNumber = (value = "") => {
+  const digits = String(value || "").replace(/\D/g, "");
+
+  if (!digits) {
+    return "";
+  }
+
+  if (digits.startsWith("63")) {
+    return `0${digits.slice(2)}`;
+  }
+
+  if (digits.startsWith("0")) {
+    return digits;
+  }
+
+  return `0${digits}`;
+};
+
+export const isValidPatientContactNumber = (value = "") => {
+  return /^09\d{9}$/.test(normalizePatientContactNumber(value));
+};
+
 export const validatePatientForm = (formValues = {}) => {
   if (!formValues.first_name?.trim()) {
     return "First name is required.";
   }
 
+  if (!isValidPatientName(formValues.first_name)) {
+    return "First name may only contain letters and spaces.";
+  }
+
+  if (formValues.middle_name?.trim() && !isValidPatientName(formValues.middle_name)) {
+    return "Middle name may only contain letters and spaces.";
+  }
+
   if (!formValues.last_name?.trim()) {
     return "Last name is required.";
+  }
+
+  if (!isValidPatientName(formValues.last_name)) {
+    return "Last name may only contain letters and spaces.";
   }
 
   if (!formValues.gender) {
@@ -297,6 +336,201 @@ export const validatePatientForm = (formValues = {}) => {
 
   if (!formValues.facility_id) {
     return "Facility is required.";
+  }
+
+  if (formValues.contact_number?.trim() && !isValidPatientContactNumber(formValues.contact_number)) {
+    return "Contact number must be an 11-digit Philippine mobile number starting with 09 (e.g. 0917 123 4567).";
+  }
+
+  return "";
+};
+
+export const PATIENT_HISTORY_DATE_MODES = {
+  all: "ALL",
+  date: "DATE",
+  dateRange: "DATE_RANGE",
+  month: "MONTH",
+  monthRange: "MONTH_RANGE",
+};
+
+const getHistoryRowIsoDate = (row) => {
+  if (!row?.dispenseDate) {
+    return "";
+  }
+
+  const date = new Date(row.dispenseDate);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+};
+
+const formatShortDate = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00`));
+};
+
+const formatShortMonth = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${value}-01T00:00:00`));
+};
+
+const formatDateRangeLabel = (start, end) => {
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+
+  if (startDate.getFullYear() === endDate.getFullYear() && startDate.getMonth() === endDate.getMonth()) {
+    const month = new Intl.DateTimeFormat("en-PH", { month: "short" }).format(startDate);
+    return `${month} ${startDate.getDate()}-${endDate.getDate()}, ${endDate.getFullYear()}`;
+  }
+
+  return `${formatShortDate(start)} - ${formatShortDate(end)}`;
+};
+
+const formatMonthRangeLabel = (start, end) => {
+  const [startYear, startMonth] = start.split("-");
+  const [endYear, endMonth] = end.split("-");
+
+  if (startYear && startYear === endYear) {
+    const startLabel = new Intl.DateTimeFormat("en-PH", { month: "short" }).format(
+      new Date(`${startYear}-${startMonth}-01T00:00:00`)
+    );
+    const endLabel = new Intl.DateTimeFormat("en-PH", { month: "short" }).format(
+      new Date(`${endYear}-${endMonth}-01T00:00:00`)
+    );
+    return `${startLabel}-${endLabel} ${endYear}`;
+  }
+
+  return `${formatShortMonth(start)} - ${formatShortMonth(end)}`;
+};
+
+export const formatPatientHistoryDateFilterLabel = ({
+  end = "",
+  mode = PATIENT_HISTORY_DATE_MODES.all,
+  start = "",
+  value = "",
+} = {}) => {
+  if (mode === PATIENT_HISTORY_DATE_MODES.date) {
+    return formatShortDate(value) || "Specific date";
+  }
+
+  if (mode === PATIENT_HISTORY_DATE_MODES.dateRange) {
+    if (start && end) {
+      return formatDateRangeLabel(start, end);
+    }
+    return "Date range";
+  }
+
+  if (mode === PATIENT_HISTORY_DATE_MODES.month) {
+    return formatShortMonth(value) || "Month";
+  }
+
+  if (mode === PATIENT_HISTORY_DATE_MODES.monthRange) {
+    if (start && end) {
+      return formatMonthRangeLabel(start, end);
+    }
+    return "Month range";
+  }
+
+  return "All dates";
+};
+
+export const matchesPatientHistoryDateFilter = ({
+  end = "",
+  mode = PATIENT_HISTORY_DATE_MODES.all,
+  row,
+  start = "",
+  value = "",
+} = {}) => {
+  if (!row?.dispenseDate || mode === PATIENT_HISTORY_DATE_MODES.all) {
+    return true;
+  }
+
+  const isoDate = getHistoryRowIsoDate(row);
+
+  if (!isoDate) {
+    return false;
+  }
+
+  if (mode === PATIENT_HISTORY_DATE_MODES.date) {
+    if (!value) return true;
+    return isoDate === value;
+  }
+
+  if (mode === PATIENT_HISTORY_DATE_MODES.dateRange) {
+    return (!start || isoDate >= start) && (!end || isoDate <= end);
+  }
+
+  if (mode === PATIENT_HISTORY_DATE_MODES.month) {
+    if (!value) return true;
+    return isoDate.slice(0, 7) === value;
+  }
+
+  if (mode === PATIENT_HISTORY_DATE_MODES.monthRange) {
+    const isoMonth = isoDate.slice(0, 7);
+    return (!start || isoMonth >= start) && (!end || isoMonth <= end);
+  }
+
+  return true;
+};
+
+export const filterPatientHistoryRows = ({ end, mode, rows = [], start, value } = {}) =>
+  rows.filter((row) => matchesPatientHistoryDateFilter({ end, mode, row, start, value }));
+
+export const validateManualPatientRecord = (formValues = {}) => {
+  if (!formValues.medicine_id) {
+    return "Medicine is required.";
+  }
+
+  if (!formValues.facility_id) {
+    return "Dispensing facility is required.";
+  }
+
+  if (!formValues.dispense_date) {
+    return "Date is required.";
+  }
+
+  const date = new Date(`${formValues.dispense_date}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Enter a valid date.";
+  }
+
+  if (date > new Date()) {
+    return "Date cannot be in the future.";
+  }
+
+  if (!formValues.prescribed_by?.trim()) {
+    return "Prescribed by is required.";
+  }
+
+  if (!formValues.manual_dispensed_by?.trim()) {
+    return "Dispensed by is required.";
+  }
+
+  const needed = Number(formValues.needed_quantity);
+  const released = Number(formValues.quantity);
+
+  if (!Number.isFinite(needed) || needed <= 0) {
+    return "Needed quantity must be greater than 0.";
+  }
+
+  if (!Number.isFinite(released) || released <= 0) {
+    return "Released quantity must be greater than 0.";
+  }
+
+  if (needed < released) {
+    return "Needed quantity cannot be lower than released quantity.";
   }
 
   return "";

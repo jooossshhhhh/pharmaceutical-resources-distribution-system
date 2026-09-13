@@ -4,20 +4,25 @@ import test from "node:test";
 import {
   buildPatientsCsv,
   calculateAge,
+  filterPatientHistoryRows,
   filterPatientsByArchiveMode,
   findDuplicatePatients,
   formatPatientArchivedAt,
   formatPatientAge,
   formatPatientCode,
   formatPatientDateOfBirth,
+  formatPatientHistoryDateFilterLabel,
   formatPatientName,
   formatPatientRegisteredAt,
   getPatientSortLabel,
   isArchivedPatient,
   matchesPatientFilters,
+  matchesPatientHistoryDateFilter,
   normalizePatientText,
   PATIENT_ARCHIVE_MODES,
+  PATIENT_HISTORY_DATE_MODES,
   sortPatients,
+  validateManualPatientRecord,
   validatePatientForm,
 } from "./patientUtils.js";
 
@@ -244,6 +249,114 @@ test("validatePatientForm checks required fields", () => {
     }),
     ""
   );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria Clara",
+      middle_name: "Dela Cruz",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+    }),
+    ""
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria2",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+    }),
+    "First name may only contain letters and spaces."
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      middle_name: "Santos!",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+    }),
+    "Middle name may only contain letters and spaces."
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes-Cruz",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+    }),
+    "Last name may only contain letters and spaces."
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+      contact_number: "09171234567",
+    }),
+    ""
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+      contact_number: "639171234567",
+    }),
+    ""
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+      contact_number: "0917 123 4567",
+    }),
+    ""
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+      contact_number: "12345",
+    }),
+    "Contact number must be an 11-digit Philippine mobile number starting with 09 (e.g. 0917 123 4567)."
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+      contact_number: "08171234567",
+    }),
+    "Contact number must be an 11-digit Philippine mobile number starting with 09 (e.g. 0917 123 4567)."
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+      contact_number: "0917-abc",
+    }),
+    "Contact number must be an 11-digit Philippine mobile number starting with 09 (e.g. 0917 123 4567)."
+  );
 });
 
 test("archive helpers separate active and archived records", () => {
@@ -289,4 +402,107 @@ test("buildPatientsCsv adds archive fields for archive export", () => {
   assert.equal(csv.split("\n")[0].includes("Archived"), true);
   assert.match(csv, /Duplicate registration/);
   assert.match(csv, /Sep 5, 2026/);
+});
+
+test("patient history date filters support exact date and date range modes", () => {
+  const rows = [
+    { id: "a", dispenseDate: "2026-08-01T08:00:00Z" },
+    { id: "b", dispenseDate: "2026-08-20T08:00:00Z" },
+    { id: "c", dispenseDate: "2026-09-01T08:00:00Z" },
+  ];
+
+  assert.equal(
+    matchesPatientHistoryDateFilter({
+      mode: PATIENT_HISTORY_DATE_MODES.date,
+      row: rows[0],
+      value: "2026-08-01",
+    }),
+    true
+  );
+  assert.deepEqual(
+    filterPatientHistoryRows({
+      end: "2026-08-31",
+      mode: PATIENT_HISTORY_DATE_MODES.dateRange,
+      rows,
+      start: "2026-08-15",
+    }).map((row) => row.id),
+    ["b"]
+  );
+});
+
+test("patient history date filters support month and month range modes", () => {
+  const rows = [
+    { id: "a", dispenseDate: "2026-03-01T08:00:00Z" },
+    { id: "b", dispenseDate: "2026-04-20T08:00:00Z" },
+    { id: "c", dispenseDate: "2026-06-01T08:00:00Z" },
+  ];
+
+  assert.deepEqual(
+    filterPatientHistoryRows({
+      mode: PATIENT_HISTORY_DATE_MODES.month,
+      rows,
+      value: "2026-04",
+    }).map((row) => row.id),
+    ["b"]
+  );
+  assert.deepEqual(
+    filterPatientHistoryRows({
+      end: "2026-05",
+      mode: PATIENT_HISTORY_DATE_MODES.monthRange,
+      rows,
+      start: "2026-03",
+    }).map((row) => row.id),
+    ["a", "b"]
+  );
+});
+
+test("formatPatientHistoryDateFilterLabel renders closed filter summaries", () => {
+  assert.equal(formatPatientHistoryDateFilterLabel(), "All dates");
+  assert.equal(
+    formatPatientHistoryDateFilterLabel({
+      mode: PATIENT_HISTORY_DATE_MODES.date,
+      value: "2026-09-08",
+    }),
+    "Sep 8, 2026"
+  );
+  assert.equal(
+    formatPatientHistoryDateFilterLabel({
+      end: "2026-05",
+      mode: PATIENT_HISTORY_DATE_MODES.monthRange,
+      start: "2026-03",
+    }),
+    "Mar-May 2026"
+  );
+  assert.equal(
+    formatPatientHistoryDateFilterLabel({
+      end: "2026-09-12",
+      mode: PATIENT_HISTORY_DATE_MODES.dateRange,
+      start: "2026-09-01",
+    }),
+    "Sep 1-12, 2026"
+  );
+});
+
+test("validateManualPatientRecord checks required manual history fields", () => {
+  const valid = {
+    dispense_date: "2026-08-01",
+    facility_id: "f1",
+    manual_dispensed_by: "Nurse Ana",
+    medicine_id: "m1",
+    needed_quantity: 10,
+    prescribed_by: "Dr. Santos",
+    quantity: 8,
+  };
+
+  assert.equal(validateManualPatientRecord({}), "Medicine is required.");
+  assert.equal(
+    validateManualPatientRecord({ ...valid, facility_id: "" }),
+    "Dispensing facility is required."
+  );
+  assert.equal(validateManualPatientRecord({ ...valid, quantity: 0 }), "Released quantity must be greater than 0.");
+  assert.equal(
+    validateManualPatientRecord({ ...valid, needed_quantity: 5, quantity: 8 }),
+    "Needed quantity cannot be lower than released quantity."
+  );
+  assert.equal(validateManualPatientRecord(valid), "");
 });

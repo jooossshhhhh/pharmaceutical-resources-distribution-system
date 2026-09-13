@@ -7,14 +7,17 @@ import {
   restorePatient,
   updatePatient,
 } from "./PatientsService";
+import PaginationControls from "../../components/PaginationControls";
+import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import {
   ExportIcon,
   Input,
-  PatientDetailsPanel,
   PatientFormModal,
   PatientConfirmModal,
   PatientTable,
+  PatientViewModal,
   PlusIcon,
+  RefreshIcon,
   SearchIcon,
   Select,
   SortToggleButton,
@@ -25,6 +28,7 @@ import {
   findDuplicatePatients,
   formatPatientName,
   matchesPatientFilters,
+  normalizePatientContactNumber,
   PATIENT_ARCHIVE_MODES,
   sortPatients,
   validatePatientForm,
@@ -45,6 +49,7 @@ const emptyPatientForm = {
 export default function PatientRegistry({
   canArchive,
   canDelete,
+  defaultDispensingFacilityId = "",
   facilities,
   isCho,
   loadPatients,
@@ -57,9 +62,9 @@ export default function PatientRegistry({
   const [selectedId, setSelectedId] = useState("");
   const [modalMode, setModalMode] = useState(null);
   const [isModalClosing, setIsModalClosing] = useState(false);
-  const [closingPatient, setClosingPatient] = useState(null);
   const [formValues, setFormValues] = useState(emptyPatientForm);
   const [error, setError] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
@@ -87,6 +92,14 @@ export default function PatientRegistry({
     () => sortPatients({ patients: filteredPatients, sortMode }),
     [filteredPatients, sortMode]
   );
+  const {
+    currentPage,
+    paginatedRows: paginatedPatients,
+    pageSize,
+    setCurrentPage,
+    totalCount,
+    totalPages,
+  } = usePaginatedRows(sortedPatients);
 
   const selectedPatient = useMemo(() => {
     return (
@@ -148,17 +161,11 @@ export default function PatientRegistry({
   };
 
   const handleRowSelect = (patientId) => {
-    setClosingPatient(null);
     setSelectedId(patientId);
   };
 
   const handleClearSelection = () => {
-    if (selectedPatient) {
-      setClosingPatient(selectedPatient);
-    }
-
     setSelectedId("");
-    window.setTimeout(() => setClosingPatient(null), 500);
   };
 
   const toggleSort = () => {
@@ -205,7 +212,7 @@ export default function PatientRegistry({
       suffix: formValues.suffix || null,
       gender: formValues.gender,
       date_of_birth: formValues.date_of_birth,
-      contact_number: formValues.contact_number?.trim() || null,
+      contact_number: normalizePatientContactNumber(formValues.contact_number) || null,
       address: formValues.address?.trim() || null,
       facility_id: formValues.facility_id,
     };
@@ -324,9 +331,29 @@ export default function PatientRegistry({
     URL.revokeObjectURL(url);
   };
 
-  const hasSelection = Boolean(selectedPatient);
-  const panelPatient = selectedPatient || closingPatient;
-  const panelIsClosing = Boolean(closingPatient) && !selectedPatient;
+  const handleRefreshPatients = async () => {
+    if (isRefreshing) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    setError("");
+
+    try {
+      const refreshedPatients = await loadPatients();
+      if (
+        selectedId &&
+        Array.isArray(refreshedPatients) &&
+        !refreshedPatients.some((patient) => patient.id === selectedId)
+      ) {
+        handleClearSelection();
+      }
+    } catch (errorMessage) {
+      setError(errorMessage instanceof Error ? errorMessage.message : String(errorMessage));
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <div>
@@ -342,13 +369,7 @@ export default function PatientRegistry({
         </p>
       )}
 
-      <div
-        className={`grid gap-5 transition-[grid-template-columns] duration-500 ease-in-out ${
-          hasSelection
-            ? "lg:grid-cols-[minmax(0,1fr)_380px]"
-            : "lg:grid-cols-[minmax(0,1fr)]"
-        }`}
-      >
+      <div>
         <section className="min-w-0 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-5 py-4">
             <div>
@@ -372,6 +393,17 @@ export default function PatientRegistry({
                   Archive
                 </button>
               )}
+              <button
+                type="button"
+                onClick={handleRefreshPatients}
+                disabled={isRefreshing}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className={isRefreshing ? "animate-spin" : ""}>
+                  <RefreshIcon />
+                </span>
+                Refresh
+              </button>
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -431,7 +463,6 @@ export default function PatientRegistry({
             <table className="w-full border-collapse text-left">
               <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
                 <tr>
-                  <th className="px-4 py-3">Patient Code</th>
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Gender</th>
                   <th className="hidden px-4 py-3 md:table-cell">Age</th>
@@ -443,42 +474,42 @@ export default function PatientRegistry({
                 isCho={isCho}
                 isLoading={false}
                 onSelect={handleRowSelect}
-                patients={sortedPatients}
+                patients={paginatedPatients}
                 selectedId={selectedId}
               />
             </table>
           </div>
+
+          {totalCount > 0 && (
+            <PaginationControls
+              currentPage={currentPage}
+              itemLabel="patients"
+              onPageChange={setCurrentPage}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              totalPages={totalPages}
+            />
+          )}
         </section>
 
-        <aside
-          className={`min-w-0 overflow-hidden transition-all duration-500 ease-in-out ${
-            hasSelection
-              ? "max-h-96 opacity-100 lg:max-h-none"
-              : "pointer-events-none opacity-0 lg:max-h-[600px]"
-          }`}
-        >
-          {panelPatient && (
-            <div
-              key={panelPatient.id}
-              className={`h-full ${
-                panelIsClosing ? "opacity-0 transition-opacity duration-500" : "prds-fade-in"
-              }`}
-            >
-              <PatientDetailsPanel
-                archiveMode={archiveMode}
-                canArchive={canArchive}
-                canDelete={canDelete}
-                onArchive={handleArchivePatient}
-                onBack={handleClearSelection}
-                onDelete={handleDeletePatient}
-                onEdit={() => openEditModal(panelPatient)}
-                onRestore={handleRestorePatient}
-                patient={panelPatient}
-              />
-            </div>
-          )}
-        </aside>
       </div>
+
+      {selectedPatient && !modalMode && !confirmAction && (
+      <PatientViewModal
+        archiveMode={archiveMode}
+        canAddManualRecord={isCho}
+        canArchive={canArchive}
+        canDelete={canDelete}
+        defaultDispensingFacilityId={defaultDispensingFacilityId}
+        facilities={facilities}
+          onArchive={handleArchivePatient}
+          onClose={handleClearSelection}
+          onDelete={handleDeletePatient}
+          onEdit={() => openEditModal(selectedPatient)}
+          onRestore={handleRestorePatient}
+          patient={selectedPatient}
+        />
+      )}
 
       {modalMode && (
         <PatientFormModal

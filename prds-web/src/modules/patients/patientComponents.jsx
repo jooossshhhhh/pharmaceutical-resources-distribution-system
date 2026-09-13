@@ -1,5 +1,25 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import PaginationControls from "../../components/PaginationControls";
 import ModalShell from "../../components/ModalShell";
+import { usePaginatedRows } from "../../hooks/usePaginatedRows";
+import { getDispensingHistory } from "../dispensing/DispensingService";
 import {
+  formatDispensingDateTime,
+  formatTransactionNumber,
+  getFollowUpDisplay,
+  getMedicineFullLabel,
+  getMedicineLabel,
+  groupHistoryByTransaction,
+  sortTransactions,
+} from "../dispensing/dispensingUtils";
+import {
+  addPatientManualDispensingRecord,
+  getManualRecordMedicines,
+} from "./PatientsService";
+import {
+  filterPatientHistoryRows,
+  formatPatientHistoryDateFilterLabel,
   formatPatientAge,
   formatPatientArchivedAt,
   formatPatientCode,
@@ -7,7 +27,9 @@ import {
   formatPatientDateOfBirth,
   formatPatientName,
   formatPatientRegisteredAt,
+  PATIENT_HISTORY_DATE_MODES,
   PATIENT_GENDER_OPTIONS,
+  validateManualPatientRecord,
 } from "./patientUtils";
 
 export const SearchIcon = () => (
@@ -34,6 +56,15 @@ export const ExportIcon = () => (
     <path d="M12 3v12" />
     <path d="m7 10 5 5 5-5" />
     <path d="M5 21h14" />
+  </svg>
+);
+
+export const RefreshIcon = () => (
+  <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+    <path d="M20 12a8 8 0 0 1-13.7 5.7L4 15" />
+    <path d="M4 20v-5h5" />
+    <path d="M4 12A8 8 0 0 1 17.7 6.3L20 9" />
+    <path d="M20 4v5h-5" />
   </svg>
 );
 
@@ -180,9 +211,6 @@ export function PatientTableSkeleton({ rows = 5 }) {
   return Array.from({ length: rows }, (_, index) => (
     <tr key={index} className="border-b border-[#edf0f2]">
       <td className="px-4 py-3.5">
-        <div className="h-3 w-16 animate-pulse rounded bg-[#f0f1f4]" />
-      </td>
-      <td className="px-4 py-3.5">
         <div className="h-3 w-40 animate-pulse rounded bg-[#f0f1f4]" />
       </td>
       <td className="px-4 py-3.5">
@@ -211,7 +239,7 @@ export function PatientTable({ archiveMode = "active", isCho, isLoading, onSelec
     return (
       <tbody>
         <tr>
-          <td colSpan={isCho ? 5 : 4} className="px-4 py-14">
+          <td colSpan={isCho ? 4 : 3} className="px-4 py-14">
             <div className="flex flex-col items-center gap-3 text-center">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eff4ff] text-[#5f6673]">
                 <UsersIcon />
@@ -236,15 +264,21 @@ export function PatientTable({ archiveMode = "active", isCho, isLoading, onSelec
           <tr
             key={patient.id}
             onClick={() => onSelect(patient.id)}
-            className={`cursor-pointer border-l-2 transition ${
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(patient.id);
+              }
+            }}
+            tabIndex={0}
+            role="button"
+            aria-label={`Open ${formatPatientName(patient)} patient record`}
+            className={`cursor-pointer border-l-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#00a36c] ${
               isSelected
                 ? "border-l-[#00a36c] bg-[#eff4ff]"
-                : "border-l-transparent hover:bg-[#f8f9ff]"
+                : "border-l-transparent hover:bg-[#f8f9ff] focus:bg-[#f8f9ff]"
             }`}
           >
-            <td className="px-4 py-3.5 text-xs font-bold text-[#008f68]">
-              {formatPatientCode(patient.patient_code)}
-            </td>
             <td className="px-4 py-3.5">
               <p className="text-sm font-bold text-[#0d1117]">{formatPatientName(patient)}</p>
               <p className="text-xs text-[#5f6673]">
@@ -271,158 +305,757 @@ export function PatientTable({ archiveMode = "active", isCho, isLoading, onSelec
   );
 }
 
-export function PatientDetailsPanel({
+const getTodayInputValue = () => new Date().toISOString().slice(0, 10);
+
+const emptyManualRecordForm = (facilityId = "") => ({
+  dispense_date: getTodayInputValue(),
+  facility_id: facilityId,
+  manual_dispensed_by: "",
+  medicine_id: "",
+  needed_quantity: "",
+  prescribed_by: "",
+  quantity: "",
+});
+
+const getDispensedByName = (row, transaction) => {
+  if (row?.manual_dispensed_by) {
+    return row.manual_dispensed_by;
+  }
+
+  if (transaction?.dispenser) {
+    return `${transaction.dispenser.first_name} ${transaction.dispenser.last_name}`;
+  }
+
+  return "Unknown user";
+};
+
+export function PatientViewModal({
   archiveMode = "active",
+  canAddManualRecord = false,
   canArchive,
   canDelete,
+  defaultDispensingFacilityId = "",
+  facilities = [],
   onArchive,
-  onBack,
+  onClose,
   onDelete,
   onEdit,
   onRestore,
   patient,
 }) {
-  if (!patient) {
-    return (
-      <div className="flex h-full min-h-72 items-center justify-center rounded-xl border border-[#d8dadc] bg-white p-6 shadow-sm">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eff4ff] text-[#5f6673]">
-            <ClipboardIcon />
-          </span>
-          <p className="text-sm font-bold text-[#0d1117]">No patient selected</p>
-          <p className="max-w-60 text-sm text-[#5f6673]">
-            Select a patient from the list to view their full record.
-          </p>
-        </div>
-      </div>
+  const [claims, setClaims] = useState([]);
+  const [isLoadingClaims, setIsLoadingClaims] = useState(true);
+  const [claimError, setClaimError] = useState("");
+  const [viewMode, setViewMode] = useState("details");
+  const [historyDateFilter, setHistoryDateFilter] = useState({
+    end: "",
+    mode: PATIENT_HISTORY_DATE_MODES.all,
+    start: "",
+    value: "",
+  });
+  const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
+  const [manualForm, setManualForm] = useState(() => emptyManualRecordForm(defaultDispensingFacilityId));
+  const [manualError, setManualError] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const [medicineSearch, setMedicineSearch] = useState("");
+  const [medicineOptions, setMedicineOptions] = useState([]);
+  const [isLoadingMedicines, setIsLoadingMedicines] = useState(false);
+
+  const patientId = patient?.id;
+  const isArchived = archiveMode === "archived" || Boolean(patient?.archived_at);
+
+  const loadClaims = useCallback(async () => {
+    if (!patientId) {
+      return;
+    }
+
+    setIsLoadingClaims(true);
+
+    try {
+      const rows = await getDispensingHistory({ patientId });
+      setClaims(rows);
+      setClaimError("");
+    } catch (loadError) {
+      setClaimError(loadError.message || "Unable to load patient history.");
+    } finally {
+      setIsLoadingClaims(false);
+    }
+  }, [patientId]);
+
+  useEffect(() => {
+    setManualForm(emptyManualRecordForm(defaultDispensingFacilityId));
+    setViewMode("details");
+    setManualError("");
+    setHistoryDateFilter({ end: "", mode: PATIENT_HISTORY_DATE_MODES.all, start: "", value: "" });
+    setIsDateFilterOpen(false);
+  }, [defaultDispensingFacilityId, patient]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      loadClaims();
+    }, 0);
+
+    return () => window.clearTimeout(timerId);
+  }, [loadClaims]);
+
+  useEffect(() => {
+    if (viewMode !== "add" || !canAddManualRecord || medicineOptions.length > 0 || isLoadingMedicines) {
+      return;
+    }
+
+    setIsLoadingMedicines(true);
+    getManualRecordMedicines()
+      .then(setMedicineOptions)
+      .catch((error) => setManualError(error.message || "Unable to load medicines."))
+      .finally(() => setIsLoadingMedicines(false));
+  }, [canAddManualRecord, isLoadingMedicines, medicineOptions.length, viewMode]);
+
+  const transactions = useMemo(
+    () => sortTransactions(groupHistoryByTransaction(claims), "newest"),
+    [claims]
+  );
+
+  const historyRows = useMemo(
+    () =>
+      transactions.flatMap((transaction) =>
+        transaction.medicineLines.map((line) => {
+          const firstRow = line.rows[0] || {};
+
+          return {
+            date: transaction.dispenseDate,
+            dispenseDate: transaction.dispenseDate,
+            dispenseId: transaction.transactionId || transaction.key,
+            dispensedBy: getDispensedByName(firstRow, transaction),
+            dispensingFacility: firstRow.dispensing_facility || transaction.dispensingFacility,
+            followUp: getFollowUpDisplay(line) || "None",
+            isManual: line.rows.some((row) => row.is_manual_record),
+            key: `${transaction.key}-${firstRow.medicine_id || firstRow.id}`,
+            medicine: line.medicine,
+            neededQuantity: line.neededQuantity,
+            prescribedBy: firstRow.prescribed_by || "Not recorded",
+            releasedQuantity: line.releasedQuantity,
+          };
+        })
+      ),
+    [transactions]
+  );
+
+  const filteredHistoryRows = useMemo(
+    () =>
+      filterPatientHistoryRows({
+        ...historyDateFilter,
+        rows: historyRows,
+      }),
+    [historyDateFilter, historyRows]
+  );
+
+  const {
+    currentPage: historyPage,
+    paginatedRows: paginatedHistoryRows,
+    pageSize: historyPageSize,
+    setCurrentPage: setHistoryPage,
+    totalCount: historyTotalCount,
+    totalPages: historyTotalPages,
+  } = usePaginatedRows(filteredHistoryRows, 8);
+
+  const filteredMedicineOptions = useMemo(() => {
+    const term = medicineSearch.trim().toLowerCase();
+
+    if (!term) {
+      return medicineOptions;
+    }
+
+    return medicineOptions.filter((medicine) =>
+      [medicine.generic_name, medicine.brand_name, medicine.dosage, medicine.unit_of_measure]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term)
     );
+  }, [medicineOptions, medicineSearch]);
+
+  const handleManualFieldChange = (event) => {
+    const { name, value } = event.target;
+    setManualForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const openHistory = () => {
+    setViewMode("history");
+    loadClaims();
+  };
+
+  const openAddRecord = () => {
+    setManualError("");
+    setManualForm(emptyManualRecordForm(defaultDispensingFacilityId));
+    setViewMode("add");
+  };
+
+  const saveManualRecord = async (event) => {
+    event.preventDefault();
+
+    const validationError = validateManualPatientRecord(manualForm);
+    if (validationError) {
+      setManualError(validationError);
+      return;
+    }
+
+    setIsSavingManual(true);
+    setManualError("");
+
+    try {
+      await addPatientManualDispensingRecord({
+        date: manualForm.dispense_date,
+        dispensedBy: manualForm.manual_dispensed_by.trim(),
+        facilityId: manualForm.facility_id,
+        medicineId: manualForm.medicine_id,
+        neededQuantity: manualForm.needed_quantity,
+        patientId,
+        prescribedBy: manualForm.prescribed_by.trim(),
+        releasedQuantity: manualForm.quantity,
+      });
+      await loadClaims();
+      setManualForm(emptyManualRecordForm(defaultDispensingFacilityId));
+      setViewMode("history");
+    } catch (saveError) {
+      setManualError(saveError.message || "Unable to add manual record.");
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
+
+  if (!patient) {
+    return null;
   }
 
-  const isArchived = archiveMode === "archived";
-
   return (
-    <div className="flex h-full flex-col rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-      <div className="flex items-start justify-between gap-3 border-b border-[#e5e7eb] px-5 py-4">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
-            {formatPatientCode(patient.patient_code)}
-          </p>
-          <h2 className="mt-1 truncate text-lg font-bold text-[#0d1117]">
-            {formatPatientName(patient)}
-          </h2>
-        </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
-          title="Back to list"
-          aria-label="Back to list"
-        >
-          <BackIcon />
-        </button>
-      </div>
-
-      <div className="prds-modal-scrollbar flex-1 overflow-y-auto px-5 py-4">
-        <div className="mb-4 flex items-center gap-2">
-          <GenderBadge gender={patient.gender} />
-          <span className="inline-flex rounded-full bg-[#eff4ff] px-2.5 py-1 text-[11px] font-bold text-[#42474e]">
-            {formatPatientAge(patient.date_of_birth)}
-          </span>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <InfoBox
-            icon={<CalendarIcon />}
-            label="Date of Birth"
-            value={formatPatientDateOfBirth(patient.date_of_birth)}
-          />
-          <InfoBox
-            icon={<PhoneIcon />}
-            label="Contact Number"
-            value={formatPatientContact(patient.contact_number)}
-          />
-        </div>
-
-        <div className="mt-3">
-          <InfoBox
-            icon={<PinIcon />}
-            label="Address"
-            value={patient.address || "—"}
-          />
-        </div>
-
-        <div className="mt-3">
-          <InfoBox
-            icon={<UserIcon />}
-            label="Registered Facility"
-            value={patient.facility?.facility_name || "—"}
-            sub={patient.facility?.facility_code ? `${patient.facility.facility_code} · ${patient.facility.facility_type || ""}` : undefined}
-          />
-        </div>
-
-        <div className="mt-6 space-y-3">
-          {isArchived && (
-            <>
-              <DetailLine label="Archived" value={formatPatientArchivedAt(patient.archived_at)} />
-              <DetailLine label="Archive Reason" value={patient.archive_reason || "No reason provided"} />
-              <DetailLine label="Archived by" value={patient.archived_by ? "CHO staff" : "-"} />
-            </>
-          )}
-          <DetailLine label="Registered by" value={getRegisteredByName(patient.registered_by)} />
-          <DetailLine label="Registered" value={formatPatientRegisteredAt(patient.created_at)} />
-          <DetailLine label="Full Name" value={formatPatientName(patient)} />
-          <DetailLine label="Gender" value={patient.gender || "—"} />
-        </div>
-      </div>
-
-      <div className="flex gap-3 border-t border-[#e5e7eb] px-5 py-4">
-        {isArchived ? (
-          <>
-            {canArchive && (
+    <ModalShell
+      labelledBy="patient-view-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      panelClassName="max-w-6xl"
+    >
+      <div className="max-h-[88vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] bg-[#f8fffb] px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+              {viewMode === "history" ? "Patient History" : viewMode === "add" ? "Manual Record" : formatPatientCode(patient.patient_code)}
+            </p>
+            <h2 id="patient-view-modal-title" className="mt-1 truncate text-xl font-bold text-[#0d1117]">
+              {formatPatientName(patient)}
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <GenderBadge gender={patient.gender} />
+              <span className="inline-flex rounded-full bg-[#eff4ff] px-2.5 py-1 text-[11px] font-bold text-[#42474e]">
+                {formatPatientAge(patient.date_of_birth)}
+              </span>
+              {isArchived && (
+                <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                  Archived
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {viewMode !== "details" && (
               <button
                 type="button"
-                onClick={onRestore}
-                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-black text-sm font-bold text-white transition hover:bg-[#0d1117]"
+                onClick={() => setViewMode("details")}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
               >
                 <BackIcon />
-                Restore
+                Back to Details
               </button>
             )}
-            {canDelete && (
+            {viewMode !== "history" && (
               <button
                 type="button"
-                onClick={onDelete}
-                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600 transition hover:bg-red-50"
+                onClick={openHistory}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
               >
-                <TrashIcon />
-                Delete permanently
+                <ClipboardIcon />
+                Patient History
               </button>
             )}
-          </>
-        ) : (
-          <>
+            {canAddManualRecord && viewMode !== "add" && !isArchived && (
+              <button
+                type="button"
+                onClick={openAddRecord}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-black px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
+              >
+                <PlusIcon />
+                Add Record
+              </button>
+            )}
             <button
               type="button"
-              onClick={onEdit}
-              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-black text-sm font-bold text-white transition hover:bg-[#0d1117]"
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a36c] focus-visible:ring-offset-1"
+              aria-label="Close patient view"
             >
-              <PencilIcon />
-              Edit
+              <XIcon />
             </button>
-            {canArchive && (
-              <button
-                type="button"
-                onClick={onArchive}
-                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-amber-200 px-4 text-sm font-bold text-amber-700 transition hover:bg-amber-50"
-              >
-                <ArchiveIcon />
-                Archive
-              </button>
-            )}
-          </>
-        )}
+          </div>
+        </div>
+
+        <div className="prds-modal-scrollbar max-h-[calc(88vh-150px)] overflow-y-auto p-5">
+          {viewMode === "details" && (
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <section className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#0d1117]">Patient Details</h3>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <InfoBox icon={<CalendarIcon />} label="Date of Birth" value={formatPatientDateOfBirth(patient.date_of_birth)} />
+                  <InfoBox icon={<PhoneIcon />} label="Contact Number" value={formatPatientContact(patient.contact_number)} />
+                  <InfoBox
+                    icon={<UserIcon />}
+                    label="Registered Facility"
+                    value={patient.facility?.facility_name || "-"}
+                    sub={patient.facility?.facility_code || undefined}
+                  />
+                  <InfoBox icon={<PinIcon />} label="Address" value={patient.address || "-"} />
+                </div>
+              </section>
+
+              <aside className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#0d1117]">Record Info</h3>
+                <div className="mt-4 space-y-3">
+                  <DetailLine label="Patient Code" value={formatPatientCode(patient.patient_code)} />
+                  <DetailLine label="Registered by" value={getRegisteredByName(patient.registered_by)} />
+                  <DetailLine label="Registered" value={formatPatientRegisteredAt(patient.created_at)} />
+                  <DetailLine label="Full Name" value={formatPatientName(patient)} />
+                  <DetailLine label="Gender" value={patient.gender || "-"} />
+                  {isArchived && (
+                    <>
+                      <DetailLine label="Archived" value={formatPatientArchivedAt(patient.archived_at)} />
+                      <DetailLine label="Archive Reason" value={patient.archive_reason || "No reason provided"} />
+                      <DetailLine label="Archived by" value={patient.archived_by ? "CHO staff" : "-"} />
+                    </>
+                  )}
+                </div>
+              </aside>
+            </div>
+          )}
+
+          {viewMode === "history" && (
+            <section className="overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[#0d1117]">Patient History</h3>
+                  <p className="mt-0.5 text-xs text-[#5f6673]">
+                    {isLoadingClaims ? "Loading records..." : `${filteredHistoryRows.length.toLocaleString()} record${filteredHistoryRows.length === 1 ? "" : "s"} shown`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-expanded={isDateFilterOpen}
+                      onClick={() => setIsDateFilterOpen((current) => !current)}
+                      className="inline-flex h-9 min-w-44 items-center justify-between gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
+                    >
+                      <span>Date filter: {formatPatientHistoryDateFilterLabel(historyDateFilter)}</span>
+                      <CalendarIcon />
+                    </button>
+                    {isDateFilterOpen && (
+                      <div className="absolute right-0 top-11 z-20 w-80 rounded-xl border border-[#d8dadc] bg-white p-3 text-xs shadow-xl">
+                        <Field label="Mode">
+                          <Select
+                            value={historyDateFilter.mode}
+                            onChange={(event) =>
+                              setHistoryDateFilter({ end: "", mode: event.target.value, start: "", value: "" })
+                            }
+                          >
+                            <option value={PATIENT_HISTORY_DATE_MODES.all}>All dates</option>
+                            <option value={PATIENT_HISTORY_DATE_MODES.date}>Specific date</option>
+                            <option value={PATIENT_HISTORY_DATE_MODES.dateRange}>Date range</option>
+                            <option value={PATIENT_HISTORY_DATE_MODES.month}>Month</option>
+                            <option value={PATIENT_HISTORY_DATE_MODES.monthRange}>Month range</option>
+                          </Select>
+                        </Field>
+                        {historyDateFilter.mode === PATIENT_HISTORY_DATE_MODES.date && (
+                          <Field label="Date">
+                            <Input
+                              type="date"
+                              value={historyDateFilter.value}
+                              onChange={(event) =>
+                                setHistoryDateFilter((current) => ({ ...current, value: event.target.value }))
+                              }
+                            />
+                          </Field>
+                        )}
+                        {historyDateFilter.mode === PATIENT_HISTORY_DATE_MODES.dateRange && (
+                          <div className="grid gap-2 md:grid-cols-2">
+                            <Field label="Start">
+                              <Input
+                                type="date"
+                                value={historyDateFilter.start}
+                                onChange={(event) =>
+                                  setHistoryDateFilter((current) => ({ ...current, start: event.target.value }))
+                                }
+                              />
+                            </Field>
+                            <Field label="End">
+                              <Input
+                                type="date"
+                                value={historyDateFilter.end}
+                                onChange={(event) =>
+                                  setHistoryDateFilter((current) => ({ ...current, end: event.target.value }))
+                                }
+                              />
+                            </Field>
+                          </div>
+                        )}
+                        {historyDateFilter.mode === PATIENT_HISTORY_DATE_MODES.month && (
+                          <Field label="Month">
+                            <Input
+                              type="month"
+                              value={historyDateFilter.value}
+                              onChange={(event) =>
+                                setHistoryDateFilter((current) => ({ ...current, value: event.target.value }))
+                              }
+                            />
+                          </Field>
+                        )}
+                        {historyDateFilter.mode === PATIENT_HISTORY_DATE_MODES.monthRange && (
+                          <div className="grid gap-2 md:grid-cols-2">
+                            <Field label="Start month">
+                              <Input
+                                type="month"
+                                value={historyDateFilter.start}
+                                onChange={(event) =>
+                                  setHistoryDateFilter((current) => ({ ...current, start: event.target.value }))
+                                }
+                              />
+                            </Field>
+                            <Field label="End month">
+                              <Input
+                                type="month"
+                                value={historyDateFilter.end}
+                                onChange={(event) =>
+                                  setHistoryDateFilter((current) => ({ ...current, end: event.target.value }))
+                                }
+                              />
+                            </Field>
+                          </div>
+                        )}
+                        <div className="mt-3 flex justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryDateFilter({ end: "", mode: PATIENT_HISTORY_DATE_MODES.all, start: "", value: "" })}
+                            className="h-8 rounded-lg px-3 font-bold text-[#5f6673] hover:bg-[#f7f6f3]"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsDateFilterOpen(false)}
+                            className="h-8 rounded-lg bg-black px-3 font-bold text-white"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadClaims}
+                    disabled={isLoadingClaims}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className={isLoadingClaims ? "animate-spin" : ""}>
+                      <RefreshIcon />
+                    </span>
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {claimError && (
+                <div className="m-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
+                  {claimError}
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-[#f8f9ff] text-[10px] font-bold uppercase tracking-wide text-[#6b7280]">
+                    <tr>
+                      <th className="px-4 py-3">Dispense ID</th>
+                      <th className="px-4 py-3">Medicine</th>
+                      <th className="px-4 py-3 text-right">Needed quantity</th>
+                      <th className="px-4 py-3 text-right">Released quantity</th>
+                      <th className="px-4 py-3">Dispensed by</th>
+                      <th className="px-4 py-3">Prescribed by</th>
+                      <th className="px-4 py-3">Dispensing facility</th>
+                      <th className="px-4 py-3">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#edf0f2] bg-white">
+                    {isLoadingClaims &&
+                      [0, 1, 2].map((key) => (
+                        <tr key={key}>
+                          <td colSpan={8} className="px-4 py-3">
+                            <div className="h-10 animate-pulse rounded-lg bg-[#f8f9ff]" />
+                          </td>
+                        </tr>
+                      ))}
+                    {!isLoadingClaims && paginatedHistoryRows.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-12 text-center">
+                          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#eff4ff] text-[#5f6673]">
+                            <ClipboardIcon />
+                          </span>
+                          <p className="mt-2 text-sm font-bold text-[#0d1117]">No patient history found</p>
+                          <p className="mt-1 text-sm text-[#5f6673]">Dispensing and manual records will appear here.</p>
+                        </td>
+                      </tr>
+                    )}
+                    {!isLoadingClaims &&
+                      paginatedHistoryRows.map((row) => (
+                        <tr key={row.key} className="align-top hover:bg-[#f8f9ff]">
+                          <td className="px-4 py-3 font-bold text-blue-700 tabular-nums">
+                            {formatTransactionNumber(row.dispenseId)}
+                            {row.isManual && (
+                              <span className="mt-1 block w-fit rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                                Manual
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-[#0d1117]">{getMedicineLabel(row.medicine)}</p>
+                            <p className="text-[11px] text-[#5f6673]">{getMedicineFullLabel(row.medicine)}</p>
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                            {Number(row.neededQuantity || 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                            {Number(row.releasedQuantity || 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-[#42474e]">{row.dispensedBy}</td>
+                          <td className="px-4 py-3 text-[#42474e]">{row.prescribedBy}</td>
+                          <td className="px-4 py-3 text-[#42474e]">{row.dispensingFacility?.facility_name || "-"}</td>
+                          <td className="px-4 py-3 text-[#42474e]">{formatDispensingDateTime(row.date)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {historyTotalCount > 0 && (
+                <PaginationControls
+                  currentPage={historyPage}
+                  itemLabel="history records"
+                  onPageChange={setHistoryPage}
+                  pageSize={historyPageSize}
+                  totalCount={historyTotalCount}
+                  totalPages={historyTotalPages}
+                />
+              )}
+            </section>
+          )}
+
+          {viewMode === "add" && (
+            <form onSubmit={saveManualRecord} className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[#0d1117]">Add Manual Record</h3>
+                  <p className="mt-0.5 text-xs text-[#5f6673]">
+                    History-only record. This will not deduct stock or block live dispensing.
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#42474e]">
+                  Dispense ID auto-generated
+                </span>
+              </div>
+
+              {manualError && (
+                <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
+                  {manualError}
+                </p>
+              )}
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <section className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                    <Field label="Medicine" required>
+                      <Input
+                        type="search"
+                        value={medicineSearch}
+                        onChange={(event) => setMedicineSearch(event.target.value)}
+                        placeholder="Search medicine..."
+                        className="mb-2"
+                      />
+                      <Select
+                        name="medicine_id"
+                        value={manualForm.medicine_id}
+                        onChange={handleManualFieldChange}
+                        disabled={isLoadingMedicines}
+                      >
+                        <option value="">{isLoadingMedicines ? "Loading medicines..." : "Select medicine"}</option>
+                        {filteredMedicineOptions.map((medicine) => (
+                          <option key={medicine.id} value={medicine.id}>
+                            {getMedicineLabel(medicine)} - {medicine.brand_name || medicine.unit_of_measure}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Date" required>
+                      <Input
+                        max={getTodayInputValue()}
+                        name="dispense_date"
+                        onChange={handleManualFieldChange}
+                        type="date"
+                        value={manualForm.dispense_date}
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Needed quantity" required>
+                      <Input
+                        min="1"
+                        name="needed_quantity"
+                        onChange={handleManualFieldChange}
+                        type="number"
+                        value={manualForm.needed_quantity}
+                      />
+                    </Field>
+                    <Field label="Released quantity" required>
+                      <Input
+                        min="1"
+                        name="quantity"
+                        onChange={handleManualFieldChange}
+                        type="number"
+                        value={manualForm.quantity}
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Dispensed by" required>
+                      <Input
+                        name="manual_dispensed_by"
+                        onChange={handleManualFieldChange}
+                        placeholder="Staff name from past record"
+                        value={manualForm.manual_dispensed_by}
+                      />
+                    </Field>
+                    <Field label="Prescribed by" required>
+                      <Input
+                        name="prescribed_by"
+                        onChange={handleManualFieldChange}
+                        placeholder="Doctor name"
+                        value={manualForm.prescribed_by}
+                      />
+                    </Field>
+                  </div>
+
+                  <Field label="Dispensing facility" required>
+                    <Select name="facility_id" value={manualForm.facility_id} onChange={handleManualFieldChange}>
+                      <option value="">Select facility</option>
+                      {facilities.map((facility) => (
+                        <option key={facility.id} value={facility.id}>
+                          {facility.facility_name}
+                        </option>
+                      ))}
+                    </Select>
+                    <p className="mt-1 text-[11px] font-medium text-[#6b7280]">
+                      Select where the medicine was actually dispensed.
+                    </p>
+                  </Field>
+                </section>
+
+                <aside className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Patient</p>
+                  <p className="mt-2 text-sm font-bold text-[#0d1117]">{formatPatientName(patient)}</p>
+                  <p className="mt-1 text-xs text-[#5f6673]">{patient.address || "No address on file"}</p>
+                  <div className="mt-4 space-y-3">
+                    <DetailLine label="Patient Code" value={formatPatientCode(patient.patient_code)} />
+                    <DetailLine label="Registered Facility" value={patient.facility?.facility_name || "-"} />
+                    <DetailLine label="Record Type" value="Manual history" />
+                  </div>
+                </aside>
+              </div>
+
+              <div className="mt-5 flex justify-end gap-3 border-t border-[#e5e7eb] pt-4">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("details")}
+                  className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingManual}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <PlusIcon />
+                  {isSavingManual ? "Saving..." : "Save Record"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-3 border-t border-[#e5e7eb] px-5 py-4">
+          {viewMode === "details" && (
+            isArchived ? (
+              <>
+                {canArchive && (
+                  <button
+                    type="button"
+                    onClick={onRestore}
+                    className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white transition hover:bg-[#0d1117]"
+                  >
+                    <BackIcon />
+                    Restore
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600 transition hover:bg-red-50"
+                  >
+                    <TrashIcon />
+                    Delete permanently
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white transition hover:bg-[#0d1117]"
+                >
+                  <PencilIcon />
+                  Edit
+                </button>
+                {canArchive && (
+                  <button
+                    type="button"
+                    onClick={onArchive}
+                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-200 px-4 text-sm font-bold text-amber-700 transition hover:bg-amber-50"
+                  >
+                    <ArchiveIcon />
+                    Archive
+                  </button>
+                )}
+              </>
+            )
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+          >
+            Close
+          </button>
+        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -469,7 +1102,7 @@ export function PatientConfirmModal({
     <ModalShell
       labelledBy="patient-confirm-modal-title"
       onClose={onCancel}
-      overlayClassName="bg-black/45"
+      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName="max-w-md"
     >
       <div className="w-full rounded-xl border border-[#d8dadc] bg-white shadow-2xl">
@@ -517,7 +1150,7 @@ export function PatientConfirmModal({
                 value={archiveReason}
                 onChange={(event) => onReasonChange(event.target.value)}
                 className="min-h-24 w-full resize-none rounded-lg border border-[#d8dadc] bg-white px-3 py-2 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
-                placeholder="Optional note for audit history"
+                placeholder="Optional note for activity history"
               />
             </Field>
           )}
@@ -594,7 +1227,7 @@ export function PatientFormModal({
       closing={isClosing}
       labelledBy="patient-form-modal-title"
       onClose={onClose}
-      overlayClassName="bg-black/45"
+      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName="max-w-2xl"
     >
       <form
@@ -642,6 +1275,7 @@ export function PatientFormModal({
                 onChange={onChange}
                 disabled={isReadOnly}
                 placeholder="e.g. Maria"
+                maxLength={60}
                 required
               />
             </Field>
@@ -652,6 +1286,7 @@ export function PatientFormModal({
                 onChange={onChange}
                 disabled={isReadOnly}
                 placeholder="Optional"
+                maxLength={60}
               />
             </Field>
             <Field label="Last Name" required>
@@ -661,6 +1296,7 @@ export function PatientFormModal({
                 onChange={onChange}
                 disabled={isReadOnly}
                 placeholder="e.g. Reyes"
+                maxLength={60}
                 required
               />
             </Field>
@@ -713,6 +1349,8 @@ export function PatientFormModal({
                 onChange={onChange}
                 disabled={isReadOnly}
                 placeholder="e.g. 0917 123 4567"
+                inputMode="tel"
+                maxLength={16}
               />
             </Field>
             <Field label="Address (Purok / Barangay)">
