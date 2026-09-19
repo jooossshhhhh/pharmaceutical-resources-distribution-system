@@ -1,0 +1,404 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import AdminShell from "../../components/layout/AdminShell";
+import { useAuth } from "../../context/useAuth";
+import { logoutUser } from "@backend/services/auth/authService";
+import { usePaginatedRows } from "../../hooks/usePaginatedRows";
+import { supabase } from "@backend/client/supabase";
+import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { isCurrentNetworkOnline } from "@backend/sync/networkStatus";
+import MedicineCatalogTable from "./components/MedicineCatalogTable";
+import MedicineFormModal from "./components/MedicineFormModal";
+import MedicineToolbar from "./components/MedicineToolbar";
+import {
+  emptyMedicineForm,
+  filterMedicines,
+  findDuplicateMedicines,
+  formatDateTime,
+  formatMedicineCategories,
+  parseMedicineCategories,
+  sortMedicines,
+} from "@shared/utils/medicineUtils";
+
+const fetchMedicineRows = async () => {
+  if (!isCurrentNetworkOnline()) {
+    return getSnapshot(STORAGE_KEYS.MEDICINES, []);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("medicines")
+      .select("id, generic_name, brand_name, unit_of_measure, dosage, unit_cost, categories")
+      .order("generic_name", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      saveSnapshot(STORAGE_KEYS.MEDICINES, data);
+    }
+    return data || [];
+  } catch (err) {
+    console.warn("Medicines fetch failed, using snapshot:", err);
+    return getSnapshot(STORAGE_KEYS.MEDICINES, []);
+  }
+};
+
+export default function MedicinesModule() {
+  const { profile } = useAuth();
+  const [medicines, setMedicines] = useState(() => getSnapshot(STORAGE_KEYS.MEDICINES, []));
+  const [searchTerm, setSearchTerm] = useState("");
+  const [medicineSort, setMedicineSort] = useState("ASC");
+  const [isLoading, setIsLoading] = useState(() => getSnapshot(STORAGE_KEYS.MEDICINES, []).length === 0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [medicineError, setMedicineError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [rejectedDuplicate, setRejectedDuplicate] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [modalMode, setModalMode] = useState(null);
+  const [modalMedicine, setModalMedicine] = useState(null);
+  const [formValues, setFormValues] = useState(emptyMedicineForm);
+
+  const today = useMemo(() => formatDateTime(new Date()), []);
+
+  const filteredMedicines = useMemo(
+    () => filterMedicines(medicines, searchTerm),
+    [medicines, searchTerm]
+  );
+
+  const sortedMedicines = useMemo(
+    () => sortMedicines(filteredMedicines, medicineSort),
+    [filteredMedicines, medicineSort]
+  );
+  const {
+    currentPage,
+    paginatedRows: paginatedMedicines,
+    pageSize,
+    setCurrentPage,
+    totalCount,
+    totalPages,
+  } = usePaginatedRows(sortedMedicines);
+
+  const loadMedicines = useCallback(async () => {
+    setIsLoading(true);
+    setMedicineError("");
+
+    try {
+      setMedicines(await fetchMedicineRows());
+    } catch (error) {
+      setMedicineError(error.message || "Unable to load medicines.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    fetchMedicineRows()
+      .then((rows) => {
+        if (isCurrent) {
+          setMedicines(rows);
+        }
+      })
+      .catch((error) => {
+        if (isCurrent) {
+          setMedicineError(error.message || "Unable to load medicines.");
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notice) {
+      return undefined;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setNotice("");
+    }, 15000);
+
+    return () => window.clearTimeout(timerId);
+  }, [notice]);
+
+  const resetModalState = () => {
+    setModalMedicine(null);
+    setFormValues(emptyMedicineForm);
+    setRejectedDuplicate(null);
+    setFieldErrors({});
+  };
+
+  const openCreateModal = () => {
+    resetModalState();
+    setMedicineError("");
+    setModalMode("create");
+  };
+
+  const openMedicineModal = (medicine, mode) => {
+    setModalMedicine(medicine);
+    setFormValues({
+      generic_name: medicine.generic_name || "",
+      brand_name: medicine.brand_name || "",
+      unit_of_measure: medicine.unit_of_measure || "",
+      dosage: medicine.dosage || "",
+      unit_cost: medicine.unit_cost ?? "",
+      categories: formatMedicineCategories(medicine.categories),
+    });
+    setMedicineError("");
+    setRejectedDuplicate(null);
+    setFieldErrors({});
+    setModalMode(mode);
+  };
+
+  const closeModal = () => {
+    if (isSaving) {
+      return;
+    }
+
+    setModalMode(null);
+    resetModalState();
+  };
+
+  const handleViewExistingMedicine = (medicineId) => {
+    const medicine = medicines.find((row) => row.id === medicineId);
+    if (medicine) {
+      openMedicineModal(medicine, "view");
+    }
+  };
+
+  const handleFieldChange = (event) => {
+    const { name, value } = event.target;
+    setMedicineError("");
+    setRejectedDuplicate(null);
+    setFormValues((currentValues) => ({ ...currentValues, [name]: value }));
+
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
+  };
+
+  const handleFieldBlur = (event) => {
+    const { name, value } = event.target;
+    const trimmed = (value || "").trim();
+
+    if (name === "generic_name" && !trimmed) {
+      setFieldErrors((prev) => ({ ...prev, generic_name: "Generic name is required." }));
+    } else if (name === "unit_of_measure" && !trimmed) {
+      setFieldErrors((prev) => ({ ...prev, unit_of_measure: "Unit is required." }));
+    } else if (name === "dosage" && !trimmed) {
+      setFieldErrors((prev) => ({ ...prev, dosage: "Dosage is required." }));
+    } else if (name === "categories" && parseMedicineCategories(value).length === 0) {
+      setFieldErrors((prev) => ({ ...prev, categories: "Category is required." }));
+    } else if (name === "unit_cost" && trimmed !== "" && Number(trimmed) < 0) {
+      setFieldErrors((prev) => ({ ...prev, unit_cost: "Unit cost cannot be negative." }));
+    }
+  };
+
+  const validateForm = () => {
+    if (!formValues.generic_name.trim()) {
+      return "Generic name is required.";
+    }
+
+    if (!formValues.unit_of_measure.trim()) {
+      return "Unit is required.";
+    }
+
+    if (!formValues.dosage.trim()) {
+      return "Dosage is required.";
+    }
+
+    if (parseMedicineCategories(formValues.categories).length === 0) {
+      return "Category is required.";
+    }
+
+    if (formValues.unit_cost !== "" && Number(formValues.unit_cost) < 0) {
+      return "Unit cost cannot be negative.";
+    }
+
+    return "";
+  };
+
+  const handleSaveMedicine = async (event) => {
+    event.preventDefault();
+
+    if (modalMode === "view") {
+      return;
+    }
+
+    const validationError = validateForm();
+    if (validationError) {
+      setMedicineError(validationError);
+      return;
+    }
+
+    const { exactMatches, nameMatches } = findDuplicateMedicines({
+      excludeId: modalMedicine?.id,
+      formValues,
+      medicines,
+    });
+
+    if (exactMatches.length > 0) {
+      const duplicate = exactMatches[0];
+      const duplicateLabel = [
+        duplicate.generic_name,
+        duplicate.brand_name,
+        duplicate.dosage,
+        duplicate.unit_of_measure,
+      ]
+        .filter(Boolean)
+        .join(" / ");
+
+      setMedicineError(
+        `This medicine is already registered - ${duplicateLabel}. View the existing record to edit it instead.`
+      );
+      setRejectedDuplicate(duplicate);
+      return;
+    }
+
+    const sameGenericMatches = modalMode === "create" ? nameMatches : [];
+
+    setIsSaving(true);
+    setMedicineError("");
+
+    const payload = {
+      generic_name: formValues.generic_name.trim(),
+      brand_name: formValues.brand_name.trim() || null,
+      unit_of_measure: formValues.unit_of_measure.trim(),
+      dosage: formValues.dosage.trim(),
+      unit_cost: formValues.unit_cost === "" ? null : Number(formValues.unit_cost),
+      categories: parseMedicineCategories(formValues.categories),
+    };
+
+    const request =
+      modalMode === "edit" && modalMedicine
+        ? supabase.from("medicines").update(payload).eq("id", modalMedicine.id)
+        : supabase.from("medicines").insert(payload).select("id").single();
+
+    const { error } = await request;
+
+    if (error) {
+      const isUniqueViolation =
+        /duplicate key|medicines_unique_definition/i.test(error.message || "");
+      if (isUniqueViolation) {
+        const matching = nameMatches.find(
+          (match) =>
+            (match.dosage || "").trim().toLowerCase() ===
+              (formValues.dosage || "").trim().toLowerCase() &&
+            (match.unit_of_measure || "").trim().toLowerCase() ===
+              (formValues.unit_of_measure || "").trim().toLowerCase()
+        );
+        const existingLabel = matching
+          ? [matching.generic_name, matching.brand_name, matching.dosage, matching.unit_of_measure]
+              .filter(Boolean)
+              .join(" / ")
+          : "an existing medicine";
+
+        setMedicineError(
+          `This medicine is already registered - ${existingLabel}. View the existing record to edit it instead.`
+        );
+        setRejectedDuplicate(matching || null);
+      } else {
+        setMedicineError(error.message);
+      }
+      setIsSaving(false);
+      return;
+    }
+
+    setIsSaving(false);
+    closeModal();
+    await loadMedicines();
+
+    if (sameGenericMatches.length > 0) {
+      const existing = sameGenericMatches[0];
+      const existingLabel = [
+        existing.generic_name,
+        existing.brand_name,
+        existing.dosage,
+        existing.unit_of_measure,
+      ]
+        .filter(Boolean)
+        .join(" / ");
+      const extraCount = sameGenericMatches.length - 1;
+      setNotice(
+        `Added ${payload.generic_name}. Note: a medicine with the same generic name already exists - ${existingLabel}${
+          extraCount > 0 ? ` (+${extraCount} more)` : ""
+        }.`
+      );
+    }
+
+  };
+
+  return (
+    <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
+      {medicineError && !modalMode && (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {medicineError}
+        </p>
+      )}
+
+      {notice && (
+        <p className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
+          {notice}
+        </p>
+      )}
+
+      <div className="mt-5 space-y-5">
+        <MedicineToolbar
+          medicineSort={medicineSort}
+          onAdd={openCreateModal}
+          onSearchChange={setSearchTerm}
+          onSortChange={() =>
+            setMedicineSort((currentSort) => (currentSort === "ASC" ? "DESC" : "ASC"))
+          }
+          searchTerm={searchTerm}
+          shownCount={sortedMedicines.length}
+          totalCount={medicines.length}
+        />
+
+        <MedicineCatalogTable
+          hasMedicines={medicines.length > 0}
+          currentPage={currentPage}
+          isLoading={isLoading}
+          medicines={paginatedMedicines}
+          onAdd={openCreateModal}
+          onClearSearch={() => setSearchTerm("")}
+          onPageChange={setCurrentPage}
+          onSelectMedicine={(medicine) => openMedicineModal(medicine, "view")}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          totalPages={totalPages}
+        />
+      </div>
+
+      {modalMode && (
+        <MedicineFormModal
+          mode={modalMode}
+          formValues={formValues}
+          fieldErrors={fieldErrors}
+          error={medicineError}
+          rejectedMedicine={rejectedDuplicate}
+          isSaving={isSaving}
+          onClose={closeModal}
+          onChange={handleFieldChange}
+          onBlur={handleFieldBlur}
+          onSubmit={handleSaveMedicine}
+          onEdit={() => setModalMode("edit")}
+          onViewExisting={handleViewExistingMedicine}
+        />
+      )}
+    </AdminShell>
+  );
+}
