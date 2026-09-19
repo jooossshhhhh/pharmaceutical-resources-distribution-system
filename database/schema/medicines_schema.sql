@@ -9,7 +9,9 @@ create table medicines (
 
     dosage text not null,
 
-    unit_cost numeric(10,2)
+    unit_cost numeric(10,2),
+
+    categories text[] not null default '{}'
 );
 
 -- The live database also applies medicines_unique_definition
