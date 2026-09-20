@@ -21,22 +21,16 @@ export default function ForecastComparisonChart({ rows = [] }) {
 
   return (
     <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
+      <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
             Use Comparison
           </p>
           <h2 className="mt-1 text-base font-black text-[#0d1117]">Recent Use vs Expected Use</h2>
-          <p className="mt-1 text-xs font-medium leading-5 text-[#42474e]">
-            Medicines with the highest expected use in the selected scope.
-          </p>
         </div>
-        <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-xs font-black text-[#42474e]">
-          Top {formatNumber(chartRows.length)}
-        </span>
       </div>
 
-      <div className="h-72 p-4">
+      <div className="h-80 p-4">
         {chartRows.length === 0 ? (
           <div className="grid h-full place-items-center rounded-xl bg-[#f8f9ff] text-center">
             <div>
@@ -72,13 +66,13 @@ export default function ForecastComparisonChart({ rows = [] }) {
               <Bar
                 dataKey="latestUse"
                 fill={chartColors.actual}
-                name="Recent Use"
+                name="Latest use"
                 radius={[6, 6, 0, 0]}
               />
               <Bar
                 dataKey="projectedUse"
                 fill={chartColors.forecast}
-                name="Expected Use"
+                name="Expected use"
                 radius={[6, 6, 0, 0]}
               />
             </BarChart>

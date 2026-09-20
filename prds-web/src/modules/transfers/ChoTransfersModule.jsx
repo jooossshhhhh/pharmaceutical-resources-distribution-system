@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
-import PaginationControls from "../../components/PaginationControls";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import {
   approveStockTransfer,
   createChoStockTransfer,
@@ -546,7 +544,7 @@ const [selectedTransfer, setSelectedTransfer] = useState(null);
   }, [loadData]);
 
   const summary = useMemo(() => getTransferSummary(transfers), [transfers]);
-const filteredTransfers = useMemo(() => {
+  const filteredTransfers = useMemo(() => {
     const matched = transfers.filter((transfer) =>
       matchesTransferFilters(transfer, {
         ...filters,
@@ -556,14 +554,6 @@ const filteredTransfers = useMemo(() => {
 
 return sortTransfers(matched, filters.sort);
   }, [filters, transfers]);
-  const {
-    currentPage,
-    paginatedRows: paginatedTransfers,
-    pageSize,
-    setCurrentPage,
-    totalCount,
-    totalPages,
-  } = usePaginatedRows(filteredTransfers);
 
 const setStatusFilter = (status) => {
     setFilters((current) => ({ ...current, status: getTransferActionTabStatus(status) }));
@@ -809,7 +799,7 @@ const updateCreateForm = (key, value) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#edf0f2]">
-                {paginatedTransfers.map((transfer) => (
+                {filteredTransfers.map((transfer) => (
                   <tr
                     key={transfer.id}
                     className="cursor-pointer transition hover:bg-[#eff4ff]"
@@ -876,16 +866,6 @@ const updateCreateForm = (key, value) => {
             <div className="px-4 py-12 text-center text-sm font-bold text-[#5f6673]">
               Loading transfers...
             </div>
-          )}
-          {!isLoading && totalCount > 0 && (
-            <PaginationControls
-              currentPage={currentPage}
-              itemLabel="transfers"
-              onPageChange={setCurrentPage}
-              pageSize={pageSize}
-              totalCount={totalCount}
-              totalPages={totalPages}
-            />
           )}
         </section>
       </div>

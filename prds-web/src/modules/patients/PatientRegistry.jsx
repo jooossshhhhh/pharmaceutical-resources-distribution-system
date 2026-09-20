@@ -50,7 +50,6 @@ export default function PatientRegistry({
   canArchive,
   canDelete,
   defaultDispensingFacilityId = "",
-  dispensingFacilities = [],
   facilities,
   isCho,
   loadPatients,
@@ -502,7 +501,6 @@ export default function PatientRegistry({
         canArchive={canArchive}
         canDelete={canDelete}
         defaultDispensingFacilityId={defaultDispensingFacilityId}
-        dispensingFacilities={dispensingFacilities}
         facilities={facilities}
           onArchive={handleArchivePatient}
           onClose={handleClearSelection}

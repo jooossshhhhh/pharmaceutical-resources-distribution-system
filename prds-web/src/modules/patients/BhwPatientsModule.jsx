@@ -27,17 +27,15 @@ export default function BhwPatientsModule() {
     if (!profileFacilityId) {
       setPatients([]);
       setIsLoading(false);
-      return [];
+      return;
     }
 
     try {
       const rows = await getPatients({ facilityId: profileFacilityId });
       setPatients(rows);
       setError("");
-      return rows;
     } catch (errorMessage) {
       setError(errorMessage instanceof Error ? errorMessage.message : String(errorMessage));
-      return null;
     } finally {
       setIsLoading(false);
     }
@@ -86,7 +84,6 @@ export default function BhwPatientsModule() {
         <PatientRegistry
           canArchive={false}
           canDelete={false}
-          dispensingFacilities={ownFacility}
           facilities={ownFacility}
           isCho={false}
           loadPatients={loadPatients}

@@ -188,7 +188,7 @@ export function TransferModal({ children, onClose, title, subtitle, widthClass =
     <ModalShell
       labelledBy="transfer-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-black/45"
       panelClassName={widthClass}
     >
       <div className="max-h-[86vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">

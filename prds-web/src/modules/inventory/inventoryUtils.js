@@ -11,15 +11,10 @@ export const emptyInventoryForm = {
 
 export const pageSize = 10;
 
-export const normalizeLotNumber = (value) =>
-  String(value || "")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toUpperCase();
-
 export const inventoryImportTemplate = [
-  "medicine,lot_number,supplier,quantity,threshold,date_received,expiration_date",
-  "Amoxicillin,1023124,MediSource,500,100,2026-01-05,2026-12-31",
-  "Paracetamol,1023125,MediSource,300,50,2026-01-05,2027-01-15",
+  "medicine,batch,supplier,quantity,threshold,date_received,expiration_date",
+  "Amoxicillin,BATCH-001,MediSource,500,100,2026-01-05,2026-12-31",
+  "Paracetamol,BATCH-002,MediSource,300,50,2026-01-05,2027-01-15",
 ].join("\n");
 
 const parseCsvLine = (line) => {
@@ -114,9 +109,9 @@ export const buildInventoryImportPayloads = (
       return;
     }
 
-    const lotNumber = normalizeLotNumber(row.lot_number || row.batch);
-    if (!lotNumber) {
-      fail("Lot Number must contain letters and numbers only.");
+    const batch = (row.batch || "").toUpperCase().trim();
+    if (!batch) {
+      fail("Batch number is required.");
       return;
     }
 
@@ -161,7 +156,7 @@ export const buildInventoryImportPayloads = (
       supplier_id: supplier.id,
       quantity,
       threshold,
-      batch_number: lotNumber,
+      batch_number: batch,
       date_received: row.date_received,
       expiration_date: row.expiration_date,
       updated_at: new Date().toISOString(),
@@ -253,77 +248,6 @@ export const getMedicineName = (item) => {
   const dosage = item.medicine?.dosage ? ` ${item.medicine.dosage}` : "";
 
   return `${genericName}${dosage}`;
-};
-
-const isValidDateValue = (dateString) => {
-  if (!dateString) {
-    return false;
-  }
-
-  return !Number.isNaN(new Date(dateString).getTime());
-};
-
-const maxDate = (items, key) => {
-  return items
-    .map((item) => item[key])
-    .filter(isValidDateValue)
-    .sort()
-    .at(-1) || "";
-};
-
-export const buildInventoryMedicineRows = (items = []) => {
-  const groups = new Map();
-
-  items.forEach((item) => {
-    const key = `${item.facility_id || "no-facility"}:${item.medicine_id || "no-medicine"}`;
-    const group = groups.get(key) || [];
-    group.push(item);
-    groups.set(key, group);
-  });
-
-  return Array.from(groups.entries()).map(([key, lots]) => {
-    const sortedLots = [...lots].sort((first, second) => {
-      const firstDate = first.expiration_date || "9999-12-31";
-      const secondDate = second.expiration_date || "9999-12-31";
-      return firstDate.localeCompare(secondDate);
-    });
-    const nearestLot =
-      sortedLots.find((lot) => Number(lot.quantity || 0) > 0 && isValidDateValue(lot.expiration_date)) ||
-      sortedLots.find((lot) => isValidDateValue(lot.expiration_date)) ||
-      sortedLots[0] ||
-      {};
-
-    return {
-      ...nearestLot,
-      id: key,
-      isGrouped: true,
-      lots: sortedLots,
-      lotCount: sortedLots.length,
-      quantity: lots.reduce((sum, lot) => sum + Number(lot.quantity || 0), 0),
-      threshold: Math.max(...lots.map((lot) => Number(lot.threshold || 0)), 0),
-      expiration_date: nearestLot.expiration_date || "",
-      updated_at: maxDate(lots, "updated_at"),
-    };
-  });
-};
-
-export const sortInventoryRows = (rows = [], sort = { key: "medicine", direction: "ASC" }) => {
-  const { key, direction } = sort;
-  const factor = direction === "DESC" ? -1 : 1;
-
-  return [...rows].sort((first, second) => {
-    if (key === "quantity") {
-      return (Number(first.quantity || 0) - Number(second.quantity || 0)) * factor;
-    }
-
-    if (key === "expiration_date" || key === "updated_at") {
-      return String(first[key] || "").localeCompare(String(second[key] || "")) * factor;
-    }
-
-    return getMedicineName(first).localeCompare(getMedicineName(second), undefined, {
-      sensitivity: "base",
-    }) * factor;
-  });
 };
 
 export const daysUntilExpiry = (dateString) => {

@@ -3,8 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import PaginationControls from "../../components/PaginationControls";
-import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import {
   allocateStockTransferForPickup,
   getOwnFacilityInventory,
@@ -101,21 +99,11 @@ function RequestTransferModal({
         )
       : "";
   const quantityWarning = form.quantity ? validationError : "";
-  const formatQuantity = (value) => Number(value || 0).toLocaleString();
-  const steps = [
-    { label: "Medicine", done: Boolean(form.medicineId) },
-    { label: "Facility", done: Boolean(form.sourceFacilityId) },
-    { label: "Quantity", done: Boolean(form.quantity) && !validationError },
-  ];
-  const friendlyQuantityWarning =
-    quantityWarning && selectedSource
-      ? `Enter a quantity from 1 to ${formatQuantity(selectedSource.available_quantity)} units.`
-      : quantityWarning;
 
   return (
     <TransferModal
       title="Request Stock Transfer"
-      subtitle="Choose a medicine, select where stock will come from, then enter the quantity to request."
+      subtitle="Search a medicine, choose an available source facility, then submit for CHO release."
       onClose={onClose}
       widthClass="max-w-5xl"
     >
@@ -126,43 +114,12 @@ function RequestTransferModal({
           </div>
         )}
 
-        <div className="grid gap-2 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-2 sm:grid-cols-3">
-          {steps.map((step, index) => {
-            const isActive =
-              (index === 0 && !form.medicineId) ||
-              (index === 1 && form.medicineId && !form.sourceFacilityId) ||
-              (index === 2 && form.sourceFacilityId);
-
-            return (
-              <div
-                key={step.label}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold ${
-                  step.done
-                    ? "bg-[#ecfff8] text-[#008f68]"
-                    : isActive
-                      ? "bg-white text-[#0d1117] shadow-sm"
-                      : "text-[#5f6673]"
-                }`}
-              >
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                    step.done ? "bg-[#6be9c2] text-[#0d1117]" : "bg-white text-[#5f6673]"
-                  }`}
-                >
-                  {step.done ? <CheckIcon /> : index + 1}
-                </span>
-                {step.label}
-              </div>
-            );
-          })}
-        </div>
-
         <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-xl border border-[#e5e7eb] bg-white p-4">
             <div>
-              <h3 className="text-sm font-bold text-[#0d1117]">Choose Medicine</h3>
+              <h3 className="text-sm font-bold text-[#0d1117]">Medicine Search</h3>
               <p className="mt-1 text-xs text-[#5f6673]">
-                Only medicines with available stock are shown.
+                Results only show medicines with available source stock.
               </p>
             </div>
 
@@ -173,7 +130,7 @@ function RequestTransferModal({
               <Input
                 value={form.medicineSearch}
                 onChange={(event) => onChange("medicineSearch", event.target.value)}
-                placeholder="Search medicine, brand, dosage, or unit..."
+                placeholder="Search medicine, brand, unit, or dosage..."
                 className="pl-9"
               />
             </label>
@@ -204,7 +161,7 @@ function RequestTransferModal({
               ))}
               {medicineOptions.length === 0 && (
                 <div className="rounded-xl bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
-                  No medicine with available stock matches your search.
+                  No available medicine matches the current search.
                 </div>
               )}
             </div>
@@ -212,124 +169,90 @@ function RequestTransferModal({
 
           <div className="rounded-xl border border-[#e5e7eb] bg-white p-4">
             <div>
-              <h3 className="text-sm font-bold text-[#0d1117]">Choose Facility With Stock</h3>
+              <h3 className="text-sm font-bold text-[#0d1117]">Available Source Facilities</h3>
               <p className="mt-1 text-xs text-[#5f6673]">
-                Available stock is the amount that can still be requested after other reservations.
+                Available means physical stock minus pending and released reservations.
               </p>
             </div>
 
             {!selectedMedicine && (
               <div className="mt-3 rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] p-8 text-center text-sm font-medium text-[#5f6673]">
-                Choose a medicine first to see facilities with available stock.
+                Select a medicine to see facilities that can provide it.
               </div>
             )}
 
             {selectedMedicine && (
-              <div className="mt-3 max-h-[360px] space-y-2 overflow-auto pr-1">
-                {selectedMedicine.sources.map((source, index) => {
-                  const isSelected = form.sourceFacilityId === source.source_facility_id;
-
-                  return (
-                    <button
-                      type="button"
-                      key={source.source_facility_id}
-                      onClick={() => onChange("sourceFacilityId", source.source_facility_id)}
-                      className={`w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] ${
-                        isSelected
-                          ? "border-[#6be9c2] bg-[#ecfff8] shadow-sm"
-                          : "border-[#e5e7eb] bg-[#f8f9ff]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="break-words text-sm font-bold text-[#0d1117]">
-                              {source.source_facility_name}
-                            </p>
-                            {index === 0 && (
-                              <span className="rounded-full bg-[#fff2d7] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#a15c00]">
-                                Best available
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-1 break-words text-xs text-[#5f6673]">
-                            {source.source_facility_code || "No code"}
-                          </p>
-                        </div>
-                        <span
-                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                            isSelected ? "bg-[#6be9c2] text-[#0d1117]" : "bg-white text-[#8a93a3]"
-                          }`}
-                        >
-                          {isSelected ? <CheckIcon /> : index + 1}
-                        </span>
-                      </div>
-                      <div className="mt-3 rounded-lg bg-white px-3 py-2">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#5f6673]">
-                          Available to request
+              <div className="mt-3 space-y-2">
+                {selectedMedicine.sources.map((source) => (
+                  <button
+                    type="button"
+                    key={source.source_facility_id}
+                    onClick={() => onChange("sourceFacilityId", source.source_facility_id)}
+                    className={`w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] ${
+                      form.sourceFacilityId === source.source_facility_id
+                        ? "border-[#6be9c2] bg-[#ecfff8] shadow-sm"
+                        : "border-[#e5e7eb] bg-[#f8f9ff]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-[#0d1117]">
+                          {source.source_facility_name}
                         </p>
-                        <p className="mt-1 text-lg font-black text-[#008f68]">
-                          {formatQuantity(source.available_quantity)} units
+                        <p className="mt-1 text-xs text-[#5f6673]">
+                          {source.source_facility_code || "No code"}
                         </p>
                       </div>
-                      <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
-                        <span className="rounded-lg bg-white px-2 py-1 text-[#5f6673]">
-                          On hand{" "}
-                          <b className="text-[#0d1117]">{formatQuantity(source.physical_quantity)}</b>
-                        </span>
-                        <span className="rounded-lg bg-white px-2 py-1 text-[#5f6673]">
-                          Already reserved{" "}
-                          <b className="text-[#0d1117]">{formatQuantity(source.reserved_quantity)}</b>
-                        </span>
-                        <span className="rounded-lg bg-white px-2 py-1 text-[#008f68]">
-                          Can request <b>{formatQuantity(source.available_quantity)}</b>
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+                      <span className="rounded-full bg-[#dffbf2] px-2.5 py-1 text-xs font-bold text-[#008f68]">
+                        {Number(source.available_quantity || 0).toLocaleString()} available
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                      <span className="rounded-lg bg-white px-2 py-1 text-[#5f6673]">
+                        Physical <b className="text-[#0d1117]">{Number(source.physical_quantity || 0).toLocaleString()}</b>
+                      </span>
+                      <span className="rounded-lg bg-white px-2 py-1 text-[#5f6673]">
+                        Reserved <b className="text-[#0d1117]">{Number(source.reserved_quantity || 0).toLocaleString()}</b>
+                      </span>
+                      <span className="rounded-lg bg-white px-2 py-1 text-[#008f68]">
+                        Balance <b>{Number(source.available_quantity || 0).toLocaleString()}</b>
+                      </span>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
         </section>
 
         {selectedSource && (
-          <section className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-            <p className="mb-3 text-sm font-bold text-[#0d1117]">
-              You can request up to {formatQuantity(selectedSource.available_quantity)} units from{" "}
-              {selectedSource.source_facility_name}.
-            </p>
-            <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-              <Field label="Quantity to request">
-                <Input
-                  min="1"
-                  max={selectedSource.available_quantity}
-                  inputMode="numeric"
-                  type="text"
-                  value={form.quantity}
-                  onChange={(event) => onChange("quantity", event.target.value)}
-                  placeholder="Whole number only"
-                  required
-                />
-                <p className="mt-1 text-xs font-medium text-[#5f6673]">
-                  Enter a whole number. It cannot be more than the available stock.
-                </p>
-              </Field>
-              <Field label="Reason or notes">
-                <Textarea
-                  value={form.remarks}
-                  onChange={(event) => onChange("remarks", event.target.value)}
-                  placeholder="Optional reason, urgency, or handling note."
-                  className="min-h-20"
-                />
-              </Field>
-            </div>
+          <section className="grid gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4 md:grid-cols-[180px_1fr]">
+            <Field label="Request quantity">
+              <Input
+                min="1"
+                max={selectedSource.available_quantity}
+                inputMode="numeric"
+                type="text"
+                value={form.quantity}
+                onChange={(event) => onChange("quantity", event.target.value)}
+                placeholder="Whole number only"
+                required
+              />
+            </Field>
+            <Field label="Transfer notes">
+              <Textarea
+                value={form.remarks}
+                onChange={(event) => onChange("remarks", event.target.value)}
+                placeholder="Optional urgency, handling instruction, or reason for requesting this transfer."
+                className="min-h-20"
+              />
+            </Field>
           </section>
         )}
 
-        {friendlyQuantityWarning && (
+        {quantityWarning && (
           <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
-            {friendlyQuantityWarning}
+            {quantityWarning}
           </div>
         )}
 
@@ -346,7 +269,7 @@ function RequestTransferModal({
             disabled={isSaving || Boolean(validationError) || !selectedSource || !form.quantity}
             className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <PlusIcon /> Submit Transfer Request
+            <PlusIcon /> Submit Request
           </button>
         </div>
       </form>
@@ -905,14 +828,6 @@ export default function BhwTransfersModule() {
   );
 
   const visibleTransfers = viewMode === "incoming" ? incomingTransfers : outgoingTransfers;
-  const {
-    currentPage,
-    paginatedRows: paginatedTransfers,
-    pageSize,
-    setCurrentPage,
-    totalCount,
-    totalPages,
-  } = usePaginatedRows(visibleTransfers);
 
   const updateRequestForm = (key, value) => {
     setRequestForm((current) => ({
@@ -1189,7 +1104,7 @@ export default function BhwTransfersModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#edf0f2]">
-                {paginatedTransfers.map((transfer) => (
+                {visibleTransfers.map((transfer) => (
                   <tr
                     key={transfer.id}
                     className="cursor-pointer transition hover:bg-[#eff4ff]"
@@ -1237,16 +1152,6 @@ export default function BhwTransfersModule() {
             <div className="px-4 py-12 text-center text-sm font-bold text-[#5f6673]">
               Loading transfers...
             </div>
-          )}
-          {!isLoading && totalCount > 0 && (
-            <PaginationControls
-              currentPage={currentPage}
-              itemLabel="transfers"
-              onPageChange={setCurrentPage}
-              pageSize={pageSize}
-              totalCount={totalCount}
-              totalPages={totalPages}
-            />
           )}
         </section>
       </div>

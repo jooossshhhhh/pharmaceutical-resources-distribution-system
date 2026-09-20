@@ -201,7 +201,6 @@ export function AuditListPanel({
   count,
   emptyDescription,
   emptyTitle,
-  footer,
   isLoading,
   label,
 }) {
@@ -227,7 +226,6 @@ export function AuditListPanel({
           children
         )}
       </div>
-      {footer}
     </section>
   );
 }

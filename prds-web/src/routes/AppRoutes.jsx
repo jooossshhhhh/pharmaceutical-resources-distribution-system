@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import LoginPage from "../features/auth/LoginPage";
 import RegisterPage from "../features/auth/RegisterPage";
@@ -88,8 +88,22 @@ export default function AppRoutes() {
               </RoleGuard>
             }
           />
-          <Route path="/users/accounts" element={<Navigate to="/users" replace />} />
-          <Route path="/users/change-requests" element={<Navigate to="/users" replace />} />
+          <Route
+            path="/users/accounts"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_II"]}>
+                <UserManagementModule />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/users/change-requests"
+            element={
+              <RoleGuard allowedRoles={["PHARMA_II"]}>
+                <UserManagementModule />
+              </RoleGuard>
+            }
+          />
           <Route path="/patients" element={<PatientsModule />} />
           <Route path="/dispensing" element={<DispensingModule />} />
           <Route

@@ -1,7 +1,6 @@
 export const chartColors = {
-  actual: "#00a36c",
-  actualSoft: "#e9f8f2",
-  forecast: "#cbd5e1",
+  actual: "#0d9488",
+  forecast: "#f59e0b",
   grid: "#e5e7eb",
   text: "#42474e",
   trend: "#2563eb",

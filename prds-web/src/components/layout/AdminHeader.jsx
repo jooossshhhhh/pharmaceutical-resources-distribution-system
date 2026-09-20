@@ -47,6 +47,14 @@ const pageTitles = {
     title: "User Management",
     subtitle: "Review accounts, approvals, roles, and facility assignments",
   },
+  "/users/accounts": {
+    title: "User Management",
+    subtitle: "Review accounts, approvals, roles, and facility assignments",
+  },
+  "/users/change-requests": {
+    title: "Facility Changes",
+    subtitle: "Review requested facility updates from user profile settings",
+  },
   "/profile-settings": {
     title: "Profile & Settings",
     subtitle: "Manage your account and system preferences",
@@ -57,7 +65,6 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [headerError, setHeaderError] = useState("");
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -199,8 +206,8 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
 
         <button
           type="button"
-          onClick={() => setShowLogoutModal(true)}
-          className="hidden h-8 items-center gap-2 rounded-md px-2 text-sm font-bold text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-950 sm:flex cursor-pointer"
+          onClick={onSignOut}
+          className="hidden h-8 items-center gap-2 rounded-md px-2 text-sm font-bold text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-950 sm:flex"
         >
           <LogoutIcon />
           Logout
@@ -277,46 +284,6 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
           >
             See all notifications
           </button>
-        </div>
-      )}
-
-      {showLogoutModal && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-neutral-200 text-neutral-900">
-            <div className="flex items-start gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-black text-neutral-950">Confirm Sign Out</h3>
-                <p className="mt-1 text-xs leading-5 text-neutral-500">
-                  Are you sure you want to log out of PRDS? You will need to sign in again to access the system.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowLogoutModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 hover:bg-neutral-100 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowLogoutModal(false);
-                  onSignOut();
-                }}
-                className="flex items-center gap-2 rounded-xl bg-rose-600 px-4.5 py-2 text-xs font-bold text-white shadow-md shadow-rose-600/20 hover:bg-rose-700 transition-colors cursor-pointer"
-              >
-                Log Out
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </header>

@@ -1,42 +1,107 @@
-import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Boxes,
-  ClipboardList,
-  ArrowRightLeft,
-  PackageCheck,
-  UserRound,
-  Pill,
-  ChartLine,
-  BuildingComplex,
-  Store,
-  UsersRound,
-  HeartHandshake,
-  History,
-  Bell,
-} from "lucide-react";
 
 import prdsLogo from "../../assets/prds-logo-main.svg";
 import { getAllowedNavItems } from "../../modules/users/userManagementUtils";
 
-const navIcons = {
-  Dashboard: LayoutDashboard,
-  Inventory: Boxes,
-  Requests: ClipboardList,
-  Request: ClipboardList,
-  Transfer: ArrowRightLeft,
-  Dispensing: PackageCheck,
-  Patients: UserRound,
-  Medicines: Pill,
-  Forecasting: ChartLine,
-  Facilities: BuildingComplex,
-  Suppliers: Store,
-  Supplier: Store,
-  "User Management": UsersRound,
-  "Other Programs": HeartHandshake,
-  "Activity Logs": History,
-  Notifications: Bell,
+const iconPaths = {
+  Dashboard: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="m12 8 1.2 3.2L16 12l-2.8.8L12 16l-1.2-3.2L8 12l2.8-.8L12 8Z" />
+    </>
+  ),
+  Inventory: (
+    <>
+      <path d="m12 3 8 4-8 4-8-4 8-4Z" />
+      <path d="m4 11 8 4 8-4" />
+      <path d="m4 15 8 4 8-4" />
+    </>
+  ),
+  Requests: (
+    <>
+      <path d="M7 3h8l4 4v14H7V3Z" />
+      <path d="M14 3v5h5" />
+      <path d="M10 13h6M10 17h4" />
+    </>
+  ),
+  Transfer: (
+    <>
+      <path d="M7 7h11l-3-3" />
+      <path d="m18 7-3 3" />
+      <path d="M17 17H6l3 3" />
+      <path d="m6 17 3-3" />
+    </>
+  ),
+  Dispensing: (
+    <>
+      <path d="M7 4h10v6a5 5 0 0 1-10 0V4Z" />
+      <path d="M12 15v5M9 20h6" />
+      <path d="M9 8h6" />
+    </>
+  ),
+  Medicines: (
+    <>
+      <path d="m10 21 9.2-9.2a4 4 0 0 0-5.7-5.7L4.3 15.3A4 4 0 0 0 10 21Z" />
+      <path d="m8 11 5 5" />
+    </>
+  ),
+  Facilities: (
+    <>
+      <path d="M5 21V7l7-4 7 4v14" />
+      <path d="M9 21v-6h6v6" />
+      <path d="M9 10h.01M15 10h.01" />
+    </>
+  ),
+  Suppliers: (
+    <>
+      <path d="M4 7h16v12H4z" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M8 13h8" />
+    </>
+  ),
+  Patients: (
+    <>
+      <circle cx="10" cy="8" r="4" />
+      <path d="M3 21a7 7 0 0 1 14 0" />
+      <path d="M19 8v6M16 11h6" />
+    </>
+  ),
+  "Other Programs": (
+    <>
+      <path d="M3 4h18v13H3z" />
+      <path d="M6 21h12M12 17v4" />
+    </>
+  ),
+  "User Management": (
+    <>
+      <circle cx="9" cy="8" r="4" />
+      <path d="M2 21a7 7 0 0 1 14 0" />
+      <circle cx="18" cy="9" r="3" />
+      <path d="M17 21a5 5 0 0 0-2-4" />
+      <path d="M20 15v6" />
+      <path d="M17 18h6" />
+    </>
+  ),
+  Forecasting: (
+    <>
+      <path d="M4 19V5" />
+      <path d="M4 19h16" />
+      <path d="m7 15 4-4 3 3 5-7" />
+    </>
+  ),
+  "Activity Logs": (
+    <>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  Notifications: (
+    <>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </>
+  ),
 };
 
 const navItems = [
@@ -50,7 +115,16 @@ const navItems = [
   { label: "Forecasting", path: "/forecasting", category: "Medicine & Planning" },
   { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
   { label: "Suppliers", path: "/suppliers", roles: ["PHARMA_II"], category: "Administration" },
-  { label: "User Management", path: "/users", roles: ["PHARMA_II"], category: "Administration" },
+  {
+    label: "User Management",
+    path: "/users",
+    roles: ["PHARMA_II"],
+    category: "Administration",
+    children: [
+      { label: "Accounts", path: "/users/accounts", roles: ["PHARMA_II"] },
+      { label: "Facility Changes", path: "/users/change-requests", roles: ["PHARMA_II"] },
+    ],
+  },
   { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
   { label: "Activity Logs", path: "/activity-logs", category: "System" },
   { label: "Notifications", path: "/notifications", category: "System" },
@@ -58,26 +132,20 @@ const navItems = [
 
 const navGroupOrder = ["Overview", "Operations", "Medicine & Planning", "Administration", "System"];
 
-const SidebarIcon = ({ label, isActive }) => {
-  const IconComponent = navIcons[label];
-  if (!IconComponent) return null;
-
-  return (
-    <span
-      className={`relative flex h-5 w-5 shrink-0 items-center justify-center transition-all duration-300 ease-out ${
-        isActive
-          ? "scale-110 text-[#0d1117]"
-          : "text-[#42474e] group-hover:scale-110 group-hover:text-[#0d1117]"
-      }`}
-    >
-      <IconComponent
-        aria-hidden="true"
-        className="h-4 w-4 shrink-0 transition-transform duration-300 ease-out"
-        strokeWidth={isActive ? 2.25 : 1.8}
-      />
-    </span>
-  );
-};
+const SidebarIcon = ({ label }) => (
+  <svg
+    aria-hidden="true"
+    className="h-4 w-4 shrink-0"
+    fill="none"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="1.8"
+    viewBox="0 0 24 24"
+  >
+    {iconPaths[label]}
+  </svg>
+);
 
 const getInitials = (profile) => {
   const firstInitial = profile?.first_name?.[0] || "P";
@@ -101,21 +169,22 @@ const isActiveNavItem = (itemPath, currentPath) => {
 };
 
 const isExactActiveNavItem = (itemPath, currentPath) => {
+  if (itemPath === "/users/accounts") {
+    return currentPath === "/users" || currentPath === "/users/accounts";
+  }
+
   return itemPath === currentPath;
 };
 
 export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }) {
   const location = useLocation();
-  const [hoveredItem, setHoveredItem] = useState(null);
-
-  useEffect(() => {
-    setHoveredItem(null);
-  }, [isCollapsed]);
-
   const fullName = `${profile?.first_name || "Pharma"} ${
     profile?.last_name || "User"
   }`.trim();
-  const allowedNavItems = getAllowedNavItems(navItems, profile?.role);
+  const inventoryPath = profile?.role === "BHW" ? "/inventory-bhw" : "/inventory";
+  const allowedNavItems = getAllowedNavItems(navItems, profile?.role).map((item) =>
+    item.label === "Inventory" ? { ...item, path: inventoryPath } : item
+  );
   const navGroups = navGroupOrder
     .map((category) => ({
       category,
@@ -123,27 +192,14 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
     }))
     .filter((group) => group.items.length > 0);
 
-  const handleMouseEnter = (event, label) => {
-    if (!isCollapsed) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    setHoveredItem({
-      label,
-      top: rect.top + rect.height / 2,
-    });
-  };
-
-  const handleMouseLeave = () => {
-    setHoveredItem(null);
-  };
-
   return (
     <aside
-      className={`flex h-full min-h-0 flex-col overflow-hidden border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
+      className={`flex h-screen flex-col border-r border-[#d8dadc] bg-[#f8f9ff] text-[#42474e] transition-[width] duration-300 ${
         isCollapsed ? "w-14.5" : "w-57"
       }`}
     >
       <div
-        className={`flex h-13.5 shrink-0 items-center border-b border-[#d8dadc] ${
+        className={`flex h-13.5 items-center border-b border-[#d8dadc] ${
           isCollapsed ? "justify-center px-2" : "gap-2.5 px-3"
         }`}
       >
@@ -160,19 +216,18 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className={`group/btn flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent text-[#42474e] transition-all duration-300 ease-out hover:border-[#d8dadc] hover:bg-white hover:text-[#0d1117] hover:shadow-xs active:scale-90 ${
+          className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117] ${
             isCollapsed ? "" : "-mr-1"
           }`}
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          <HamburgerIcon isCollapsed={isCollapsed} />
+          <HamburgerIcon />
         </button>
       </div>
 
       <nav
-        onScroll={() => setHoveredItem(null)}
-        className={`prds-sidebar-scrollbar flex-1 min-h-0 space-y-1 overflow-x-hidden overflow-y-auto py-4 ${
+        className={`prds-sidebar-scrollbar flex-1 space-y-1 overflow-x-hidden overflow-y-auto py-4 ${
           isCollapsed ? "px-2" : "px-2.5"
         }`}
       >
@@ -189,84 +244,69 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
                 </p>
               )}
               <div className="space-y-1">
-                {group.items.map((item) => {
-                  const isActive = isActiveNavItem(item.path, location.pathname);
-                  const hasChildren = item.children?.length > 0;
-                  const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition-all duration-300 ease-out ${
-                    isActive
-                      ? "bg-[#6be9c2] text-[#0d1117] shadow-sm shadow-[#6be9c2]/30"
-                      : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
-                  } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
-                  const label = (
-                    <>
-                      <SidebarIcon label={item.label} isActive={isActive} />
-                      <span
-                        className={`truncate transition-all duration-300 ease-out ${
-                          isCollapsed ? "sr-only" : ""
-                        } ${
-                          isActive
-                            ? "translate-x-0.5 font-black text-[#0d1117]"
-                            : "font-bold text-[#42474e] group-hover:translate-x-0.5 group-hover:text-[#0d1117]"
-                        }`}
-                      >
-                        {item.label}
-                      </span>
-                    </>
-                  );
+                    {group.items.map((item) => {
+                      const isActive = isActiveNavItem(item.path, location.pathname);
+                      const hasChildren = item.children?.length > 0;
+                      const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition ${
+                        isActive
+                          ? "bg-[#6be9c2] text-[#0d1117]"
+                          : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
+                      } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
+                      const label = (
+                        <>
+                          <SidebarIcon label={item.label} />
+                          <span className={isCollapsed ? "sr-only" : "truncate"}>{item.label}</span>
+                          {isCollapsed && (
+                            <span className="pointer-events-none absolute left-12 z-50 whitespace-nowrap rounded-md border border-[#d8dadc] bg-white px-2.5 py-1.5 text-xs font-bold text-[#0d1117] opacity-0 shadow-xl transition group-hover:opacity-100">
+                              {item.label}
+                            </span>
+                          )}
+                        </>
+                      );
 
-                  return (
-                    <div
-                      key={item.label}
-                      onMouseEnter={(event) => handleMouseEnter(event, item.label)}
-                      onMouseLeave={handleMouseLeave}
-                    >
-                      {item.path ? (
-                        <Link
-                          to={item.path}
-                          className={itemClass}
-                          aria-label={item.label}
-                        >
-                          {label}
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`${itemClass} cursor-default`}
-                          aria-label={item.label}
-                        >
-                          {label}
-                        </button>
-                      )}
+                      return (
+                        <div key={item.label}>
+                          {item.path ? (
+                            <Link to={item.path} className={itemClass} title={item.label}>
+                              {label}
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`${itemClass} cursor-default`}
+                              title={item.label}
+                            >
+                              {label}
+                            </button>
+                          )}
 
-                      {hasChildren && !isCollapsed && isActive ? (
-                        <div
-                          className={`ml-4 mt-1 grid gap-1 border-l border-[#d8dadc] pl-3 transition-opacity duration-200 ${
-                            isActive ? "opacity-100" : "opacity-70"
-                          }`}
-                        >
-                          {item.children.map((child) => {
-                            const isChildActive = isExactActiveNavItem(child.path, location.pathname);
+                          {hasChildren && !isCollapsed && isActive ? (
+                            <div className={`ml-4 mt-1 grid gap-1 border-l border-[#d8dadc] pl-3 transition-opacity duration-200 ${
+                              isActive ? "opacity-100" : "opacity-70"
+                            }`}>
+                              {item.children.map((child) => {
+                                const isChildActive = isExactActiveNavItem(child.path, location.pathname);
 
-                            return (
-                              <Link
-                                key={child.path}
-                                to={child.path}
-                                className={`flex h-8 items-center rounded-md px-3 text-xs font-bold transition ${
-                                  isChildActive
-                                    ? "bg-[#e8fff7] text-[#007f5f] ring-1 ring-[#6be9c2]/40"
-                                    : "text-[#6b7280] hover:bg-[#eff4ff] hover:text-[#0d1117]"
-                                }`}
-                                title={child.label}
-                              >
-                                <span className="truncate">{child.label}</span>
-                              </Link>
-                            );
-                          })}
+                                return (
+                                  <Link
+                                    key={child.path}
+                                    to={child.path}
+                                    className={`flex h-8 items-center rounded-md px-3 text-xs font-bold transition ${
+                                      isChildActive
+                                        ? "bg-[#e8fff7] text-[#007f5f] ring-1 ring-[#6be9c2]/40"
+                                        : "text-[#6b7280] hover:bg-[#eff4ff] hover:text-[#0d1117]"
+                                    }`}
+                                    title={child.label}
+                                  >
+                                    <span className="truncate">{child.label}</span>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
               </div>
             </div>
           );
@@ -274,7 +314,7 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
       </nav>
 
       <div
-        className={`shrink-0 border-t border-[#d8dadc] py-4 ${
+        className={`border-t border-[#d8dadc] py-4 ${
           isCollapsed ? "px-2" : "px-3"
         }`}
       >
@@ -290,57 +330,25 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
           </div>
         </div>
       </div>
-
-      {isCollapsed && hoveredItem && (
-        <div
-          style={{ top: `${hoveredItem.top}px`, left: "62px" }}
-          className="prds-tooltip-pop fixed z-50 pointer-events-none select-none"
-        >
-          <div className="relative flex items-center rounded-lg border border-[#0d1117] bg-[#0d1117] px-3 py-1.5 text-xs font-black tracking-wide text-white shadow-xl shadow-black/25">
-            <span className="absolute -left-1 top-1/2 -translate-y-1/2 h-2 w-2 rotate-45 bg-[#0d1117]" />
-            <span className="relative z-10 whitespace-nowrap">{hoveredItem.label}</span>
-          </div>
-        </div>
-      )}
     </aside>
   );
 }
 
-function HamburgerIcon({ isCollapsed }) {
+function HamburgerIcon() {
   return (
     <svg
       aria-hidden="true"
-      className="h-4.5 w-4.5 shrink-0 text-current transition-all duration-300 ease-out"
+      className="h-4 w-4"
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
       strokeLinejoin="round"
-      strokeWidth="2.2"
+      strokeWidth="2"
       viewBox="0 0 24 24"
     >
-      <line
-        x1={isCollapsed ? "9" : "4"}
-        y1="6"
-        x2={isCollapsed ? "15" : "20"}
-        y2={isCollapsed ? "12" : "6"}
-        className="transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600"
-      />
-      <line
-        x1="4"
-        y1="12"
-        x2={isCollapsed ? "4" : "15"}
-        y2="12"
-        className={`transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600 ${
-          isCollapsed ? "opacity-0 scale-x-0" : "opacity-100"
-        }`}
-      />
-      <line
-        x1={isCollapsed ? "9" : "4"}
-        y1="18"
-        x2={isCollapsed ? "15" : "20"}
-        y2={isCollapsed ? "12" : "18"}
-        className="transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600"
-      />
+      <path d="M5 7h14" />
+      <path d="M5 12h14" />
+      <path d="M5 17h14" />
     </svg>
   );
 }

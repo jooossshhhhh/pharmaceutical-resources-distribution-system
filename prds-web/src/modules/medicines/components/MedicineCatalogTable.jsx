@@ -1,18 +1,13 @@
-import PaginationControls from "../../../components/PaginationControls";
 import { PillIcon } from "./MedicineIcons";
 
 export default function MedicineCatalogTable({
-  currentPage,
   hasMedicines,
   isLoading,
   medicines,
   onAdd,
   onClearSearch,
-  onPageChange,
   onSelectMedicine,
-  pageSize,
-  totalCount,
-  totalPages,
+  selectedMedicineId,
 }) {
   return (
     <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
@@ -48,18 +43,26 @@ export default function MedicineCatalogTable({
                 </td>
               </tr>
             ) : (
-              medicines.map((medicine) => (
+              medicines.map((medicine) => {
+                const isSelected = selectedMedicineId === medicine.id;
+
+                return (
                   <tr
                     key={medicine.id}
-                    onClick={() => onSelectMedicine(medicine)}
+                    onClick={() => onSelectMedicine(medicine.id)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        onSelectMedicine(medicine);
+                        onSelectMedicine(medicine.id);
                       }
                     }}
                     tabIndex={0}
-                    className="cursor-pointer transition hover:bg-[#f8f9ff]"
+                    aria-selected={isSelected}
+                    className={`cursor-pointer border-l-2 transition ${
+                      isSelected
+                        ? "border-l-emerald-500 bg-[#e8fff7]"
+                        : "border-l-transparent hover:bg-[#f8f9ff]"
+                    }`}
                   >
                     <td className="px-5 py-4">
                       <p className="max-w-[24rem] text-sm font-black text-black">
@@ -80,22 +83,12 @@ export default function MedicineCatalogTable({
                       </span>
                     </td>
                   </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
-
-      {!isLoading && totalCount > 0 && (
-        <PaginationControls
-          currentPage={currentPage}
-          itemLabel="medicines"
-          onPageChange={onPageChange}
-          pageSize={pageSize}
-          totalCount={totalCount}
-          totalPages={totalPages}
-        />
-      )}
     </section>
   );
 }
@@ -119,7 +112,7 @@ function MedicineEmptyState({ hasMedicines, onAdd, onClearSearch }) {
         </>
       ) : (
         <>
-          <p className="text-sm font-black text-neutral-700">No medicines recorded yet.</p>
+          <p className="text-sm font-black text-neutral-700">No medicines in the catalog yet.</p>
           <p className="max-w-sm text-sm font-medium text-neutral-500">
             Add medicines here before recording stock, requests, and dispensing.
           </p>
@@ -148,6 +141,9 @@ function MedicineRowSkeleton() {
       </td>
       <td className="px-5 py-4">
         <div className="h-5 w-16 animate-pulse rounded-full bg-neutral-100" />
+      </td>
+      <td className="px-5 py-4">
+        <div className="h-5 w-20 animate-pulse rounded-full bg-neutral-100" />
       </td>
     </tr>
   );

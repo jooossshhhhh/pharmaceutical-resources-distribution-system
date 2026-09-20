@@ -22,7 +22,7 @@ export function FacilityToolbar({
       <div className="facilities-toolbar">
         <div className="facilities-toolbar-controls">
           {viewMode === "list" && (
-            <label className="relative block min-w-0 flex-1">
+            <label className="relative block w-full min-w-0 lg:max-w-xl xl:max-w-2xl">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
                 <SearchIcon />
               </span>
@@ -36,9 +36,9 @@ export function FacilityToolbar({
               />
             </label>
           )}
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {viewMode === "list" && (
-              <label className="relative w-[12rem] shrink-0">
+              <label className="relative min-w-[12rem]">
                 <span className="sr-only">Filter stock condition</span>
                 <select
                   value={stockFilter}
@@ -85,7 +85,7 @@ export function FacilityToolbar({
               }`}
             >
               <ListIcon />
-              Grid
+              List
             </button>
             <button
               type="button"

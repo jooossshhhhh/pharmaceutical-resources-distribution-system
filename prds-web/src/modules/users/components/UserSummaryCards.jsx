@@ -1,4 +1,4 @@
-import { AlertIcon, BanIcon, CheckIcon, UserIcon } from "./UserManagementIcons";
+import { AlertIcon, BanIcon, CheckIcon, RequestIcon, UserIcon } from "./UserManagementIcons";
 
 const toneClasses = {
   amber: "bg-amber-50 text-amber-700 ring-amber-100",
@@ -19,7 +19,7 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
   const cards = [
     {
       active: statusFilter === "ALL",
-      description: "All registered accounts",
+      description: "All reviewable accounts",
       id: "total",
       label: "Total Users",
       onClick: () => onSelectStatus("ALL"),
@@ -58,7 +58,7 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => {
-        const Icon = iconMap[card.id] || UserIcon;
+        const Icon = iconMap[card.id] || RequestIcon;
 
         return (
           <button

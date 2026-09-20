@@ -2,10 +2,8 @@
 
 import AdminShell from "../../components/layout/AdminShell";
 import ModalShell from "../../components/ModalShell";
-import PaginationControls from "../../components/PaginationControls";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import { formatDateTime } from "../dashboard/dashboardUtils";
 import {
   confirmRequestReceived,
@@ -103,14 +101,6 @@ export default function BhwRequestsModule() {
 
     return sortRequests(matchedRequests, sortMode);
   }, [keyword, requests, sortMode]);
-  const {
-    currentPage,
-    paginatedRows: paginatedRequests,
-    pageSize,
-    setCurrentPage,
-    totalCount,
-    totalPages,
-  } = usePaginatedRows(filteredRequests);
 
   const lowStockItems = useMemo(
     () => getLowStockRequestItems(profileFacilityId, stockMap, choAvailabilityMap),
@@ -422,7 +412,7 @@ export default function BhwRequestsModule() {
                   </td>
                 </tr>
               ) : (
-                paginatedRequests.map((request) => (
+                filteredRequests.map((request) => (
                   <BhwRequestRow
                     key={request.id}
                     onTrackRequest={() => setTrackedRequest(request)}
@@ -433,17 +423,6 @@ export default function BhwRequestsModule() {
             </tbody>
           </table>
         </div>
-
-        {!isLoading && totalCount > 0 && (
-          <PaginationControls
-            currentPage={currentPage}
-            itemLabel="requests"
-            onPageChange={setCurrentPage}
-            pageSize={pageSize}
-            totalCount={totalCount}
-            totalPages={totalPages}
-          />
-        )}
       </RequestPanel>
 
       {isOngoingModalOpen && (
@@ -662,7 +641,7 @@ function OngoingRequestsModal({ onClose, onOpenRequest, requests }) {
     <ModalShell
       labelledBy="ongoing-requests-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-white/95 backdrop-blur-sm"
     >
       <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
@@ -769,7 +748,7 @@ function RequestTrackingModal({ isReceiving, onClose, onConfirmReceipt, request,
     <ModalShell
       labelledBy="request-tracking-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-white/95 backdrop-blur-sm"
     >
       <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
@@ -977,7 +956,7 @@ function RequestConfirmationModal({ onClose, onTrack, request }) {
     <ModalShell
       labelledBy="request-confirmation-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-white/95 backdrop-blur-sm"
     >
       <div className="w-full max-w-md overflow-hidden rounded-xl bg-white text-center shadow-2xl">
         <div className="px-6 pb-6 pt-8">
@@ -1107,7 +1086,7 @@ function NewRequestModal({
     <ModalShell
       labelledBy="new-request-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-white/95 backdrop-blur-sm"
     >
       <form
         onSubmit={onSubmit}

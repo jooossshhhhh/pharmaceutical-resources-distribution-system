@@ -2,35 +2,79 @@ import { supabase } from "../../services/supabase";
 import { USER_ACCOUNT_LOG_MODULE } from "./userManagementUtils";
 
 export const getUserManagementData = async () => {
-  const [profilesResult, facilitiesResult] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select(
+  const [profilesResult, facilitiesResult, requestsResult] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select(
+          `
+          id,
+          first_name,
+          last_name,
+          email,
+          phone_number,
+          role,
+          facility_id,
+          status,
+          approved_by,
+          approved_at,
+          created_at,
+          updated_at,
+          facility:facilities(id, facility_name, facility_code)
         `
-        id,
-        first_name,
-        last_name,
-        email,
-        phone_number,
-        role,
-        facility_id,
-        status,
-        approved_by,
-        approved_at,
-        created_at,
-        updated_at,
-        facility:facilities(id, facility_name, facility_code)
-      `
-      )
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("facilities")
-      .select("id, facility_name, facility_code")
-      .eq("status", "ACTIVE")
-      .order("facility_name", { ascending: true }),
-  ]);
+        )
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("facilities")
+        .select("id, facility_name, facility_code")
+        .eq("status", "ACTIVE")
+        .order("facility_name", { ascending: true }),
+      supabase
+        .from("profile_facility_change_requests")
+        .select(
+          `
+          id,
+          profile_id,
+          current_facility_id,
+          requested_facility_id,
+          reason,
+          status,
+          reviewed_by,
+          reviewed_at,
+          created_at,
+          updated_at,
+          profile:profiles!profile_facility_change_requests_profile_id_fkey(
+            id,
+            first_name,
+            last_name,
+            email,
+            phone_number,
+            role
+          ),
+          current_facility:facilities!profile_facility_change_requests_current_facility_id_fkey(
+            id,
+            facility_name,
+            facility_code
+          ),
+          requested_facility:facilities!profile_facility_change_requests_requested_facility_id_fkey(
+            id,
+            facility_name,
+            facility_code
+          ),
+          reviewer:profiles!profile_facility_change_requests_reviewed_by_fkey(
+            id,
+            first_name,
+            last_name
+          )
+        `
+        )
+        .order("created_at", { ascending: false }),
+    ]);
 
-  const firstError = profilesResult.error || facilitiesResult.error;
+  const firstError =
+    profilesResult.error ||
+    facilitiesResult.error ||
+    requestsResult.error;
 
   if (firstError) {
     throw firstError;
@@ -38,6 +82,7 @@ export const getUserManagementData = async () => {
 
   return {
     facilities: facilitiesResult.data || [],
+    facilityRequests: requestsResult.data || [],
     users: profilesResult.data || [],
   };
 };
@@ -97,4 +142,18 @@ export const updateManagedUser = async ({ adminId, payload, user }) => {
   }
 
   return adminId;
+};
+
+export const reviewFacilityChangeRequest = async ({ requestId, status }) => {
+  const { error } = await supabase.rpc(
+    "review_profile_facility_change_request",
+    {
+      p_request_id: requestId,
+      p_status: status,
+    }
+  );
+
+  if (error) {
+    throw error;
+  }
 };

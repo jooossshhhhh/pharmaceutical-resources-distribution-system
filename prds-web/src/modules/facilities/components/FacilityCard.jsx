@@ -8,12 +8,13 @@ export function FacilityCard({ facility, isSelected, onView, onViewOnMap }) {
   return (
     <article
       data-facility-id={facility.id}
-      className={`group relative overflow-hidden rounded-xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md ${
+      className={`group relative overflow-hidden rounded-xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md ${
         isSelected
-          ? "border-neutral-300 ring-2 ring-neutral-100"
+          ? "border-[#6be9c2] ring-2 ring-emerald-100"
           : "border-neutral-200"
       }`}
     >
+      <span className={`absolute inset-x-0 top-0 h-1 ${healthMeta.barClass}`} />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 pr-2">
           <h3 className="line-clamp-2 text-base font-black leading-snug text-black">

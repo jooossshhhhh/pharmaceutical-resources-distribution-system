@@ -85,6 +85,14 @@ export const PillIcon = () => (
   </svg>
 );
 
+export const UserPlusIcon = () => (
+  <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+    <path d="M18 6v6M15 9h6" />
+  </svg>
+);
+
 export const SortDirectionIcon = ({ direction = "newest" }) => (
   <svg
     aria-hidden="true"
@@ -99,6 +107,18 @@ export const SortDirectionIcon = ({ direction = "newest" }) => (
     <path d="M8 5v14" />
   </svg>
 );
+
+export function EligibilityBadge({ claimedThisMonth }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+        claimedThisMonth ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"
+      }`}
+    >
+      {claimedThisMonth ? "Claimed this month" : "Eligible"}
+    </span>
+  );
+}
 
 export function VoidedBadge() {
   return (
@@ -191,7 +211,7 @@ export function DispensingModal({ children, closeLabel, onClose, subtitle, title
     <ModalShell
       labelledBy="dispensing-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-black/45"
       panelClassName={widthClass}
     >
       <div className="max-h-[86vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">

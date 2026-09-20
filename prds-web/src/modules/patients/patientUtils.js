@@ -118,26 +118,6 @@ export const formatPatientAddress = (address) => {
   return address;
 };
 
-export const buildPatientDispensingFacilityOptions = ({
-  defaultFacilityId = "",
-  facilities = [],
-  patient = {},
-} = {}) => {
-  const allowedIds = [defaultFacilityId, patient?.facility_id].filter(Boolean);
-  const seen = new Set();
-
-  return allowedIds
-    .map((id) => facilities.find((facility) => facility.id === id) || (patient?.facility_id === id ? patient.facility : null))
-    .filter(Boolean)
-    .filter((facility) => {
-      if (seen.has(facility.id)) {
-        return false;
-      }
-      seen.add(facility.id);
-      return true;
-    });
-};
-
 export const getPatientSearchText = (patient = {}) => {
   return [
     patient.patient_code,
@@ -373,23 +353,6 @@ export const PATIENT_HISTORY_DATE_MODES = {
   monthRange: "MONTH_RANGE",
 };
 
-export const PATIENT_MANUAL_RECORD_TYPES = {
-  barangayLog: "BARANGAY_DISPENSING_LOG",
-  historyOnly: "HISTORY_ONLY",
-};
-
-export const getPatientRecordTypeLabel = (recordType, isManual = false) => {
-  if (recordType === PATIENT_MANUAL_RECORD_TYPES.barangayLog) {
-    return "Barangay log";
-  }
-
-  if (recordType === PATIENT_MANUAL_RECORD_TYPES.historyOnly || isManual) {
-    return "History-only";
-  }
-
-  return "Live dispensing";
-};
-
 const getHistoryRowIsoDate = (row) => {
   if (!row?.dispenseDate) {
     return "";
@@ -524,7 +487,7 @@ export const matchesPatientHistoryDateFilter = ({
 export const filterPatientHistoryRows = ({ end, mode, rows = [], start, value } = {}) =>
   rows.filter((row) => matchesPatientHistoryDateFilter({ end, mode, row, start, value }));
 
-export const validateManualPatientRecord = (formValues = {}, { availableQuantity = null } = {}) => {
+export const validateManualPatientRecord = (formValues = {}) => {
   if (!formValues.medicine_id) {
     return "Medicine is required.";
   }
@@ -568,14 +531,6 @@ export const validateManualPatientRecord = (formValues = {}, { availableQuantity
 
   if (needed < released) {
     return "Needed quantity cannot be lower than released quantity.";
-  }
-
-  if (
-    formValues.record_type === PATIENT_MANUAL_RECORD_TYPES.barangayLog &&
-    availableQuantity !== null &&
-    released > Number(availableQuantity || 0)
-  ) {
-    return `Released quantity exceeds the ${Number(availableQuantity || 0).toLocaleString()} quantity available at the dispensing facility.`;
   }
 
   return "";

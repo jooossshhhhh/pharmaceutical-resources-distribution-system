@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   buildPatientsCsv,
-  buildPatientDispensingFacilityOptions,
   calculateAge,
   filterPatientHistoryRows,
   filterPatientsByArchiveMode,
@@ -22,7 +21,6 @@ import {
   normalizePatientText,
   PATIENT_ARCHIVE_MODES,
   PATIENT_HISTORY_DATE_MODES,
-  PATIENT_MANUAL_RECORD_TYPES,
   sortPatients,
   validateManualPatientRecord,
   validatePatientForm,
@@ -506,38 +504,5 @@ test("validateManualPatientRecord checks required manual history fields", () => 
     validateManualPatientRecord({ ...valid, needed_quantity: 5, quantity: 8 }),
     "Needed quantity cannot be lower than released quantity."
   );
-  assert.equal(
-    validateManualPatientRecord(
-      { ...valid, needed_quantity: 12, record_type: PATIENT_MANUAL_RECORD_TYPES.barangayLog, quantity: 12 },
-      { availableQuantity: 10 }
-    ),
-    "Released quantity exceeds the 10 quantity available at the dispensing facility."
-  );
   assert.equal(validateManualPatientRecord(valid), "");
-});
-
-test("buildPatientDispensingFacilityOptions only includes current and patient facilities", () => {
-  const facilities = [
-    { id: "cho", facility_name: "Central Health Office" },
-    { id: "inayagan", facility_name: "Inayagan Barangay Health Center" },
-    { id: "other", facility_name: "Other Barangay Health Center" },
-  ];
-
-  assert.deepEqual(
-    buildPatientDispensingFacilityOptions({
-      defaultFacilityId: "cho",
-      facilities,
-      patient: { facility_id: "inayagan" },
-    }).map((facility) => facility.id),
-    ["cho", "inayagan"]
-  );
-
-  assert.deepEqual(
-    buildPatientDispensingFacilityOptions({
-      defaultFacilityId: "inayagan",
-      facilities,
-      patient: { facility_id: "inayagan" },
-    }).map((facility) => facility.id),
-    ["inayagan"]
-  );
 });

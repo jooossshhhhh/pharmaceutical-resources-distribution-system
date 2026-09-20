@@ -1,21 +1,21 @@
 import { formatNumber } from "../../dashboard/dashboardUtils";
 
-export default function TopTrendingMedicines({ onSelectMedicine, rows = [] }) {
-  const visibleRows = rows.filter((row) => row.forecastSlope > 0).slice(0, 5);
-  const canOpenDetails = typeof onSelectMedicine === "function";
+export default function TopTrendingMedicines({ rows = [] }) {
+  const visibleRows = rows.slice(0, 6);
+  const maxSlope = Math.max(...visibleRows.map((row) => Math.abs(row.forecastSlope)), 1);
 
   return (
-    <section className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm shadow-neutral-200/40">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
+      <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
         <div>
-          <h2 className="text-base font-black text-[#0d1117]">Increasing use</h2>
-          <p className="mt-1 text-xs font-medium leading-5 text-[#42474e]">
-            Medicines with the largest monthly change
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+            Use Changes
           </p>
+          <h2 className="mt-1 text-base font-black text-[#0d1117]">Medicines Trending This Month</h2>
         </div>
       </div>
 
-      <div className="mt-5 space-y-2">
+      <div className="space-y-3 p-4">
         {visibleRows.length === 0 ? (
           <div className="grid min-h-48 place-items-center rounded-xl bg-[#f8f9ff] text-center">
             <div>
@@ -27,39 +27,31 @@ export default function TopTrendingMedicines({ onSelectMedicine, rows = [] }) {
           </div>
         ) : (
           visibleRows.map((row, index) => {
-            const Card = canOpenDetails ? "button" : "article";
-            const isTopRow = index === 0;
+            const width = Math.max(10, Math.round((Math.abs(row.forecastSlope) / maxSlope) * 100));
 
             return (
-              <Card
-                key={row.medicineId}
-                aria-label={`View trend for ${row.genericName} ${row.dosage || ""}`.trim()}
-                className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-[#6be9c2]/70 ${
-                  isTopRow ? "bg-emerald-50" : "bg-white"
-                } ${
-                  canOpenDetails ? "cursor-pointer" : ""
-                }`}
-                onClick={canOpenDetails ? () => onSelectMedicine(row.medicineId) : undefined}
-                type={canOpenDetails ? "button" : undefined}
-              >
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-50 text-xs font-black text-emerald-700">
-                  {index + 1}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-black leading-5 text-[#0d1117]">
-                    {row.genericName} {row.dosage}
-                  </p>
-                  <p className="text-xs font-medium leading-4 text-[#42474e]">
-                    Recent use {formatNumber(row.latestHistorical)} / month
-                  </p>
+              <article key={row.medicineId} className="rounded-xl bg-[#f8f9ff] px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-[#0d1117]">
+                      {index + 1}. {row.genericName} {row.dosage}
+                    </p>
+                    <p className="truncate text-xs font-medium text-neutral-500">
+                      {row.brandName || "No brand"} - {formatNumber(row.projectedDemand)} expected
+                    </p>
+                  </div>
+                  <span className={`shrink-0 text-sm font-black ${row.forecastSlope >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                    {row.forecastSlope >= 0 ? "+" : ""}
+                    {row.forecastSlope}
+                  </span>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-black text-emerald-700">
-                    +{row.forecastSlope}
-                  </p>
-                  <p className="text-[10px] font-bold text-[#42474e]">monthly change</p>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                  <div
+                    className={`h-full rounded-full ${row.forecastSlope >= 0 ? "bg-[#6be9c2]" : "bg-red-400"}`}
+                    style={{ width: `${width}%` }}
+                  />
                 </div>
-              </Card>
+              </article>
             );
           })
         )}

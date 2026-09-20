@@ -39,24 +39,9 @@ export const formatDispensingDayParts = (value) => {
   };
 };
 
-export const getDispensingStepBlocker = ({
-  claimed,
-  hasLineErrors,
-  hasPatient,
-  hasPrescriber = true,
-  lineCount,
-  step,
-}) => {
+export const getDispensingStepBlocker = ({ claimed, hasLineErrors, hasPatient, lineCount, step }) => {
   if (step === 2) {
-    if (!hasPatient) {
-      return "Select a patient first.";
-    }
-
-    if (claimed) {
-      return "This patient already claimed free medicine this month.";
-    }
-
-    return "";
+    return hasPatient ? "" : "Select a patient first.";
   }
 
   if (step === 3) {
@@ -70,10 +55,6 @@ export const getDispensingStepBlocker = ({
 
     if (!lineCount) {
       return "Add at least one medicine to the claim.";
-    }
-
-    if (!hasPrescriber) {
-      return "Enter the prescribing doctor's name.";
     }
 
     if (hasLineErrors) {
@@ -104,19 +85,6 @@ export const getMonthRangeIso = () => {
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
   return { start: start.toISOString(), end: end.toISOString() };
-};
-
-export const FOLLOW_UP_ACTIONS = {
-  schedule: "SCHEDULE_NEXT_WEEK",
-  refer: "REFER_TO_BARANGAY",
-};
-
-export const getDefaultFollowUpDate = (today = new Date()) => {
-  const date = new Date(today);
-
-  date.setDate(date.getDate() + 7);
-
-  return date.toISOString().slice(0, 10);
 };
 
 export const buildMedicineOptions = (inventoryRows, keyword = "") => {
@@ -211,36 +179,13 @@ export const getCartLineError = ({ line, medicineOptions }) => {
   }
 
   const quantity = Number(line.quantity);
-  const neededQuantity = Number(line.needed_quantity ?? line.quantity);
 
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    return "Release quantity must be a whole number greater than zero.";
-  }
-
-  if (!Number.isInteger(neededQuantity) || neededQuantity <= 0) {
-    return "Needed quantity must be a whole number greater than zero.";
-  }
-
-  if (neededQuantity < quantity) {
-    return "Needed quantity cannot be lower than release quantity.";
+    return "Quantity must be a whole number greater than zero.";
   }
 
   if (quantity > option.total_quantity) {
-    return `Only ${option.total_quantity.toLocaleString()} available quantity.`;
-  }
-
-  if (line.follow_up_action) {
-    if (!Object.values(FOLLOW_UP_ACTIONS).includes(line.follow_up_action)) {
-      return "Choose a valid follow-up option.";
-    }
-
-    if (line.follow_up_action === FOLLOW_UP_ACTIONS.schedule && !line.follow_up_date) {
-      return "Choose a follow-up date.";
-    }
-
-    if (line.follow_up_action === FOLLOW_UP_ACTIONS.refer && !line.referred_facility_id) {
-      return "Choose a referral facility.";
-    }
+    return `Only ${option.total_quantity.toLocaleString()} units available.`;
   }
 
   return "";
@@ -250,51 +195,13 @@ export const getCartSummary = (cart) =>
   cart.reduce(
     (summary, line) => ({
       lineCount: summary.lineCount + 1,
-      neededUnits: summary.neededUnits + Number((line.needed_quantity ?? line.quantity) || 0),
-      releasedUnits: summary.releasedUnits + Number(line.quantity || 0),
       totalUnits: summary.totalUnits + Number(line.quantity || 0),
     }),
-    { lineCount: 0, neededUnits: 0, releasedUnits: 0, totalUnits: 0 }
+    { lineCount: 0, totalUnits: 0 }
   );
 
 export const getTransactionTotalQuantity = (rows) =>
   rows.reduce((total, row) => total + Number(row.quantity || 0), 0);
-
-export const getBlockedPatientIdsFromClaimRows = (rows = []) => {
-  const claims = new Map();
-
-  rows
-    .filter((row) => (row.record_type || (row.is_manual_record ? "HISTORY_ONLY" : "LIVE_DISPENSING")) !== "HISTORY_ONLY")
-    .forEach((row) => {
-      const key = `${row.patient_id}:${row.medicine_id}`;
-
-      if (!claims.has(key)) {
-        claims.set(key, {
-          needed: 0,
-          patientId: row.patient_id,
-          released: 0,
-        });
-      }
-
-      const claim = claims.get(key);
-
-      claim.needed = Math.max(claim.needed, Number(row.needed_quantity || row.quantity || 0));
-      claim.released += Number(row.quantity || 0);
-    });
-
-  const patientIdsWithClaims = new Set();
-  const patientIdsWithOpenPartials = new Set();
-
-  claims.forEach((claim) => {
-    patientIdsWithClaims.add(claim.patientId);
-
-    if (claim.released < claim.needed) {
-      patientIdsWithOpenPartials.add(claim.patientId);
-    }
-  });
-
-  return Array.from(patientIdsWithClaims).filter((patientId) => !patientIdsWithOpenPartials.has(patientId));
-};
 
 export const groupHistoryByTransaction = (rows) => {
   const groups = new Map();
@@ -308,7 +215,6 @@ export const groupHistoryByTransaction = (rows) => {
         transactionId: row.dispensing_transaction_id,
         patient: row.patient,
         dispenser: row.dispenser,
-        dispensingFacility: row.dispensing_facility,
         dispenseDate: row.dispense_date,
         voidedAt: row.voided_at,
         voidReason: row.void_reason,
@@ -319,10 +225,6 @@ export const groupHistoryByTransaction = (rows) => {
     const group = groups.get(key);
     group.rows.push(row);
 
-    if (!group.dispensingFacility && row.dispensing_facility) {
-      group.dispensingFacility = row.dispensing_facility;
-    }
-
     if (row.voided_at && (!group.voidedAt || row.voided_at > group.voidedAt)) {
       group.voidedAt = row.voided_at;
       group.voidReason = row.void_reason;
@@ -331,64 +233,8 @@ export const groupHistoryByTransaction = (rows) => {
 
   return Array.from(groups.values()).map((group) => ({
     ...group,
-    medicineLines: groupMedicineRows(group.rows),
     totalQuantity: getTransactionTotalQuantity(group.rows),
   }));
-};
-
-const groupMedicineRows = (rows) => {
-  const medicineGroups = new Map();
-
-  rows.forEach((row) => {
-    const key = row.medicine_id || row.medicine?.id || row.id;
-
-    if (!medicineGroups.has(key)) {
-      medicineGroups.set(key, {
-        followUpAction: row.follow_up_action,
-        followUpDate: row.follow_up_date,
-        medicine: row.medicine,
-        neededQuantity: 0,
-        referredFacility: row.referred_facility,
-        releasedQuantity: 0,
-        rows: [],
-      });
-    }
-
-    const line = medicineGroups.get(key);
-    const needed = Number(row.needed_quantity || row.quantity || 0);
-
-    line.neededQuantity = Math.max(line.neededQuantity, needed);
-    line.releasedQuantity += Number(row.quantity || 0);
-    line.rows.push(row);
-
-    if (!line.followUpAction && row.follow_up_action) {
-      line.followUpAction = row.follow_up_action;
-      line.followUpDate = row.follow_up_date;
-      line.referredFacility = row.referred_facility;
-    }
-  });
-
-  return Array.from(medicineGroups.values());
-};
-
-export const getFollowUpDisplay = (line) => {
-  if (!line?.followUpAction && !line?.follow_up_action) {
-    return "";
-  }
-
-  const action = line.followUpAction || line.follow_up_action;
-  const date = line.followUpDate || line.follow_up_date;
-  const facility = line.referredFacility || line.referred_facility;
-
-  if (action === FOLLOW_UP_ACTIONS.schedule) {
-    return date ? `Schedule next week - ${date}` : "Schedule next week";
-  }
-
-  if (action === FOLLOW_UP_ACTIONS.refer) {
-    return `Refer to barangay${facility?.facility_name ? ` - ${facility.facility_name}` : ""}`;
-  }
-
-  return "";
 };
 
 export const matchesHistoryFilters = ({ keyword = "", status = "ALL", transaction }) => {
@@ -410,12 +256,9 @@ export const matchesHistoryFilters = ({ keyword = "", status = "ALL", transactio
     transaction.transactionId,
     transaction.patient?.patient_code,
     transaction.patient ? formatPatientName(transaction.patient) : "",
-    transaction.dispensingFacility?.facility_name,
     transaction.dispenser ? `${transaction.dispenser.first_name} ${transaction.dispenser.last_name}` : "",
     transaction.patient?.facility?.facility_name,
     ...transaction.rows.map((row) => [
-      row.manual_dispensed_by,
-      row.dispensing_facility?.facility_name,
       row.medicine?.generic_name,
       row.medicine?.brand_name,
       row.medicine?.dosage,
@@ -444,7 +287,7 @@ export const sortTransactions = (transactions, sort = "newest") => {
 const csvEscape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
 
 export const buildDispensingCsv = (transactions) => {
-  const header = "date,transaction_id,status,patient_code,patient,facility,medicine,batch,needed_units,released_units,prescribed_by,dispensed_by,follow_up,voided_at,void_reason";
+  const header = "date,transaction_id,status,patient_code,patient,facility,medicine,batch,quantity,dispensed_by,voided_at,void_reason";
 
   const lines = transactions.flatMap((transaction) =>
     transaction.rows.map((row) =>
@@ -454,14 +297,11 @@ export const buildDispensingCsv = (transactions) => {
         transaction.voidedAt ? "VOIDED" : "ACTIVE",
         transaction.patient?.patient_code || "",
         transaction.patient ? formatPatientName(transaction.patient) : "",
-        row.dispensing_facility?.facility_name || transaction.dispensingFacility?.facility_name || transaction.patient?.facility?.facility_name || "",
+        transaction.patient?.facility?.facility_name || "",
         getMedicineLabel(row.medicine),
         row.batch?.batch_number || "",
-        Number(row.needed_quantity || row.quantity || 0),
         Number(row.quantity || 0),
-        row.prescribed_by || "",
-        row.manual_dispensed_by || (transaction.dispenser ? `${transaction.dispenser.first_name} ${transaction.dispenser.last_name}` : ""),
-        getFollowUpDisplay(row),
+        transaction.dispenser ? `${transaction.dispenser.first_name} ${transaction.dispenser.last_name}` : "",
         transaction.voidedAt || "",
         transaction.voidReason || "",
       ]

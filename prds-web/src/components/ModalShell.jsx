@@ -15,7 +15,7 @@ export default function ModalShell({
   closing = false,
   labelledBy,
   onClose,
-  overlayClassName = "bg-slate-950/40 backdrop-blur-sm",
+  overlayClassName = "bg-white/70",
   panelClassName = "",
 }) {
   const panelRef = useRef(null);

@@ -10,7 +10,6 @@ import {
   DownloadIcon,
   InventoryTable,
   LayersIcon,
-  MedicineOrderToggle,
   MetricCard,
   RequestIcon,
   SearchIcon,
@@ -40,9 +39,9 @@ export default function BhwInventoryModule() {
     filteredInventory,
     paginatedInventory,
     totalPages,
+    relatedStock,
     hasActiveFilters,
     handleSort,
-    handleMedicineOrder,
     clearFilters,
     toggleStockFilter,
     handleExportCsv,
@@ -128,15 +127,11 @@ export default function BhwInventoryModule() {
                   setSearchTerm(event.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Search medicine, brand, lot number..."
+                placeholder="Search medicine, brand, batch..."
                 className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </label>
             <div className="flex items-center gap-2">
-              <MedicineOrderToggle
-                direction={inventorySort.key === "medicine" ? inventorySort.direction : "ASC"}
-                onToggle={handleMedicineOrder}
-              />
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -157,7 +152,6 @@ export default function BhwInventoryModule() {
         </div>
 
         <InventoryTable
-          variant="medicine"
           rows={paginatedInventory}
           isLoading={isLoading}
           totalCount={filteredInventory.length}
@@ -189,6 +183,8 @@ export default function BhwInventoryModule() {
           key={modalMode === "create" ? "create" : selectedItem?.id}
           mode={modalMode}
           selectedItem={selectedItem}
+          relatedStock={relatedStock}
+          consumptionByMedicine={consumptionByMedicine}
           error={inventoryError}
           onClose={closeModal}
         />

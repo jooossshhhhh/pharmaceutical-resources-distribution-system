@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildUserSummary,
   canAccessModule,
+  filterFacilityRequests,
   filterUsers,
   getAllowedNavItems,
   getDisplayEmail,
@@ -11,6 +12,10 @@ import {
   getFullName,
   getRoleLabel,
   getStatusLabel,
+  getUserManagementPathForView,
+  getUserManagementViewFromPath,
+  toDateInputValue,
+  userManagementSubmodules,
 } from "./userManagementUtils.js";
 
 const navItems = [
@@ -23,8 +28,26 @@ const navItems = [
 
 test("only Pharma II can access the user management module", () => {
   assert.equal(canAccessModule("PHARMA_II", "/users"), true);
+  assert.equal(canAccessModule("PHARMA_II", "/users/change-requests"), true);
   assert.equal(canAccessModule("PHARMA_I", "/users"), false);
+  assert.equal(canAccessModule("PHARMA_I", "/users/accounts"), false);
   assert.equal(canAccessModule("BHW", "/users"), false);
+});
+
+test("maps user management submodule routes", () => {
+  assert.equal(getUserManagementViewFromPath("/users"), "accounts");
+  assert.equal(getUserManagementViewFromPath("/users/accounts"), "accounts");
+  assert.equal(getUserManagementViewFromPath("/users/change-requests"), "change-requests");
+  assert.equal(getUserManagementViewFromPath("/users/unknown"), "accounts");
+
+  assert.equal(getUserManagementPathForView("accounts"), "/users/accounts");
+  assert.equal(getUserManagementPathForView("change-requests"), "/users/change-requests");
+  assert.equal(getUserManagementPathForView("legacy"), "/users/accounts");
+
+  assert.deepEqual(
+    userManagementSubmodules.map((submodule) => submodule.label),
+    ["Accounts", "Facility Changes"]
+  );
 });
 
 test("only CHO roles can access the facilities module", () => {
@@ -95,14 +118,19 @@ test("formats labels and hides phone-derived email addresses", () => {
   assert.equal(getStatusLabel("DEACTIVATED"), "Deactivated");
   assert.equal(getDisplayEmail(users[0]), "");
   assert.equal(getDisplayPhone(users[0]), "09623702834");
+  assert.equal(toDateInputValue("2026-09-05T05:30:00.000Z"), "2026-09-05");
 });
 
-test("builds account summary counts", () => {
-  const summary = buildUserSummary(users);
+test("builds account summary with pending facility request count", () => {
+  const summary = buildUserSummary(users, [
+    { status: "PENDING" },
+    { status: "APPROVED" },
+  ]);
 
   assert.deepEqual(summary, {
     active: 1,
     deactivated: 1,
+    facilityRequests: 1,
     pending: 1,
     total: 3,
   });
@@ -117,5 +145,60 @@ test("filters users by search, status, and role", () => {
   assert.deepEqual(
     filterUsers(users, { roleFilter: "PHARMA_I", statusFilter: "DEACTIVATED" }).map((user) => user.id),
     ["3"]
+  );
+});
+
+test("filters facility change requests by requester or facility", () => {
+  const requests = [
+    {
+      created_at: "2026-09-05T05:30:00.000Z",
+      current_facility: { facility_code: "CONHO", facility_name: "City Of Naga Health Office" },
+      profile: { first_name: "Maria", last_name: "Santos" },
+      reason: "Transferred assignment",
+      requested_facility: { facility_code: "IHC", facility_name: "Inayagan Barangay Health Center" },
+      reviewed_at: null,
+      status: "PENDING",
+    },
+    {
+      created_at: "2026-08-07T02:04:00.000Z",
+      current_facility: { facility_code: "BHC", facility_name: "Bairan Barangay Health Center" },
+      profile: { first_name: "Juan", last_name: "Reyes" },
+      reason: "",
+      requested_facility: { facility_code: "CHC", facility_name: "Cogon Barangay Health Center" },
+      reviewed_at: "2026-08-08T01:00:00.000Z",
+      status: "APPROVED",
+    },
+  ];
+
+  assert.deepEqual(
+    filterFacilityRequests(requests, "cogon").map((request) => request.profile.first_name),
+    ["Juan"]
+  );
+
+  assert.deepEqual(
+    filterFacilityRequests(requests, "transferred").map((request) => request.profile.first_name),
+    ["Maria"]
+  );
+
+  assert.deepEqual(
+    filterFacilityRequests(requests, "Sep 5").map((request) => request.profile.first_name),
+    ["Maria"]
+  );
+
+  assert.deepEqual(
+    filterFacilityRequests(requests, { dateFilter: "2026-08-07" }).map((request) => request.profile.first_name),
+    ["Juan"]
+  );
+
+  assert.deepEqual(
+    filterFacilityRequests(requests, { dateFilter: "2026-08-08" }).map((request) => request.profile.first_name),
+    ["Juan"]
+  );
+
+  assert.deepEqual(
+    filterFacilityRequests(requests, { dateFilter: "2026-09-05", statusFilter: "PENDING" }).map(
+      (request) => request.profile.first_name
+    ),
+    ["Maria"]
   );
 });

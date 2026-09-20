@@ -1,21 +1,25 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 
-import PaginationControls from "../../components/PaginationControls";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import { formatDateTime } from "../dashboard/dashboardUtils";
 import {
   AuditBadge,
+  AuditDateField,
   AuditDateGroup,
   AuditEventShell,
+  AuditFilterPanel,
   AuditIcon,
   AuditListPanel,
   AuditMetaRow,
+  AuditRadioGroup,
+  AuditSearchField,
+  AuditSelectField,
+  AuditSummaryCard,
+  AuditSummaryGrid,
   AuditTimeline,
   DownloadIcon,
-  SearchIcon,
 } from "../shared/AuditInboxUi";
 import { groupItemsByDate, getRelativeTime } from "../shared/AuditInboxUtils";
 import { getActivityLogData } from "./ActivityLogService";
@@ -159,18 +163,30 @@ export default function ActivityLogsModule() {
     visibleLogs,
   ]);
 
-  const {
-    currentPage,
-    paginatedRows: paginatedLogs,
-    pageSize,
-    setCurrentPage,
-    totalCount,
-    totalPages,
-  } = usePaginatedRows(filteredLogs);
+  const summaryCounts = useMemo(() => {
+    const countCategory = (summaryCategory) =>
+      visibleLogs.filter((log) =>
+        matchesActivityLogFilters(log, {
+          category: summaryCategory,
+          currentUserId: profile?.id,
+          dateMode: "all",
+          facilityId: "ALL",
+          keyword: "",
+          selfOnly: false,
+        })
+      ).length;
+
+    return {
+      all: visibleLogs.length,
+      self: countCategory("self"),
+      inventory: countCategory("inventory"),
+      profile: countCategory("profile"),
+    };
+  }, [profile?.id, visibleLogs]);
 
   const groupedLogs = useMemo(() => {
-    return groupItemsByDate(paginatedLogs, (log) => log.created_at);
-  }, [paginatedLogs]);
+    return groupItemsByDate(filteredLogs, (log) => log.created_at);
+  }, [filteredLogs]);
 
   const loadLogs = async () => {
     setIsLoading(true);
@@ -206,6 +222,10 @@ export default function ActivityLogsModule() {
     setStartDate("");
   };
 
+  const canViewProfileChanges = allowedCategories.some(
+    (filter) => filter.value === "profile"
+  );
+
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
       {error && (
@@ -215,53 +235,73 @@ export default function ActivityLogsModule() {
       )}
 
       <div className="space-y-5">
-        <section className="rounded-xl border border-neutral-200 bg-white shadow-sm shadow-neutral-200/50">
-          <div className="flex flex-col gap-3 border-b border-neutral-200 px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#00a36c]">
-                Accountability
-              </p>
-              <h2 className="mt-1 text-lg font-black text-[#0d1117]">
-                Activity log
-              </h2>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#eff4ff] px-3 py-2 text-xs font-black tabular-nums text-[#0d1117]">
-                {visibleLogs.length} total
-              </span>
-              <button
-                type="button"
-                onClick={loadLogs}
-                disabled={isLoading}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#007f5f] disabled:cursor-not-allowed disabled:bg-emerald-300"
-              >
-                <RefreshIcon className={isLoading ? "animate-spin" : ""} />
-                Refresh
-              </button>
-            </div>
-          </div>
+        <AuditSummaryGrid>
+          <AuditSummaryCard
+            count={summaryCounts.all}
+            icon={<ActivityIcon />}
+            isActive={category === "all"}
+            label="Visible Logs"
+            meta="All activity you can access."
+            onClick={() => setCategory("all")}
+            tone="slate"
+          />
+          <AuditSummaryCard
+            count={summaryCounts.self}
+            icon={<UserIcon />}
+            isActive={category === "self"}
+            label="My Activity"
+            meta="Actions tied to your account."
+            onClick={() => setCategory("self")}
+            tone="emerald"
+          />
+          <AuditSummaryCard
+            count={summaryCounts.inventory}
+            icon={<InventoryIcon />}
+            isActive={category === "inventory"}
+            label="Inventory Updates"
+            meta="Stock and batch adjustments."
+            onClick={() => setCategory("inventory")}
+            tone="amber"
+          />
+          {canViewProfileChanges && (
+            <AuditSummaryCard
+              count={summaryCounts.profile}
+              icon={<ProfileIcon />}
+              isActive={category === "profile"}
+              label="Profile Changes"
+              meta="Account and facility changes."
+              onClick={() => setCategory("profile")}
+              tone="blue"
+            />
+          )}
+        </AuditSummaryGrid>
 
-          <div className="grid gap-3 px-4 py-4 md:grid-cols-2 xl:grid-cols-[minmax(15rem,1.3fr)_minmax(10rem,0.8fr)_minmax(10rem,0.8fr)_minmax(11rem,0.9fr)_minmax(10rem,0.7fr)]">
-            <TopSearchField
-              label="Search"
+        <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(16rem,17rem)_minmax(0,1fr)]">
+          <AuditFilterPanel title="Activity Logs" onReset={resetFilters}>
+            <AuditSearchField
+              label="Search Keywords"
               value={keyword}
               onChange={setKeyword}
               placeholder="Search action, user, role..."
             />
-            <TopSelectField
-              label="Action Type"
+
+            <AuditRadioGroup
+              label="Action Category"
+              name="activity-category"
               value={category}
               onChange={setCategory}
               options={allowedCategories}
             />
-            <TopSelectField
-              label="Role"
+
+            <AuditSelectField
+              label="Filter by Role"
               value={roleFilter}
               onChange={setRoleFilter}
               options={allowedRoleOptions}
             />
-            <TopSelectField
-              label="Facility"
+
+            <AuditSelectField
+              label="Filter by Facility"
               value={facilityId}
               onChange={setFacilityId}
               options={[
@@ -272,69 +312,44 @@ export default function ActivityLogsModule() {
                 })),
               ]}
             />
-            <TopSelectField
-              label="Date"
+
+            <AuditSelectField
+              label="Date Filter"
               value={dateMode}
               onChange={setDateMode}
               options={activityDateModes}
             />
-          </div>
 
-          {dateMode !== "all" && (
-            <div className="grid gap-3 border-t border-neutral-100 px-4 py-4 md:grid-cols-2 xl:max-w-xl">
-              {dateMode === "specific" ? (
-                <TopDateField
-                  label="Select Date"
-                  value={specificDate}
-                  onChange={setSpecificDate}
+            {dateMode === "specific" && (
+              <AuditDateField
+                label="Select Date"
+                value={specificDate}
+                onChange={setSpecificDate}
+              />
+            )}
+
+            {dateMode === "range" && (
+              <div className="grid gap-3">
+                <AuditDateField
+                  label="Start Date"
+                  value={startDate}
+                  onChange={setStartDate}
                 />
-              ) : (
-                <>
-                  <TopDateField
-                    label="Start Date"
-                    value={startDate}
-                    onChange={setStartDate}
-                  />
-                  <TopDateField
-                    label="End Date"
-                    value={endDate}
-                    onChange={setEndDate}
-                  />
-                </>
-              )}
-            </div>
-          )}
+                <AuditDateField
+                  label="End Date"
+                  value={endDate}
+                  onChange={setEndDate}
+                />
+              </div>
+            )}
+          </AuditFilterPanel>
 
-          <div className="flex justify-end border-t border-neutral-100 px-4 py-3">
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="h-9 rounded-lg px-3 text-xs font-black text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
-            >
-              Reset Filters
-            </button>
-          </div>
-        </section>
-
-        <div className="min-w-0">
           <AuditListPanel
             label={panelLabel}
-            count={paginatedLogs.length}
+            count={filteredLogs.length}
             isLoading={isLoading}
             emptyTitle="No activity logs match this view"
             emptyDescription="Try another action category, facility, role, keyword, or date range."
-            footer={
-              !isLoading && totalCount > 0 ? (
-                <PaginationControls
-                  currentPage={currentPage}
-                  itemLabel="activity logs"
-                  onPageChange={setCurrentPage}
-                  pageSize={pageSize}
-                  totalCount={totalCount}
-                  totalPages={totalPages}
-                />
-              ) : null
-            }
             action={
               <button
                 type="button"
@@ -358,59 +373,6 @@ export default function ActivityLogsModule() {
         </div>
       </div>
     </AdminShell>
-  );
-}
-
-function TopSearchField({ label, onChange, placeholder, value }) {
-  return (
-    <label className="grid min-w-0 gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
-      {label}
-      <div className="relative min-w-0">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-          <SearchIcon />
-        </span>
-        <input
-          type="search"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium normal-case tracking-normal text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
-        />
-      </div>
-    </label>
-  );
-}
-
-function TopSelectField({ label, onChange, options, value }) {
-  return (
-    <label className="grid min-w-0 gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
-      {label}
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function TopDateField({ label, onChange, value }) {
-  return (
-    <label className="grid min-w-0 gap-2 text-xs font-black uppercase tracking-wide text-[#42474e]">
-      {label}
-      <input
-        type="date"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
-      />
-    </label>
   );
 }
 
@@ -468,11 +430,32 @@ function ActivityIcon() {
   );
 }
 
-function RefreshIcon({ className = "" }) {
+function InventoryIcon() {
   return (
-    <svg className={`h-4 w-4 ${className}`} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4" />
-      <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4" />
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+      <path d="m12 3 8 4-8 4-8-4 8-4Z" />
+      <path d="m4 11 8 4 8-4" />
+      <path d="m4 15 8 4 8-4" />
+    </svg>
+  );
+}
+
+function ProfileIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+      <path d="m17 11 2 2 4-4" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+      <circle cx="10" cy="8" r="4" />
+      <path d="M3 21a7 7 0 0 1 14 0" />
+      <path d="M19 8v6M16 11h6" />
     </svg>
   );
 }

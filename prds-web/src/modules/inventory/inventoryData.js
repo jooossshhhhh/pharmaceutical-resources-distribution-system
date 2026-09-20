@@ -5,17 +5,14 @@ import { useAuth } from "../../context/useAuth";
 import { supabase } from "../../services/supabase";
 import { computeAdc, computeReorderQty } from "./demandUtils";
 import {
-  buildInventoryMedicineRows,
   buildInventoryImportPayloads,
   emptyInventoryForm,
   formatDateTime,
   getExpiryStatus,
   getMedicineName,
   getStockStatus,
-  normalizeLotNumber,
   pageSize,
   parseInventoryCsv,
-  sortInventoryRows,
 } from "./inventoryUtils";
 
 const STORAGE_PREFIX = "prds-inventory:";
@@ -62,7 +59,7 @@ export function useInventoryData({ isBhw = false }) {
     }
     return readStored(`${STORAGE_PREFIX}${profile?.id}:stock`) || "ALL";
   });
-  const [inventorySort, setInventorySort] = useState({ key: "medicine", direction: "ASC" });
+  const [inventorySort, setInventorySort] = useState({ key: "updated_at", direction: "DESC" });
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -135,18 +132,13 @@ export function useInventoryData({ isBhw = false }) {
     [facilities, facilityFilter]
   );
 
-  const groupedInventory = useMemo(
-    () => buildInventoryMedicineRows(scopeInventory),
-    [scopeInventory]
-  );
-
   const ownFacilityName =
     profile?.facility_name ||
     facilities.find((facility) => facility.id === ownFacilityId)?.facility_name ||
     "Your facility";
 
   const summary = useMemo(() => {
-    return groupedInventory.reduce(
+    return scopeInventory.reduce(
       (counts, item) => {
         const status = getStockStatus(item).key;
         const expiryStatus = getExpiryStatus(item).key;
@@ -162,7 +154,7 @@ export function useInventoryData({ isBhw = false }) {
       },
       { totalItems: 0, stockedOut: 0, critical: 0, low: 0, expired: 0, expiring: 0 }
     );
-  }, [groupedInventory]);
+  }, [scopeInventory]);
 
   const facilityOptions = useMemo(() => {
     return [...facilities].sort((first, second) => {
@@ -198,7 +190,7 @@ export function useInventoryData({ isBhw = false }) {
 
   const reorderQtyByItemId = useMemo(() => {
     const map = {};
-    groupedInventory.forEach((item) => {
+    scopeInventory.forEach((item) => {
       const adc = consumptionByMedicine[item.medicine_id];
       const reorderQty = adc != null ? computeReorderQty(item.quantity, adc) : 0;
       if (reorderQty > 0) {
@@ -206,20 +198,20 @@ export function useInventoryData({ isBhw = false }) {
       }
     });
     return map;
-  }, [groupedInventory, consumptionByMedicine]);
+  }, [scopeInventory, consumptionByMedicine]);
 
   const preFilteredInventory = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return groupedInventory.filter((item) => {
+    return scopeInventory.filter((item) => {
       const searchableText = [
         item.medicine?.generic_name,
         item.medicine?.brand_name,
         item.medicine?.dosage,
         item.medicine?.unit_of_measure,
         item.facility?.facility_name,
-        ...(item.lots || []).map((lot) => lot.supplier?.supplier_name),
-        ...(item.lots || []).map((lot) => lot.batch_number),
+        item.supplier?.supplier_name,
+        item.batch_number,
       ]
         .filter(Boolean)
         .join(" ")
@@ -227,7 +219,7 @@ export function useInventoryData({ isBhw = false }) {
 
       return !normalizedSearch || searchableText.includes(normalizedSearch);
     });
-  }, [groupedInventory, searchTerm]);
+  }, [scopeInventory, searchTerm]);
 
   const filteredInventory = useMemo(() => {
     return preFilteredInventory.filter((item) => {
@@ -248,7 +240,28 @@ export function useInventoryData({ isBhw = false }) {
   }, [preFilteredInventory, stockFilter, reorderQtyByItemId]);
 
   const sortedInventory = useMemo(() => {
-    return sortInventoryRows(filteredInventory, inventorySort);
+    const { key, direction } = inventorySort;
+    const factor = direction === "ASC" ? 1 : -1;
+
+    return [...filteredInventory].sort((first, second) => {
+      let comparison = 0;
+
+      if (key === "medicine") {
+        comparison = (first.medicine?.generic_name || "").localeCompare(
+          second.medicine?.generic_name || "",
+          undefined,
+          { sensitivity: "base" }
+        );
+      } else if (key === "quantity") {
+        comparison = Number(first.quantity || 0) - Number(second.quantity || 0);
+      } else if (key === "expiration_date") {
+        comparison = (first.expiration_date || "").localeCompare(second.expiration_date || "");
+      } else if (key === "updated_at") {
+        comparison = (first.updated_at || "").localeCompare(second.updated_at || "");
+      }
+
+      return comparison * factor;
+    });
   }, [filteredInventory, inventorySort]);
 
   const paginatedInventory = useMemo(() => {
@@ -263,13 +276,13 @@ export function useInventoryData({ isBhw = false }) {
       return [];
     }
 
-    return buildInventoryMedicineRows(
-      inventory.filter(
+    return inventory
+      .filter(
         (item) =>
           item.medicine_id === selectedItem.medicine_id &&
           item.facility_id !== selectedItem.facility_id
       )
-    ).slice(0, 5);
+      .slice(0, 5);
   }, [inventory, selectedItem]);
 
   const hasActiveFilters = useMemo(() => {
@@ -410,11 +423,6 @@ export function useInventoryData({ isBhw = false }) {
     setCurrentPage(1);
   };
 
-  const handleMedicineOrder = (direction) => {
-    setInventorySort({ key: "medicine", direction });
-    setCurrentPage(1);
-  };
-
   const selectFacility = (facilityId) => {
     setFacilityFilter(facilityId);
     setCurrentPage(1);
@@ -436,8 +444,8 @@ export function useInventoryData({ isBhw = false }) {
     const headers = [
       "Medicine",
       "Brand",
-      "Unit of Measurement",
-      "Lot Number",
+      "Unit",
+      "Batch",
       "Facility",
       "Supplier",
       "Quantity",
@@ -460,9 +468,9 @@ export function useInventoryData({ isBhw = false }) {
         getMedicineName(item),
         item.medicine?.brand_name || "",
         item.medicine?.unit_of_measure || "",
-        (item.lots || [item]).map((lot) => normalizeLotNumber(lot.batch_number)).filter(Boolean).join(" | "),
+        item.batch_number,
         item.facility?.facility_name || "",
-        (item.lots || [item]).map((lot) => lot.supplier?.supplier_name).filter(Boolean).join(" | "),
+        item.supplier?.supplier_name || "",
         item.quantity,
         item.threshold,
         status.label,
@@ -525,7 +533,7 @@ export function useInventoryData({ isBhw = false }) {
     const { name, value } = event.target;
     setFormValues((currentValues) => ({
       ...currentValues,
-      [name]: name === "batch_number" ? normalizeLotNumber(value) : value,
+      [name]: name === "batch_number" ? value.toUpperCase() : value,
     }));
   };
 
@@ -538,8 +546,8 @@ export function useInventoryData({ isBhw = false }) {
       return "Medicine and supplier are required.";
     }
 
-    if (!normalizeLotNumber(formValues.batch_number)) {
-      return "Lot Number must contain letters and numbers only.";
+    if (!formValues.batch_number.trim()) {
+      return "Batch number is required.";
     }
 
     if (Number(formValues.quantity) < 0 || formValues.quantity === "") {
@@ -587,7 +595,7 @@ export function useInventoryData({ isBhw = false }) {
       supplier_id: formValues.supplier_id,
       quantity: Number(formValues.quantity),
       threshold: Number(formValues.threshold),
-      batch_number: normalizeLotNumber(formValues.batch_number),
+      batch_number: formValues.batch_number.trim(),
       date_received: formValues.date_received,
       expiration_date: formValues.expiration_date,
       updated_at: new Date().toISOString(),
@@ -794,7 +802,6 @@ export function useInventoryData({ isBhw = false }) {
     hasActiveFilters,
     openCreateModal,
     handleSort,
-    handleMedicineOrder,
     selectFacility,
     clearFilters,
     toggleStockFilter,

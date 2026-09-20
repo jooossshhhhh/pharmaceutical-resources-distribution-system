@@ -1,12 +1,27 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import ModalShell from "../../../components/ModalShell";
-import { Field, InventoryLotTable, PlusIcon, SelectField } from "../inventoryComponents";
+import { supabase } from "../../../services/supabase";
+import DemandPanel from "./DemandPanel";
+import {
+  buildChannelSeries,
+  computeDaysOfSupply,
+  computeStockOutDate,
+  forecastSummary,
+  sumDispensedByFacilityType,
+} from "../demandUtils";
+import { Field, PlusIcon, SelectField } from "../inventoryComponents";
 import {
   formatDate,
-  formatNumber,
+  formatDateTime,
   getMedicineName,
+  getStockStatus,
 } from "../inventoryUtils";
+
+const safeFetch = async (request) => {
+  const result = await request;
+  return result.error ? [] : result.data || [];
+};
 
 export function ChoStockModal({
   mode,
@@ -22,14 +37,16 @@ export function ChoStockModal({
   onChange,
   onSubmit,
   onEdit,
-  onEditLot,
   onCancelEdit,
   canEdit,
+  fetchStockHistory,
 }) {
+  const [history, setHistory] = useState(null);
   const modalBodyRef = useRef(null);
 
   const isEditing = mode === "edit";
   const isReadOnly = mode === "view";
+  const isHistoryLoading = mode === "view" && history === null;
   const title =
     mode === "create" ? "Add New Stock" : isEditing ? "Edit Stock" : "Stock Details";
   const subtitle =
@@ -38,20 +55,139 @@ export function ChoStockModal({
       : isEditing
         ? "Update medicine inventory details"
         : selectedItem
-          ? getMedicineName(selectedItem)
-          : "Review stock details by lot number.";
+          ? `${getMedicineName(selectedItem)}${selectedItem.batch_number ? ` - ${selectedItem.batch_number}` : ""}`
+          : "Review batch details and forecast support.";
+
+  useEffect(() => {
+    if (mode !== "view" || !selectedItem || !fetchStockHistory) {
+      return undefined;
+    }
+
+    let active = true;
+
+    fetchStockHistory(selectedItem)
+      .then((rows) => {
+        if (!active) {
+          return;
+        }
+        setHistory(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setHistory([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [mode, selectedItem, fetchStockHistory]);
 
   useEffect(() => {
     modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [isEditing, mode, selectedItem?.id]);
 
-  const lots = selectedItem?.lots?.length ? selectedItem.lots : selectedItem ? [selectedItem] : [];
+  const facilityTypeById = useMemo(
+    () => new Map(facilities.map((facility) => [facility.id, facility.facility_type])),
+    [facilities]
+  );
+
+  const [demand, setDemand] = useState(null);
+  const isDemandLoading = Boolean(selectedItem) && demand === null;
+
+  useEffect(() => {
+    if (!selectedItem) {
+      return undefined;
+    }
+
+    let active = true;
+
+    const medicineId = selectedItem.medicine_id;
+
+    Promise.all([
+      safeFetch(
+        supabase
+          .from("medicine_dispensing")
+          .select(
+            "id, facility_id, medicine_id, quantity, dispensing_type, dispense_date, facility:facilities(facility_name, facility_code, facility_type)"
+          )
+          .eq("medicine_id", medicineId)
+          .limit(2000)
+      ),
+      safeFetch(
+        supabase
+          .from("forecasting")
+          .select("id, medicine_id, facility_id, forecast_month, predicted_quantity")
+          .eq("medicine_id", medicineId)
+      ),
+      safeFetch(
+        supabase
+          .from("medicine_request_items")
+          .select(`
+            id,
+            quantity,
+            medicine_id,
+            request:medicine_requests(id, facility_id, request_date, status, facility:facilities(facility_name))
+          `)
+          .eq("medicine_id", medicineId)
+          .eq("request.status", "PENDING")
+      ),
+    ])
+      .then(([dispensing, forecast, requests]) => {
+        if (!active) {
+          return;
+        }
+
+        setDemand({
+          dispensing: Array.isArray(dispensing) ? dispensing : [],
+          forecast: Array.isArray(forecast) ? forecast : [],
+          requests: Array.isArray(requests) ? requests : [],
+        });
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setDemand({ dispensing: [], forecast: [], requests: [] });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedItem]);
+
+  const channelSeries = useMemo(
+    () => (demand ? buildChannelSeries(demand.dispensing || []) : []),
+    [demand]
+  );
+  const split = useMemo(
+    () =>
+      demand ? sumDispensedByFacilityType(demand.dispensing || [], facilityTypeById) : null,
+    [demand, facilityTypeById]
+  );
+  const forecast = useMemo(() => (demand ? forecastSummary(demand.forecast || []) : null), [demand]);
+  const pendingRequests = useMemo(
+    () =>
+      demand
+        ? (demand.requests || []).filter((item) => item.request?.status === "PENDING")
+        : [],
+    [demand]
+  );
+  const adc = consumptionByMedicine?.[selectedItem?.medicine_id] ?? null;
+  const daysOfSupply = selectedItem ? computeDaysOfSupply(selectedItem.quantity, adc) : null;
+  const stockOutDate = computeStockOutDate(daysOfSupply);
+  const stockStatus = selectedItem ? getStockStatus(selectedItem) : null;
+  const estimatedValue = selectedItem
+    ? Number(selectedItem.quantity || 0) * Number(selectedItem.medicine?.unit_cost || 0)
+    : 0;
 
   return (
     <ModalShell
       labelledBy="cho-inventory-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-white/95 backdrop-blur-sm"
       panelClassName="max-w-4xl"
     >
       <form
@@ -72,9 +208,37 @@ export function ChoStockModal({
 
           {isReadOnly && selectedItem && (
             <>
-              <StockDetailsHeader item={selectedItem} />
+              <StockDetailsSummary item={selectedItem} />
+
               <div className="mt-5">
-                <InventoryLotTable lots={lots} canEdit={canEdit} onEditLot={onEditLot} />
+                {isDemandLoading ? (
+                  <div className="rounded-xl border border-[#d8dadc] bg-white p-4">
+                    <div className="h-5 w-44 animate-pulse rounded bg-neutral-100" />
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      {Array.from({ length: 3 }, (_, index) => (
+                        <div key={index} className="h-20 animate-pulse rounded-lg bg-neutral-100" />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <DemandPanel
+                    title="Stock Details"
+                    adc={adc}
+                    daysOfSupply={daysOfSupply}
+                    stockOutDate={stockOutDate}
+                    channelSeries={channelSeries}
+                    split={split}
+                    forecast={forecast}
+                    pendingRequests={pendingRequests}
+                    dispensingRows={demand?.dispensing || []}
+                    forecastRows={demand?.forecast || []}
+                    stockItem={selectedItem}
+                    stockStatus={stockStatus}
+                    estimatedValue={estimatedValue}
+                    stockHistory={history}
+                    isHistoryLoading={isHistoryLoading}
+                  />
+                )}
               </div>
             </>
           )}
@@ -121,8 +285,8 @@ export function ChoStockModal({
                 </StockFormSection>
 
                 <StockFormSection
-                  title="Lot Number & Supplier"
-                  description="Lot Number and supplier details support FEFO release decisions and stock traceability."
+                  title="Batch & Supplier"
+                  description="Batch and supplier details support FEFO release decisions and stock traceability."
                 >
                   <div className="grid gap-4 sm:grid-cols-2">
                     <SelectField
@@ -142,7 +306,7 @@ export function ChoStockModal({
                     </SelectField>
 
                     <Field
-                      label="Lot Number"
+                      label="Batch Number"
                       name="batch_number"
                       value={formValues.batch_number}
                       onChange={onChange}
@@ -228,7 +392,17 @@ export function ChoStockModal({
             >
               {isReadOnly ? "Close" : "Cancel"}
             </button>
-            {isReadOnly ? null : (
+            {isReadOnly ? (
+              canEdit ? (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="h-10 rounded-lg bg-emerald-600 px-6 text-sm font-black text-white hover:bg-emerald-700"
+                >
+                  Edit Stock
+                </button>
+              ) : null
+            ) : (
               <button
                 type="submit"
                 disabled={isSaving}
@@ -267,16 +441,17 @@ function StockFormSection({ title, description, children }) {
   );
 }
 
-function StockDetailsHeader({ item }) {
+function StockDetailsSummary({ item }) {
   if (!item) {
     return null;
   }
 
   const items = [
-    ["Total Stock", formatNumber(item.quantity)],
-    ["Nearest Expiration", formatDate(item.expiration_date)],
-    ["Facility", item.facility?.facility_name],
+    ["Batch Number", item.batch_number],
+    ["Supplier", item.supplier?.supplier_name],
+    ["Date Received", formatDate(item.date_received)],
     ["Expiration Date", formatDate(item.expiration_date)],
+    ["Last Updated", formatDateTime(item.updated_at)],
   ];
 
   return (
@@ -284,20 +459,20 @@ function StockDetailsHeader({ item }) {
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
-            Medicine Stock
+            Batch Information
           </p>
           <p className="mt-1 text-xs font-semibold text-neutral-500">
-            Grouped by medicine for this facility. Lot Number records are listed below.
+            Batch source and date details used for stock tracking.
           </p>
         </div>
-        {item.lotCount > 0 && (
+        {item.batch_number && (
           <span className="inline-flex w-fit rounded-full bg-[#f7f6f3] px-3 py-1 text-xs font-black text-[#0d1117]">
-            {item.lotCount} lot record{item.lotCount === 1 ? "" : "s"}
+            {item.batch_number}
           </span>
         )}
       </div>
 
-      <dl className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         {items.map(([label, value]) => (
           <div key={label} className="min-w-0 rounded-lg bg-[#f7f6f3] px-3 py-2.5">
             <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">

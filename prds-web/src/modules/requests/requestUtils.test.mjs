@@ -5,12 +5,9 @@ import {
   buildFefoBatchAllocations,
   buildRequestsCsv,
   getAllocationValidationError,
-  getAllocatedQuantityForItem,
   getAverageApprovalTimeLabel,
   getChoAvailabilityMap,
   getDuplicateRequestMedicineIds,
-  getForecastDemandMap,
-  getItemLabel,
   getMedicineFullLabel,
   getItemStockStatus,
   getLowStockRequestItems,
@@ -27,27 +24,9 @@ import {
   matchesRequestFilters,
   normalizeRequestErrorMessage,
   validateChoRequestAvailability,
-  validateManualPaperRequest,
   requestContainsMedicine,
   sortRequests,
 } from "./requestUtils.js";
-
-const daysAgo = (days) => new Date(Date.now() - days * 86400000).toISOString();
-
-const buildPriorityRequest = (overrides = {}) => ({
-  id: "priority-request",
-  facility_id: "facility-a",
-  request_date: daysAgo(0),
-  status: "PENDING",
-  items: [
-    {
-      id: "priority-item",
-      medicine_id: "med-a",
-      quantity: 10,
-    },
-  ],
-  ...overrides,
-});
 
 const requests = [
   {
@@ -123,19 +102,6 @@ test("formats full request item medicine details for BHW tracking", () => {
   );
 });
 
-test("formats request item labels with medicine name before brand", () => {
-  assert.equal(
-    getItemLabel({
-      medicine: {
-        generic_name: "Amlodipine",
-        brand_name: "CardioNorm",
-        dosage: "5mg",
-      },
-    }),
-    "Amlodipine 5mg"
-  );
-});
-
 test("summarizes request statuses", () => {
   assert.deepEqual(getRequestSummary(requests), {
     completed: 1,
@@ -151,122 +117,9 @@ test("calculates completed quantity and facility rating", () => {
   assert.equal(getFacilityRequestRating(requests), 66.7);
 });
 
-test("builds latest forecast demand by facility and medicine", () => {
-  const demandMap = getForecastDemandMap([
-    {
-      facility_id: "facility-a",
-      medicine_id: "med-a",
-      forecast_month: "2026-07-01",
-      predicted_quantity: 40,
-    },
-    {
-      facility_id: "facility-a",
-      medicine_id: "med-a",
-      forecast_month: "2026-08-01",
-      predicted_quantity: 80,
-    },
-  ]);
-
-  assert.equal(demandMap.get("facility-a:med-a").predictedQuantity, 80);
-});
-
-test("derives request priority from stock, demand, and pending age", () => {
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest(),
-      new Map([["facility-a:med-a", { quantity: 0, threshold: 10 }]])
-    ),
-    "HIGH"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest(),
-      new Map([["facility-a:med-a", { quantity: 8, threshold: 10 }]])
-    ),
-    "HIGH"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest({ items: [{ id: "priority-item", medicine_id: "med-a", quantity: 25 }] }),
-      new Map([["facility-a:med-a", { quantity: 20, threshold: 5 }]])
-    ),
-    "HIGH"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest(),
-      new Map([["facility-a:med-a", { quantity: 100, threshold: 20 }]]),
-      new Map([["facility-a:med-a", { predictedQuantity: 120 }]])
-    ),
-    "HIGH"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest(),
-      new Map([["facility-a:med-a", { quantity: 18, threshold: 10 }]])
-    ),
-    "MEDIUM"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest(),
-      new Map([["facility-a:med-a", { quantity: 100, threshold: 10 }]]),
-      new Map([["facility-a:med-a", { predictedQuantity: 75 }]])
-    ),
-    "MEDIUM"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest({ request_date: daysAgo(1.5), items: [] }),
-      new Map()
-    ),
-    "MEDIUM"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest({ request_date: daysAgo(3.1), items: [] }),
-      new Map()
-    ),
-    "HIGH"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest(),
-      new Map([["facility-a:med-a", { quantity: 200, threshold: 50 }]]),
-      new Map([["facility-a:med-a", { predictedQuantity: 100 }]])
-    ),
-    "LOW"
-  );
-  assert.equal(
-    getRequestPriority(
-      buildPriorityRequest({ status: "APPROVED" }),
-      new Map([["facility-a:med-a", { quantity: 0, threshold: 10 }]])
-    ),
-    "LOW"
-  );
-});
-
-test("filters requests by priority category", () => {
-  assert.equal(
-    matchesRequestFilters(requests[0], { priority: "ALL" }),
-    true
-  );
-  assert.equal(
-    matchesRequestFilters(requests[0], { priority: "HIGH" }),
-    true
-  );
-  assert.equal(
-    matchesRequestFilters(requests[0], { priority: "LOW" }),
-    false
-  );
-  assert.equal(
-    matchesRequestFilters(requests[1], { priority: "LOW" }),
-    true
-  );
-  assert.equal(
-    matchesRequestFilters(requests[1], { priority: "HIGH" }),
-    false
-  );
+test("derives pending request priority from quantity", () => {
+  assert.equal(getRequestPriority(requests[0]), "HIGH");
+  assert.equal(getRequestPriority(requests[1]), "LOW");
 });
 
 test("filters requests by keyword, facility, and status", () => {
@@ -317,21 +170,7 @@ test("sorts requests by newest and priority", () => {
     sortRequests(requests, "newest").map((request) => request.id),
     [requests[0].id, requests[2].id, requests[1].id]
   );
-  const priorityRequests = [
-    buildPriorityRequest({ id: "low", items: [{ id: "low-item", medicine_id: "med-low", quantity: 10 }] }),
-    buildPriorityRequest({ id: "high", items: [{ id: "high-item", medicine_id: "med-high", quantity: 10 }] }),
-    buildPriorityRequest({ id: "medium", items: [{ id: "medium-item", medicine_id: "med-medium", quantity: 10 }] }),
-  ];
-  const stockMap = new Map([
-    ["facility-a:med-low", { quantity: 200, threshold: 50 }],
-    ["facility-a:med-high", { quantity: 0, threshold: 10 }],
-    ["facility-a:med-medium", { quantity: 18, threshold: 10 }],
-  ]);
-
-  assert.deepEqual(
-    sortRequests(priorityRequests, "priority", stockMap).map((request) => request.id),
-    ["high", "medium", "low"]
-  );
+  assert.equal(sortRequests(requests, "priority")[0].id, requests[0].id);
 });
 
 test("calculates stock status from facility inventory", () => {
@@ -363,31 +202,6 @@ test("detects duplicate medicines before request item insert", () => {
       { medicine_id: "med-b", quantity: 20 },
     ]),
     []
-  );
-});
-
-test("validates manual paper request payloads", () => {
-  assert.equal(
-    validateManualPaperRequest({ facilityId: "", items: [{ medicine_id: "med-a", quantity: 1 }] }),
-    "Choose the requesting barangay facility."
-  );
-  assert.equal(
-    validateManualPaperRequest({ facilityId: "facility-a", items: [{ medicine_id: "med-a", quantity: 0 }] }),
-    "Every paper request line needs a medicine and positive quantity."
-  );
-  assert.equal(
-    validateManualPaperRequest({
-      facilityId: "facility-a",
-      items: [
-        { medicine_id: "med-a", quantity: 1 },
-        { medicine_id: "med-a", quantity: 2 },
-      ],
-    }),
-    "Each medicine can appear only once per paper request."
-  );
-  assert.equal(
-    validateManualPaperRequest({ facilityId: "facility-a", items: [{ medicine_id: "med-a", quantity: 1 }] }),
-    ""
   );
 });
 
@@ -469,52 +283,25 @@ test("builds FEFO batch allocations from soonest expiring CHO batches", () => {
   ]);
 });
 
-test("validates batch allocations can partially cover requested items", () => {
+test("validates batch allocations must fully cover each requested item", () => {
   const requestItems = [
     { id: "item-a", medicine_id: "med-a", quantity: 120 },
   ];
   const batches = [
-    { id: "batch-a", medicine_id: "med-a", quantity: 150 },
+    { id: "batch-a", medicine_id: "med-a", quantity: 100 },
   ];
 
   assert.equal(
     getAllocationValidationError(requestItems, batches, [
       { request_item_id: "item-a", source_inventory_id: "batch-a", quantity: 100 },
     ]),
-    ""
+    "Allocate exactly 120 units for this request item before approving."
   );
 
   assert.equal(
     getAllocationValidationError(requestItems, batches, [
-      { request_item_id: "item-a", source_inventory_id: "batch-a", quantity: 121 },
+      { request_item_id: "item-a", source_inventory_id: "batch-a", quantity: 101 },
     ]),
-    "Release quantity cannot exceed the requested 120 quantity."
-  );
-
-  assert.equal(
-    getAllocationValidationError(requestItems, batches, []),
-    "Allocate at least one requested medicine before release."
-  );
-});
-
-test("summarizes release quantity by request item", () => {
-  assert.equal(
-    getAllocatedQuantityForItem("item-a", [
-      { request_item_id: "item-a", quantity: 25 },
-      { request_item_id: "item-b", quantity: 30 },
-      { request_item_id: "item-a", quantity: 15 },
-    ]),
-    40
-  );
-});
-
-test("blocks allocation above selected batch stock", () => {
-  assert.equal(
-    getAllocationValidationError(
-      [{ id: "item-a", medicine_id: "med-a", quantity: 120 }],
-      [{ id: "batch-a", medicine_id: "med-a", quantity: 100 }],
-      [{ request_item_id: "item-a", source_inventory_id: "batch-a", quantity: 101 }]
-    ),
     "Batch allocation exceeds the selected CHO stock quantity."
   );
 });
@@ -640,7 +427,7 @@ test("builds a csv export from request history", () => {
   const csv = buildRequestsCsv([requests[0], requests[2]]);
   const lines = csv.split("\n");
 
-  assert.equal(lines[0], "Request Number,Source,Date,Status,Items,Total Quantity,Remarks");
-  assert.match(lines[1], /^#RQ-ABCDEF12,Online Request,/);
+  assert.equal(lines[0], "Request Number,Date,Status,Items,Total Quantity,Remarks");
+  assert.match(lines[1], /^#RQ-ABCDEF12,/);
   assert.equal(lines.length, 3);
 });

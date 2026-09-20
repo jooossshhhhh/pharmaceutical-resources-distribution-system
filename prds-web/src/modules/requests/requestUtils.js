@@ -6,13 +6,6 @@ export const requestStatuses = [
   { value: "COMPLETED", label: "Completed" },
 ];
 
-export const requestPriorityOptions = [
-  { value: "ALL", label: "All priorities" },
-  { value: "HIGH", label: "High priority" },
-  { value: "MEDIUM", label: "Medium priority" },
-  { value: "LOW", label: "Low priority" },
-];
-
 export const requestSortOptions = [
   { value: "newest", label: "Newest first" },
   { value: "oldest", label: "Oldest first" },
@@ -113,19 +106,12 @@ export const isRequestWithinDateRange = (request = {}, rangeKey = "ALL") => {
 };
 
 export const getRequesterName = (request) => {
-  if (request?.request_source === "MANUAL_PAPER") {
-    return request.manual_requested_by?.trim() || "Paper request";
-  }
-
   return `${request.requester?.first_name || ""} ${request.requester?.last_name || ""}`.trim() || "Unknown requester";
 };
 
-export const getRequestSourceLabel = (request = {}) =>
-  request.request_source === "MANUAL_PAPER" ? "Paper Request" : "Online Request";
-
 export const getItemLabel = (item) => {
   const medicine = item.medicine;
-  const name = medicine?.generic_name || medicine?.brand_name || "Unknown medicine";
+  const name = medicine?.brand_name || medicine?.generic_name || "Unknown medicine";
   const dosage = medicine?.dosage ? ` ${medicine.dosage}` : "";
 
   return `${name}${dosage}`;
@@ -148,67 +134,15 @@ export const getRequestTotalQuantity = (request) => {
   return (request.items || []).reduce((total, item) => total + Number(item.quantity || 0), 0);
 };
 
-export const getForecastDemandMap = (forecastRows = []) => {
-  return forecastRows.reduce((demandMap, row) => {
-    const key = `${row.facility_id}:${row.medicine_id}`;
-    const current = demandMap.get(key);
+export const getRequestPriority = (request) => {
+  const totalQuantity = getRequestTotalQuantity(request);
+  const itemCount = request.items?.length || 0;
 
-    if (!current || String(row.forecast_month || "") > String(current.forecastMonth || "")) {
-      demandMap.set(key, {
-        forecastMonth: row.forecast_month,
-        predictedQuantity: Number(row.predicted_quantity || 0),
-      });
-    }
-
-    return demandMap;
-  }, new Map());
-};
-
-export const getRequestPriority = (request, stockMap = null, forecastDemandMap = null) => {
-  if (request.status !== "PENDING") {
-    return "LOW";
-  }
-
-  const ageDays = request.request_date
-    ? Math.floor((Date.now() - new Date(request.request_date).getTime()) / 86400000)
-    : 0;
-
-  if (ageDays >= 3) {
+  if (request.status === "PENDING" && (totalQuantity >= 500 || itemCount >= 3)) {
     return "HIGH";
   }
 
-  const hasStockMap = stockMap instanceof Map;
-  const hasForecastDemandMap = forecastDemandMap instanceof Map;
-  let isMedium = ageDays >= 1;
-
-  for (const item of request.items || []) {
-    const key = `${request.facility_id}:${item.medicine_id}`;
-    const stock = hasStockMap ? stockMap.get(key) || { quantity: 0, threshold: 0 } : null;
-    const quantity = Number(stock?.quantity || 0);
-    const threshold = Number(stock?.threshold || 0);
-    const requestedQuantity = Number(item.quantity || 0);
-    const expectedUse = hasForecastDemandMap
-      ? Number(forecastDemandMap.get(key)?.predictedQuantity || 0)
-      : 0;
-
-    if (
-      (hasStockMap && quantity <= 0) ||
-      (hasStockMap && threshold > 0 && quantity <= threshold) ||
-      (hasStockMap && requestedQuantity > quantity) ||
-      (hasForecastDemandMap && expectedUse > quantity)
-    ) {
-      return "HIGH";
-    }
-
-    if (
-      (hasStockMap && threshold > 0 && quantity <= threshold * 2) ||
-      (hasForecastDemandMap && quantity > 0 && expectedUse >= quantity * 0.75)
-    ) {
-      isMedium = true;
-    }
-  }
-
-  if (isMedium) {
+  if (request.status === "PENDING" && (totalQuantity >= 100 || itemCount >= 2)) {
     return "MEDIUM";
   }
 
@@ -356,31 +290,15 @@ export const getAllocationValidationError = (
     }
   }
 
-  const totalAllocated = [...allocatedByItem.values()].reduce(
-    (total, quantity) => total + quantity,
-    0
-  );
-
-  if (totalAllocated <= 0) {
-    return "Allocate at least one requested medicine before release.";
-  }
-
   for (const item of requestItems) {
     const requestedQuantity = Number(item.quantity || 0);
-    const allocatedQuantity = allocatedByItem.get(item.id) || 0;
 
-    if (allocatedQuantity > requestedQuantity) {
-      return `Release quantity cannot exceed the requested ${requestedQuantity.toLocaleString()} quantity.`;
+    if ((allocatedByItem.get(item.id) || 0) !== requestedQuantity) {
+      return `Allocate exactly ${requestedQuantity.toLocaleString()} units for this request item before approving.`;
     }
   }
 
   return "";
-};
-
-export const getAllocatedQuantityForItem = (requestItemId, allocations = []) => {
-  return allocations
-    .filter((allocation) => allocation.request_item_id === requestItemId)
-    .reduce((total, allocation) => total + Number(allocation.quantity || 0), 0);
 };
 
 export const getLowStockRequestItems = (
@@ -506,26 +424,6 @@ export const normalizeRequestErrorMessage = (message = "") => {
   return message;
 };
 
-export const validateManualPaperRequest = ({ facilityId = "", items = [] } = {}) => {
-  if (!facilityId || facilityId === "ALL") {
-    return "Choose the requesting barangay facility.";
-  }
-
-  if (!items.length) {
-    return "Add at least one medicine to the paper request.";
-  }
-
-  if (items.some((item) => !item.medicine_id || Number(item.quantity || 0) <= 0)) {
-    return "Every paper request line needs a medicine and positive quantity.";
-  }
-
-  if (getDuplicateRequestMedicineIds(items).length > 0) {
-    return "Each medicine can appear only once per paper request.";
-  }
-
-  return "";
-};
-
 export const getRequestSummary = (requests = []) => {
   return requests.reduce(
     (summary, request) => {
@@ -589,10 +487,9 @@ export const buildRequestsCsv = (requests = []) => {
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
 
-  const header = ["Request Number", "Source", "Date", "Status", "Items", "Total Quantity", "Remarks"];
+  const header = ["Request Number", "Date", "Status", "Items", "Total Quantity", "Remarks"];
   const rows = requests.map((request) => [
     getRequestNumber(request.id),
-    getRequestSourceLabel(request),
     formatRequestDate(request.request_date),
     request.status,
     (request.items || []).map(getItemLabel).join("; "),
@@ -605,15 +502,7 @@ export const buildRequestsCsv = (requests = []) => {
 
 export const matchesRequestFilters = (
   request,
-  {
-    dateRange = "ALL",
-    facilityId = "ALL",
-    forecastDemandMap = null,
-    keyword = "",
-    priority = "ALL",
-    status = "ALL",
-    stockMap = null,
-  } = {}
+  { dateRange = "ALL", facilityId = "ALL", keyword = "", status = "ALL" }
 ) => {
   if (!isRequestWithinDateRange(request, dateRange)) {
     return false;
@@ -627,8 +516,6 @@ export const matchesRequestFilters = (
     request.facility?.facility_name,
     request.facility?.facility_code,
     getRequesterName(request),
-    getRequestSourceLabel(request),
-    request.manual_requested_by,
     formatRequestDate(request.request_date),
     ...(request.items || []).map(getItemLabel),
     ...(request.items || []).map((item) => String(item.quantity ?? "")),
@@ -649,17 +536,10 @@ export const matchesRequestFilters = (
     return false;
   }
 
-  if (priority !== "ALL") {
-    const requestPriority = getRequestPriority(request, stockMap, forecastDemandMap);
-    if (requestPriority !== priority) {
-      return false;
-    }
-  }
-
   return true;
 };
 
-export const sortRequests = (requests = [], sortMode = "newest", stockMap = null, forecastDemandMap = null) => {
+export const sortRequests = (requests = [], sortMode = "newest") => {
   return [...requests].sort((first, second) => {
     if (sortMode === "oldest") {
       return new Date(first.request_date).getTime() - new Date(second.request_date).getTime();
@@ -668,9 +548,8 @@ export const sortRequests = (requests = [], sortMode = "newest", stockMap = null
     if (sortMode === "priority") {
       const priorityWeight = { HIGH: 0, MEDIUM: 1, LOW: 2 };
       return (
-        priorityWeight[getRequestPriority(first, stockMap, forecastDemandMap)] -
-          priorityWeight[getRequestPriority(second, stockMap, forecastDemandMap)] ||
-        new Date(second.request_date).getTime() - new Date(first.request_date).getTime()
+        priorityWeight[getRequestPriority(first)] -
+        priorityWeight[getRequestPriority(second)]
       );
     }
 

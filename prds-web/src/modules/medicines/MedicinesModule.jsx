@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import { supabase } from "../../services/supabase";
 import MedicineCatalogTable from "./components/MedicineCatalogTable";
+import MedicineDetailsPanel from "./components/MedicineDetailsPanel";
 import MedicineFormModal from "./components/MedicineFormModal";
 import MedicineToolbar from "./components/MedicineToolbar";
 import {
@@ -16,23 +16,11 @@ import {
   sortMedicines,
 } from "./medicineUtils";
 
-const fetchMedicineRows = async () => {
-  const { data, error } = await supabase
-    .from("medicines")
-    .select("id, generic_name, brand_name, unit_of_measure, dosage, unit_cost")
-    .order("generic_name", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
-};
-
 export default function MedicinesModule() {
   const { profile } = useAuth();
   const [medicines, setMedicines] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedMedicineId, setSelectedMedicineId] = useState("");
   const [medicineSort, setMedicineSort] = useState("ASC");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -55,55 +43,40 @@ export default function MedicinesModule() {
     () => sortMedicines(filteredMedicines, medicineSort),
     [filteredMedicines, medicineSort]
   );
-  const {
-    currentPage,
-    paginatedRows: paginatedMedicines,
-    pageSize,
-    setCurrentPage,
-    totalCount,
-    totalPages,
-  } = usePaginatedRows(sortedMedicines);
 
-  const loadMedicines = useCallback(async () => {
+  const selectedMedicine = useMemo(() => {
+    return sortedMedicines.find((medicine) => medicine.id === selectedMedicineId) || null;
+  }, [selectedMedicineId, sortedMedicines]);
+
+  const loadMedicines = async () => {
     setIsLoading(true);
     setMedicineError("");
 
-    try {
-      setMedicines(await fetchMedicineRows());
-    } catch (error) {
-      setMedicineError(error.message || "Unable to load medicines.");
-    } finally {
+    const { data, error } = await supabase
+      .from("medicines")
+      .select("id, generic_name, brand_name, unit_of_measure, dosage, unit_cost")
+      .order("generic_name", { ascending: true });
+
+    if (error) {
+      setMedicineError(error.message);
       setIsLoading(false);
+      return;
     }
+
+    const medicineRows = data || [];
+    setMedicines(medicineRows);
+    setSelectedMedicineId((currentId) =>
+      medicineRows.some((medicine) => medicine.id === currentId) ? currentId : ""
+    );
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    loadMedicines();
   }, []);
 
   useEffect(() => {
-    let isCurrent = true;
-
-    fetchMedicineRows()
-      .then((rows) => {
-        if (isCurrent) {
-          setMedicines(rows);
-        }
-      })
-      .catch((error) => {
-        if (isCurrent) {
-          setMedicineError(error.message || "Unable to load medicines.");
-        }
-      })
-      .finally(() => {
-        if (isCurrent) {
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!notice) {  
+    if (!notice) {
       return undefined;
     }
 
@@ -152,10 +125,13 @@ export default function MedicinesModule() {
   };
 
   const handleViewExistingMedicine = (medicineId) => {
-    const medicine = medicines.find((row) => row.id === medicineId);
-    if (medicine) {
-      openMedicineModal(medicine, "view");
-    }
+    setModalMode(null);
+    resetModalState();
+    setSelectedMedicineId(medicineId);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedMedicineId("");
   };
 
   const handleFieldChange = (event) => {
@@ -218,6 +194,7 @@ export default function MedicinesModule() {
     event.preventDefault();
 
     if (modalMode === "view") {
+      closeModal();
       return;
     }
 
@@ -269,7 +246,7 @@ export default function MedicinesModule() {
         ? supabase.from("medicines").update(payload).eq("id", modalMedicine.id)
         : supabase.from("medicines").insert(payload).select("id").single();
 
-    const { error } = await request;
+    const { data, error } = await request;
 
     if (error) {
       const isUniqueViolation =
@@ -321,6 +298,11 @@ export default function MedicinesModule() {
       );
     }
 
+    if (data?.id) {
+      setSelectedMedicineId(data.id);
+    } else if (modalMedicine?.id) {
+      setSelectedMedicineId(modalMedicine.id);
+    }
   };
 
   return (
@@ -350,19 +332,32 @@ export default function MedicinesModule() {
           totalCount={medicines.length}
         />
 
-        <MedicineCatalogTable
-          hasMedicines={medicines.length > 0}
-          currentPage={currentPage}
-          isLoading={isLoading}
-          medicines={paginatedMedicines}
-          onAdd={openCreateModal}
-          onClearSearch={() => setSearchTerm("")}
-          onPageChange={setCurrentPage}
-          onSelectMedicine={(medicine) => openMedicineModal(medicine, "view")}
-          pageSize={pageSize}
-          totalCount={totalCount}
-          totalPages={totalPages}
-        />
+        <div
+          className={`grid gap-5 transition-[grid-template-columns] duration-500 ease-in-out ${
+            selectedMedicine
+              ? "xl:grid-cols-[minmax(0,1fr)_22rem]"
+              : "xl:grid-cols-[minmax(0,1fr)]"
+          }`}
+        >
+          <MedicineCatalogTable
+            hasMedicines={medicines.length > 0}
+            isLoading={isLoading}
+            medicines={sortedMedicines}
+            onAdd={openCreateModal}
+            onClearSearch={() => setSearchTerm("")}
+            onSelectMedicine={setSelectedMedicineId}
+            selectedMedicineId={selectedMedicineId}
+          />
+
+          {selectedMedicine && (
+            <MedicineDetailsPanel
+              medicine={selectedMedicine}
+              onBack={handleClearSelection}
+              onView={() => openMedicineModal(selectedMedicine, "view")}
+              onEdit={() => openMedicineModal(selectedMedicine, "edit")}
+            />
+          )}
+        </div>
       </div>
 
       {modalMode && (

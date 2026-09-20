@@ -5,14 +5,10 @@ import {
   buildDispensingCsv,
   buildFefoPreview,
   buildMedicineOptions,
-  FOLLOW_UP_ACTIONS,
   formatDispensingDayParts,
   formatTransactionNumber,
-  getDefaultFollowUpDate,
   getCartLineError,
   getCartSummary,
-  getBlockedPatientIdsFromClaimRows,
-  getFollowUpDisplay,
   getMedicineFullLabel,
   getMedicineLabel,
   getDispensingStepBlocker,
@@ -114,11 +110,11 @@ test("getCartLineError validates quantities against availability", () => {
   assert.equal(getCartLineError({ line: { medicine_id: "med-1", quantity: 30 }, medicineOptions: options }), "");
   assert.match(
     getCartLineError({ line: { medicine_id: "med-1", quantity: 36 }, medicineOptions: options }),
-    /Only 35 available quantity/
+    /Only 35 units/
   );
   assert.match(
     getCartLineError({ line: { medicine_id: "med-1", quantity: 5.5 }, medicineOptions: options }),
-    /Release quantity/
+    /whole number/
   );
   assert.equal(
     getCartLineError({ line: { medicine_id: "missing", quantity: 1 }, medicineOptions: options }),
@@ -126,71 +122,15 @@ test("getCartLineError validates quantities against availability", () => {
   );
 });
 
-test("getCartLineError validates needed and partial release details", () => {
-  const options = buildMedicineOptions(inventoryRows, "");
-
-  assert.match(
-    getCartLineError({
-      line: { medicine_id: "med-1", needed_quantity: 4, quantity: 5 },
-      medicineOptions: options,
-    }),
-    /cannot be lower/
-  );
-  assert.equal(
-    getCartLineError({
-      line: { medicine_id: "med-1", needed_quantity: 10, quantity: 5 },
-      medicineOptions: options,
-    }),
-    ""
-  );
-  assert.match(
-    getCartLineError({
-      line: {
-        follow_up_action: "NOT_VALID",
-        medicine_id: "med-1",
-        needed_quantity: 10,
-        quantity: 5,
-      },
-      medicineOptions: options,
-    }),
-    /valid follow-up/
-  );
-  assert.match(
-    getCartLineError({
-      line: {
-        follow_up_action: FOLLOW_UP_ACTIONS.schedule,
-        medicine_id: "med-1",
-        needed_quantity: 10,
-        quantity: 5,
-      },
-      medicineOptions: options,
-    }),
-    /date/
-  );
-  assert.equal(
-    getCartLineError({
-      line: {
-        follow_up_action: FOLLOW_UP_ACTIONS.refer,
-        medicine_id: "med-1",
-        needed_quantity: 10,
-        quantity: 5,
-        referred_facility_id: "facility-1",
-      },
-      medicineOptions: options,
-    }),
-    ""
-  );
-});
-
-test("getCartSummary totals lines and needed/released units", () => {
+test("getCartSummary totals lines and units", () => {
   assert.deepEqual(
     getCartSummary([
-      { medicine_id: "med-1", needed_quantity: 35, quantity: 30 },
+      { medicine_id: "med-1", quantity: 30 },
       { medicine_id: "med-2", quantity: 12 },
     ]),
-    { lineCount: 2, neededUnits: 47, releasedUnits: 42, totalUnits: 42 }
+    { lineCount: 2, totalUnits: 42 }
   );
-  assert.deepEqual(getCartSummary([]), { lineCount: 0, neededUnits: 0, releasedUnits: 0, totalUnits: 0 });
+  assert.deepEqual(getCartSummary([]), { lineCount: 0, totalUnits: 0 });
 });
 
 test("formatTransactionNumber renders a short uppercase label", () => {
@@ -213,10 +153,6 @@ const historyRows = [
     id: "row-1",
     dispensing_transaction_id: "txn-aaa",
     quantity: 20,
-    needed_quantity: 25,
-    follow_up_action: FOLLOW_UP_ACTIONS.schedule,
-    follow_up_date: "2026-08-17",
-    prescribed_by: "Dr. Santos",
     dispense_date: "2026-08-10T08:00:00.000Z",
     voided_at: null,
     void_reason: null,
@@ -229,7 +165,6 @@ const historyRows = [
     id: "row-2",
     dispensing_transaction_id: "txn-aaa",
     quantity: 10,
-    needed_quantity: 10,
     dispense_date: "2026-08-10T08:00:00.000Z",
     voided_at: null,
     void_reason: null,
@@ -242,7 +177,6 @@ const historyRows = [
     id: "row-3",
     dispensing_transaction_id: "txn-bbb",
     quantity: 5,
-    needed_quantity: 5,
     dispense_date: "2026-08-11T09:00:00.000Z",
     voided_at: "2026-08-12T10:00:00.000Z",
     void_reason: "Wrong patient selected.",
@@ -263,8 +197,6 @@ test("groupHistoryByTransaction groups rows and computes totals", () => {
   assert.equal(grouped.rows.length, 2);
   assert.equal(grouped.totalQuantity, 30);
   assert.equal(grouped.voidedAt, null);
-  assert.equal(grouped.medicineLines[0].neededQuantity, 25);
-  assert.equal(grouped.medicineLines[0].releasedQuantity, 20);
 });
 
 test("matchesHistoryFilters searches across transaction fields and honours status", () => {
@@ -303,22 +235,6 @@ test("buildDispensingCsv exports one row per batch record with headers", () => {
   assert.match(csv, /VOIDED/);
   assert.match(csv, /Wrong patient selected\./);
   assert.match(csv, /Tinaan Health Center/);
-  assert.match(csv, /Dr\. Santos/);
-});
-
-test("follow-up helpers format defaults and labels", () => {
-  assert.equal(getDefaultFollowUpDate(new Date("2026-08-10T00:00:00Z")), "2026-08-17");
-  assert.equal(
-    getFollowUpDisplay({ followUpAction: FOLLOW_UP_ACTIONS.schedule, followUpDate: "2026-08-17" }),
-    "Schedule next week - 2026-08-17"
-  );
-  assert.equal(
-    getFollowUpDisplay({
-      followUpAction: FOLLOW_UP_ACTIONS.refer,
-      referredFacility: { facility_name: "Inayagan Barangay Health Center" },
-    }),
-    "Refer to barangay - Inayagan Barangay Health Center"
-  );
 });
 
 test("medicine labels compose generic, dosage, brand and unit", () => {
@@ -331,17 +247,6 @@ test("medicine labels compose generic, dosage, brand and unit", () => {
 
 test("getTransactionTotalQuantity sums row quantities", () => {
   assert.equal(getTransactionTotalQuantity(historyRows.slice(0, 2)), 30);
-});
-
-test("getBlockedPatientIdsFromClaimRows ignores history-only records and includes barangay logs", () => {
-  const rows = [
-    { is_manual_record: true, medicine_id: "m1", needed_quantity: 10, patient_id: "p1", quantity: 10, record_type: "HISTORY_ONLY" },
-    { is_manual_record: true, medicine_id: "m1", needed_quantity: 10, patient_id: "p4", quantity: 10, record_type: "BARANGAY_DISPENSING_LOG" },
-    { is_manual_record: false, medicine_id: "m1", needed_quantity: 10, patient_id: "p2", quantity: 10 },
-    { is_manual_record: false, medicine_id: "m2", needed_quantity: 10, patient_id: "p3", quantity: 4 },
-  ];
-
-  assert.deepEqual(getBlockedPatientIdsFromClaimRows(rows), ["p4", "p2"]);
 });
 
 test("formatDispensingDayParts splits a date into card parts", () => {
@@ -363,10 +268,8 @@ test("getDispensingStepBlocker gates each wizard step", () => {
   assert.equal(getDispensingStepBlocker({ ...base, step: 1 }), "");
   assert.equal(getDispensingStepBlocker({ ...base, step: 2 }), "");
   assert.match(getDispensingStepBlocker({ ...base, hasPatient: false, step: 2 }), /patient/i);
-  assert.match(getDispensingStepBlocker({ ...base, claimed: true, step: 2 }), /month/i);
   assert.match(getDispensingStepBlocker({ ...base, claimed: true, lineCount: 1, step: 3 }), /month/i);
   assert.match(getDispensingStepBlocker({ ...base, lineCount: 0, step: 3 }), /medicine/i);
-  assert.match(getDispensingStepBlocker({ ...base, hasPrescriber: false, lineCount: 1, step: 3 }), /doctor/i);
   assert.match(
     getDispensingStepBlocker({ ...base, hasLineErrors: true, lineCount: 1, step: 3 }),
     /quantit/i

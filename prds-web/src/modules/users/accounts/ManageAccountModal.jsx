@@ -25,7 +25,7 @@ export default function ManageAccountModal({
     <ModalShell
       labelledBy="user-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-black/40 backdrop-blur-sm"
     >
       <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-950/25">
         <div className="border-b border-[#6be9c2]/40 bg-[#f2fff9] px-5 py-5">

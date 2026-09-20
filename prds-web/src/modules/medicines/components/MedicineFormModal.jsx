@@ -29,11 +29,6 @@ export default function MedicineFormModal({
   const [showCustomUnit, setShowCustomUnit] = useState(
     savedUnit !== "" && !UNIT_OF_MEASURE_OPTIONS.includes(savedUnit)
   );
-  const handleEditClick = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onEdit?.();
-  };
 
   return (
     <ModalShell labelledBy="medicine-modal-title" onClose={onClose} panelClassName="max-w-2xl">
@@ -43,7 +38,10 @@ export default function MedicineFormModal({
       >
         <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
           <div>
-            <h3 id="medicine-modal-title" className="text-xl font-black text-black">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+              Medicine Catalog
+            </p>
+            <h3 id="medicine-modal-title" className="mt-1 text-xl font-black text-black">
               {title}
             </h3>
             <p className="mt-1 text-sm font-medium text-neutral-500">
@@ -141,6 +139,7 @@ export default function MedicineFormModal({
                 prefix="PHP"
                 className="pl-11"
                 error={fieldErrors.unit_cost}
+                helper="Leave blank if unknown"
               />
             </div>
           </section>
@@ -157,10 +156,10 @@ export default function MedicineFormModal({
           {isReadOnly ? (
             <button
               type="button"
-              onClick={handleEditClick}
-              className="h-10 rounded-lg bg-black px-6 text-sm font-black text-white transition hover:bg-neutral-800"
+              onClick={onEdit}
+              className="h-10 rounded-lg bg-emerald-600 px-6 text-sm font-black text-white transition hover:bg-emerald-700"
             >
-              Edit
+              Edit Medicine
             </button>
           ) : (
             <button

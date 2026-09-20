@@ -46,7 +46,7 @@ export default function OtpModal({
     <ModalShell
       labelledBy="otp-modal-title"
       onClose={onBack}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      overlayClassName="bg-white/95 backdrop-blur-sm"
     >
       <form onSubmit={onSubmit} className="w-full max-w-[520px] rounded-xl bg-white px-6 py-8 shadow-2xl">
         <div className="text-center">

@@ -1,16 +1,15 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 
-import PaginationControls from "../../components/PaginationControls";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import { formatDateTime } from "../dashboard/dashboardUtils";
 import {
   AuditBadge,
   AuditDateField,
   AuditDateGroup,
   AuditEventShell,
+  AuditFilterPanel,
   AuditIcon,
   AuditListPanel,
   AuditMetaRow,
@@ -167,18 +166,9 @@ export default function NotificationsModule() {
     visibleNotifications,
   ]);
 
-  const {
-    currentPage,
-    paginatedRows: paginatedNotifications,
-    pageSize,
-    setCurrentPage,
-    totalCount,
-    totalPages,
-  } = usePaginatedRows(filteredNotifications);
-
   const groupedNotifications = useMemo(() => {
-    return groupItemsByDate(paginatedNotifications, (notification) => notification.created_at);
-  }, [paginatedNotifications]);
+    return groupItemsByDate(filteredNotifications, (notification) => notification.created_at);
+  }, [filteredNotifications]);
 
   const panelLabel = useMemo(() => {
     return getNotificationPanelLabel({
@@ -273,11 +263,6 @@ export default function NotificationsModule() {
     setStartDate("");
   };
 
-  const filterGridClass =
-    profileRole === "BHW"
-      ? "grid gap-3 px-4 py-4 md:grid-cols-2 xl:grid-cols-[minmax(15rem,1.3fr)_minmax(10rem,0.8fr)_minmax(10rem,0.7fr)]"
-      : "grid gap-3 px-4 py-4 md:grid-cols-2 xl:grid-cols-[minmax(15rem,1.3fr)_minmax(10rem,0.8fr)_minmax(10rem,0.8fr)_minmax(11rem,0.9fr)_minmax(10rem,0.7fr)]";
-
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
       {error && (
@@ -286,34 +271,9 @@ export default function NotificationsModule() {
         </p>
       )}
 
-      <div className="space-y-5">
-        <section className="rounded-xl border border-neutral-200 bg-white shadow-sm shadow-neutral-200/50">
-          <div className="flex flex-col gap-3 border-b border-neutral-200 px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#00a36c]">
-                System Updates
-              </p>
-              <h2 className="mt-1 text-lg font-black text-[#0d1117]">
-                Notifications
-              </h2>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#eff4ff] px-3 py-2 text-xs font-black tabular-nums text-[#0d1117]">
-                {visibleNotifications.length} total
-              </span>
-              <button
-                type="button"
-                onClick={loadNotifications}
-                disabled={isLoading}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#007f5f] disabled:cursor-not-allowed disabled:bg-emerald-300"
-              >
-                <RefreshIcon className={isLoading ? "animate-spin" : ""} />
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          <div className={filterGridClass}>
+      <div className="space-y-4">
+        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <AuditFilterPanel title="Notifications" onReset={resetFilters}>
             <AuditSearchField
               label="Search"
               value={keyword}
@@ -358,63 +318,38 @@ export default function NotificationsModule() {
               onChange={setDateMode}
               options={notificationDateModes}
             />
-          </div>
 
-          {dateMode !== "all" && (
-            <div className="grid gap-3 border-t border-neutral-100 px-4 py-4 md:grid-cols-2 xl:max-w-xl">
-              {dateMode === "specific" ? (
+            {dateMode === "specific" && (
+              <AuditDateField
+                label="Select Date"
+                value={specificDate}
+                onChange={setSpecificDate}
+              />
+            )}
+
+            {dateMode === "range" && (
+              <div className="grid gap-3">
                 <AuditDateField
-                  label="Select Date"
-                  value={specificDate}
-                  onChange={setSpecificDate}
+                  label="Start Date"
+                  value={startDate}
+                  onChange={setStartDate}
                 />
-              ) : (
-                <>
-                  <AuditDateField
-                    label="Start Date"
-                    value={startDate}
-                    onChange={setStartDate}
-                  />
-                  <AuditDateField
-                    label="End Date"
-                    value={endDate}
-                    onChange={setEndDate}
-                  />
-                </>
-              )}
-            </div>
-          )}
+                <AuditDateField
+                  label="End Date"
+                  value={endDate}
+                  onChange={setEndDate}
+                />
+              </div>
+            )}
+          </AuditFilterPanel>
 
-          <div className="flex justify-end border-t border-neutral-100 px-4 py-3">
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="h-9 rounded-lg px-3 text-xs font-black text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
-            >
-              Reset Filters
-            </button>
-          </div>
-        </section>
-
-        <div className="min-w-0">
           <AuditListPanel
             label={panelLabel}
-            count={paginatedNotifications.length}
+            count={filteredNotifications.length}
             isLoading={isLoading}
             emptyTitle="No notifications match this view"
             emptyDescription="Try another notification type, facility, role, keyword, or date range."
-            footer={
-              !isLoading && totalCount > 0 ? (
-                <PaginationControls
-                  currentPage={currentPage}
-                  itemLabel="notifications"
-                  onPageChange={setCurrentPage}
-                  pageSize={pageSize}
-                  totalCount={totalCount}
-                  totalPages={totalPages}
-                />
-              ) : null
-            }
+            bodyClassName="max-h-[calc(100dvh-9rem)]"
           >
             <AuditTimeline>
               {groupedNotifications.map((group) => (
@@ -435,15 +370,6 @@ export default function NotificationsModule() {
         </div>
       </div>
     </AdminShell>
-  );
-}
-
-function RefreshIcon({ className = "" }) {
-  return (
-    <svg className={`h-4 w-4 ${className}`} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4" />
-      <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4" />
-    </svg>
   );
 }
 
