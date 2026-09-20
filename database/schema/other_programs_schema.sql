@@ -23,9 +23,18 @@ create table other_programs (
 
     id uuid primary key default gen_random_uuid(),
 
+    facility_id uuid references facilities(id) on delete restrict,
+
     program_name text not null,
 
     program_date date not null,
 
-    description text
+    description text,
+
+    status text not null default 'UPCOMING'
+        check (status in ('UPCOMING', 'COMPLETED', 'CANCELLED')),
+
+    completed_at timestamptz,
+
+    cancelled_at timestamptz
 );

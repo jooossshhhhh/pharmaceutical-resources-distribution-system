@@ -59,5 +59,5 @@ export default function BhwDispensingModule() {
     return <DispensingLoadingSkeleton />;
   }
 
-  return <DispensingWorkbench facilities={facilities} isCho={false} />;
+  return <DispensingWorkbench />;
 }

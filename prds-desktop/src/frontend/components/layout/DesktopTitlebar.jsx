@@ -11,7 +11,8 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
     return localStorage.getItem("prds-titlebar-pinned") === "true";
   });
   const [showExitModal, setShowExitModal] = useState(false);
-  const [rememberSession, setRememberSession] = useState(true);
+  const [rememberSession, setRememberSession] = useState(false);
+  const [exitError, setExitError] = useState("");
   const hideTimeoutRef = useRef(null);
   const [appWindow, setAppWindow] = useState(null);
 
@@ -40,8 +41,8 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
           try {
             unlistenFn = await win.onCloseRequested((event) => {
               event.preventDefault();
-              const cached = getCachedUserSession();
-              setRememberSession(Boolean(isAuthenticated || cached.user));
+              setRememberSession(false);
+              setExitError("");
               setShowExitModal(true);
               setIsVisible(true);
             });
@@ -89,22 +90,27 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
 
   const handleCloseClick = (e) => {
     e?.stopPropagation();
-    const cached = getCachedUserSession();
-    setRememberSession(Boolean(isAuthenticated || cached.user));
+    setRememberSession(false);
+    setExitError("");
     setShowExitModal(true);
     setIsVisible(true);
   };
 
   const handleConfirmExit = async () => {
-    setShowExitModal(false);
-    if (!rememberSession && (isAuthenticated || getCachedUserSession().user)) {
+    if (
+      !rememberSession &&
+      (isAuthenticated || getCachedUserSession().user || exitError)
+    ) {
       try {
         await signOut();
       } catch (err) {
         console.warn("Logout error:", err);
+        setExitError("Could not sign out. Check your connection and try again.");
+        return;
       }
     }
 
+    setShowExitModal(false);
     if (appWindow) {
       try {
         await appWindow.destroy();
@@ -273,7 +279,10 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
                 <input
                   type="checkbox"
                   checked={rememberSession}
-                  onChange={(event) => setRememberSession(event.target.checked)}
+                  onChange={(event) => {
+                    setRememberSession(event.target.checked);
+                    setExitError("");
+                  }}
                   disabled={!isAuthenticated && !getCachedUserSession().user}
                   className="mt-0.5 h-4 w-4 accent-emerald-600"
                 />
@@ -287,6 +296,12 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
                 </span>
               </label>
             </div>
+
+            {exitError && (
+              <p className="mt-3 text-xs font-semibold text-red-700" role="alert">
+                {exitError}
+              </p>
+            )}
 
             {/* Cancel Button */}
             <div className="mt-5 flex justify-end gap-2">

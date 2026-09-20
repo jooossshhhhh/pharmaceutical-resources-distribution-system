@@ -472,54 +472,7 @@ export default function DashboardModule() {
         ))}
       </section>
 
-      <section className="mt-3 grid gap-3">
-        {!isBhw && (
-          <ForecastMapPreview
-            compact
-            fitToCoverage
-            mapClassName="min-h-[28rem] md:min-h-[32rem]"
-            demandByFacility={demandByFacility}
-            description="City-wide facility locations, demand, and stock status."
-            eyebrow="Forecasting Snapshot"
-            facilities={facilities}
-            forecastTotal={forecastTotal}
-            inventoryRows={inventoryRows}
-            lowStockCount={stats.lowStock}
-            previewMode
-            showExpand={false}
-            showMetrics={false}
-            stockStatusByFacility={stockStatusByFacility}
-            title={dashboardConfig.coverageLabel}
-          />
-        )}
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <Panel
-            className="min-h-[220px]"
-            title="Request Status"
-            action={<p className="text-xs font-bold text-neutral-500">Current period</p>}
-          >
-            <RequestStatusChart rows={requestStatus} />
-          </Panel>
-
-          <Panel
-            className="min-h-[220px]"
-            title="Forecast Demand"
-            action={
-              <button
-                type="button"
-                onClick={() => navigate("/forecasting")}
-                className="text-xs font-black text-emerald-700 hover:text-emerald-800"
-              >
-                Full view
-              </button>
-            }
-          >
-            <ForecastDemandBars rows={forecastRows} />
-          </Panel>
-        </div>
-      </section>
-
+      {/* Immediate Operations Hub: Low Stock Alerts & Recent Requests */}
       <section className="mt-3 grid gap-3 xl:grid-cols-2">
         <Panel
           className="min-h-[190px]"
@@ -588,6 +541,34 @@ export default function DashboardModule() {
         </Panel>
       </section>
 
+      {/* Operational Analytics: Request Status & Forecast Demand */}
+      <section className="mt-3 grid gap-3 md:grid-cols-2">
+        <Panel
+          className="min-h-[220px]"
+          title="Request Status"
+          action={<p className="text-xs font-bold text-neutral-500">Current period</p>}
+        >
+          <RequestStatusChart rows={requestStatus} />
+        </Panel>
+
+        <Panel
+          className="min-h-[220px]"
+          title="Forecast Demand"
+          action={
+            <button
+              type="button"
+              onClick={() => navigate("/forecasting")}
+              className="text-xs font-black text-emerald-700 hover:text-emerald-800"
+            >
+              Full view
+            </button>
+          }
+        >
+          <ForecastDemandBars rows={forecastRows} />
+        </Panel>
+      </section>
+
+      {/* Consumption Trend */}
       <section className="mt-3">
         <Panel
           className="min-h-[320px]"
@@ -598,6 +579,7 @@ export default function DashboardModule() {
         </Panel>
       </section>
 
+      {/* Expiring Medicines & Operational Worklist */}
       <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)]">
         <Panel
           title={isBhw ? "My Facility Expiring Medicines" : "Expiring Medicines"}
@@ -656,7 +638,31 @@ export default function DashboardModule() {
           </div>
         </Panel>
       </section>
-    </AdminShell>
+
+      {/* Strategic Geographic Health Network (Final Section of Dashboard) */}
+      {!isBhw && (
+        <section className="mt-3">
+          <ForecastMapPreview
+            compact={false}
+            fitToCoverage
+            mapClassName="min-h-[26rem] md:min-h-[30rem]"
+            demandByFacility={demandByFacility}
+            description="Multi-mode satellite, topographic, and street monitoring of all 28 health facilities and stock distribution."
+            eyebrow="Geographic Health Network"
+            facilities={facilities}
+            forecastTotal={forecastTotal}
+            inventoryRows={inventoryRows}
+            lowStockCount={stats.lowStock}
+            previewMode={false}
+            showExpand={true}
+            showMetrics={true}
+            stockStatusByFacility={stockStatusByFacility}
+            title={dashboardConfig.coverageLabel || "City of Naga Health Center Coverage & Facility Network"}
+          />
+        </section>
+      )}
+
+      </AdminShell>
   );
 }
 

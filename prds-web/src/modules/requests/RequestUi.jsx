@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { requestStatusLabels, requestStatusTones } from "./requestUtils";
 
 const statusDotTones = {
@@ -174,61 +175,125 @@ export function ActionButton({
   );
 }
 
-export function SelectFilter({ className = "", onChange, options, value }) {
+export function FilterDropdown({
+  className = "",
+  icon = null,
+  menuClassName = "",
+  onChange,
+  options = [],
+  placeholder = "Select...",
+  value,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const selectedOption = options.find((opt) => opt.value === value) || options[0];
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    const handlePointerDown = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isOpen]);
+
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={`h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 ${className}`}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <div ref={containerRef} className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 text-sm font-semibold outline-none transition-all duration-200 ${
+          isOpen
+            ? "border-emerald-500 ring-2 ring-emerald-100 text-neutral-900 shadow-sm"
+            : "border-neutral-200 text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50/80"
+        }`}
+      >
+        <span className="inline-flex items-center gap-2 truncate">
+          {icon}
+          <span>{selectedOption?.label || placeholder}</span>
+        </span>
+        <span
+          className={`shrink-0 text-neutral-400 transition-transform duration-200 ease-out ${
+            isOpen ? "rotate-180 text-emerald-600" : ""
+          }`}
+        >
+          <ChevronIcon />
+        </span>
+      </button>
+
+      <div
+        className={`absolute right-0 z-30 mt-1.5 min-w-[10.5rem] overflow-hidden rounded-xl border border-neutral-200/90 bg-white p-1 shadow-xl shadow-neutral-900/10 transition-all duration-200 ease-out origin-top ${menuClassName} ${
+          isOpen
+            ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 scale-95 -translate-y-2 pointer-events-none invisible"
+        }`}
+      >
+        <div className="space-y-0.5">
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors duration-150 ${
+                  isSelected
+                    ? "bg-emerald-50 text-emerald-700 font-bold"
+                    : "text-neutral-700 hover:bg-neutral-100/80 hover:text-neutral-900"
+                }`}
+              >
+                <span>{option.label}</span>
+                {isSelected && (
+                  <span className="text-emerald-600">
+                    <SmallCheckIcon />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
-export function SortDropdown({ isOpen, onChange, onToggle, options, value }) {
-  const selectedOption = options.find((option) => option.value === value) || options[0];
-
+export function SortDropdown({ onChange, options, value, className = "" }) {
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        aria-haspopup="menu"
-        className="flex h-10 min-w-[9.5rem] items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none transition hover:bg-neutral-50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-      >
-        <span className="inline-flex items-center gap-2">
-          <SortIcon />
-          {selectedOption.label}
-        </span>
-        <ChevronIcon />
-      </button>
-
-      {isOpen && (
-        <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl shadow-neutral-200/70">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold ${
-                option.value === value
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "text-neutral-700 hover:bg-neutral-50"
-              }`}
-            >
-              {option.label}
-              {option.value === value && <SmallCheckIcon />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <FilterDropdown
+      className={className || "min-w-[9.5rem]"}
+      icon={<SortIcon />}
+      onChange={onChange}
+      options={options}
+      value={value}
+    />
   );
 }
 

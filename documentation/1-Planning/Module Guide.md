@@ -324,33 +324,44 @@ Manages the list of pharmaceutical suppliers. Each supplier record includes name
 **11. Forecasting**
 
 **Purpose**
-Provides demand forecasting and inventory coverage analysis using simple linear regression (SLR). Ranks medicines by projected demand trend and flags medicines at risk of stock-out based on current stock vs. forecasted consumption.
+Provides monthly demand forecasting, trend slope analysis, and stockout risk mitigation using Ordinary Least Squares (OLS) simple linear regression. Evaluates historical dispensing patterns against current inventory to classify medicines into actionable risk tiers (Stockout Risk, Optimal Buffer, Overstock, Insufficient Data, No History).
+
+> **Note:** For the comprehensive step-by-step mathematical computation process, intermediate sums, and worked numerical example, see [FORECASTING_INTERPRETATION_AND_ANALYTICS_GUIDE.md](file:///d:/prds/documentation/1-Planning/FORECASTING_INTERPRETATION_AND_ANALYTICS_GUIDE.md).
 
 **Process**
-1. Historical dispensing data is aggregated by medicine and month.
-2. SLR is applied to the monthly series to compute a trend slope (increasing, stable, decreasing) and R² confidence.
-3. Inventory coverage is computed: current stock divided by the latest forecasted monthly demand.
-4. Risk labels are assigned based on coverage ratio and stock threshold levels.
+1. Aggregates monthly dispensing summaries (`monthly_dispensing_summary`) per medicine and facility.
+2. Checks data sufficiency ($n \ge 2$ months needed for slope derivation).
+3. Computes OLS linear regression: slope ($m$, monthly change rate), intercept ($c$), and goodness of fit ($R^2$).
+4. Extrapolates demand across selectable planning horizons (3, 6, 12 months).
+5. Calculates the Stock Coverage Multiplier ($\text{Current Stock} / \text{Next Month Demand}$).
+6. Evaluates multi-tier stock risk: Stockout Risk ($< 1.0\times$), Optimal ($1.0\times - 2.5\times$), Overstock ($> 2.5\times$), Insufficient Data (1 month), or No History (0 months).
 
 **How to Use**
 - From the sidebar, click **Forecasting**.
-- The top section shows summary cards: medicines with increasing demand, medicines at risk of stock-out, average coverage ratio.
-- The trend table lists all medicines with: current stock, forecasted next-month demand, trend direction (up/down/stable), R² confidence, and coverage ratio.
-- Click a medicine row to expand details: historical consumption chart, forecast comparison chart, and a plain-language interpretation.
-- Use the search bar to filter by medicine name.
-- The inventory coverage panel shows each medicine's risk level (Good, Watch, At Risk, Critical) based on how many months of stock remain.
+- **Top 4 KPI Cards**: Review Total Projected Demand across the horizon, Stockout Risk Items (count and percentage), Increasing Trends count, and Average $R^2$ confidence.
+- **Facility Selector (CHO)**: Filter to an individual health center (which automatically hides the `FACILITY` column in the table) or select "All Facilities" for municipal aggregation. BHW users are automatically locked to their assigned facility.
+- **Horizon Selector**: Toggle between 3 Months (quarterly planning), 6 Months (semi-annual), or 12 Months (annual procurement).
+- **Interactive Projection Chart**: Displays Historical Actuals (solid emerald line), OLS Regression Fit (blue dashed line), and Projected Demand (orange dashed line). If a facility has no dispensing history, a clean explanatory notice card is rendered instead of a flat baseline.
+- **Medicine Trends Table**: Paginated to **10 entries per page**. Shows current stock, trend slope arrow, next-month forecast, coverage multiplier, $R^2$, and borderless pill risk badges.
+- **Export CSV**: Download the filtered dataset with formatted coverage and trend metrics.
 
 **How to Interpret**
-- Trend direction: **Increasing** (upward slope — demand growing), **Stable** (flat), **Decreasing** (downward slope).
-- R² confidence: 0.0–1.0. Above 0.7 is considered strong evidence; below 0.3 is weak/insufficient.
-- Coverage ratio: months of stock remaining. Above 3 months = Good; 1–3 = Watch; below 1 = At Risk; zero or expired = Critical.
-- Forecast interpretation strings: plain-language explanations like "Demand is increasing — consider increasing stock levels" or "History is too sparse for reliable forecasting."
+- **Trend Slope ($m$)**: Positive slope (e.g. `+15/mo`) indicates growing monthly consumption. Negative slope (e.g. `-8/mo`) indicates declining consumption.
+- **$R^2$ Confidence**: $\ge 0.80$ indicates strong predictable trend; $< 0.50$ indicates high consumption variance or sporadic clinic spikes.
+- **Coverage Multiplier**: Values $< 1.0\times$ mean inventory will run out before next month at current consumption rates.
+- **Risk Badges**:
+  - `Stockout Risk` (Red): Immediate reorder or transfer needed.
+  - `Optimal` (Green): 1 to 2.5 months of stock on hand.
+  - `Overstock` (Amber): Exceeds 2.5 months; potential candidate for inter-facility redistribution.
+  - `Insufficient Data` (Amber): Only 1 month recorded; baseline estimate used until month 2 is logged.
+  - `No History` (Slate): 0 dispensing records; empty state shown.
 
 **Technical Notes**
 - Entry: `ForecastingModule.jsx`.
-- Components: `components/ForecastMetricCard.jsx`, `components/MedicineTrendTable.jsx`, `components/InventoryCoveragePanel.jsx`, `components/TopTrendingMedicines.jsx`, `components/charts/ConsumptionTrendChart.jsx`, `components/charts/ForecastComparisonChart.jsx`.
-- Utils: `forecastingUtils.js` — `calculateLinearRegression()`, `forecastSLR()`, `buildMonthlyDemandTrend()`, `buildDemandQualitySummary()`, `buildForecastInterpretation()`, `computeSuggestedOrderQuantity()`, `buildInventoryCoverage()`.
+- Components: `components/charts/ForecastingProjectionChart.jsx`, `components/MedicineTrendTable.jsx`, `components/MedicineSelectList.jsx`.
+- Utils: `forecastingUtils.js` — `calculateLinearRegression()`, `buildForecastAnalytics()`, `buildMedicineTrendRows()`, `buildMedicineChartSeries()`, `buildForecastingCsv()`.
 - Tests: `forecastingUtils.test.mjs`.
+- Pagination: 10 entries per page via `usePaginatedRows`.
 
 **12. Notifications**
 

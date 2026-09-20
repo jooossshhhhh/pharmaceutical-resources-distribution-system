@@ -25,7 +25,7 @@ export function FacilityFormModal({
     <ModalShell
       labelledBy="facility-form-modal-title"
       onClose={onClose}
-      overlayClassName="bg-white/95 backdrop-blur-sm"
+      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
     >
       <form
         onSubmit={onSubmit}

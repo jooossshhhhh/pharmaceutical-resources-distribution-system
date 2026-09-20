@@ -3,13 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { getHealthCenterFacilities, getPatients } from "./PatientsService";
+import { getActiveFacilities, getHealthCenterFacilities, getPatients } from "./PatientsService";
 import PatientRegistry from "./PatientRegistry";
 
 export default function ChoPatientsModule() {
   const { profile } = useAuth();
   const [patients, setPatients] = useState([]);
   const [facilities, setFacilities] = useState([]);
+  const [dispensingFacilities, setDispensingFacilities] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -26,8 +27,10 @@ export default function ChoPatientsModule() {
       const rows = await getPatients({ archiveMode: "all" });
       setPatients(rows);
       setError("");
+      return rows;
     } catch (errorMessage) {
       setError(errorMessage instanceof Error ? errorMessage.message : String(errorMessage));
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -35,8 +38,12 @@ export default function ChoPatientsModule() {
 
   const loadFacilities = useCallback(async () => {
     try {
-      const rows = await getHealthCenterFacilities();
-      setFacilities(rows);
+      const [healthCenters, activeFacilities] = await Promise.all([
+        getHealthCenterFacilities(),
+        getActiveFacilities(),
+      ]);
+      setFacilities(healthCenters);
+      setDispensingFacilities(activeFacilities);
     } catch (errorMessage) {
       setError(errorMessage instanceof Error ? errorMessage.message : String(errorMessage));
     }
@@ -65,6 +72,8 @@ export default function ChoPatientsModule() {
         <PatientRegistry
           canArchive={["PHARMA_I", "PHARMA_II"].includes(profile?.role)}
           canDelete={profile?.role === "PHARMA_II"}
+          defaultDispensingFacilityId={profile?.facility_id || ""}
+          dispensingFacilities={dispensingFacilities}
           facilities={facilities}
           isCho
           loadPatients={loadPatients}

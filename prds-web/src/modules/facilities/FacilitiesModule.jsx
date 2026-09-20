@@ -683,7 +683,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit }) {
     <ModalShell
       labelledBy="facility-details-modal-title"
       onClose={onClose}
-      overlayClassName="bg-white/95 backdrop-blur-sm"
+      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName="w-full"
     >
       <div className="facility-details-modal flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-900/20">

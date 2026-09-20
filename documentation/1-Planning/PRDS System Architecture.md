@@ -1,238 +1,194 @@
-**PRDS System Architecture**
+# PRDS System Architecture
 
-Pharmaceutical Resources Distribution System (PRDS) — City Health Office (CHO) of Naga, Cebu. Web application for managing pharmacy inventory, medicine requests, and stock transfers across 28 barangay health stations (BHS).
+> **Pharmaceutical Resources Distribution System (PRDS)** — City Health Office (CHO) of Naga, Cebu.  
+> Cross-platform supply chain, pharmacy inventory, medicine dispensing, and forecasting system connecting the Central Health Office with 28 Barangay Health Stations (BHS).
 
-**1. System Overview**
+---
 
-PRDS follows a three-tier architecture:
+## 1. System Overview & Dual-Client Architecture
 
-```
-┌─────────────────────┐
-│  prds-web           │  React 19 SPA (Vite 8 + Tailwind CSS v4)
-│  Vite + React SPA   │  Hosted statically; talks to Supabase directly
-└────────┬────────────┘
-         │ HTTPS (supabase-js)
-┌────────▼────────────┐
-│  Supabase           │  Managed PostgreSQL 15 + PostgREST (auto REST),
-│  Backend-as-a-Service│  Auth (GoTrue), Realtime (WebSocket), Storage
-└────────┬────────────┘
-         │
-┌────────▼────────────┐
-│  PostgreSQL         │  Schema, enums, RLS policies, views,
-│  database/          │  functions (RPC), triggers, realtime publication
-└─────────────────────┘
-```
-
-There is no custom application server. Database access is enforced by PostgreSQL Row Level Security (RLS); every read/write flows through PostgREST with the caller's JWT, and sensitive operations go through SECURITY DEFINER functions (RPC). Driving directions:
-
-| Layer        | Technology                                  |
-| ------------ | ------------------------------------------- |
-| Frontend     | React 19, Vite 8, Tailwind CSS v4, React Router 7 |
-| Maps         | Leaflet 1.9 + react-leaflet 5 (Nominatim geocoding for search) |
-| Backend      | Supabase: PostgREST, Auth, Realtime         |
-| Database     | PostgreSQL (enums, RLS, functions, triggers, views) |
-| Tests        | Node.js built-in `node --test` runner       |
-| Runtime      | Node.js >= 24                               |
-
-**2. Roles and Access**
-
-| Role     | Description                                              |
-| -------- | -------------------------------------------------------- |
-| PHARMA_I | CHO staff: manages medicines catalog, stock, requests    |
-| PHARMA_II| CHO administrator: full oversight (suppliers, stock transfers, users, forecasting) |
-| BHW      | Barangay health worker: requests supplies, monitors own facility stock, tracks transfers |
-
-Role gating is enforced twice: in the UI (route guards + sidebar visibility) and in the database (RLS policies + RPC permission checks).
-
-| Route          | Module                       | Allowed roles                  |
-| -------------- | ---------------------------- | ------------------------------ |
-| `/dashboard`   | DashboardModule              | All                            |
-| `/facilities`  | FacilitiesModule             | PHARMA_I, PHARMA_II            |
-| `/medicines`   | MedicinesModule              | PHARMA_I, PHARMA_II            |
-| `/suppliers`   | SuppliersModule              | PHARMA_II                      |
-| `/inventory`   | ChoInventoryModule           | PHARMA_I, PHARMA_II            |
-| `/inventory-bhw`| BhwInventoryModule          | BHW                            |
-| `/requests`    | RequestsModule (splits internally) | All                      |
-| `/transfers`   | TransfersModule (splits internally) | All                      |
-| `/forecasting` | ForecastingModule            | All                            |
-| `/notifications`| NotificationsModule         | All                            |
-| `/activity-logs`| ActivityLogsModule          | All                            |
-| `/users`       | UserManagementModule         | PHARMA_II                      |
-| `/profile-settings`| ProfileSettingsModule     | All                            |
-
-**3. Frontend (prds-web)**
-
-**3.1 Tech Stack**
-
-| Package               | Version | Purpose                          |
-| --------------------- | ------- | -------------------------------- |
-| react / react-dom     | 19.x    | UI framework                     |
-| vite                  | 8.x     | Build tool / dev server          |
-| tailwindcss + @tailwindcss/vite | 4.x | Styling (CSS-first config via `@theme`) |
-| react-router-dom      | 7.x     | Routing, guards                  |
-| leaflet / react-leaflet | 1.9 / 5 | Facility maps                   |
-| @supabase/supabase-js | 2.x     | Auth, PostgREST queries, RPC, realtime |
-
-**3.2 Folder Structure**
+PRDS operates as a dual-client system backed by a unified cloud database and an offline-first synchronization engine:
 
 ```
-prds-web/src/
-  assets/            Static assets (logo)
-  components/        Shared components
-    layout/          AdminShell, AdminHeader, AdminSidebar
-    ErrorBoundary.jsx, ModalShell.jsx
-  context/           AuthProvider, useAuth
-  features/auth/     Login, Register, OTP, Forgot Password, Pending Approval, AuthService, ProfileService
-  modules/           One folder per feature
-    activity/        Activity logs
-    dashboard/       Dashboard + FacilityMap component
-    facilities/      Facility management, LocationPicker
-    forecasting/     Stock forecasting
-    inventory/       Cho / Bhw split modules, inventoryData, demandUtils
-    medicines/       Medicines catalog
-    notifications/   Notifications center
-    profile/         Profile settings, OTP modal, password
-    requests/        Request module + RequestsService + requestUtils
-    suppliers/       Supplier management
-    transfers/       Transfer module + TransfersService + transferUtils + TransferUi
-    users/           User management
-  routes/            AppRoutes, ProtectedRoutes, RoleGuard
-  services/          supabase client, API layer
-  utils/             Shared helpers (nagaMap, etc.)
+┌─────────────────────────────────────────────────────────────┐
+│                       PRDS Clients                          │
+├──────────────────────────────┬──────────────────────────────┤
+│       prds-desktop           │           prds-web           │
+│   Tauri v2 Desktop App       │       React 19 Web SPA       │
+│   (Rust Shell + WebView2)    │    (Zero-Install Browser)    │
+│   • Local SQLite / Dexie DB  │    • Online Supabase JS      │
+│   • Background Sync Engine   │    • Direct PostgREST / RPC  │
+│   • Offline Outbox Queue     │    • Browser Caching         │
+│   • ~40 MB RAM Footprint     │                              │
+└──────────────┬───────────────┴──────────────┬───────────────┘
+               │                              │
+               │   HTTPS / WSS (supabase-js)   │
+               ▼                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Supabase Backend (BaaS)                  │
+│  • GoTrue Auth (Google OAuth, Email/Password, Phone OTP)    │
+│  • PostgREST (Auto REST API over PostgreSQL)                │
+│  • Realtime (WebSocket channels for notifications & sync)   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  PostgreSQL 15 Database                     │
+│  • Relational Schemas (inventory, dispensing, requests, etc)│
+│  • Row Level Security (RLS) Policies                        │
+│  • SECURITY DEFINER Stored Procedures (RPC Functions)       │
+│  • Automated Triggers & Materialized Dispensing Views       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**3.3 Conventions**
+### 1.1 Technology Stack Summary
 
-- **Role-split modules**: `RequestsModule` and `TransfersModule` pick their CHO vs BHW implementation from `profile.role`; the inventory routes are split at the route level (`/inventory` vs `/inventory-bhw`).
-- **Data access**: modules call a per-feature service (`RequestsService.js`, `TransfersService.js`, `ProfileService.js`) which wraps supabase queries/RPCs. PostgREST errors are normalized (e.g. `PGRST204` receipt-column fallback in `RequestsService`).
-- **Logic in utils**: pure helpers live in `*Utils.js` and are unit-tested with Node's `--test` runner (`transferUtils.test.mjs`, `requestUtils.test.mjs`, `inventoryUtils.test.mjs`, `profileSettingsUtils.test.mjs`, `userManagementUtils.test.mjs`).
-- **Shared UI**: `ModalShell` (portal-based modals that keep input focus), `ErrorBoundary` (app-level), `TransferUi` (status badges, filter chips, metric cards), `FacilityMap` (shared by dashboard + facilities + forecasting).
-- **Workflow logic**: requests and transfers use FEFO (first-expiry-first-out) batch allocation builders (`buildFefoBatchAllocations`, `buildFefoTransferAllocations`).
+| Layer | Technology | Key Characteristics |
+| :--- | :--- | :--- |
+| **Desktop Shell** | **Tauri v2 (Rust)** | Native Windows binary, ~12 MB installer, ~40 MB RAM footprint, Microsoft Edge WebView2 runtime. Ideal for barangay computers. |
+| **Local Desktop Storage** | **SQLite / Dexie.js (IndexedDB)** | ACID-compliant local database for offline snapshot persistence and mutation outbox queuing. |
+| **Web Frontend** | **React 19 + Vite 8** | Modern component architecture, Fast Refresh (HMR), tree-shaken production bundles. |
+| **Styling & UI** | **Tailwind CSS v4 + Lucide Icons** | CSS-first `@theme` design tokens, custom scrollbars, dark/light theme accents, accessible modals. |
+| **Routing** | **React Router 7** | Client-side declarative routing with role-based Route Guards. |
+| **Cloud Backend** | **Supabase (PostgreSQL 15)** | Managed database, PostgREST RESTful endpoints, GoTrue authentication. |
+| **Testing** | **Node.js Test Runner (`node --test`)** | Native zero-dependency unit tests running across desktop and web shared utilities. |
 
-**3.4 Scripts**
+---
 
-| Command            | Description                                  |
-| ------------------ | -------------------------------------------- |
-| `npm run dev`      | Vite dev server with HMR                     |
-| `npm run build`    | Production build to `dist/`                  |
-| `npm run lint`     | ESLint over the project                      |
-| `npm test`         | Node `--test` unit suites                    |
-| `npm run test:coverage` | Run tests with coverage report          |
-| `npm run preview`  | Preview production build locally             |
+## 2. Roles, Privileges & Route Matrix
 
-**4. Backend (Supabase)**
+PRDS enforces strict three-tiered Role-Based Access Control (RBAC) at two independent levels:
+1. **Frontend Route Guards & UI Scoping:** Restricts views, sidebars, and action buttons.
+2. **Database Row Level Security (RLS) & RPCs:** Enforces tenant isolation even if frontend guards are bypassed.
 
-**4.1 Database Folder Layout**
+| Role | System Identity | Operational Scope |
+| :--- | :--- | :--- |
+| **PHARMA_II** | Chief Pharmacist / Admin | Full administrative oversight: user management, suppliers, inter-facility stock transfers, master catalog, forecasting. |
+| **PHARMA_I** | CHO Staff Pharmacist | Central operations: central inventory, medicine catalog, request review & batch allocation, dispensing, facilities. |
+| **BHW** | Barangay Health Worker | Facility-scoped: facility inventory, patient registry, dispensing POS, medicine requests, transfer receipt. |
 
+### 2.1 Route Matrix
+
+| Route | Module Component | Allowed Roles | Data Scoping |
+| :--- | :--- | :---: | :--- |
+| `/dashboard` | `DashboardModule` | All | Scoped to assigned facility for BHW; city-wide for CHO. |
+| `/dispensing` | `DispensingModule` | All | Dispenses from Central Stock (CHO) or Local Facility Stock (BHW). |
+| `/patients` | `PatientRegistry` | All | All patients for CHO; facility-registered patients for BHW. |
+| `/inventory` | `ChoInventoryModule` | PHARMA_I, PHARMA_II | Central warehouse stock + multi-facility stock health monitors. |
+| `/inventory-bhw` | `BhwInventoryModule` | BHW | Local facility stock, FEFO batch details, lot activity history. |
+| `/requests` | `RequestsModule` (split) | All | Request fulfillment workbench (CHO) vs. Requisition logbook (BHW). |
+| `/transfers` | `TransfersModule` (split) | All | Inter-facility transfer management (CHO) vs. Incoming transfers (BHW). |
+| `/facilities` | `FacilitiesModule` | PHARMA_I, PHARMA_II | Directory, GPS mapping, and contact records for all 28 BHS. |
+| `/medicines` | `MedicinesModule` | PHARMA_I, PHARMA_II | Master pharmaceutical catalog, dosages, categories, units. |
+| `/suppliers` | `SuppliersModule` | PHARMA_II | Pharmaceutical distributor profiles, contracts, and contacts. |
+| `/forecasting` | `ForecastingModule` | All | OLS linear regression demand forecasting and stockout risk tiers. |
+| `/notifications` | `NotificationsModule` | All | Role- and facility-scoped operational alerts and audit events. |
+| `/activity-logs` | `ActivityLogsModule` | All | Immutable audit trail for stock adjustments, dispensing, and orders. |
+| `/users` | `UserManagementModule` | PHARMA_II | Account approval queue, role assignments, and credential status. |
+| `/profile-settings`| `ProfileSettingsModule` | All | Profile details, phone linking, password reset, login methods. |
+
+---
+
+## 3. Desktop Application Stack (`prds-desktop`)
+
+### 3.1 Why Tauri v2 was Chosen
+Barangay Health Stations frequently operate on budget-tier or aging hardware with 4 GB to 8 GB RAM. Electron-based alternatives consume 150–300 MB RAM on idle. Tauri v2:
+- Utilizes the OS-provided Microsoft Edge WebView2 runtime.
+- Consumes only **~40 MB RAM**.
+- Produces compact native installers (~12 MB).
+- Implements capability-based security: JavaScript can only access declared native APIs.
+
+### 3.2 Offline-First Architecture & Outbox Queue
 ```
-database/
-  schema/            Table definitions
-  enums/             Enum types (transfer/request statuses, roles, etc.)
-  indexes/           Performance indexes
-  views/             Database views
-  rls/               Row Level Security policies (per-table, e.g. suppliers_rls_schema.sql)
-  helper-functions/  Functions, triggers, helper RPCs
-  migrations/        Incremental schema changes (numbered by year/feature)
-  realtime/          Realtime publication schema
-  DATABASE_SETUP_ORDER.md   Ordered apply sequence
+User Action (e.g. Dispense Medicine)
+       │
+       ▼
+Unified Data Client (dataClient.js)
+       │
+   Is Online?
+   ├── YES ──> Execute Supabase RPC / Mutation directly
+   │             └── Update local snapshot cache
+   │
+   └── NO ───> Write mutation to local Outbox Queue
+                 ├── Optimistically update local snapshot
+                 ├── Render instant UI confirmation to worker
+                 └── Tag record with status: "PENDING_SYNC"
+
+Reconnection Detected (networkStatus.js)
+       │
+       ▼
+Sync Manager (syncManager.js)
+       │
+       ├── Reads Outbox Queue FIFO
+       ├── Replays mutations to Supabase RPC endpoints
+       ├── Resolves any version/concurrency conflicts
+       └── Pulls latest remote delta into local cache
 ```
 
-**4.2 Core Tables**
-
-| Group          | Tables |
-| -------------- | ------ |
-| Identity       | `auth.users`, `profiles` (role, facility binding, avatar, phone) |
-| Reference      | `facilities` (incl. coordinates), `medicines`, `suppliers` |
-| Stock          | `inventory` (batch-level: facility, medicine, batch no., quantity, threshold, expiry) |
-| Requests       | `medicine_requests`, `medicine_request_items`, `medicine_request_fulfillments` |
-| Transfers      | `stock_transfers`, `stock_transfer_fulfillments` (batch allocations per transfer) |
-| Activity       | `activity_logs` (audit trail for stock adjustments, adds, etc.), `notifications` |
-| Forecasting    | Predicted-demand tables used by the forecasting module |
-
-**4.3 RPC Functions (SECURITY DEFINER)**
-
-| Function                                  | Purpose |
-| ----------------------------------------- | ------- |
-| `update_inventory_batch`                  | Stock adjustments (restock/consume/set-level) with facility scoping and audit logging |
-| `review_medicine_request`                 | CHO request review with FEFO batch allocation and fulfillment rows |
-| `get_request_release_batches`             | List releasable batches for a request |
-| `confirm_request_received`                | Marks a request received (receipt confirmation) |
-| `get_cho_inventory_medicines`             | CHO availability lookup for request items |
-| `get_stock_transfer_source_availability`  | Available source-facility stock for transfer items |
-| `create_cho_stock_transfer` / `submit_bhw_stock_transfer_request` | Transfer creation (CHO vs BHW sources) |
-| `approve_stock_transfer` / `reject_stock_transfer` | CHO approval actions |
-| `allocate_stock_transfer_for_pickup`      | Batch allocation -> READY_FOR_PICKUP |
-| `get_stock_transfer_allocation_batches`   | Batches available for allocation |
-| `confirm_stock_transfer_received`         | Completes the transfer |
-
-**4.4 Transfer Workflow**
-
+### 3.3 Folder Structure (`prds-desktop`)
 ```
-PENDING (requested) -> APPROVED -> READY_FOR_PICKUP (allocated from source batches) -> COMPLETED (received)
-          └──────────────> REJECTED
+prds-desktop/
+├── src-tauri/                 # Native Rust Shell
+│   ├── Cargo.toml             # Rust dependencies (tauri, plugins)
+│   ├── tauri.conf.json        # Window setup, permissions, capabilities
+│   └── src/main.rs            # Desktop application entrypoint
+├── src/
+│   ├── backend/               # Local data & sync tier
+│   │   ├── client/            # Unified data client (online/offline bridge)
+│   │   ├── database/          # Local SQLite / Dexie schema & snapshot store
+│   │   ├── services/          # Business logic services (Auth, Dispensing, Inventory)
+│   │   └── sync/              # SyncManager, OutboxQueue, NetworkStatus
+│   ├── frontend/              # React UI Layer
+│   │   ├── components/        # DesktopTitlebar, ModalShell, PaginationControls
+│   │   ├── context/           # AuthContext, SyncContext
+│   │   ├── routes/            # AppRoutes, RoleGuards
+│   │   └── views/             # 13 Core module views (Forecasting, Dispensing, etc.)
+│   └── shared/                # Pure utility functions & unit tests
+│       └── utils/             # forecastingUtils, dispensingUtils, etc.
+├── package.json
+└── vite.config.js
 ```
 
-**4.5 Security Model**
+---
 
-- **RLS**: every table has per-role policies (BHW row-scoped to their `facility_id`; CHO roles get facility-wide access). See `database/rls/*`.
-- **RPC permission checks**: SECURITY DEFINER functions validate the caller's role and ownership before mutating.
-- **Frontend parity**: UI hides actions the RLS would reject (e.g. BHW has no Adjust Stock button).
+## 4. Backend Database Architecture (Supabase)
 
-**4.6 Realtime**
+### 4.1 Core Schema Groups
+- **Identity & Accounts:** `auth.users`, `profiles` (links auth UUID with role, facility, full name, phone number, and account approval status).
+- **Master Catalog & Facilities:** `medicines` (generic, brand, dosage, category, threshold), `facilities` (BHS metadata, coordinates, contact info), `suppliers`.
+- **Physical Inventory:** `inventory` (batch-level records: `facility_id`, `medicine_id`, `lot_number`, `quantity`, `expiration_date`, `threshold`).
+- **Dispensing Transactions:** `medicine_dispensing`, `medicine_dispensing_items`, `monthly_dispensing_summary` (aggregated historical consumption feeding forecasting).
+- **Supply Chain:** `medicine_requests`, `medicine_request_items`, `medicine_request_fulfillments`, `stock_transfers`, `stock_transfer_fulfillments`.
+- **Audit & Compliance:** `activity_logs`, `notifications`.
 
-Publishing is defined in `database/realtime/realtime_publication_schema.sql` and consumed for live notification and transfer-progress updates.
+### 4.2 SECURITY DEFINER Stored Procedures (RPCs)
+Sensitive mutations that alter inventory or grant access execute through atomic PostgreSQL functions:
+- `dispense_medicines_atomic`: Atomically deducts stock from FEFO-selected batches, creates dispensing items, logs activity, and prevents negative balances.
+- `review_medicine_request`: CHO approval of BHW requisitions with automated FEFO batch allocation.
+- `confirm_stock_transfer_received`: Finalizes inter-facility transfers by decrementing source inventory and incrementing destination inventory in a single database transaction.
+- `update_inventory_batch`: Regulated stock adjustments with mandatory audit reasons.
 
-**5. Color Palette**
+---
 
-**5.1 Admin Application (primary)**
+## 5. UI/UX Design System & Standards
 
-| Token         | Hex       | Usage |
-| ------------- | --------- | ----- |
-| Primary emerald | `#00a36c` | Primary actions, active accents, healthy stock, scrollbar hover |
-| Mint accent   | `#6be9c2` | Sidebar active item, avatar, progress bars, map popup gradient |
-| Ink           | `#0d1117` | Headings, primary text, dark buttons |
-| Slate         | `#42474e` | Body/secondary text, scrollbar thumb |
-| Border        | `#d8dadc` | Cards, dividers, inputs |
-| Shell bg      | `#f7f6f3` | App background (with emerald radial glows) |
-| Panel bg      | `#f8f9ff` | Sidebar, header, table theads |
-| Hover         | `#eff4ff` | Row/nav/button hover states |
-| Track         | `#f3efe9` | Scrollbar track, warm neutral |
-| Surface       | `#ffffff` | Cards, modals, popups |
+### 5.1 Design Tokens
+- **Primary Action / Health Brand:** Emerald Green (`#00a36c`) and Mint (`#6be9c2`).
+- **Surface & Backgrounds:** Crisp white cards (`#ffffff`) over light neutral canvas (`#f7f6f3`) with slate borders (`#d8dadc`).
+- **Typography:** Inter (14.5px base font scale) with high-legibility tabular figures for inventory counts.
 
-**5.2 Semantic Stock Health Colors**
+### 5.2 Table Pagination Standard
+All tabular displays across both desktop and web are standardized to **exactly 10 entries per page** using `usePaginatedRows` and `<PaginationControls>` to ensure consistent performance on low-spec hardware.
 
-| Status    | Hex       | Meaning |
-| --------- | --------- | ------- |
-| HEALTHY   | `#00a36c` | Sufficient stock |
-| WATCH     | `#f59e0b` | Amber, watch tier |
-| LOW       | `#f97316` | Low stock |
-| CRITICAL  | `#ef4444` | Critical / out of stock |
+---
 
-Status badges use Tailwind soft tones: `bg-emerald-100 text-emerald-700`, `bg-amber-50/red-50/orange-50/blue-50/teal-50` with their 700-level text for labels.
+## 6. Build & Test Commands
 
-**5.3 Auth Pages (Login / Register / OTP / Forgot Password)**
-
-| Token         | Hex       | Usage |
-| ------------- | --------- | ----- |
-| Navy          | `#1d3f8c` / `#254fa8` / `#0e1f47` | Left brand panel gradient |
-| Orange accent | `#dc8939` | "System" brand accent word |
-| Rose          | `#b53e53` | Decorative blurred glow |
-| Success green | `#008000` / hover `#006600` | Submit buttons |
-| Link blue     | `#003b7a` | Text links |
-
-The auth pages use a distinct blue/green palette; the in-app experience uses the emerald palette above.
-
-**5.4 Typography**
-
-- Font: **Inter** (with ui-sans-serif fallbacks).
-- Base size: **14.5px** (90.6% of 16px) to keep the whole UI compact at 100% browser zoom.
-- `font-black` is softened to weight 700 inside the admin shell and modals; uppercase labels use wide letter-spacing (`0.08em` effective).
-
-**6. Verification**
-
-- `npm run lint` - passes.
-- `npm run build` - passes.
-- `npm test` - Node `--test` suites pass (transferUtils, requestUtils, inventoryUtils, profileSettingsUtils, userManagementUtils).
-- Dev server returns HTTP 200 on boot.
-
-**See also:** `WorkLog.md` (development history), `Supabase Architecture Plan.md` (auth/approval design), `Database Tables and Attributes.md`, `Database Development Progress Report.md`, `BACKEND LOGIC DESIGN.md`, `System Features Planning.md`.
+| Environment | Command | Description |
+| :--- | :--- | :--- |
+| **Desktop Dev** | `npm run desktop` (in `prds-desktop`) | Boots Vite frontend + Tauri native window with HMR. |
+| **Desktop Build** | `npm run build` (in `prds-desktop`) | Compiles production assets and builds Windows binary. |
+| **Desktop Tests** | `npm test` (in `prds-desktop`) | Runs Node.js test runner across all shared unit suites. |
+| **Web Dev** | `npm run dev` (in `prds-web`) | Boots web development server. |
+| **Web Build** | `npm run build` (in `prds-web`) | Compiles production web bundle to `dist/`. |
+| **Web Tests** | `npm test` (in `prds-web`) | Runs web test suite. |

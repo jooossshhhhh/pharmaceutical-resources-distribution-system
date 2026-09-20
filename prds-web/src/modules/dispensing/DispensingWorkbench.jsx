@@ -3,19 +3,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { getExpiryStatus } from "../inventory/inventoryUtils";
 import {
-  PATIENT_GENDER_OPTIONS,
   calculateAge,
   formatPatientCode,
   formatPatientName,
-  normalizePatientText,
 } from "../patients/patientUtils";
 import {
   completeWalkInDispensing,
   getClaimedPatientIds,
+  getFacilityMedicineStockOverview,
   getWalkInInventory,
-  registerQuickPatient,
   searchDispensingPatients,
 } from "./DispensingService";
 import {
@@ -23,11 +20,12 @@ import {
   buildFefoPreview,
   buildMedicineOptions,
   downloadCsv,
+  FOLLOW_UP_ACTIONS,
   formatDispensingDateTime,
   formatTransactionNumber,
   getCartLineError,
-  getCartSummary,
   getDispensingStepBlocker,
+  getDefaultFollowUpDate,
   getMedicineFullLabel,
   getMedicineLabel,
 } from "./dispensingUtils";
@@ -35,271 +33,19 @@ import {
   ArrowRightIcon,
   CheckIcon,
   DispensingModal,
-  EligibilityBadge,
-  Field,
   FOCUS_RING,
   Input,
   PatientAvatar,
   PillIcon,
   SearchIcon,
-  Select,
-  Textarea,
-  UserPlusIcon,
   XIcon,
 } from "./DispensingUi";
-import PatientInfoPanel from "./PatientInfoPanel";
-import PatientHistoryModal from "./PatientHistoryModal";
-
-const CLAIMED_THIS_MONTH_NOTICE =
-  "This patient already claimed this month. They are eligible again next month.";
-
-const emptyRegisterForm = {
-  address: "",
-  contact_number: "",
-  date_of_birth: "",
-  facility_id: "",
-  first_name: "",
-  gender: "",
-  last_name: "",
-  middle_name: "",
-  suffix: "",
-};
-
-function QuickRegisterModal({ facilities, isCho, onClose, onRegistered, profileId }) {
-  const [form, setForm] = useState({
-    ...emptyRegisterForm,
-    facility_id: !isCho && facilities[0] ? facilities[0].id : "",
-  });
-  const [duplicateWarning, setDuplicateWarning] = useState(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  const updateForm = (key, value) => {
-    setForm((current) => ({ ...current, [key]: value }));
-    setDuplicateWarning(null);
-  };
-
-  const validationError = (() => {
-    if (!form.first_name.trim()) {
-      return "First name is required.";
-    }
-
-    if (!form.last_name.trim()) {
-      return "Last name is required.";
-    }
-
-    if (!form.gender) {
-      return "Gender is required.";
-    }
-
-    if (!form.date_of_birth) {
-      return "Date of birth is required.";
-    }
-
-    if (isCho && !form.facility_id) {
-      return "Facility is required.";
-    }
-
-    return "";
-  })();
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-
-    if (!duplicateWarning) {
-      setIsSaving(true);
-
-      try {
-        const existing = await searchDispensingPatients({
-          facilityId: isCho ? form.facility_id : null,
-          keyword: `${form.first_name} ${form.last_name}`,
-        });
-
-        const duplicates = existing.filter(
-          (patient) =>
-            normalizePatientText(`${patient.first_name} ${patient.last_name}`) ===
-              normalizePatientText(`${form.first_name} ${form.last_name}`) &&
-            (!form.date_of_birth || patient.date_of_birth === form.date_of_birth)
-        );
-
-        if (duplicates.length > 0) {
-          setDuplicateWarning(duplicates);
-          setIsSaving(false);
-          return;
-        }
-      } catch (searchError) {
-        setError(searchError.message || "Unable to verify duplicate patients.");
-        setIsSaving(false);
-        return;
-      }
-    }
-
-    setIsSaving(true);
-
-    try {
-      const patient = await registerQuickPatient({
-        payload: {
-          address: form.address.trim() || null,
-          contact_number: form.contact_number.trim() || null,
-          date_of_birth: form.date_of_birth,
-          facility_id: form.facility_id,
-          first_name: form.first_name.trim(),
-          gender: form.gender,
-          last_name: form.last_name.trim(),
-          middle_name: form.middle_name.trim() || null,
-          suffix: form.suffix.trim() || null,
-        },
-        profileId,
-      });
-      onRegistered(patient);
-    } catch (saveError) {
-      setError(saveError.message || "Unable to register the patient.");
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <DispensingModal
-      title="Register New Patient"
-      subtitle="Add the walk-in patient so they can receive their monthly claim."
-      onClose={onClose}
-      widthClass="max-w-2xl"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
-            {error}
-          </div>
-        )}
-
-        {duplicateWarning && (
-          <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
-            <p className="font-bold">Possible duplicate patient found:</p>
-            <ul className="mt-1 list-inside list-disc">
-              {duplicateWarning.map((patient) => (
-                <li key={patient.id}>
-                  {formatPatientName(patient)} · {formatPatientCode(patient.patient_code)}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-1">Submit again to register anyway.</p>
-          </div>
-        )}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="First Name *">
-            <Input
-              value={form.first_name}
-              onChange={(event) => updateForm("first_name", event.target.value)}
-              placeholder="Juan"
-              required
-            />
-          </Field>
-          <Field label="Middle Name">
-            <Input
-              value={form.middle_name}
-              onChange={(event) => updateForm("middle_name", event.target.value)}
-              placeholder="Optional"
-            />
-          </Field>
-          <Field label="Last Name *">
-            <Input
-              value={form.last_name}
-              onChange={(event) => updateForm("last_name", event.target.value)}
-              placeholder="Dela Cruz"
-              required
-            />
-          </Field>
-          <Field label="Suffix">
-            <Input
-              value={form.suffix}
-              onChange={(event) => updateForm("suffix", event.target.value)}
-              placeholder="Jr., III (optional)"
-            />
-          </Field>
-          <Field label="Gender *">
-            <Select
-              value={form.gender}
-              onChange={(event) => updateForm("gender", event.target.value)}
-              required
-            >
-              <option value="">Select gender</option>
-              {PATIENT_GENDER_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Date of Birth *">
-            <Input
-              type="date"
-              value={form.date_of_birth}
-              onChange={(event) => updateForm("date_of_birth", event.target.value)}
-              required
-            />
-          </Field>
-          {isCho && (
-            <Field label="Facility *">
-              <Select
-                value={form.facility_id}
-                onChange={(event) => updateForm("facility_id", event.target.value)}
-                required
-              >
-                <option value="">Select facility</option>
-                {facilities.map((facility) => (
-                  <option key={facility.id} value={facility.id}>
-                    {facility.facility_name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-          <Field label="Contact Number">
-            <Input
-              value={form.contact_number}
-              onChange={(event) => updateForm("contact_number", event.target.value)}
-              placeholder="09XXXXXXXXX"
-            />
-          </Field>
-        </div>
-
-        <Field label="Address">
-          <Textarea
-            value={form.address}
-            onChange={(event) => updateForm("address", event.target.value)}
-            placeholder="House / street / barangay"
-          />
-        </Field>
-
-        <div className="flex justify-end gap-3 border-t border-[#e5e7eb] pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className={`h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSaving || Boolean(validationError)}
-            title={validationError || ""}
-            className={`inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
-          >
-            <UserPlusIcon /> Register Patient
-          </button>
-        </div>
-      </form>
-    </DispensingModal>
-  );
-}
 
 function StepperBar({ blockerFor, onStepClick, step }) {
   const steps = [
     { id: 1, label: "Patient" },
     { id: 2, label: "Medicines" },
-    { id: 3, label: "Review & Complete" },
+    { id: 3, label: "Review & Release" },
   ];
 
   return (
@@ -366,8 +112,8 @@ function StepperBar({ blockerFor, onStepClick, step }) {
 function ReceiptModal({ onClose, onExport, receipt }) {
   return (
     <DispensingModal
-      title="Dispensing Complete"
-      subtitle="The claim has been recorded and stock has been deducted."
+      title="Medicine Released"
+      subtitle="The release has been recorded and stock has been deducted."
       onClose={onClose}
       widthClass="max-w-2xl"
     >
@@ -380,7 +126,6 @@ function ReceiptModal({ onClose, onExport, receipt }) {
             {formatTransactionNumber(receipt.transactionId)}
           </h3>
           <p className="mt-1 text-xs text-[#5f6673]">{formatDispensingDateTime(receipt.dispensedAt)}</p>
-          <EligibilityBadge claimedThisMonth={false} />
         </div>
 
         <section className="rounded-xl border border-[#e5e7eb] p-4">
@@ -391,6 +136,8 @@ function ReceiptModal({ onClose, onExport, receipt }) {
               · {formatPatientCode(receipt.patient.patient_code)}
             </span>
           </p>
+          <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Prescribed By</p>
+          <p className="mt-1 text-sm font-semibold text-[#0d1117]">{receipt.prescribedBy}</p>
         </section>
 
         <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
@@ -399,7 +146,8 @@ function ReceiptModal({ onClose, onExport, receipt }) {
               <tr>
                 <th className="px-4 py-3">Medicine</th>
                 <th className="px-4 py-3">Batch</th>
-                <th className="px-4 py-3 text-right">Qty</th>
+                <th className="px-4 py-3 text-right">Needed</th>
+                <th className="px-4 py-3 text-right">Released</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#edf0f2]">
@@ -410,6 +158,11 @@ function ReceiptModal({ onClose, onExport, receipt }) {
                       {allocationIndex === 0 ? getMedicineLabel(line.option.medicine) : ""}
                     </td>
                     <td className="px-4 py-3 text-xs text-[#5f6673]">{allocation.batch_number}</td>
+                    <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                      {allocationIndex === 0
+                        ? Number(line.needed_quantity ?? line.quantity).toLocaleString()
+                        : ""}
+                    </td>
                     <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
                       {allocation.quantity.toLocaleString()}
                     </td>
@@ -442,7 +195,7 @@ function ReceiptModal({ onClose, onExport, receipt }) {
 }
 
 
-export default function DispensingWorkbench({ facilities, isCho }) {
+export default function DispensingWorkbench() {
   const { profile } = useAuth();
   const profileFacilityId = profile?.facility_id;
 
@@ -457,13 +210,14 @@ export default function DispensingWorkbench({ facilities, isCho }) {
   const [isSearchingPatients, setIsSearchingPatients] = useState(false);
   const [claimedIds, setClaimedIds] = useState(() => new Set());
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [infoPatient, setInfoPatient] = useState(null);
-  const [closingPatient, setClosingPatient] = useState(null);
-  const [historyPatient, setHistoryPatient] = useState(null);
 
   const [medicineKeyword, setMedicineKeyword] = useState("");
   const [cart, setCart] = useState([]);
+  const [prescribedBy, setPrescribedBy] = useState("");
+  const [referralStockRows, setReferralStockRows] = useState([]);
+  const [referralStockError, setReferralStockError] = useState("");
+  const [isLoadingReferralStock, setIsLoadingReferralStock] = useState(false);
+  const [stockModalMedicineId, setStockModalMedicineId] = useState("");
 
   const [receipt, setReceipt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -507,11 +261,20 @@ export default function DispensingWorkbench({ facilities, isCho }) {
   }, [loadInventory]);
 
   const runPatientSearch = useCallback(async () => {
+    const term = patientKeyword.trim();
+
+    if (!term) {
+      setPatientResults([]);
+      setClaimedIds(new Set());
+      setIsSearchingPatients(false);
+      return;
+    }
+
     setIsSearchingPatients(true);
 
     try {
       const rows = await searchDispensingPatients({
-        keyword: patientKeyword,
+        keyword: term,
       });
       setPatientResults(rows);
       const claimed = await getClaimedPatientIds(rows.map((row) => row.id));
@@ -571,13 +334,91 @@ export default function DispensingWorkbench({ facilities, isCho }) {
     [cart, inventoryRows, optionsById]
   );
 
-  const cartSummary = useMemo(() => getCartSummary(cart), [cart]);
-
   const selectedClaimed = selectedPatient ? claimedIds.has(selectedPatient.id) : false;
+
+  const referralMedicineIds = useMemo(
+    () =>
+      cart
+        .filter(
+          (line) =>
+            line.follow_up_action === FOLLOW_UP_ACTIONS.refer &&
+            Number(line.needed_quantity || 0) > Number(line.quantity || 0)
+        )
+        .map((line) => line.medicine_id),
+    [cart]
+  );
+
+  const referralStockByMedicineId = useMemo(() => {
+    const stock = new Map();
+
+    referralStockRows.forEach((row) => {
+      if (!stock.has(row.medicine_id)) {
+        stock.set(row.medicine_id, {
+          batchCount: 0,
+          nearestExpiration: row.expiration_date,
+          totalUnits: 0,
+        });
+      }
+
+      const entry = stock.get(row.medicine_id);
+      entry.batchCount += 1;
+      entry.totalUnits += Number(row.quantity || 0);
+      entry.nearestExpiration =
+        !entry.nearestExpiration || row.expiration_date < entry.nearestExpiration
+          ? row.expiration_date
+          : entry.nearestExpiration;
+    });
+
+    return stock;
+  }, [referralStockRows]);
+
+  const stockModalLine = useMemo(
+    () => cartLines.find((line) => line.medicine_id === stockModalMedicineId) || null,
+    [cartLines, stockModalMedicineId]
+  );
+
+  useEffect(() => {
+    if (wizardStep !== 3 || !selectedPatient?.facility_id || referralMedicineIds.length === 0) {
+      setReferralStockRows([]);
+      setReferralStockError("");
+      setIsLoadingReferralStock(false);
+      return;
+    }
+
+    let active = true;
+
+    setIsLoadingReferralStock(true);
+    getFacilityMedicineStockOverview({
+      facilityId: selectedPatient.facility_id,
+      medicineIds: referralMedicineIds,
+    })
+      .then((rows) => {
+        if (active) {
+          setReferralStockRows(rows);
+          setReferralStockError("");
+        }
+      })
+      .catch((stockError) => {
+        if (active) {
+          setReferralStockRows([]);
+          setReferralStockError(stockError.message || "Unable to load barangay stock.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoadingReferralStock(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [referralMedicineIds, selectedPatient?.facility_id, wizardStep]);
 
   const canReview = Boolean(
     selectedPatient &&
       cart.length > 0 &&
+      prescribedBy.trim() &&
       cartLines.every((line) => !line.error && line.preview.shortfall === 0 && Number(line.quantity) > 0)
   );
 
@@ -588,62 +429,67 @@ export default function DispensingWorkbench({ facilities, isCho }) {
       claimed: selectedClaimed,
       hasLineErrors: cartLines.some((line) => Boolean(line.error) || line.preview.shortfall > 0),
       hasPatient: Boolean(selectedPatient),
+      hasPrescriber: Boolean(prescribedBy.trim()),
       lineCount: cart.length,
       step: target,
     });
 
   const selectPatient = (patient) => {
-    setSelectedPatient(patient);
-    setClosingPatient(null);
-    setInfoPatient(patient);
-  };
-
-  const openPatientInfo = (patient) => {
-    if (infoPatient?.id === patient.id) {
-      closePatientInfo();
+    if (claimedIds.has(patient.id)) {
       return;
     }
 
-    setClosingPatient(null);
-    setInfoPatient(patient);
+    setCart([]);
+    setPrescribedBy("");
+    setSelectedPatient((current) => (current?.id === patient.id ? null : patient));
   };
-
-  const closePatientInfo = () => {
-    if (!infoPatient) {
-      return;
-    }
-
-    setClosingPatient(infoPatient);
-    setInfoPatient(null);
-    window.setTimeout(() => setClosingPatient(null), 500);
-  };
-
-  const refreshEligibility = useCallback(() => {
-    runPatientSearch();
-  }, [runPatientSearch]);
-
-  const panelPatient = infoPatient || closingPatient;
-  const panelIsClosing = Boolean(closingPatient) && !infoPatient;
 
   const addToCart = (option) => {
     setCart((current) =>
       current.some((line) => line.medicine_id === option.medicine_id)
         ? current
-        : [...current, { medicine_id: option.medicine_id, quantity: 1 }]
+        : [
+            ...current,
+            {
+              follow_up_action: "",
+              follow_up_date: "",
+              medicine_id: option.medicine_id,
+              needed_quantity: 1,
+              quantity: 1,
+              referred_facility_id: "",
+            },
+          ]
     );
   };
 
-  const updateCartQuantity = (medicineId, value) => {
+  const updateCartQuantity = (medicineId, field, value) => {
     if (value !== "" && !/^\d+$/.test(value)) {
       return;
     }
 
     setCart((current) =>
-      current.map((line) =>
-        line.medicine_id === medicineId
-          ? { ...line, quantity: value === "" ? "" : Number(value) }
-          : line
-      )
+      current.map((line) => {
+        if (line.medicine_id !== medicineId) {
+          return line;
+        }
+
+        const nextValue = value === "" ? "" : Number(value);
+        const nextLine = { ...line, [field]: nextValue };
+        const needed = Number(nextLine.needed_quantity || 0);
+        const released = Number(nextLine.quantity || 0);
+
+        if (field === "quantity" && released > needed) {
+          nextLine.needed_quantity = nextValue;
+        }
+
+        if (Number(nextLine.needed_quantity || 0) <= Number(nextLine.quantity || 0)) {
+          nextLine.follow_up_action = "";
+          nextLine.follow_up_date = "";
+          nextLine.referred_facility_id = "";
+        }
+
+        return nextLine;
+      })
     );
   };
 
@@ -659,9 +505,44 @@ export default function DispensingWorkbench({ facilities, isCho }) {
         const next = Number(line.quantity || 1) + delta;
         const bounded =
           ceiling !== null ? Math.min(Math.max(1, next), ceiling) : Math.max(1, next);
+        const needed = Math.max(Number(line.needed_quantity || 1), bounded);
 
-        return { ...line, quantity: bounded };
+        return {
+          ...line,
+          follow_up_action: needed > bounded ? line.follow_up_action : "",
+          follow_up_date: needed > bounded ? line.follow_up_date : "",
+          needed_quantity: needed,
+          quantity: bounded,
+          referred_facility_id: needed > bounded ? line.referred_facility_id : "",
+        };
       })
+    );
+  };
+
+  const updateFollowUpAction = (medicineId, action) => {
+    setCart((current) =>
+      current.map((line) =>
+        line.medicine_id === medicineId
+          ? {
+              ...line,
+              follow_up_action: action,
+              follow_up_date:
+                action === FOLLOW_UP_ACTIONS.schedule
+                  ? line.follow_up_date || getDefaultFollowUpDate()
+                  : "",
+              referred_facility_id:
+                action === FOLLOW_UP_ACTIONS.refer ? selectedPatient?.facility_id || "" : "",
+            }
+          : line
+      )
+    );
+  };
+
+  const updateFollowUpDate = (medicineId, date) => {
+    setCart((current) =>
+      current.map((line) =>
+        line.medicine_id === medicineId ? { ...line, follow_up_date: date } : line
+      )
     );
   };
 
@@ -679,27 +560,32 @@ export default function DispensingWorkbench({ facilities, isCho }) {
     try {
       const result = await completeWalkInDispensing({
         items: cartLines.map((line) => ({
+          follow_up_action: line.follow_up_action || null,
+          follow_up_date: line.follow_up_date || null,
           medicine_id: line.medicine_id,
+          needed_quantity: Number(line.needed_quantity ?? line.quantity),
           quantity: Number(line.quantity),
+          referred_facility_id: line.referred_facility_id || null,
         })),
         patientId: selectedPatient.id,
+        prescribedBy: prescribedBy.trim(),
       });
 
       setReceipt({
         dispensedAt: result?.dispensed_at || new Date().toISOString(),
         lines: cartLines,
         patient: selectedPatient,
+        prescribedBy: prescribedBy.trim(),
         transactionId: result?.transaction_id,
       });
       setCart([]);
+      setPrescribedBy("");
       setSelectedPatient(null);
-      setClosingPatient(null);
-      setInfoPatient(null);
       setClaimedIds(new Set());
       setWizardStep(1);
       await Promise.all([loadInventory(), runPatientSearch()]);
     } catch (completeError) {
-      setError(completeError.message || "Unable to complete the dispensing.");
+      setError(completeError.message || "Unable to release the medicine.");
     } finally {
       setIsSaving(false);
     }
@@ -723,8 +609,13 @@ export default function DispensingWorkbench({ facilities, isCho }) {
           line.preview.allocations.map((allocation) => ({
             batch: { batch_number: allocation.batch_number },
             id: allocation.inventory_id,
+            needed_quantity: Number(line.needed_quantity ?? line.quantity),
             medicine: line.option.medicine,
+            prescribed_by: receipt.prescribedBy,
             quantity: allocation.quantity,
+            follow_up_action: line.follow_up_action || null,
+            follow_up_date: line.follow_up_date || null,
+            referred_facility: line.follow_up_action === FOLLOW_UP_ACTIONS.refer ? receipt.patient.facility : null,
           }))
         ),
         totalQuantity: receipt.lines.reduce((total, line) => total + Number(line.quantity || 0), 0),
@@ -736,7 +627,7 @@ export default function DispensingWorkbench({ facilities, isCho }) {
     downloadCsv(csv, `${receipt.transactionId}-receipt.csv`);
   };
 
-  const commitQuantity = (medicineId) => {
+  const commitQuantity = (medicineId, field = "quantity") => {
     setCart((current) =>
       current.map((line) => {
         if (line.medicine_id !== medicineId) {
@@ -745,11 +636,118 @@ export default function DispensingWorkbench({ facilities, isCho }) {
 
         const option = optionsById.get(medicineId);
         const ceiling = option ? option.total_quantity : null;
-        const parsed = Math.max(1, Math.floor(Number(line.quantity) || 1));
-        const bounded = ceiling !== null ? Math.min(parsed, ceiling) : parsed;
+        const parsed = Math.max(1, Math.floor(Number(line[field]) || 1));
+        const bounded = field === "quantity" && ceiling !== null ? Math.min(parsed, ceiling) : parsed;
+        const nextLine = Number(line[field]) === bounded ? { ...line } : { ...line, [field]: bounded };
+        const needed = Number(nextLine.needed_quantity || 0);
+        const released = Number(nextLine.quantity || 0);
 
-        return Number(line.quantity) === bounded ? line : { ...line, quantity: bounded };
+        if (field === "quantity" && released > needed) {
+          nextLine.needed_quantity = released;
+        }
+
+        if (Number(nextLine.needed_quantity || 0) <= Number(nextLine.quantity || 0)) {
+          nextLine.follow_up_action = "";
+          nextLine.follow_up_date = "";
+          nextLine.referred_facility_id = "";
+        }
+
+        return nextLine;
       })
+    );
+  };
+
+  const renderReferralStockOverview = (line) => {
+    if (isLoadingReferralStock) {
+      return <p className="text-sm text-[#5f6673]">Checking barangay stock...</p>;
+    }
+
+    if (referralStockError) {
+      return <p className="text-sm font-bold text-red-600">{referralStockError}</p>;
+    }
+
+    const stock = referralStockByMedicineId.get(line.medicine_id);
+
+    if (!stock || stock.totalUnits <= 0) {
+      return <p className="rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] p-4 text-sm text-[#5f6673]">No available stock recorded.</p>;
+    }
+
+    return (
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Available quantity</p>
+          <p className="mt-1 text-lg font-bold text-[#0d1117] tabular-nums">{stock.totalUnits.toLocaleString()}</p>
+        </div>
+        <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Batch count</p>
+          <p className="mt-1 text-lg font-bold text-[#0d1117] tabular-nums">{stock.batchCount.toLocaleString()}</p>
+        </div>
+        <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Nearest expiration</p>
+          <p className="mt-1 text-sm font-bold text-[#0d1117]">{stock.nearestExpiration || "No date"}</p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderFollowUpControl = (line) => {
+    const isPartialRelease = Number(line.needed_quantity || 0) > Number(line.quantity || 0);
+
+    if (!isPartialRelease) {
+      return <span className="text-xs font-semibold text-[#5f6673]">None</span>;
+    }
+
+    return (
+      <div className="min-w-[240px] space-y-2">
+        <label className="flex items-center gap-2 text-xs font-semibold text-[#42474e]">
+          <input
+            name={`follow-up-${line.medicine_id}`}
+            type="radio"
+            checked={!line.follow_up_action}
+            onChange={() => updateFollowUpAction(line.medicine_id, "")}
+          />
+          No follow-up recorded
+        </label>
+        <label className="flex items-center gap-2 text-xs font-semibold text-[#42474e]">
+          <input
+            name={`follow-up-${line.medicine_id}`}
+            type="radio"
+            checked={line.follow_up_action === FOLLOW_UP_ACTIONS.schedule}
+            onChange={() => updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.schedule)}
+          />
+          Schedule next release
+        </label>
+        {line.follow_up_action === FOLLOW_UP_ACTIONS.schedule && (
+          <Input
+            type="date"
+            value={line.follow_up_date || ""}
+            onChange={(event) => updateFollowUpDate(line.medicine_id, event.target.value)}
+          />
+        )}
+        <label className="flex items-center gap-2 text-xs font-semibold text-[#42474e]">
+          <input
+            name={`follow-up-${line.medicine_id}`}
+            type="radio"
+            checked={line.follow_up_action === FOLLOW_UP_ACTIONS.refer}
+            onChange={() => {
+              updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.refer);
+              setIsLoadingReferralStock(true);
+              setStockModalMedicineId(line.medicine_id);
+            }}
+          />
+          Refer to barangay
+        </label>
+        {line.follow_up_action === FOLLOW_UP_ACTIONS.refer && (
+          <button
+            type="button"
+            onClick={() => setStockModalMedicineId(line.medicine_id)}
+            className={`h-9 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
+          >
+            View barangay stock
+          </button>
+        )}
+        {line.error && <p className="text-xs font-bold text-red-600">{line.error}</p>}
+      </div>
     );
   };
 
@@ -771,7 +769,7 @@ export default function DispensingWorkbench({ facilities, isCho }) {
           </div>
           <h1 className="mt-2 text-xl font-bold text-[#0d1117]">Dispensing</h1>
           <p className="mt-1 max-w-3xl text-sm text-[#5f6673]">
-            Find a patient, confirm their monthly eligibility, select available medicines, then complete the claim.
+            Find a patient, confirm their monthly eligibility, select available medicines, then release the claim.
           </p>
         </section>
 
@@ -789,21 +787,10 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                       Search by patient name or code, then select the patient for this walk-in claim.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowRegisterModal(true)}
-                    className={`inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] ${FOCUS_RING}`}
-                  >
-                    <UserPlusIcon /> Register New Patient
-                  </button>
                 </div>
 
-                <div
-                  className={`grid gap-5 p-4 transition-[grid-template-columns] duration-500 ease-in-out ${
-                    infoPatient ? "lg:grid-cols-[minmax(0,1fr)_380px]" : "lg:grid-cols-[minmax(0,1fr)]"
-                  }`}
-                >
-                  <div className="min-w-0 space-y-4">
+                <div className="p-4">
+                  <div className="space-y-4">
                     <label className="relative block">
                       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
                         <SearchIcon />
@@ -840,90 +827,97 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                           return (
                             <div
                               key={patient.id}
-                              className={`relative flex w-full items-center justify-between gap-3 rounded-xl border p-3 ${
-                                claimed ? "border-orange-100 bg-orange-50/60" : "border-[#e5e7eb] bg-[#f8f9ff]"
-                              } ${isSelectedCard ? "border-[#6be9c2] ring-2 ring-[#6be9c2]" : ""}`}
+                              className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 ${
+                                claimed
+                                  ? "border-[#e5e7eb] bg-[#f4f5f7] text-[#8a93a3]"
+                                  : "border-[#e5e7eb] bg-[#f8f9ff]"
+                              }`}
                             >
-                              <button
-                                type="button"
-                                aria-label={`Select ${patientName}`}
-                                onClick={() => selectPatient(patient)}
-                                className={`absolute inset-0 z-0 rounded-xl ${FOCUS_RING}`}
-                              />
-
-                              <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex min-w-0 flex-1 items-center gap-3">
                                 <PatientAvatar name={patientName} sizeClass="h-10 w-10 text-xs" />
                                 <div className="min-w-0">
-                                <button
-                                  type="button"
-                                  onClick={() => openPatientInfo(patient)}
-                                  title={
-                                    infoPatient?.id === patient.id
-                                      ? "Close patient info panel"
-                                      : "View patient info and claim history"
-                                  }
-                                  className={`pointer-events-auto -mx-1 max-w-full truncate rounded px-1 text-sm font-bold text-[#0d1117] underline-offset-2 ${FOCUS_RING}`}
-                                >
-                                  {patientName}
-                                </button>
-                                {patient.facility && (
-                                  <p className="mt-0.5 truncate text-xs text-[#5f6673]">
-                                    {formatPatientCode(patient.patient_code)} - {patient.facility.facility_name}
+                                  <p
+                                    className={`max-w-full truncate rounded-md px-2 py-1 text-sm font-bold ${
+                                      claimed
+                                        ? "text-[#5f6673]"
+                                        : isSelectedCard
+                                          ? "bg-white text-[#0d1117] shadow-sm ring-1 ring-[#d8dadc]"
+                                          : "text-[#0d1117]"
+                                    }`}
+                                  >
+                                    {patientName}
                                   </p>
-                                )}
+                                  {patient.address && (
+                                    <p className="mt-0.5 truncate text-xs text-[#5f6673]">{patient.address}</p>
+                                  )}
+                                  {claimed && (
+                                    <p className="mt-1 text-xs font-bold text-[#6b7280]">
+                                      Monthly claim already recorded.
+                                    </p>
+                                  )}
                                 </div>
                               </div>
 
-                              <span className="pointer-events-none relative z-10 shrink-0">
-                                <EligibilityBadge claimedThisMonth={claimed} />
-                              </span>
+                              {claimed ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  aria-label={`${patientName} cannot be selected`}
+                                  className="h-9 shrink-0 cursor-not-allowed rounded-lg border border-[#d8dadc] bg-white/70 px-3 text-xs font-bold text-[#8a93a3]"
+                                >
+                                  Select
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  aria-label={`${isSelectedCard ? "Unselect" : "Select"} ${patientName}`}
+                                  onClick={() => selectPatient(patient)}
+                                  className={`h-9 shrink-0 rounded-lg px-4 text-xs font-bold shadow-sm transition ${FOCUS_RING} ${
+                                    isSelectedCard
+                                      ? "border border-[#d8dadc] bg-white text-[#0d1117] hover:bg-[#f7f6f3]"
+                                      : "bg-black text-white hover:bg-[#0d1117]"
+                                  }`}
+                                >
+                                  {isSelectedCard ? "Unselect" : "Select"}
+                                </button>
+                              )}
                             </div>
                           );
                         })}
 
                       {!isSearchingPatients && patientResults.length === 0 && (
                         <div className="w-full rounded-xl bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
-                          No patients found. Use Register New Patient to add them.
+                          {patientKeyword.trim()
+                            ? "No matching patients found. Register the patient in the Patient module before dispensing."
+                            : "Search patient"}
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  <aside
-                    aria-hidden={!infoPatient}
-                    className={`min-w-0 overflow-hidden transition-all duration-500 ease-in-out ${
-                      infoPatient
-                        ? "max-h-[720px] opacity-100 lg:max-h-none"
-                        : "pointer-events-none max-h-0 opacity-0 lg:max-h-[600px]"
-                    }`}
-                  >
-                    {panelPatient && (
-                      <div
-                        key={panelPatient.id}
-                        className={`h-full ${
-                          panelIsClosing ? "opacity-0 transition-opacity duration-500" : "prds-fade-in"
-                        }`}
-                      >
-                        <PatientInfoPanel
-                          claimedWarning={
-                            selectedClaimed && selectedPatient?.id === panelPatient.id
-                              ? CLAIMED_THIS_MONTH_NOTICE
-                              : ""
-                          }
-                          isSelected={selectedPatient?.id === panelPatient.id}
-                          onClose={closePatientInfo}
-                          onContinue={() => setWizardStep(2)}
-                          onOpenHistory={() => setHistoryPatient(panelPatient)}
-                          onSelect={() => {
-                            if (panelPatient) {
-                              selectPatient(panelPatient);
-                            }
-                          }}
-                          patient={panelPatient}
-                        />
+                    {selectedPatient && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8dadc] bg-[#f8f9ff] px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-[#5f6673]">
+                            Selected patient
+                          </p>
+                          <p className="mt-1 truncate text-sm font-bold text-[#0d1117]">
+                            {formatPatientName(selectedPatient)}
+                          </p>
+                          {selectedPatient.address && (
+                            <p className="mt-0.5 text-xs text-[#5f6673]">{selectedPatient.address}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setWizardStep(2)}
+                          disabled={selectedClaimed}
+                          className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+                        >
+                          Continue to Medicines <ArrowRightIcon />
+                        </button>
                       </div>
                     )}
-                  </aside>
+                  </div>
                 </div>
             </section>
           </div>
@@ -934,14 +928,25 @@ export default function DispensingWorkbench({ facilities, isCho }) {
             <section className="self-start rounded-xl border border-[#d8dadc] bg-white shadow-sm">
                 <div className="border-b border-[#e5e7eb] px-4 py-3">
                   <h2 className="text-base font-bold text-[#0d1117] focus:outline-none" tabIndex={-1} data-step-heading>
-                    Build the Claim
+                    Choose medicine
                   </h2>
                   <p className="mt-1 text-sm text-[#5f6673]">
                     Pick medicines from available stock, then review the quantities.
                   </p>
                 </div>
 
-                <div className="space-y-4 px-4 pb-4 pt-3">
+                <div className="grid gap-4 px-4 pb-4 pt-3 lg:grid-cols-[minmax(0,1fr)_480px] xl:grid-cols-[minmax(0,1fr)_540px]">
+                  <section className="min-w-0 rounded-xl border border-[#e5e7eb] bg-white p-3">
+                    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-bold text-[#0d1117]">Available medicines</h3>
+                        <p className="mt-0.5 text-xs text-[#5f6673]">Select from current facility stock.</p>
+                      </div>
+                      <span className="rounded-full bg-[#f7f6f3] px-2.5 py-1 text-xs font-bold text-[#5f6673] tabular-nums">
+                        {medicineOptions.length.toLocaleString()} shown
+                      </span>
+                    </div>
+
                   <label className="relative block">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
                       <SearchIcon />
@@ -962,14 +967,14 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                   </label>
 
                   {isLoadingInventory ? (
-                    <>
+                    <div className="mt-3">
                       <div className="h-40 animate-pulse rounded-xl bg-[#f8f9ff]" />
                       <div role="status" className="sr-only">
                         Loading available medicine stock
                       </div>
-                    </>
+                    </div>
                   ) : (
-                    <div className="grid max-h-[420px] gap-2 overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="mt-3 grid max-h-[520px] gap-2 overflow-auto pr-1 xl:grid-cols-2">
                       {medicineOptions.map((option) => {
                         const inCart = cart.some((line) => line.medicine_id === option.medicine_id);
                         const lowStock = option.total_quantity <= 10;
@@ -983,8 +988,8 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                             aria-label={`Add ${getMedicineLabel(option.medicine)} to claim`}
                             className={`rounded-xl border p-3 text-left transition-all duration-200 ${FOCUS_RING} ${
                               inCart
-                                ? "cursor-default border-[#6be9c2] bg-[#ecfff8]"
-                                : "border-[#e5e7eb] bg-[#f8f9ff] hover:-translate-y-0.5 hover:border-[#6be9c2]"
+                                ? "cursor-default border-[#d8dadc] bg-[#f7f6f3]"
+                                : "border-[#e5e7eb] bg-[#f8f9ff] hover:border-[#c7ccd3] hover:bg-white hover:shadow-sm"
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -998,15 +1003,13 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                               </div>
                               <span
                                 className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ${
-                                  lowStock ? "bg-amber-100 text-amber-700" : "bg-[#dffbf2] text-[#008f68]"
+                                  lowStock ? "bg-amber-100 text-amber-700" : "bg-[#f7f6f3] text-[#42474e]"
                                 }`}
                               >
                                 {option.total_quantity.toLocaleString()} units
                               </span>
                             </div>
-                            {inCart && (
-                              <p className="mt-2 text-xs font-bold text-[#008f68]">Added to claim</p>
-                            )}
+                            {inCart && <p className="mt-2 text-xs font-bold text-[#5f6673]">Added</p>}
                             {lowStock && !inCart && (
                               <p className="mt-2 text-xs font-bold text-amber-700">
                                 Low stock — confirm remaining supply
@@ -1023,123 +1026,148 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                       )}
                     </div>
                   )}
+                  </section>
+
+                  <aside className="min-w-0 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-3 lg:sticky lg:top-4 lg:self-start">
+                    <div className="mb-3">
+                      <h3 className="text-sm font-bold text-[#0d1117]">Selected medicines</h3>
+                      <p className="mt-0.5 text-xs text-[#5f6673]">Confirm patient, doctor, and quantities.</p>
+                    </div>
+
+                    <div className="mb-3 space-y-3">
+                      {selectedPatient && (
+                        <section className="rounded-xl border border-[#e5e7eb] bg-white p-3">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                            Selected patient
+                          </p>
+                          <p className="mt-1 truncate text-sm font-bold text-[#0d1117]">
+                            {formatPatientName(selectedPatient)}
+                          </p>
+                          {selectedPatient.address && (
+                            <p className="mt-0.5 truncate text-xs text-[#5f6673]">{selectedPatient.address}</p>
+                          )}
+                        </section>
+                      )}
+                      <label className="block">
+                        <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                          Prescribed by <span className="text-red-500">*</span>
+                        </span>
+                        <Input
+                          value={prescribedBy}
+                          onChange={(event) => setPrescribedBy(event.target.value)}
+                          placeholder="Doctor name"
+                          required
+                        />
+                      </label>
+                    </div>
 
                   {cartLines.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] px-4 py-10 text-center">
-                      <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#9aa1ad]">
+                    <div className="rounded-xl border border-dashed border-[#d8dadc] bg-white px-4 py-10 text-center">
+                      <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#f7f6f3] text-[#9aa1ad]">
                         <PillIcon />
                       </span>
                       <p className="mt-3 text-sm font-bold text-[#0d1117]">No medicines added yet</p>
                       <p className="mt-1 text-sm text-[#5f6673]">
-                        Select from available stock above to build this claim.
+                        Select from available stock to prepare this release.
                       </p>
                     </div>
                   ) : (
-                    <>
-                      <ul className="space-y-3">
+                    <ul className="max-h-[460px] space-y-3 overflow-auto pr-1">
                         {cartLines.map((line) => {
-                          const expiringSoon = line.preview.allocations.some((allocation) => {
-                            const expiry = getExpiryStatus({ expiration_date: allocation.expiration_date });
-
-                            return expiry.days !== null && expiry.days <= 30;
-                          });
+                          const stockAfterRelease = Math.max(
+                            0,
+                            Number(line.option?.total_quantity || 0) - Number(line.quantity || 0)
+                          );
 
                           return (
                             <li
                               key={line.medicine_id}
-                              className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4 prds-flash-once"
+                              className="rounded-xl border border-[#e5e7eb] bg-white p-4 prds-flash-once"
                             >
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-bold text-[#0d1117]">
-                                    {line.option ? getMedicineLabel(line.option.medicine) : "Unavailable"}
-                                  </p>
-                                  {line.option && (
-                                    <p className="mt-0.5 text-xs text-[#5f6673]">
-                                      {getMedicineFullLabel(line.option.medicine)}
+                              <div className="space-y-3">
+                                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-bold text-[#0d1117]">
+                                      {line.option ? getMedicineLabel(line.option.medicine) : "Unavailable"}
                                     </p>
-                                  )}
-                                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                    {line.preview.allocations.map((allocation) => (
-                                      <span
-                                        key={allocation.inventory_id}
-                                        className="rounded-full border border-white bg-white px-2 py-0.5 text-[11px] font-bold text-[#42474e] shadow-sm"
-                                      >
-                                        {allocation.batch_number} ×{allocation.quantity.toLocaleString()}
-                                      </span>
-                                    ))}
-                                    {expiringSoon && (
-                                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                                        Expiring soon
-                                      </span>
+                                    {line.option && (
+                                      <p className="mt-0.5 text-xs text-[#5f6673]">
+                                        {getMedicineFullLabel(line.option.medicine)}
+                                      </p>
                                     )}
                                   </div>
-                                  {!line.error && line.option && (
-                                    <p className="mt-2 text-xs text-[#5f6673]">
-                                      {line.option.total_quantity.toLocaleString()} units available
-                                    </p>
-                                  )}
-                                  {line.error && (
-                                    <p className="mt-2 text-xs font-bold text-red-600">{line.error}</p>
-                                  )}
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                  <button
-                                    type="button"
-                                    aria-label={`Decrease ${line.option ? getMedicineLabel(line.option.medicine) : "medicine"} quantity`}
-                                    disabled={Number(line.quantity) <= 1}
-                                    onClick={() => bumpQuantity(line.medicine_id, -1)}
-                                    className={`h-11 w-11 rounded-lg border border-[#d8dadc] bg-white text-base font-bold text-[#0d1117] transition hover:bg-[#eff4ff] disabled:opacity-40 md:h-9 md:w-9 md:text-sm ${FOCUS_RING}`}
-                                  >
-                                    −
-                                  </button>
-                                  <Input
-                                    aria-label={`${line.option ? getMedicineLabel(line.option.medicine) : "Medicine"} quantity`}
-                                    value={line.quantity}
-                                    inputMode="numeric"
-                                    onChange={(event) =>
-                                      updateCartQuantity(line.medicine_id, event.target.value)
-                                    }
-                                    onBlur={() => commitQuantity(line.medicine_id)}
-                                    className="w-14 text-center tabular-nums"
-                                  />
-                                  <button
-                                    type="button"
-                                    aria-label={`Increase ${line.option ? getMedicineLabel(line.option.medicine) : "medicine"} quantity`}
-                                    onClick={() => bumpQuantity(line.medicine_id, 1)}
-                                    className={`h-11 w-11 rounded-lg border border-[#d8dadc] bg-white text-base font-bold text-[#0d1117] transition hover:bg-[#eff4ff] md:h-9 md:w-9 md:text-sm ${FOCUS_RING}`}
-                                  >
-                                    +
-                                  </button>
+                                  <label className="block">
+                                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                                      Needed quantity
+                                    </span>
+                                    <Input
+                                      aria-label={`${line.option ? getMedicineLabel(line.option.medicine) : "Medicine"} needed quantity`}
+                                      value={line.needed_quantity}
+                                      inputMode="numeric"
+                                      onChange={(event) =>
+                                        updateCartQuantity(line.medicine_id, "needed_quantity", event.target.value)
+                                      }
+                                      onBlur={() => commitQuantity(line.medicine_id, "needed_quantity")}
+                                      className="text-center tabular-nums"
+                                    />
+                                  </label>
                                   <button
                                     type="button"
                                     aria-label={`Remove ${line.option ? getMedicineLabel(line.option.medicine) : "medicine"} from claim`}
                                     onClick={() => removeCartLine(line.medicine_id)}
-                                    className={`inline-flex h-11 w-11 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-red-50 hover:text-red-600 md:h-9 md:w-9 ${FOCUS_RING}`}
+                                    className={`inline-flex h-10 w-10 items-center justify-center self-end rounded-lg text-[#6b7280] transition hover:bg-red-50 hover:text-red-600 ${FOCUS_RING}`}
                                   >
                                     <XIcon />
                                   </button>
                                 </div>
+
+                                <div className="rounded-lg bg-[#f8f9ff] p-3">
+                                  <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                                    Release quantity
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      aria-label={`Decrease ${line.option ? getMedicineLabel(line.option.medicine) : "medicine"} quantity`}
+                                      disabled={Number(line.quantity) <= 1}
+                                      onClick={() => bumpQuantity(line.medicine_id, -1)}
+                                      className={`h-10 w-10 rounded-lg border border-[#d8dadc] bg-white text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] disabled:opacity-40 ${FOCUS_RING}`}
+                                    >
+                                      -
+                                    </button>
+                                    <Input
+                                      aria-label={`${line.option ? getMedicineLabel(line.option.medicine) : "Medicine"} release quantity`}
+                                      value={line.quantity}
+                                      inputMode="numeric"
+                                      onChange={(event) =>
+                                        updateCartQuantity(line.medicine_id, "quantity", event.target.value)
+                                      }
+                                      onBlur={() => commitQuantity(line.medicine_id, "quantity")}
+                                      className="h-10 w-24 text-center tabular-nums"
+                                    />
+                                    <button
+                                      type="button"
+                                      aria-label={`Increase ${line.option ? getMedicineLabel(line.option.medicine) : "medicine"} quantity`}
+                                      onClick={() => bumpQuantity(line.medicine_id, 1)}
+                                      className={`h-10 w-10 rounded-lg border border-[#d8dadc] bg-white text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                  <p className="mt-2 text-xs font-medium text-[#5f6673]">
+                                    Stock after release: {stockAfterRelease.toLocaleString()}
+                                  </p>
+                                </div>
+                                {line.error && (
+                                  <p className="text-xs font-bold text-red-600">{line.error}</p>
+                                )}
                               </div>
                             </li>
                           );
                         })}
-                      </ul>
-
-                      <div
-                        aria-live="polite"
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-sm"
-                      >
-                        <span className="font-medium text-[#5f6673]">
-                          <span className="sr-only">Claim summary: </span>
-                          {cartSummary.lineCount} medicine line(s)
-                        </span>
-                        <span className="font-bold text-[#0d1117] tabular-nums">
-                          {cartSummary.totalUnits.toLocaleString()} total units
-                        </span>
-                      </div>
-                    </>
+                    </ul>
                   )}
+                  </aside>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e5e7eb] px-4 py-3">
@@ -1157,7 +1185,7 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                     title={stepBlockers(3) || undefined}
                     className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Review Claim <ArrowRightIcon />
+                    Review <ArrowRightIcon />
                   </button>
                 </div>
             </section>
@@ -1169,10 +1197,10 @@ export default function DispensingWorkbench({ facilities, isCho }) {
             <section className="self-start rounded-xl border border-[#d8dadc] bg-white shadow-sm">
                 <div className="border-b border-[#e5e7eb] px-4 py-3">
                   <h2 className="text-base font-bold text-[#0d1117] focus:outline-none" tabIndex={-1} data-step-heading>
-                    Review &amp; Complete
+                    Review &amp; Release
                   </h2>
                   <p className="mt-1 text-sm text-[#5f6673]">
-                    Verify every detail before stock is deducted.
+                    Verify every detail before the medicine is released.
                   </p>
                 </div>
 
@@ -1190,10 +1218,10 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                       {formatPatientName(selectedPatient)}
                     </p>
                     <p className="mt-1 text-xs text-[#5f6673]">
-                      {formatPatientCode(selectedPatient.patient_code)} ·{" "}
-                      {calculateAge(selectedPatient.date_of_birth) ?? "?"} yrs ·{" "}
-                      {selectedPatient.gender}
-                      {selectedPatient.facility ? ` · ${selectedPatient.facility.facility_name}` : ""}
+                      {calculateAge(selectedPatient.date_of_birth) ?? "?"} yrs
+                    </p>
+                    <p className="mt-1 text-xs text-[#5f6673]">
+                      {selectedPatient.address || "No address on file"}
                     </p>
                   </section>
 
@@ -1209,22 +1237,22 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                     </div>
                     <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                        Total Units
+                        Prescribed By
                       </p>
-                      <p className="mt-1 text-sm font-bold text-[#0d1117] tabular-nums">
-                        {cartSummary.totalUnits.toLocaleString()} units
+                      <p className="mt-1 text-sm font-bold text-[#0d1117]">
+                        {prescribedBy.trim() || "Not provided"}
                       </p>
-                      <p className="mt-1 text-xs text-[#5f6673]">{cartSummary.lineCount} medicine line(s)</p>
                     </div>
                   </div>
 
                   <div className="overflow-x-auto rounded-xl border border-[#e5e7eb]">
-                    <table className="w-full min-w-[520px] text-left text-sm">
+                    <table className="w-full min-w-[720px] text-left text-sm">
                       <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
                         <tr>
                           <th className="px-4 py-3">Medicine</th>
-                          <th className="px-4 py-3">Batches (FEFO)</th>
-                          <th className="px-4 py-3 text-right">Quantity</th>
+                          <th className="px-4 py-3 text-right">Needed quantity</th>
+                          <th className="px-4 py-3 text-right">Release quantity</th>
+                          <th className="px-4 py-3">Follow-up</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#edf0f2]">
@@ -1240,16 +1268,14 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                                 </p>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-xs text-[#5f6673]">
-                              {line.preview.allocations
-                                .map(
-                                  (allocation) =>
-                                    `${allocation.batch_number} ×${allocation.quantity.toLocaleString()}`
-                                )
-                                .join(", ") || "—"}
+                            <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                              {Number(line.needed_quantity ?? line.quantity).toLocaleString()}
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
                               {Number(line.quantity).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 align-top">
+                              {renderFollowUpControl(line)}
                             </td>
                           </tr>
                         ))}
@@ -1273,7 +1299,7 @@ export default function DispensingWorkbench({ facilities, isCho }) {
                     title={stepBlockers(3) || undefined}
                     className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
                   >
-                    <CheckIcon /> Complete Dispensing
+                    <CheckIcon /> Release
                   </button>
                 </div>
             </section>
@@ -1281,26 +1307,28 @@ export default function DispensingWorkbench({ facilities, isCho }) {
         )}
       </div>
 
-      {historyPatient && (
-        <PatientHistoryModal
-          canVoid={profile?.role === "PHARMA_II"}
-          onClose={() => setHistoryPatient(null)}
-          onClaimsChanged={refreshEligibility}
-          patient={historyPatient}
-        />
-      )}
-
-      {showRegisterModal && (
-        <QuickRegisterModal
-          facilities={facilities}
-          isCho={isCho}
-          onClose={() => setShowRegisterModal(false)}
-          onRegistered={(patient) => {
-            setShowRegisterModal(false);
-            selectPatient(patient);
-          }}
-          profileId={profile?.id}
-        />
+      {stockModalLine && (
+        <DispensingModal
+          title="Barangay Stock Overview"
+          subtitle={selectedPatient?.facility?.facility_name || "Patient barangay facility"}
+          onClose={() => setStockModalMedicineId("")}
+          widthClass="max-w-xl"
+        >
+          <div className="space-y-4">
+            <section className="rounded-xl border border-[#e5e7eb] bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Medicine</p>
+              <p className="mt-1 text-base font-bold text-[#0d1117]">
+                {stockModalLine.option ? getMedicineLabel(stockModalLine.option.medicine) : "Unavailable"}
+              </p>
+              {stockModalLine.option && (
+                <p className="mt-1 text-xs text-[#5f6673]">
+                  {getMedicineFullLabel(stockModalLine.option.medicine)}
+                </p>
+              )}
+            </section>
+            {renderReferralStockOverview(stockModalLine)}
+          </div>
+        </DispensingModal>
       )}
 
       {receipt && (

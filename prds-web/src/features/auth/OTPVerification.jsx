@@ -4,13 +4,20 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   getAuthErrorMessage,
   logoutUser,
+  sendEmailOtp,
+  sendPhoneOtp,
   toPhilippineE164PhoneNumber,
   updateUserPassword,
+  verifyEmailOtp,
   verifyPhoneOtp,
 } from "./AuthService";
 import {
+  clearPendingOtp,
   clearPendingPhoneOtp,
+  getPendingOtp,
   getPendingPhoneOtp,
+  OTP_CHANNELS,
+  OTP_PURPOSES,
   PHONE_OTP_PURPOSES,
 } from "./PendingPhoneOtpStore";
 import {
@@ -18,25 +25,43 @@ import {
   getProfileById,
   isProfileRegistrationComplete,
 } from "./ProfileService";
+import citySeal from "../../assets/city-of-naga-seal.png";
+import nagaGarbo from "../../assets/naga-atong-garbo.png";
+import prdsLogo from "../../assets/prds-logo-main.svg";
 
 const OTP_EXPIRY_SECONDS = 120;
 
+function maskEmail(email) {
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    return email || "";
+  }
+  const [username, domain] = email.split("@");
+  if (username.length <= 2) {
+    return `${username[0]}***@${domain}`;
+  }
+  const visiblePrefix = username.slice(0, 2);
+  const maskedLength = Math.max(username.length - 2, 3);
+  return `${visiblePrefix}${"*".repeat(maskedLength)}@${domain}`;
+}
+
 export default function OTPVerification() {
   const navigate = useNavigate();
-  const [pendingPhoneOtp] = useState(() => getPendingPhoneOtp());
+  const [pendingOtp] = useState(() => getPendingOtp() || getPendingPhoneOtp());
   const [verificationCode, setVerificationCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [resendNotice, setResendNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(OTP_EXPIRY_SECONDS);
 
   useEffect(() => {
-    if (!pendingPhoneOtp) {
+    if (!pendingOtp) {
       navigate("/", { replace: true });
     }
-  }, [navigate, pendingPhoneOtp]);
+  }, [navigate, pendingOtp]);
 
   useEffect(() => {
-    if (!pendingPhoneOtp || secondsRemaining <= 0) {
+    if (!pendingOtp || secondsRemaining <= 0) {
       return undefined;
     }
 
@@ -47,13 +72,15 @@ export default function OTPVerification() {
     }, 1000);
 
     return () => window.clearInterval(timerId);
-  }, [pendingPhoneOtp, secondsRemaining]);
+  }, [pendingOtp, secondsRemaining]);
 
-  if (!pendingPhoneOtp) {
+  if (!pendingOtp) {
     return null;
   }
 
   const {
+    channel,
+    email,
     facilityId,
     firstName,
     lastName,
@@ -61,7 +88,10 @@ export default function OTPVerification() {
     phoneNumber,
     purpose,
     role,
-  } = pendingPhoneOtp;
+  } = pendingOtp;
+
+  const isEmailOtp =
+    channel === OTP_CHANNELS.EMAIL || (!phoneNumber && Boolean(email));
   const isRegistrationOtp = purpose === PHONE_OTP_PURPOSES.REGISTRATION;
   const isOtpExpired = secondsRemaining <= 0;
   const formattedTimeRemaining = `${String(
@@ -71,19 +101,69 @@ export default function OTPVerification() {
   const handleVerifyOtp = async (event) => {
     event.preventDefault();
     setErrorMessage("");
+    setResendNotice("");
 
     if (isOtpExpired) {
-      setErrorMessage("OTP has expired. Please request a new code.");
+      setErrorMessage("Verification code has expired. Please request a new code.");
+      return;
+    }
+
+    const cleanCode = verificationCode.trim();
+    if (cleanCode.length < 6 || cleanCode.length > 8) {
+      setErrorMessage("Please enter the complete verification code.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const {
-        user,
-      } = await verifyPhoneOtp({
-        verificationCode,
+      if (isEmailOtp) {
+        const { user } = await verifyEmailOtp({
+          email,
+          verificationCode: cleanCode,
+        });
+
+        if (!user) {
+          throw new Error("Unable to verify Gmail code. Please try again.");
+        }
+
+        const profile = await getProfileById(user.id);
+        clearPendingOtp();
+
+        if (!isProfileRegistrationComplete(profile)) {
+          await logoutUser();
+          navigate("/", {
+            replace: true,
+            state: {
+              noticeMessage:
+                "This email account is not registered in PRDS yet. Please register an account before signing in.",
+            },
+          });
+          return;
+        }
+
+        if (profile.status === "DEACTIVATED") {
+          await logoutUser();
+          navigate("/", {
+            replace: true,
+            state: {
+              noticeMessage:
+                "This account is deactivated. Please contact a PRDS administrator for assistance.",
+            },
+          });
+          return;
+        }
+
+        navigate(
+          profile.status === "ACTIVE" ? "/dashboard" : "/pending-approval",
+          { replace: true }
+        );
+        return;
+      }
+
+      // Phone OTP Verification
+      const { user } = await verifyPhoneOtp({
+        verificationCode: cleanCode,
         phoneNumber,
       });
 
@@ -109,14 +189,14 @@ export default function OTPVerification() {
           });
         }
 
-        clearPendingPhoneOtp();
+        clearPendingOtp();
         navigate("/pending-approval", { replace: true });
         return;
       }
 
       const profile = await getProfileById(user.id);
 
-      clearPendingPhoneOtp();
+      clearPendingOtp();
 
       if (!isProfileRegistrationComplete(profile)) {
         await logoutUser();
@@ -153,8 +233,29 @@ export default function OTPVerification() {
     }
   };
 
-  const handleChangePhoneNumber = async () => {
-    clearPendingPhoneOtp();
+  const handleResendCode = async () => {
+    setErrorMessage("");
+    setResendNotice("");
+    setIsResending(true);
+
+    try {
+      if (isEmailOtp) {
+        await sendEmailOtp(email, { shouldCreateUser: false });
+        setResendNotice("A new verification code has been sent to your Gmail.");
+      } else {
+        await sendPhoneOtp(phoneNumber, { shouldCreateUser: isRegistrationOtp });
+        setResendNotice("A new verification code has been sent to your phone.");
+      }
+      setSecondsRemaining(OTP_EXPIRY_SECONDS);
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error));
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const handleChangeDestination = () => {
+    clearPendingOtp();
     navigate(isRegistrationOtp ? "/register" : "/", { replace: true });
   };
 
@@ -169,7 +270,7 @@ export default function OTPVerification() {
         <div className="relative z-10">
           <div className="w-16 h-16 rounded-full bg-white p-2 flex items-center justify-center shadow-md mb-10 overflow-hidden">
             <img
-              src="./src/assets/prds-logo-main.svg"
+              src={prdsLogo}
               alt="PRDS Logo"
               className="w-full h-full object-contain"
             />
@@ -188,9 +289,11 @@ export default function OTPVerification() {
           </h1>
 
           <p className="text-lg text-blue-100/80 max-w-md font-medium leading-relaxed">
-            {isRegistrationOtp
-              ? "Verify your phone number before your access request is submitted for approval."
-              : "Use the one-time code to sign in without your account password."}
+            {isEmailOtp
+              ? "Enter the verification code sent to your Gmail inbox to sign in to your PRDS account."
+              : isRegistrationOtp
+                ? "Verify your phone number before your access request is submitted for approval."
+                : "Use the one-time code to sign in without your account password."}
           </p>
         </div>
 
@@ -204,26 +307,55 @@ export default function OTPVerification() {
           <form className="w-full max-w-md" onSubmit={handleVerifyOtp}>
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold tracking-tight text-slate-800 mb-2">
-                Verify Phone Number
+                {isEmailOtp ? "Verify Gmail Code" : "Verify Phone Number"}
               </h2>
               <p className="text-sm font-medium text-slate-500">
-                {isRegistrationOtp
-                  ? "Enter the registration code sent to "
-                  : "Enter the sign-in code sent to "}
-                <span className="font-bold text-slate-700">
-                  {toPhilippineE164PhoneNumber(phoneNumber)}
-                </span>
-                .
+                {isEmailOtp ? (
+                  <>
+                    Enter the verification code sent to{" "}
+                    <span className="font-bold text-slate-700">
+                      {maskEmail(email)}
+                    </span>
+                    .
+                  </>
+                ) : (
+                  <>
+                    {isRegistrationOtp
+                      ? "Enter the registration code sent to "
+                      : "Enter the sign-in code sent to "}
+                    <span className="font-bold text-slate-700">
+                      {toPhilippineE164PhoneNumber(phoneNumber)}
+                    </span>
+                    .
+                  </>
+                )}
               </p>
-              <p
-                className={`mt-3 text-sm font-bold ${
-                  isOtpExpired ? "text-red-600" : "text-green-700"
-                }`}
-              >
-                {isOtpExpired
-                  ? "OTP expired"
-                  : `OTP expires in ${formattedTimeRemaining}`}
-              </p>
+              <div className="mt-3 flex items-center justify-center gap-3">
+                <p
+                  className={`text-sm font-bold ${
+                    isOtpExpired ? "text-red-600" : "text-green-700"
+                  }`}
+                >
+                  {isOtpExpired
+                    ? "Code expired"
+                    : `Code expires in ${formattedTimeRemaining}`}
+                </p>
+                {isOtpExpired && (
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isResending}
+                    className="text-xs font-bold text-[#1d3f8c] hover:text-green-700 hover:underline disabled:opacity-70"
+                  >
+                    {isResending ? "Resending..." : "Resend Code"}
+                  </button>
+                )}
+              </div>
+              {resendNotice && (
+                <p className="mt-2 text-xs font-semibold text-green-700">
+                  {resendNotice}
+                </p>
+              )}
             </div>
 
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
@@ -232,11 +364,20 @@ export default function OTPVerification() {
             <input
               type="text"
               inputMode="numeric"
-              maxLength={6}
+              autoComplete="one-time-code"
+              maxLength={8}
               value={verificationCode}
               onChange={(event) =>
-                setVerificationCode(event.target.value.replace(/\D/g, ""))
+                setVerificationCode(
+                  event.target.value.replace(/\D/g, "").slice(0, 8)
+                )
               }
+              onPaste={(event) => {
+                event.preventDefault();
+                const pastedText = event.clipboardData.getData("text") || "";
+                setVerificationCode(pastedText.replace(/\D/g, "").slice(0, 8));
+              }}
+              placeholder="Enter code"
               required
               className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-center text-lg font-bold tracking-[0.35em] text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
             />
@@ -253,19 +394,25 @@ export default function OTPVerification() {
               className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#008000] px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-md shadow-green-800/10 transition-all duration-150 hover:bg-[#006600] hover:shadow-lg hover:shadow-green-800/20 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isSubmitting
-                ? "Verifying OTP"
-                : isRegistrationOtp
-                  ? "Verify OTP and Create Account"
-                  : "Verify OTP and Sign In"}
+                ? "Verifying Code..."
+                : isEmailOtp
+                  ? "Verify Code and Sign In"
+                  : isRegistrationOtp
+                    ? "Verify OTP and Create Account"
+                    : "Verify OTP and Sign In"}
             </button>
 
             <button
               type="button"
-              onClick={handleChangePhoneNumber}
+              onClick={handleChangeDestination}
               disabled={isSubmitting}
               className="mt-4 w-full text-center text-sm font-bold text-[#1d3f8c] transition hover:text-green-700 hover:underline disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isRegistrationOtp ? "Change registration number" : "Back to sign in"}
+              {isEmailOtp
+                ? "Use a different email address"
+                : isRegistrationOtp
+                  ? "Change registration number"
+                  : "Back to sign in"}
             </button>
 
             <div className="text-center mt-8 text-sm text-gray-500 font-medium">
@@ -285,7 +432,7 @@ export default function OTPVerification() {
 
           <div className="w-10 h-10 filter grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-200">
             <img
-              src="./src/assets/city-of-naga-seal.png"
+              src={citySeal}
               alt="City of Naga Seal"
               className="w-full h-full object-contain"
             />
@@ -293,7 +440,7 @@ export default function OTPVerification() {
 
           <div className="w-10 h-10 filter grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-200">
             <img
-              src="./src/assets/naga-atong-garbo.png"
+              src={nagaGarbo}
               alt="Naga Atong Garbo"
               className="w-full h-full object-contain"
             />

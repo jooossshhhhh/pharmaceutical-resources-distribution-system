@@ -13,10 +13,7 @@ export default function MedicineToolbar({
     <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-            Medicine Catalog
-          </p>
-          <h2 className="mt-1 text-xl font-black text-black">Registered Medicines</h2>
+          <h2 className="text-xl font-black text-black">Registered Medicines</h2>
           <p className="mt-1 text-sm font-medium text-neutral-500">
             Showing {shownCount} of {totalCount} medicine records.
           </p>

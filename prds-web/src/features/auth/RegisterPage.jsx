@@ -21,6 +21,9 @@ import {
   getProfileById,
   isProfileRegistrationComplete,
 } from "./ProfileService";
+import citySeal from "../../assets/city-of-naga-seal.png";
+import nagaGarbo from "../../assets/naga-atong-garbo.png";
+import prdsLogo from "../../assets/prds-logo-main.svg";
 
 const roleOptions = [
   { value: "PHARMA_I", label: "Pharmacist I" },
@@ -216,23 +219,23 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex font-sans antialiased bg-gray-50">
-      <div className="hidden lg:flex lg:w-1/2 bg-[#1d3f8c] relative text-white p-16 flex-col justify-between overflow-hidden">
+    <div className="flex min-h-dvh bg-[#f5f7fb] font-sans antialiased">
+      <div className="relative hidden overflow-hidden bg-[#1d3f8c] p-12 text-white lg:flex lg:w-[48%] flex-col justify-between xl:p-16">
         <div className="absolute inset-0 bg-linear-to-br from-[#1d3f8c] via-[#254fa8] to-[#0e1f47] opacity-100 z-0"></div>
         <div className="absolute -top-20 -right-20 w-125 h-125 bg-[#dc8939] rounded-full mix-blend-screen filter blur-[120px] opacity-[0.15] z-0"></div>
         <div className="absolute -bottom-40 -left-20 w-150 h-150 bg-[#b53e53] rounded-full mix-blend-screen filter blur-[140px] opacity-20 z-0"></div>
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-size-[32px_32px] z-0"></div>
 
         <div className="relative z-10">
-          <div className="w-16 h-16 rounded-full bg-white p-2 flex items-center justify-center shadow-md mb-10 overflow-hidden">
+          <div className="mb-8 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-white p-2 shadow-md xl:mb-10 xl:h-16 xl:w-16">
             <img
-              src="./src/assets/prds-logo-main.svg"
+              src={prdsLogo}
               alt="PRDS Logo"
               className="w-full h-full object-contain"
             />
           </div>
 
-          <h1 className="text-5xl font-extrabold tracking-tight leading-[1.15] mb-6">
+          <h1 className="mb-5 text-4xl font-extrabold leading-[1.15] tracking-tight xl:mb-6 xl:text-5xl">
             Pharmaceutical
             <br />
             <span className="text-transparent bg-clip-text bg-linear-to-r from-white to-gray-300">
@@ -244,7 +247,7 @@ export default function RegisterPage() {
             <span className="text-[#dc8939]">System</span>
           </h1>
 
-          <p className="text-lg text-blue-100/80 max-w-md font-medium leading-relaxed">
+          <p className="max-w-md text-base font-medium leading-relaxed text-blue-100/80 xl:text-lg">
             Request access to the centralized medicine inventory and healthcare resource distribution platform.
           </p>
         </div>
@@ -254,15 +257,24 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col bg-white min-h-screen relative">
-        <div className="flex-1 flex flex-col justify-center items-center px-6 md:px-12 py-12">
-          <form className="w-full max-w-md" onSubmit={handleRegister}>
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold tracking-tight text-slate-800 mb-2">
+      <div className="relative flex min-h-dvh flex-1 flex-col bg-white">
+        <div className="flex flex-1 items-center justify-center px-5 py-5 md:px-10">
+          <form
+            className="w-full max-w-xl rounded-2xl border border-[#e5e7eb] bg-white p-5 shadow-xl shadow-slate-200/70 md:p-6"
+            onSubmit={handleRegister}
+          >
+            <div className="mb-5 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-[#e5e7eb] bg-white p-2 shadow-sm lg:hidden">
+                <img src={prdsLogo} alt="PRDS Logo" className="h-full w-full object-contain" />
+              </div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#008f68]">
+                PRDS Access
+              </p>
+              <h2 className="mt-1 text-3xl font-black tracking-tight text-[#0d1117]">
                 Register Account
               </h2>
               {isGoogleRegistration && (
-                <p className="text-sm font-medium text-slate-500">
+                <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
                   Complete the required account details for{" "}
                   <span className="font-bold text-slate-700">
                     {supabaseUser.email}
@@ -274,45 +286,59 @@ export default function RegisterPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                <label
+                  htmlFor="register-first-name"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                >
                   First Name
                 </label>
                 <input
+                  id="register-first-name"
                   type="text"
                   value={firstNameValue}
                   onChange={(event) => setFirstName(event.target.value)}
+                  autoComplete="given-name"
                   required
-                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                <label
+                  htmlFor="register-last-name"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                >
                   Last Name
                 </label>
                 <input
+                  id="register-last-name"
                   type="text"
                   value={lastNameValue}
                   onChange={(event) => setLastName(event.target.value)}
+                  autoComplete="family-name"
                   required
-                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
                 />
               </div>
             </div>
 
             {!isGoogleRegistration ? (
-              <div className="mt-5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+              <div className="mt-4">
+                <label
+                  htmlFor="register-phone"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                >
                   Phone Number
                 </label>
-                <div className="relative flex rounded-xl border border-gray-300 shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-green-600/20 focus-within:border-green-600 transition-all bg-white">
+                <div className="relative flex overflow-hidden rounded-xl border border-gray-300 bg-white shadow-sm transition-all focus-within:border-[#008f68] focus-within:ring-2 focus-within:ring-[#6be9c2]/35">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <svg aria-hidden="true" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
                   </div>
                   <input
-                    type="text"
+                    id="register-phone"
+                    type="tel"
                     inputMode="numeric"
                     maxLength={11}
                     placeholder="09XXXXXXXXX"
@@ -320,32 +346,37 @@ export default function RegisterPage() {
                     onChange={(event) =>
                       setPhoneNumber(event.target.value.replace(/\D/g, ""))
                     }
+                    autoComplete="tel"
                     required
-                    className="w-full bg-transparent pl-10 pr-4 py-3.5 text-sm font-medium tracking-wide text-gray-900 placeholder-gray-300 outline-none"
+                    className="w-full bg-transparent py-3 pl-10 pr-4 text-sm font-medium tracking-wide text-gray-900 placeholder-gray-300 outline-none"
                   />
                 </div>
               </div>
             ) : (
-              <div className="mt-5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+              <div className="mt-4">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">
                   Gmail
                 </label>
-                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-sm font-semibold text-gray-900">
+                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-900">
                   {supabaseUser.email}
                 </div>
               </div>
             )}
 
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                <label
+                  htmlFor="register-facility"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                >
                   Facility
                 </label>
                 <select
+                  id="register-facility"
                   value={facilityIdValue}
                   onChange={(event) => setFacilityId(event.target.value)}
                   required
-                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
                 >
                   <option value="">Select facility</option>
                   {facilities.map((facility) => (
@@ -357,14 +388,18 @@ export default function RegisterPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                <label
+                  htmlFor="register-role"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                >
                   Role
                 </label>
                 <select
+                  id="register-role"
                   value={roleValue}
                   onChange={(event) => setRole(event.target.value)}
                   required
-                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
                 >
                   <option value="">Select role</option>
                   {roleOptions.map((option) => (
@@ -376,66 +411,78 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="mt-5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                  minLength={6}
-                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 pr-12 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((current) => !current)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-slate-600"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="register-password"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d={showPassword ? "M3 3l18 18M10.584 10.587A2 2 0 0012 14a2 2 0 001.414-.586M9.88 4.243A9.77 9.77 0 0112 4c4.478 0 8.268 2.943 9.542 7a9.975 9.975 0 01-3.043 4.426M6.228 6.228A9.984 9.984 0 002.458 11c1.274 4.057 5.065 7 9.542 7a9.96 9.96 0 004.132-.894" : "M15 12a3 3 0 11-6 0 3 3 0 016 0z"} />
-                    {!showPassword && (
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    )}
-                  </svg>
-                </button>
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="register-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                    minLength={6}
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pr-12 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d={showPassword ? "M3 3l18 18M10.584 10.587A2 2 0 0012 14a2 2 0 001.414-.586M9.88 4.243A9.77 9.77 0 0112 4c4.478 0 8.268 2.943 9.542 7a9.975 9.975 0 01-3.043 4.426M6.228 6.228A9.984 9.984 0 002.458 11c1.274 4.057 5.065 7 9.542 7a9.96 9.96 0 004.132-.894" : "M15 12a3 3 0 11-6 0 3 3 0 016 0z"} />
+                      {!showPassword && (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      )}
+                    </svg>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="mt-5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  required
-                  minLength={6}
-                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 pr-12 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword((current) => !current)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-slate-600"
-                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              <div>
+                <label
+                  htmlFor="register-confirm-password"
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d={showConfirmPassword ? "M3 3l18 18M10.584 10.587A2 2 0 0012 14a2 2 0 001.414-.586M9.88 4.243A9.77 9.77 0 0112 4c4.478 0 8.268 2.943 9.542 7a9.975 9.975 0 01-3.043 4.426M6.228 6.228A9.984 9.984 0 002.458 11c1.274 4.057 5.065 7 9.542 7a9.96 9.96 0 004.132-.894" : "M15 12a3 3 0 11-6 0 3 3 0 016 0z"} />
-                    {!showConfirmPassword && (
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    )}
-                  </svg>
-                </button>
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="register-confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                    minLength={6}
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pr-12 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((current) => !current)}
+                    className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  >
+                    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d={showConfirmPassword ? "M3 3l18 18M10.584 10.587A2 2 0 0012 14a2 2 0 001.414-.586M9.88 4.243A9.77 9.77 0 0112 4c4.478 0 8.268 2.943 9.542 7a9.975 9.975 0 01-3.043 4.426M6.228 6.228A9.984 9.984 0 002.458 11c1.274 4.057 5.065 7 9.542 7a9.96 9.96 0 004.132-.894" : "M15 12a3 3 0 11-6 0 3 3 0 016 0z"} />
+                      {!showConfirmPassword && (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      )}
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
 
             {errorMessage && (
-              <p className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700" role="alert">
                 {errorMessage}
               </p>
             )}
@@ -443,14 +490,14 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#008000] px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-md shadow-green-800/10 transition-all duration-150 hover:bg-[#006600] hover:shadow-lg hover:shadow-green-800/20 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-5 flex w-full items-center justify-center rounded-xl bg-black px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-md shadow-slate-900/10 transition-all duration-150 hover:bg-[#0d1117] hover:shadow-lg hover:shadow-slate-900/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isSubmitting ? "Creating Account" : "Create Account"}
             </button>
 
             {!isGoogleRegistration && (
               <>
-                <div className="flex items-center my-6">
+                <div className="my-4 flex items-center">
                   <div className="grow border-t border-gray-200"></div>
                   <span className="px-4 text-xs font-bold tracking-wider text-gray-400 uppercase">
                     OR
@@ -462,9 +509,9 @@ export default function RegisterPage() {
                   type="button"
                   onClick={handleGoogleRegister}
                   disabled={isSubmitting || isGoogleSubmitting}
-                  className="w-full flex items-center justify-center gap-3 border border-gray-200 bg-white text-slate-600 font-semibold py-3.5 rounded-xl hover:bg-gray-50 hover:border-gray-300 active:scale-[0.99] transition-all duration-150 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
+                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white py-3.5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-150 hover:border-gray-300 hover:bg-gray-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <svg aria-hidden="true" className="w-4 h-4" viewBox="0 0 24 24">
                     <path
                       fill="#EA4335"
                       d="M5.266 9.765A7.077 7.077 0 0112 4.909c1.69 0 3.218.6 4.418 1.582l3.51-3.51C17.827 1.127 15.118 0 12 0 7.34 0 3.314 2.673 1.311 6.56l3.955 3.205z"
@@ -487,12 +534,12 @@ export default function RegisterPage() {
               </>
             )}
 
-            <div className="text-center mt-8 text-sm text-gray-500 font-medium">
+            <div className="mt-5 text-center text-sm font-medium text-gray-500">
               Already have an account?{" "}
               <button
                 type="button"
                 onClick={handleGoToSignIn}
-                className="text-[#1d3f8c] font-bold hover:text-green-700 hover:underline"
+                className="font-bold text-[#1d3f8c] hover:text-[#008f68] hover:underline"
               >
                 Sign in
               </button>
@@ -500,20 +547,20 @@ export default function RegisterPage() {
           </form>
         </div>
 
-        <div className="w-full border-t border-gray-100 py-6 px-12 flex justify-between items-center select-none bg-white relative">
+        <div className="relative flex w-full select-none items-center justify-between border-t border-gray-100 bg-white px-8 py-3 md:px-12">
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-px bg-gray-200 hidden md:block"></div>
 
-          <div className="w-10 h-10 filter grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-200">
+          <div className="h-8 w-8 opacity-60 grayscale filter transition-all duration-200 hover:opacity-100 hover:grayscale-0">
             <img
-              src="./src/assets/city-of-naga-seal.png"
+              src={citySeal}
               alt="City of Naga Seal"
               className="w-full h-full object-contain"
             />
           </div>
 
-          <div className="w-10 h-10 filter grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-200">
+          <div className="h-8 w-8 opacity-60 grayscale filter transition-all duration-200 hover:opacity-100 hover:grayscale-0">
             <img
-              src="./src/assets/naga-atong-garbo.png"
+              src={nagaGarbo}
               alt="Naga Atong Garbo"
               className="w-full h-full object-contain"
             />

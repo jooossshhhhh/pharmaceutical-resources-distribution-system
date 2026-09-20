@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
   Legend,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,7 +13,7 @@ import {
 import { formatNumber } from "../../../dashboard/dashboardUtils";
 import { chartColors, chartFont } from "./chartTheme";
 
-export default function ConsumptionTrendChart({ rows = [] }) {
+export default function ConsumptionTrendChart({ heightClassName = "h-[360px]", rows = [] }) {
   const chartRows = useMemo(
     () =>
       rows.map((row) => ({
@@ -26,7 +26,7 @@ export default function ConsumptionTrendChart({ rows = [] }) {
 
   if (rows.length === 0) {
     return (
-      <div className="grid min-h-64 place-items-center rounded-xl bg-[#f8f9ff] text-center">
+      <div className={`grid ${heightClassName} min-h-44 place-items-center rounded-xl bg-[#f8f9ff] text-center`}>
         <div>
           <p className="text-sm font-black text-[#0d1117]">No consumption data yet</p>
           <p className="mt-1 text-xs font-medium text-[#42474e]">
@@ -38,10 +38,10 @@ export default function ConsumptionTrendChart({ rows = [] }) {
   }
 
   return (
-    <div className="h-80 w-full">
+    <div className={`${heightClassName} w-full`}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartRows} margin={{ bottom: 8, left: 8, right: 16, top: 12 }}>
-          <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
+        <AreaChart data={chartRows} margin={{ bottom: 8, left: 8, right: 16, top: 12 }}>
+          <CartesianGrid stroke={chartColors.grid} vertical={false} />
           <XAxis
             dataKey="month"
             tick={chartFont}
@@ -68,18 +68,21 @@ export default function ConsumptionTrendChart({ rows = [] }) {
             iconType="circle"
             wrapperStyle={{ color: chartColors.text, fontSize: 12, fontWeight: 800 }}
           />
-          <Line
+          <Area
             dataKey="actual"
             dot={{ r: 3 }}
-            name="Dispensed"
+            fill={chartColors.actualSoft}
+            fillOpacity={1}
+            name="Recent use"
             stroke={chartColors.actual}
             strokeWidth={3}
             type="monotone"
             connectNulls={false}
           />
-          <Line
+          <Area
             dataKey="forecast"
             dot={{ r: 3 }}
+            fill="transparent"
             name="Expected use"
             stroke={chartColors.forecast}
             strokeDasharray="6 5"
@@ -87,7 +90,7 @@ export default function ConsumptionTrendChart({ rows = [] }) {
             type="monotone"
             connectNulls={false}
           />
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );

@@ -12,7 +12,7 @@ export default function PasswordModal({ authEmail, onChange, onClose, onSend, on
     <ModalShell
       labelledBy="password-modal-title"
       onClose={onClose}
-      overlayClassName="bg-white/95 backdrop-blur-sm"
+      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
     >
       <form
         onSubmit={state.step === "choose" ? onSend : onSubmit}

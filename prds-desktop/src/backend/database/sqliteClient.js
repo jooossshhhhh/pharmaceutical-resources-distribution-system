@@ -7,6 +7,7 @@
 let dbInstance = null;
 let isInitialized = false;
 let initializationPromise = null;
+const SNAPSHOT_CACHE_VERSION = "per-session-cache-2026-09-20";
 
 export function isTauriEnvironment() {
   return (
@@ -213,6 +214,29 @@ async function initializeSqliteSchema() {
     }
     await db.execute(
       "INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) VALUES ('medicine_catalog_version', 'cho-2026-09-20', CURRENT_TIMESTAMP)"
+    );
+  }
+
+  const snapshotCacheVersion = await db.select(
+    "SELECT value FROM sync_metadata WHERE key = 'snapshot_cache_version'"
+  );
+  if (snapshotCacheVersion[0]?.value !== SNAPSHOT_CACHE_VERSION) {
+    for (const table of [
+      "facilities",
+      "medicines",
+      "suppliers",
+      "inventory",
+      "patients",
+      "dispensing_records",
+      "requests",
+      "transfers",
+      "monthly_dispensing_summary",
+    ]) {
+      await db.execute(`DELETE FROM ${table}`);
+    }
+    await db.execute(
+      "INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) VALUES ('snapshot_cache_version', $1, CURRENT_TIMESTAMP)",
+      [SNAPSHOT_CACHE_VERSION]
     );
   }
 }

@@ -40,6 +40,20 @@ create table medicine_dispensing (
     quantity integer not null
         check (quantity > 0),
 
+    needed_quantity integer not null
+        check (needed_quantity > 0 and needed_quantity >= quantity),
+
+    prescribed_by text,
+
+    follow_up_action text
+        check (follow_up_action is null or follow_up_action in ('SCHEDULE_NEXT_WEEK', 'REFER_TO_BARANGAY')),
+
+    follow_up_date date,
+
+    referred_facility_id uuid
+        references facilities(id)
+        on delete restrict,
+
     dispensing_type dispensing_type not null,
 
     dispensed_by uuid not null

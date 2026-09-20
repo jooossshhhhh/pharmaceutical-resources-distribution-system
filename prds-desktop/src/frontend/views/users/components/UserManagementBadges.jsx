@@ -1,0 +1,23 @@
+import { getStatusLabel } from "@shared/utils/userManagementUtils";
+
+export function UserStatusBadge({ status }) {
+  const classes = {
+    ACTIVE: "bg-emerald-100 text-emerald-700",
+    DEACTIVATED: "bg-neutral-100 text-neutral-600",
+    PENDING: "bg-amber-100 text-amber-700",
+  };
+
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black ${classes[status] || classes.PENDING}`}>
+      {getStatusLabel(status)}
+    </span>
+  );
+}
+
+export function RoleBadge({ children }) {
+  return (
+    <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
+      {children}
+    </span>
+  );
+}

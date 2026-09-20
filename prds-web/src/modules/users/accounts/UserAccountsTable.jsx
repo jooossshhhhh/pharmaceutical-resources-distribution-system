@@ -7,10 +7,20 @@ import {
   getInitials,
   getRoleLabel,
 } from "../userManagementUtils";
+import PaginationControls from "../../../components/PaginationControls";
 import { RoleBadge, UserStatusBadge } from "../components/UserManagementBadges";
 import { UserIcon } from "../components/UserManagementIcons";
 
-export default function UserAccountsTable({ isLoading, onSelectUser, users }) {
+export default function UserAccountsTable({
+  currentPage,
+  isLoading,
+  onPageChange,
+  onSelectUser,
+  pageSize,
+  totalCount,
+  totalPages,
+  users,
+}) {
   return (
     <section className="mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-4">
@@ -19,7 +29,7 @@ export default function UserAccountsTable({ isLoading, onSelectUser, users }) {
           <h2 className="mt-1 text-base font-black text-black">User Accounts</h2>
         </div>
         <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-black text-neutral-600">
-          {users.length} shown
+          {totalCount} shown
         </span>
       </div>
 
@@ -97,6 +107,17 @@ export default function UserAccountsTable({ isLoading, onSelectUser, users }) {
           </tbody>
         </table>
       </div>
+
+      {!isLoading && totalCount > 0 && (
+        <PaginationControls
+          currentPage={currentPage}
+          itemLabel="users"
+          onPageChange={onPageChange}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          totalPages={totalPages}
+        />
+      )}
     </section>
   );
 }

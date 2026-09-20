@@ -1,25 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+﻿import { useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
+import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import AccountsView from "./accounts/AccountsView";
 import ManageAccountModal from "./accounts/ManageAccountModal";
-import ChangeRequestsView from "./change-requests/ChangeRequestsView";
 import UserManagementToolbar from "./components/UserManagementToolbar";
 import UserSummaryCards from "./components/UserSummaryCards";
 import {
   buildUserSummary,
-  filterFacilityRequests,
   filterUsers,
   formatDateTime,
-  getUserManagementPathForView,
-  getUserManagementViewFromPath,
 } from "./userManagementUtils";
 import {
   getUserManagementData,
-  reviewFacilityChangeRequest,
   updateManagedUser,
 } from "./UserManagementService";
 
@@ -31,17 +26,11 @@ const emptyForm = {
 
 export default function UserManagementModule() {
   const { profile } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [facilities, setFacilities] = useState([]);
-  const [facilityRequests, setFacilityRequests] = useState([]);
-  const activeView = getUserManagementViewFromPath(location.pathname);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [roleFilter, setRoleFilter] = useState("ALL");
-  const [requestStatusFilter, setRequestStatusFilter] = useState("ALL");
-  const [requestDateFilter, setRequestDateFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [userError, setUserError] = useState("");
@@ -55,8 +44,8 @@ export default function UserManagementModule() {
   }, [profile?.id, users]);
 
   const summary = useMemo(() => {
-    return buildUserSummary(visibleUsers, facilityRequests);
-  }, [facilityRequests, visibleUsers]);
+    return buildUserSummary(visibleUsers);
+  }, [visibleUsers]);
 
   const filteredUsers = useMemo(() => {
     return filterUsers(visibleUsers, {
@@ -66,13 +55,14 @@ export default function UserManagementModule() {
     });
   }, [roleFilter, searchTerm, statusFilter, visibleUsers]);
 
-  const filteredFacilityRequests = useMemo(() => {
-    return filterFacilityRequests(facilityRequests, {
-      dateFilter: requestDateFilter,
-      searchTerm,
-      statusFilter: requestStatusFilter,
-    });
-  }, [facilityRequests, requestDateFilter, requestStatusFilter, searchTerm]);
+  const {
+    currentPage,
+    paginatedRows: paginatedUsers,
+    pageSize,
+    setCurrentPage,
+    totalCount,
+    totalPages,
+  } = usePaginatedRows(filteredUsers);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -82,7 +72,6 @@ export default function UserManagementModule() {
       const data = await getUserManagementData();
       setUsers(data.users);
       setFacilities(data.facilities);
-      setFacilityRequests(data.facilityRequests);
     } catch (error) {
       setUserError(error.message);
     } finally {
@@ -94,14 +83,7 @@ export default function UserManagementModule() {
     loadUsers();
   }, []);
 
-  useEffect(() => {
-    if (location.pathname === "/users") {
-      navigate(getUserManagementPathForView("accounts"), { replace: true });
-    }
-  }, [location.pathname, navigate]);
-
   const selectStatus = (nextStatus) => {
-    navigate(getUserManagementPathForView("accounts"));
     setStatusFilter(nextStatus);
   };
 
@@ -169,23 +151,6 @@ export default function UserManagementModule() {
     await loadUsers();
   };
 
-  const handleReviewFacilityRequest = async (request, status) => {
-    setIsSaving(true);
-    setUserError("");
-
-    try {
-      await reviewFacilityChangeRequest({
-        requestId: request.id,
-        status,
-      });
-      await loadUsers();
-    } catch (error) {
-      setUserError(error.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
       <div className="space-y-4">
@@ -195,44 +160,29 @@ export default function UserManagementModule() {
           </p>
         ) : null}
 
-        {activeView === "accounts" ? (
-          <UserSummaryCards
-            onSelectStatus={selectStatus}
-            statusFilter={statusFilter}
-            summary={summary}
-          />
-        ) : null}
+        <UserSummaryCards
+          onSelectStatus={selectStatus}
+          statusFilter={statusFilter}
+          summary={summary}
+        />
 
-        {activeView === "accounts" ? (
-          <UserManagementToolbar
-            activeView={activeView}
-            onRoleFilterChange={setRoleFilter}
-            onSearchChange={setSearchTerm}
-            roleFilter={roleFilter}
-            searchTerm={searchTerm}
-          />
-        ) : null}
+        <UserManagementToolbar
+          onRoleFilterChange={setRoleFilter}
+          onSearchChange={setSearchTerm}
+          roleFilter={roleFilter}
+          searchTerm={searchTerm}
+        />
 
-        {activeView === "accounts" ? (
-          <AccountsView
-            isLoading={isLoading}
-            onSelectUser={openUserModal}
-            users={filteredUsers}
-          />
-        ) : (
-          <ChangeRequestsView
-            dateFilter={requestDateFilter}
-            isLoading={isLoading}
-            isSaving={isSaving}
-            onDateFilterChange={setRequestDateFilter}
-            onSearchChange={setSearchTerm}
-            onReview={handleReviewFacilityRequest}
-            onStatusFilterChange={setRequestStatusFilter}
-            requests={filteredFacilityRequests}
-            searchTerm={searchTerm}
-            statusFilter={requestStatusFilter}
-          />
-        )}
+        <AccountsView
+          currentPage={currentPage}
+          isLoading={isLoading}
+          onSelectUser={openUserModal}
+          onPageChange={setCurrentPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          totalPages={totalPages}
+          users={paginatedUsers}
+        />
       </div>
 
       {selectedUser ? (

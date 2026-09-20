@@ -85,6 +85,42 @@ with check (
 );
 
 
+-- Users can complete their own pending Google-created profile
+
+create policy "users_can_complete_pending_profile"
+
+on profiles
+
+for update
+
+to authenticated
+
+using (
+    id = (select auth.uid())
+    and status = 'PENDING'
+    and email is not null
+    and phone_number is null
+    and approved_by is null
+    and approved_at is null
+)
+
+with check (
+    id = (select auth.uid())
+    and status = 'PENDING'
+    and lower(email) = lower((select auth.jwt() ->> 'email'))
+    and phone_number is null
+    and role in ('BHW', 'PHARMA_I')
+    and approved_by is null
+    and approved_at is null
+    and exists (
+        select 1
+        from facilities f
+        where f.id = facility_id
+          and f.status = 'ACTIVE'
+    )
+);
+
+
 -- Pharma II can view all profiles
 
 create policy "pharma_ii_can_view_all_profiles"

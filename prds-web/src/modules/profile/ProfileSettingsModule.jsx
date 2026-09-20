@@ -25,8 +25,6 @@ import {
   logoutUser,
 } from "../../features/auth/AuthService";
 import {
-  createFacilityChangeRequest,
-  getOwnPendingFacilityChangeRequest,
   getProfileAvatarUrl,
   removeProfileAvatar,
   updateOwnProfileAvatar,
@@ -91,7 +89,6 @@ export default function ProfileSettingsModule() {
   const [authUser, setAuthUser] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [facilities, setFacilities] = useState([]);
-  const [pendingFacilityRequest, setPendingFacilityRequest] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
@@ -146,9 +143,6 @@ export default function ProfileSettingsModule() {
     profile?.facility_name ||
     activeFacility?.facility_name ||
     "No facility assigned";
-  const selectedFacility = facilities.find((facility) => facility.id === form.facility_id);
-  const selectedFacilityChanged =
-    !!form.facility_id && form.facility_id !== (profile?.facility_id || "");
 
   const phoneInputFeedback = (() => {
     const raw = form.phone_number || "";
@@ -248,14 +242,13 @@ export default function ProfileSettingsModule() {
       setProfileError("");
 
       try {
-        const [facilitiesResult, requestResult, identities, currentAuthUser, avatar] =
+        const [facilitiesResult, identities, currentAuthUser, avatar] =
           await Promise.all([
             supabase
               .from("facilities")
               .select("id, facility_name, facility_code, facility_type, address, status")
               .eq("status", "ACTIVE")
               .order("facility_name", { ascending: true }),
-            getOwnPendingFacilityChangeRequest(profile?.id),
             getUserIdentities(),
             getCurrentAuthUser(),
             getProfileAvatarUrl(profile?.id),
@@ -270,7 +263,6 @@ export default function ProfileSettingsModule() {
         }
 
         setFacilities(facilitiesResult.data || []);
-        setPendingFacilityRequest(requestResult);
         setAuthIdentities(identities);
         setAuthUser(currentAuthUser);
         setAvatarUrl(avatar);
@@ -385,27 +377,6 @@ export default function ProfileSettingsModule() {
     setForm((currentForm) => ({ ...currentForm, [name]: value }));
   };
 
-  const submitFacilityRequestIfNeeded = async () => {
-    if (!selectedFacilityChanged) {
-      return false;
-    }
-
-    if (pendingFacilityRequest) {
-      throw new Error("You already have a pending facility change request.");
-    }
-
-    await createFacilityChangeRequest({
-      currentFacilityId: profile?.facility_id,
-      profileId: profile.id,
-      reason: form.facility_reason,
-      requestedFacilityId: form.facility_id,
-    });
-
-    const latestRequest = await getOwnPendingFacilityChangeRequest(profile.id);
-    setPendingFacilityRequest(latestRequest);
-    return true;
-  };
-
   const saveEditableProfileFields = async (phoneNumberOverride = form.phone_number) => {
     await updateOwnProfileContact({
       email: linkedGmailEmail,
@@ -414,14 +385,8 @@ export default function ProfileSettingsModule() {
       phoneNumber: phoneNumberOverride || "",
     });
 
-    const submittedFacilityRequest = await submitFacilityRequestIfNeeded();
-
     await refreshProfile?.();
-    setMessage(
-      submittedFacilityRequest
-        ? "Profile updated. Facility change request submitted for admin review."
-        : "Profile updated."
-    );
+    setMessage("Profile updated.");
   };
 
   const validateProfileForm = () => {
@@ -446,10 +411,6 @@ export default function ProfileSettingsModule() {
 
     if (!linkedGmailEmail && !nextPhoneNumber) {
       return "Add either a Gmail login or a phone number before saving.";
-    }
-
-    if (selectedFacilityChanged && !form.facility_reason.trim()) {
-      return "Please explain why you are requesting a facility change.";
     }
 
     return "";
@@ -1158,20 +1119,6 @@ return true;
           </div>
         </section>
 
-        {pendingFacilityRequest && (
-          <section className="rounded-xl border border-amber-200 bg-amber-50 p-6">
-            <p className="text-sm font-black uppercase tracking-wide text-amber-700">
-              Pending Facility Request
-            </p>
-            <h3 className="mt-2 text-lg font-black text-black">
-              {getFacilityLabel(pendingFacilityRequest.requested_facility)}
-            </h3>
-            <p className="mt-2 text-sm font-medium text-amber-800">
-              Submitted {formatRequestDate(pendingFacilityRequest.created_at)}. Admin approval is required before your assigned facility changes.
-            </p>
-          </section>
-        )}
-
         <div className="grid gap-5 xl:grid-cols-2">
           <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/40">
             <div className="mb-5 flex items-center justify-between">
@@ -1247,41 +1194,11 @@ return true;
                 </label>
                 <ModalField label="Role" value={roleLabel} readOnly />
                 <ModalField label="Status" value={statusLabel} readOnly />
-                <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600 md:col-span-2">
-                  Facility
-                  <select
-                    name="facility_id"
-                    value={form.facility_id}
-                    onChange={handleFieldChange}
-                    disabled={isLoadingFacilities || !!pendingFacilityRequest}
-                    className="h-11 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-[#faf9f7]"
-                  >
-                    <option value="">No facility assigned</option>
-                    {facilities.map((facility) => (
-                      <option key={facility.id} value={facility.id}>
-                        {facility.facility_name} ({facility.facility_code})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {selectedFacilityChanged && !pendingFacilityRequest && (
-                  <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600 md:col-span-2">
-                    Facility Change Reason
-                    <textarea
-                      name="facility_reason"
-                      value={form.facility_reason}
-                      onChange={handleFieldChange}
-                      rows={3}
-                      placeholder={`Explain why you need to transfer to ${selectedFacility?.facility_name || "this facility"}.`}
-                      className="rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                    />
-                  </label>
-                )}
-                {pendingFacilityRequest && (
-                  <p className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 md:col-span-2">
-                    Facility selection is locked while your current facility change request is pending.
-                  </p>
-                )}
+                <ModalField label="Facility" value={facilityLabel} readOnly />
+                <ModalField label="Facility Code" value={profile?.facility_code || "Not set"} readOnly />
+                <p className="text-xs font-medium text-neutral-500 md:col-span-2">
+                  Assigned role, facility station, and account status are managed by CHO Administration.
+                </p>
 
                 <div className="flex justify-end gap-3 md:col-span-2">
                   <button

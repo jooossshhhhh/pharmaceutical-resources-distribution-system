@@ -128,7 +128,7 @@ export const verifyPhoneOtp = async ({
 }) => {
   const { data, error } = await supabaseAuth.auth.verifyOtp({
     phone: toPhilippineE164PhoneNumber(phoneNumber),
-    token: verificationCode,
+    token: (verificationCode || "").trim(),
     type: "sms",
   });
 
@@ -144,8 +144,8 @@ export const verifyEmailOtp = async ({
   verificationCode,
 }) => {
   const { data, error } = await supabaseAuth.auth.verifyOtp({
-    email,
-    token: verificationCode,
+    email: (email || "").trim().toLowerCase(),
+    token: (verificationCode || "").trim(),
     type: "email",
   });
 
@@ -174,7 +174,7 @@ export const verifyPhoneChangeOtp = async ({
 }) => {
   const { data, error } = await supabaseAuth.auth.verifyOtp({
     phone: toPhilippineE164PhoneNumber(phoneNumber),
-    token: verificationCode,
+    token: (verificationCode || "").trim(),
     type: "phone_change",
   });
 
@@ -264,7 +264,13 @@ export const linkGoogleIdentity = async () => {
 };
 
 export const getAuthErrorMessage = (error) => {
-  return error?.message || "Authentication failed. Please try again.";
+  const message = error?.message || "";
+
+  if (message.includes("row-level security policy") && message.includes("profiles")) {
+    return "Registration could not be completed. Please check your account details and try again.";
+  }
+
+  return message || "Authentication failed. Please try again.";
 };
 
 export const signInWithGoogle = async (redirectPath = "/") => {

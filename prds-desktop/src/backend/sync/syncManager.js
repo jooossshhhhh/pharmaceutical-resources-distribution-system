@@ -6,10 +6,20 @@
 
 import { supabase } from "../client/supabase";
 import { isCurrentNetworkOnline } from "./networkStatus";
-import { saveSnapshot, STORAGE_KEYS } from "../database/snapshotStore";
+import {
+  getCachedUserSession,
+  getSnapshotRevision,
+  saveSnapshot,
+  STORAGE_KEYS,
+} from "../database/snapshotStore";
 import { getSqliteDb, initSqliteSchema, isTauriEnvironment } from "../database/sqliteClient";
-import { getFailedMutationCount, processOutboxQueue } from "./outboxQueue";
-import { getSnapshotFailureMessage } from "./syncUtils";
+import {
+  getFailedMutationCount,
+  getPendingMutations,
+  processOutboxQueue,
+  retryFailedMutations,
+} from "./outboxQueue";
+import { fetchAllRows, getSnapshotFailureMessage } from "./syncUtils";
 
 let isSyncing = false;
 let syncStatus = "IDLE"; // "IDLE" | "SYNCING" | "SUCCESS" | "ERROR" | "OFFLINE"
@@ -36,10 +46,20 @@ function updateSyncStatus(newStatus, error = "") {
   );
 }
 
-export async function syncAllData() {
+export async function syncAllData({ retryFailed = false } = {}) {
   if (isSyncing) {
     return false;
   }
+
+  const syncUserId = getCachedUserSession().user?.id;
+  if (!syncUserId) {
+    updateSyncStatus("IDLE");
+    return false;
+  }
+  const syncRevision = getSnapshotRevision();
+  const isCurrentSession = () =>
+    getSnapshotRevision() === syncRevision &&
+    getCachedUserSession().user?.id === syncUserId;
 
   if (!isCurrentNetworkOnline()) {
     updateSyncStatus("OFFLINE");
@@ -49,6 +69,10 @@ export async function syncAllData() {
   try {
     updateSyncStatus("SYNCING");
     let outboxError = "";
+
+    if (retryFailed) {
+      await retryFailedMutations();
+    }
 
     // 1. Process pending offline mutations first
     try {
@@ -60,7 +84,14 @@ export async function syncAllData() {
 
     const failedMutationCount = await getFailedMutationCount();
     if (failedMutationCount > 0) {
-      outboxError = `${failedMutationCount} local change${failedMutationCount === 1 ? "" : "s"} could not be synced.`;
+      outboxError = `${failedMutationCount} local change${failedMutationCount === 1 ? "" : "s"} failed to sync.`;
+    }
+    const pendingMutationCount = (await getPendingMutations()).length;
+    if (pendingMutationCount > 0) {
+      outboxError = [
+        outboxError,
+        `${pendingMutationCount} local change${pendingMutationCount === 1 ? " is" : "s are"} still waiting to sync.`,
+      ].filter(Boolean).join(" ");
     }
 
     // 2. Fetch fresh snapshots concurrently with timeout guards
@@ -81,6 +112,7 @@ export async function syncAllData() {
 
     const [
       medicinesRes,
+      otherProgramsRes,
       facilitiesRes,
       suppliersRes,
       inventoryRes,
@@ -101,6 +133,24 @@ export async function syncAllData() {
           .select("id, generic_name, brand_name, unit_of_measure, dosage, unit_cost, categories")
           .order("generic_name", { ascending: true })
       ),
+      // Other Programs
+      fetchWithTimeout(
+        supabase
+          .from("other_programs")
+          .select(`
+            id,
+            program_name,
+            program_date,
+            description,
+            medicines:program_medicines(
+              id,
+              medicine_id,
+              quantity_used,
+              medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure)
+            )
+          `)
+          .order("program_date", { ascending: false })
+      ),
       // Facilities
       fetchWithTimeout(
         supabase
@@ -112,7 +162,7 @@ export async function syncAllData() {
       fetchWithTimeout(
         supabase
           .from("suppliers")
-          .select("id, supplier_name, contact_person, phone_number, email, address, status")
+          .select("id, supplier_name, contact_number, address, status")
           .order("supplier_name", { ascending: true })
       ),
       // Inventory with relations
@@ -135,21 +185,19 @@ export async function syncAllData() {
       fetchWithTimeout(
         supabase
           .from("patients")
-          .select("id, facility_id, first_name, middle_name, last_name, suffix, date_of_birth, gender, contact_number, address, philhealth_id, pwd_id, senior_citizen_id, remarks, created_at, facility:facilities(id, facility_name, facility_code)")
+          .select("id, facility_id, first_name, middle_name, last_name, suffix, date_of_birth, gender, contact_number, address, patient_code, created_at, facility:facilities(id, facility_name, facility_code)")
           .order("last_name", { ascending: true })
       ),
       // Requests
-      fetchWithTimeout(
+      fetchWithTimeout(fetchAllRows(() => (
         supabase
           .from("medicine_requests")
           .select(`
             id,
-            request_number,
             facility_id,
             requested_by,
             status,
             request_date,
-            priority,
             remarks,
             facility:facilities(id, facility_name, facility_code),
             items:medicine_request_items(
@@ -160,22 +208,20 @@ export async function syncAllData() {
             )
           `)
           .order("request_date", { ascending: false })
-          .limit(100)
-      ),
+          .order("id", { ascending: false })
+      ), 1000), 60000),
       // Transfers
-      fetchWithTimeout(
+      fetchWithTimeout(fetchAllRows(() => (
         supabase
           .from("stock_transfers")
           .select(`
             id,
-            transfer_number,
             source_facility_id,
-            target_facility_id,
+            destination_facility_id,
             status,
             transfer_date,
-            reason,
             source_facility:facilities!stock_transfers_source_facility_id_fkey(facility_name),
-            target_facility:facilities!stock_transfers_target_facility_id_fkey(facility_name),
+            destination:facilities!stock_transfers_destination_facility_id_fkey(facility_name),
             items:stock_transfer_items(
               id,
               medicine_id,
@@ -184,8 +230,8 @@ export async function syncAllData() {
             )
           `)
           .order("transfer_date", { ascending: false })
-          .limit(100)
-      ),
+          .order("id", { ascending: false })
+      ), 1000), 60000),
       // Dispensing Summary
       fetchWithTimeout(
         supabase
@@ -193,7 +239,7 @@ export async function syncAllData() {
           .select("facility_id, medicine_id, month, total_dispensed")
       ),
       // Recent Dispensing records
-      fetchWithTimeout(
+      fetchWithTimeout(fetchAllRows(() => (
         supabase
           .from("medicine_dispensing")
           .select(`
@@ -235,16 +281,16 @@ export async function syncAllData() {
             batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date)
           `)
           .order("dispense_date", { ascending: false })
-          .limit(150)
-      ),
+          .order("id", { ascending: false })
+      ), 1000), 60000),
       // Forecasting
-      fetchWithTimeout(
+      fetchWithTimeout(fetchAllRows(() => (
         supabase
           .from("forecasting")
           .select("id, predicted_quantity, forecast_month, facility_id")
           .order("forecast_month", { ascending: false })
-          .limit(48)
-      ),
+          .order("id", { ascending: false })
+      ), 1000), 60000),
       // Users / Profiles for User Management
       fetchWithTimeout(
         supabase
@@ -267,7 +313,7 @@ export async function syncAllData() {
           .order("created_at", { ascending: false })
       ),
       // Activity Logs
-      fetchWithTimeout(
+      fetchWithTimeout(fetchAllRows(() => (
         supabase
           .from("activity_logs")
           .select(`
@@ -289,16 +335,17 @@ export async function syncAllData() {
             )
           `)
           .order("created_at", { ascending: false })
-          .limit(100)
-      ),
+          .order("id", { ascending: false })
+      ), 1000), 60000),
       // Notifications
       fetchWithTimeout(
         supabase.rpc("get_visible_notifications")
       ),
     ]);
 
-    const snapshotError = getSnapshotFailureMessage([
+    const snapshotResults = [
       medicinesRes,
+      otherProgramsRes,
       facilitiesRes,
       suppliersRes,
       inventoryRes,
@@ -311,30 +358,64 @@ export async function syncAllData() {
       usersRes,
       activityLogsRes,
       notificationsRes,
+    ];
+    const snapshotError = getSnapshotFailureMessage(snapshotResults, [
+      "Medicines",
+      "Other Programs",
+      "Facilities",
+      "Suppliers",
+      "Inventory",
+      "Patients",
+      "Requests",
+      "Transfers",
+      "Dispensing summary",
+      "Dispensing",
+      "Forecasting",
+      "Profiles",
+      "Activity logs",
+      "Notifications",
     ]);
 
+    if (!isCurrentSession()) {
+      updateSyncStatus("IDLE");
+      return false;
+    }
+
     // Save results into snapshot store if valid
-    if (medicinesRes.data) saveSnapshot(STORAGE_KEYS.MEDICINES, medicinesRes.data);
-    if (facilitiesRes.data) saveSnapshot(STORAGE_KEYS.FACILITIES, facilitiesRes.data);
-    if (suppliersRes.data) saveSnapshot(STORAGE_KEYS.SUPPLIERS, suppliersRes.data);
-    if (inventoryRes.data) saveSnapshot(STORAGE_KEYS.INVENTORY, inventoryRes.data);
-    if (patientsRes.data) saveSnapshot(STORAGE_KEYS.PATIENTS, patientsRes.data);
-    if (requestsRes.data) saveSnapshot(STORAGE_KEYS.REQUESTS, requestsRes.data);
-    if (transfersRes.data) saveSnapshot(STORAGE_KEYS.TRANSFERS, transfersRes.data);
-    if (dispensingSummaryRes.data) saveSnapshot(STORAGE_KEYS.DISPENSING_SUMMARY, dispensingSummaryRes.data);
-    if (dispensingRes?.data) saveSnapshot(STORAGE_KEYS.DISPENSING, dispensingRes.data);
-    if (forecastRes.data) saveSnapshot(STORAGE_KEYS.FORECASTING, forecastRes.data);
-    if (usersRes?.data) saveSnapshot(STORAGE_KEYS.USERS, usersRes.data);
-    if (activityLogsRes?.data) saveSnapshot(STORAGE_KEYS.ACTIVITY_LOGS, activityLogsRes.data);
-    if (notificationsRes?.data) saveSnapshot(STORAGE_KEYS.NOTIFICATIONS, notificationsRes.data);
+    const storageFailures = [];
+    const cacheSnapshot = (key, data, label) => {
+      if (data && !saveSnapshot(key, data)) storageFailures.push(label);
+    };
+    cacheSnapshot(STORAGE_KEYS.MEDICINES, medicinesRes.data, "Medicines");
+    cacheSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, otherProgramsRes.data, "Other Programs");
+    cacheSnapshot(STORAGE_KEYS.FACILITIES, facilitiesRes.data, "Facilities");
+    cacheSnapshot(STORAGE_KEYS.SUPPLIERS, suppliersRes.data, "Suppliers");
+    cacheSnapshot(STORAGE_KEYS.INVENTORY, inventoryRes.data, "Inventory");
+    cacheSnapshot(STORAGE_KEYS.PATIENTS, patientsRes.data, "Patients");
+    cacheSnapshot(STORAGE_KEYS.REQUESTS, requestsRes.data, "Requests");
+    cacheSnapshot(STORAGE_KEYS.TRANSFERS, transfersRes.data, "Transfers");
+    cacheSnapshot(STORAGE_KEYS.DISPENSING_SUMMARY, dispensingSummaryRes.data, "Dispensing summary");
+    cacheSnapshot(STORAGE_KEYS.DISPENSING, dispensingRes?.data, "Dispensing");
+    cacheSnapshot(STORAGE_KEYS.FORECASTING, forecastRes.data, "Forecasting");
+    cacheSnapshot(STORAGE_KEYS.USERS, usersRes?.data, "Profiles");
+    cacheSnapshot(STORAGE_KEYS.ACTIVITY_LOGS, activityLogsRes?.data, "Activity logs");
+    cacheSnapshot(STORAGE_KEYS.NOTIFICATIONS, notificationsRes?.data, "Notifications");
 
     // Save into native SQLite before releasing the sync lock.
     if (isTauriEnvironment()) {
       try {
         await initSqliteSchema();
+        if (!isCurrentSession()) {
+          updateSyncStatus("IDLE");
+          return false;
+        }
         const db = await getSqliteDb();
         if (facilitiesRes.data) {
           for (const f of facilitiesRes.data) {
+            if (!isCurrentSession()) {
+              updateSyncStatus("IDLE");
+              return false;
+            }
             await db.execute(
               "INSERT OR REPLACE INTO facilities (id, facility_name, facility_code, facility_type, status, data_json) VALUES (?, ?, ?, ?, ?, ?)",
               [f.id, f.facility_name, f.facility_code, f.facility_type, f.status, JSON.stringify(f)]
@@ -342,8 +423,16 @@ export async function syncAllData() {
           }
         }
         if (medicinesRes.data) {
+          if (!isCurrentSession()) {
+            updateSyncStatus("IDLE");
+            return false;
+          }
           await db.execute("DELETE FROM medicines");
           for (const m of medicinesRes.data) {
+            if (!isCurrentSession()) {
+              updateSyncStatus("IDLE");
+              return false;
+            }
             await db.execute(
               "INSERT OR REPLACE INTO medicines (id, generic_name, brand_name, dosage, unit_of_measure, unit_cost, categories_json, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
               [m.id, m.generic_name, m.brand_name, m.dosage, m.unit_of_measure, m.unit_cost, JSON.stringify(m.categories || []), JSON.stringify(m)]
@@ -351,8 +440,16 @@ export async function syncAllData() {
           }
         }
         if (inventoryRes.data) {
+          if (!isCurrentSession()) {
+            updateSyncStatus("IDLE");
+            return false;
+          }
           await db.execute("DELETE FROM inventory");
           for (const inv of inventoryRes.data) {
+            if (!isCurrentSession()) {
+              updateSyncStatus("IDLE");
+              return false;
+            }
             await db.execute(
               "INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, threshold, batch_number, date_received, expiration_date, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               [inv.id, inv.facility_id, inv.medicine_id, inv.supplier_id, inv.quantity, inv.threshold, inv.batch_number, inv.date_received, inv.expiration_date, JSON.stringify(inv)]
@@ -365,7 +462,10 @@ export async function syncAllData() {
       }
     }
 
-    const syncError = [outboxError, snapshotError].filter(Boolean).join(" ");
+    const storageError = storageFailures.length
+      ? `Could not cache ${storageFailures.join(", ")} for offline use.`
+      : "";
+    const syncError = [outboxError, snapshotError, storageError].filter(Boolean).join(" ");
     if (syncError) {
       updateSyncStatus("ERROR", syncError);
       return false;
@@ -401,6 +501,17 @@ if (typeof window !== "undefined") {
       syncAllData();
     }, 1500);
   });
+
+  setInterval(async () => {
+    if (!isCurrentNetworkOnline() || isSyncing) return;
+    try {
+      if ((await getPendingMutations()).length > 0) {
+        syncAllData();
+      }
+    } catch (err) {
+      console.warn("Unable to check for queued changes:", err);
+    }
+  }, 30000);
 
   // Non-blocking initial sync on application boot if online
   setTimeout(() => {

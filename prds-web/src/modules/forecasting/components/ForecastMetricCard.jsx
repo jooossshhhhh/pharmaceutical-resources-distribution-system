@@ -14,12 +14,12 @@ export default function ForecastMetricCard({
     <Component
       type={onClick ? "button" : undefined}
       onClick={onClick}
-      className={`group rounded-xl border border-[#d8dadc] bg-white p-4 text-left shadow-sm shadow-neutral-200/40 transition ${
+      className={`group h-full rounded-xl border border-[#d8dadc] bg-white p-3.5 text-left shadow-sm shadow-neutral-200/40 transition ${
         onClick ? "hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md" : ""
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className={`grid h-9 w-9 place-items-center rounded-lg ${toneClass.icon}`}>
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${toneClass.icon}`}>
           {icon}
         </span>
         {meta && (
@@ -28,9 +28,9 @@ export default function ForecastMetricCard({
           </span>
         )}
       </div>
-      <p className="mt-4 text-2xl font-black tracking-tight text-[#0d1117]">{value}</p>
+      <p className="mt-3 text-2xl font-black tracking-tight text-[#0d1117]">{value}</p>
       <p className="mt-1 text-sm font-black text-[#0d1117]">{label}</p>
-      <p className="mt-1.5 min-h-8 text-xs font-medium leading-4 text-[#42474e]">{description}</p>
+      <p className="mt-1.5 text-xs font-medium leading-5 text-[#42474e]">{description}</p>
     </Component>
   );
 }

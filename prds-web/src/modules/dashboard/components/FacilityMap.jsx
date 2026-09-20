@@ -29,15 +29,76 @@ const DEMAND_TIERS = [
   { key: "high", label: "500+", color: "#ef4444" },
 ];
 
-const createFacilityIcon = (color, highlighted = false) => {
+export const BASEMAP_MODES = [
+  {
+    id: "light",
+    label: "Canvas",
+    title: "Minimal Light Gray Canvas",
+    icon: (
+      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="M9 20l-5.447-2.724A2 2 0 012.5 15.485V4.515a1 1 0 011.447-.894L9 6m0 14l6 3m-6-3V6m6 17l5.447-2.724A2 2 0 0021.5 18.485V7.515a1 1 0 00-1.447-.894L15 9m0 14V9m0 0L9 6" />
+      </svg>
+    ),
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
+    maxNativeZoom: 16,
+  },
+  {
+    id: "streets",
+    label: "Streets",
+    title: "OpenStreetMap Roads & Streets",
+    icon: (
+      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M3 9h18M9 21V9" />
+      </svg>
+    ),
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
+    maxNativeZoom: 19,
+    subdomains: ["a", "b", "c"],
+  },
+  {
+    id: "satellite",
+    label: "Satellite",
+    title: "High-Resolution Aerial Satellite Imagery",
+    icon: (
+      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z" />
+      </svg>
+    ),
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, GIS User Community",
+    maxNativeZoom: 18,
+  },
+  {
+    id: "terrain",
+    label: "Terrain",
+    title: "Topographic Relief & Elevation Contours",
+    icon: (
+      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
+      </svg>
+    ),
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, USGS, FAO, NPS, NRCAN",
+    maxNativeZoom: 18,
+  },
+];
+
+const createFacilityIcon = (color, highlighted = false, isDark = false) => {
   const highlightStyle = highlighted
     ? "outline:3px solid rgba(13,17,23,0.85);outline-offset:2px;"
     : "";
+  const shadowStyle = isDark
+    ? "box-shadow:0 0 0 2px rgba(0,0,0,0.65), 0 3px 10px rgba(0,0,0,0.85);"
+    : "box-shadow:0 2px 8px rgba(13,17,23,0.4);";
 
   return L.divIcon({
     className: "prds-map-marker",
     html: `
-      <span style="display:flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:9999px;background:${color};border:2px solid #ffffff;box-shadow:0 2px 8px rgba(13,17,23,0.4);${highlightStyle}">
+      <span style="display:flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:9999px;background:${color};border:2px solid #ffffff;${shadowStyle}${highlightStyle}">
         <span style="width:7px;height:7px;border-radius:9999px;background:#0d1117;"></span>
       </span>
     `,
@@ -107,7 +168,7 @@ function FlyToFacility({ focus }) {
 
 function ToggleLegend({ tiers, activeKeys, counts, onToggle, title }) {
   return (
-    <div className="rounded-lg border border-[#d8dadc] bg-white/95 p-2 shadow-md">
+    <div className="rounded-lg border border-[#d8dadc] bg-white/95 p-2 shadow-md backdrop-blur-sm">
       <p className="px-0.5 pb-1 text-[10px] font-black uppercase tracking-wide text-neutral-500">
         {title}
       </p>
@@ -149,7 +210,7 @@ function ToggleLegend({ tiers, activeKeys, counts, onToggle, title }) {
 
 function PreviewLegend({ counts }) {
   return (
-    <div className="rounded-xl border border-white/70 bg-white/75 px-3 py-2 shadow-lg shadow-neutral-900/10 backdrop-blur-md">
+    <div className="rounded-xl border border-white/70 bg-white/85 px-3 py-2 shadow-lg shadow-neutral-900/10 backdrop-blur-md">
       <p className="px-0.5 pb-1 text-[10px] font-black uppercase tracking-wide text-neutral-500">
         Stock status
       </p>
@@ -210,14 +271,22 @@ export default function FacilityMap({
   onExitFullscreen,
   onSelectFacility,
   focusPosition = null,
+  initialBasemap = "light",
 }) {
   const [query, setQuery] = useState("");
   const [hiddenStatuses, setHiddenStatuses] = useState([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hiddenDemandKeys, setHiddenDemandKeys] = useState([]);
   const [colorMode, setColorMode] = useState("stock");
+  const [basemapId, setBasemapId] = useState(initialBasemap);
   const mapRef = useRef(null);
   const isPreview = controlsMode === "preview";
+
+  const activeBasemap = useMemo(
+    () => BASEMAP_MODES.find((m) => m.id === basemapId) || BASEMAP_MODES[0],
+    [basemapId]
+  );
+  const isDark = basemapId === "satellite";
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -273,71 +342,63 @@ export default function FacilityMap({
       return !hiddenStatuses.includes(status);
     });
   }, [
-    pinnedFacilities,
-    query,
-    hiddenDemandKeys,
-    hiddenStatuses,
     colorMode,
     demandByFacility,
+    hiddenDemandKeys,
+    hiddenStatuses,
+    pinnedFacilities,
+    query,
     stockStatusByFacility,
   ]);
 
   const fitPositions = useMemo(
     () =>
-      (queryMatches.length > 0 ? queryMatches : pinnedFacilities).map((facility) => [
+      visibleFacilities.map((facility) => [
         Number(facility.latitude),
         Number(facility.longitude),
       ]),
-    [queryMatches, pinnedFacilities]
+    [visibleFacilities]
   );
 
   const statusCounts = useMemo(() => {
-    const counts = Object.fromEntries(STOCK_TIERS.map((tier) => [tier.key, 0]));
+    const counts = { CRITICAL: 0, LOW: 0, WATCH: 0, HEALTHY: 0 };
     pinnedFacilities.forEach((facility) => {
       const status = stockStatusByFacility[facility.id] || "HEALTHY";
-      counts[status] += 1;
+      if (counts[status] !== undefined) counts[status] += 1;
     });
     return counts;
   }, [pinnedFacilities, stockStatusByFacility]);
 
   const demandCounts = useMemo(() => {
-    const counts = Object.fromEntries(DEMAND_TIERS.map((tier) => [tier.key, 0]));
+    const counts = { none: 0, low: 0, medium: 0, high: 0 };
     pinnedFacilities.forEach((facility) => {
       const tierKey = demandTierFor(demandByFacility[facility.id] || 0).key;
       counts[tierKey] += 1;
     });
     return counts;
-  }, [pinnedFacilities, demandByFacility]);
+  }, [demandByFacility, pinnedFacilities]);
 
   const stockAlertsByFacility = useMemo(() => {
-    if (inventoryRows == null) return null;
+    if (!inventoryRows) return null;
 
-    const alertsByFacility = {};
-    inventoryRows.forEach((row) => {
+    return inventoryRows.reduce((acc, row) => {
+      if (!row.is_below_threshold) return acc;
       const facilityId = row.facility_id;
-      if (!facilityId) return;
-
-      const quantity = Number(row.quantity || 0);
-      const threshold = Number(row.threshold || 0);
-      if (quantity <= threshold) {
-        if (!alertsByFacility[facilityId]) {
-          alertsByFacility[facilityId] = [];
-        }
-        alertsByFacility[facilityId].push(row);
-      }
-    });
-    return alertsByFacility;
+      if (!acc[facilityId]) acc[facilityId] = [];
+      acc[facilityId].push(row);
+      return acc;
+    }, {});
   }, [inventoryRows]);
 
   const toggleStatus = (key) => {
     setHiddenStatuses((current) =>
-      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
     );
   };
 
   const toggleDemandTier = (key) => {
     setHiddenDemandKeys((current) =>
-      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
     );
   };
 
@@ -360,13 +421,17 @@ export default function FacilityMap({
         className={`z-0 w-full bg-[#eef1f4] ${className} rounded-xl border border-[#d8dadc]`}
       >
         <TileLayer
-          attribution="Tiles &copy; Esri"
+          key={activeBasemap.id}
+          attribution={activeBasemap.attribution}
           eventHandlers={{
             tileerror: (event) => {
               event.tile.style.display = "none";
             },
           }}
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          maxNativeZoom={activeBasemap.maxNativeZoom || 18}
+          maxZoom={MAX_ZOOM}
+          subdomains={activeBasemap.subdomains || ["a", "b", "c"]}
+          url={activeBasemap.url}
         />
         <ZoomControl position="bottomright" />
         <FitBounds fitToCoverage={fitToCoverage} positions={fitPositions} />
@@ -384,7 +449,7 @@ export default function FacilityMap({
             <Marker
               key={facility.id}
               position={[Number(facility.latitude), Number(facility.longitude)]}
-              icon={createFacilityIcon(color, highlighted)}
+              icon={createFacilityIcon(color, highlighted, isDark)}
             >
               <Tooltip direction="top" offset={[0, -6]} opacity={1}>
                 <div>
@@ -476,7 +541,7 @@ export default function FacilityMap({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search facility..."
-              className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-3 pr-8 text-xs font-semibold text-neutral-800 shadow-md outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              className="h-9 w-full rounded-lg border border-neutral-200 bg-white/95 pl-3 pr-8 text-xs font-semibold text-neutral-800 shadow-md outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 backdrop-blur-sm"
             />
             {query && (
               <button
@@ -497,9 +562,32 @@ export default function FacilityMap({
         </div>
       )}
 
-      {!isPreview && (
-        <div className="absolute right-3 top-3 z-[1200] flex flex-wrap justify-end gap-1.5">
-        {hasDemand && (
+      {/* Floating Controls Overlay (Basemap Switcher + Actions) */}
+      <div className="absolute right-3 top-3 z-[1200] flex flex-wrap items-center justify-end gap-1.5">
+        {/* Basemap Mode Selector */}
+        <div className="flex items-center rounded-lg border border-[#d8dadc] bg-white/95 p-0.5 shadow-md backdrop-blur-sm">
+          {BASEMAP_MODES.map((mode) => {
+            const isActive = basemapId === mode.id;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setBasemapId(mode.id)}
+                title={mode.title}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-black transition ${
+                  isActive
+                    ? "bg-emerald-700 text-white shadow-sm"
+                    : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
+                }`}
+              >
+                <span className="shrink-0">{mode.icon}</span>
+                <span className="hidden md:inline">{mode.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {!isPreview && hasDemand && (
           <button
             type="button"
             onClick={() => setColorMode((current) => (current === "stock" ? "demand" : "stock"))}
@@ -512,21 +600,23 @@ export default function FacilityMap({
             {colorMode === "demand" ? "Demand" : "Stock"}
           </button>
         )}
+
         <button
           type="button"
           onClick={resetView}
-          title="Reset view"
-          className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-black text-neutral-700 shadow-md transition hover:bg-neutral-50"
+          title="Reset view to center"
+          className="rounded-lg bg-white/95 px-2.5 py-1.5 text-[11px] font-black text-neutral-700 shadow-md backdrop-blur-sm transition hover:bg-neutral-50"
         >
           Reset
         </button>
+
         {onExitFullscreen ? (
           <button
             type="button"
             onClick={onExitFullscreen}
             title="Close full screen view"
             aria-label="Close full screen view"
-            className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
+            className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-white/95 text-neutral-700 shadow-md backdrop-blur-sm transition hover:bg-neutral-50"
           >
             <MinimizeIcon />
           </button>
@@ -537,14 +627,13 @@ export default function FacilityMap({
               onClick={() => setIsFullscreen(true)}
               title="View full size"
               aria-label="View map full size"
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50"
+              className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-white/95 text-neutral-700 shadow-md backdrop-blur-sm transition hover:bg-neutral-50"
             >
               <MaximizeIcon />
             </button>
           )
         )}
-        </div>
-      )}
+      </div>
 
       <div className={`absolute z-[1100] ${isPreview ? "bottom-2 left-2" : "bottom-3 left-3"}`}>
         {isPreview ? (
@@ -579,6 +668,7 @@ export default function FacilityMap({
               inventoryRows={inventoryRows}
               demandByFacility={demandByFacility}
               className="h-full"
+              initialBasemap={basemapId}
               onExitFullscreen={() => setIsFullscreen(false)}
               onSelectFacility={onSelectFacility}
               focusPosition={focusPosition}

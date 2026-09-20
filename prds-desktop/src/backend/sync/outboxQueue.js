@@ -17,6 +17,39 @@ let cachedPendingCount = 0;
 export const filterMutationsForUser = (mutations, userId) =>
   userId ? mutations.filter((item) => item.user_id === userId) : [];
 
+const mutationStatusPriority = { PENDING: 0, FAILED: 1, SYNCED: 2 };
+
+export function mergeMutationQueues(...queues) {
+  const byId = new Map();
+  const missingIds = [];
+
+  queues.flat().forEach((item) => {
+    if (!item.id) {
+      missingIds.push(item);
+      return;
+    }
+    const current = byId.get(item.id);
+    if (!current || (mutationStatusPriority[item.status] ?? 0) >= (mutationStatusPriority[current.status] ?? 0)) {
+      byId.set(item.id, item);
+    }
+  });
+
+  return [...byId.values(), ...missingIds].sort((first, second) =>
+    (first.created_at || "").localeCompare(second.created_at || "")
+  );
+}
+
+export const createOfflineInsertPayload = (payload) => ({
+  ...payload,
+  id: payload.id || globalThis.crypto.randomUUID(),
+});
+
+export function assertMutationAffectedRow(mutationType, payload, data, target) {
+  if (["UPDATE", "DELETE"].includes(mutationType) && payload.id && !data?.length) {
+    throw new Error(`Queued ${mutationType.toLowerCase()} found no ${target} row with id ${payload.id}.`);
+  }
+}
+
 const getCachedOwnerId = () => getCachedUserSession().user?.id || null;
 
 // Read memory queue initialized from localStorage
@@ -38,6 +71,41 @@ function writeLocalStorageQueue(queue) {
 }
 
 let memoryQueue = typeof window !== "undefined" ? readLocalStorageQueue() : [];
+
+async function getQueueEntries(userId) {
+  if (!userId) return [];
+
+  await initSqliteSchema();
+  let sqliteRows = [];
+  let sqliteReadSucceeded = false;
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      sqliteRows = await db.select(
+        `SELECT * FROM offline_mutation_queue WHERE user_id = $1 ORDER BY created_at ASC`,
+        [userId]
+      );
+      sqliteReadSucceeded = true;
+    } catch (err) {
+      console.warn("Failed to read mutations from SQLite:", err);
+    }
+  }
+
+  memoryQueue = readLocalStorageQueue();
+  const localRows = filterMutationsForUser(memoryQueue, userId);
+  if (sqliteReadSucceeded) {
+    const sqliteIds = new Set(sqliteRows.map((item) => item.id));
+    const reconciledLocalQueue = memoryQueue.filter((item) =>
+      item.user_id !== userId || item.status !== "SYNCED" || sqliteIds.has(item.id)
+    );
+    if (reconciledLocalQueue.length !== memoryQueue.length) {
+      memoryQueue = reconciledLocalQueue;
+      writeLocalStorageQueue(memoryQueue);
+    }
+  }
+
+  return filterMutationsForUser(mergeMutationQueues(sqliteRows, localRows), userId);
+}
 
 function notifyQueueChange() {
   listeners.forEach((listener) => listener(cachedPendingCount));
@@ -105,35 +173,11 @@ export async function enqueueMutation({
 
 export async function getPendingMutations(userId = getCachedOwnerId()) {
   if (!userId) return [];
-
-  await initSqliteSchema();
-
-  if (isTauriEnvironment()) {
-    try {
-      const db = await getSqliteDb();
-      const rows = await db.select(
-        `SELECT * FROM offline_mutation_queue
-         WHERE status = 'PENDING' AND user_id = $1
-         ORDER BY created_at ASC`,
-        [userId]
-      );
-      if (rows && rows.length > 0) {
-        return rows;
-      }
-    } catch (err) {
-      console.warn("Failed to read mutations from SQLite, falling back to localStorage:", err);
-    }
-  }
-
-  memoryQueue = readLocalStorageQueue();
-  return filterMutationsForUser(
-    memoryQueue.filter((item) => item.status === "PENDING"),
-    userId
-  );
+  return (await getQueueEntries(userId)).filter((item) => item.status === "PENDING");
 }
 
 export async function markMutationSynced(id) {
-  // Remove from SQLite
+  let sqliteDeleted = !isTauriEnvironment();
   if (isTauriEnvironment()) {
     try {
       const db = await getSqliteDb();
@@ -141,13 +185,23 @@ export async function markMutationSynced(id) {
         `DELETE FROM offline_mutation_queue WHERE id = $1`,
         [id]
       );
+      sqliteDeleted = true;
     } catch (err) {
       console.warn("Failed to delete synced mutation from SQLite:", err);
     }
   }
 
-  // Remove from localStorage
-  memoryQueue = readLocalStorageQueue().filter((item) => item.id !== id);
+  memoryQueue = readLocalStorageQueue();
+  if (sqliteDeleted) {
+    memoryQueue = memoryQueue.filter((item) => item.id !== id);
+  } else {
+    const item = memoryQueue.find((entry) => entry.id === id);
+    if (item) {
+      item.status = "SYNCED";
+    } else {
+      memoryQueue.push({ id, user_id: getCachedOwnerId(), status: "SYNCED" });
+    }
+  }
   writeLocalStorageQueue(memoryQueue);
 
   await refreshPendingCount();
@@ -175,6 +229,9 @@ export async function markMutationFailed(id, errorMessage, status = "FAILED") {
     item.retry_count = (item.retry_count || 0) + 1;
     item.error_message = errorMessage;
     writeLocalStorageQueue(memoryQueue);
+  } else if (status === "FAILED") {
+    memoryQueue.push({ id, user_id: getCachedOwnerId(), status, error_message: errorMessage });
+    writeLocalStorageQueue(memoryQueue);
   }
 
   await refreshPendingCount();
@@ -188,29 +245,7 @@ export async function refreshPendingCount() {
     return cachedPendingCount;
   }
 
-  if (isTauriEnvironment()) {
-    try {
-      const db = await getSqliteDb();
-      const result = await db.select(
-        `SELECT COUNT(*) as count FROM offline_mutation_queue WHERE status = 'PENDING' AND user_id = $1`,
-        [userId]
-      );
-      const count = result[0]?.count || 0;
-      if (count > 0) {
-        cachedPendingCount = count;
-        notifyQueueChange();
-        return cachedPendingCount;
-      }
-    } catch (err) {
-      console.warn("Failed to count SQLite pending mutations:", err);
-    }
-  }
-
-  memoryQueue = readLocalStorageQueue();
-  cachedPendingCount = filterMutationsForUser(
-    memoryQueue.filter((item) => item.status === "PENDING"),
-    userId
-  ).length;
+  cachedPendingCount = (await getQueueEntries(userId)).filter((item) => item.status === "PENDING").length;
   notifyQueueChange();
   return cachedPendingCount;
 }
@@ -218,27 +253,34 @@ export async function refreshPendingCount() {
 export async function getFailedMutationCount() {
   const userId = getCachedOwnerId();
   if (!userId) return 0;
+  return (await getQueueEntries(userId)).filter((item) => item.status === "FAILED").length;
+}
+
+export async function retryFailedMutations(userId = getCachedOwnerId()) {
+  if (!userId) return 0;
+
+  const failed = (await getQueueEntries(userId)).filter((item) => item.status === "FAILED");
+  if (failed.length === 0) return 0;
 
   if (isTauriEnvironment()) {
-    try {
-      const db = await getSqliteDb();
-      const result = await db.select(
-        `SELECT COUNT(*) as count FROM offline_mutation_queue WHERE status = 'FAILED' AND user_id = $1`,
-        [userId]
+    const db = await getSqliteDb();
+    for (const item of failed) {
+      await db.execute(
+        "UPDATE offline_mutation_queue SET status = 'PENDING', error_message = NULL WHERE id = $1 AND user_id = $2 AND status = 'FAILED'",
+        [item.id, userId]
       );
-      const count = result[0]?.count || 0;
-      if (count > 0) {
-        return count;
-      }
-    } catch (err) {
-      console.warn("Failed to count SQLite failed mutations:", err);
     }
   }
 
-  return filterMutationsForUser(
-    readLocalStorageQueue().filter((item) => item.status === "FAILED"),
-    userId
-  ).length;
+  const failedIds = new Set(failed.map((item) => item.id));
+  memoryQueue = readLocalStorageQueue().map((item) =>
+    item.user_id === userId && failedIds.has(item.id)
+      ? { ...item, status: "PENDING", error_message: null }
+      : item
+  );
+  writeLocalStorageQueue(memoryQueue);
+  await refreshPendingCount();
+  return failed.length;
 }
 
 export function subscribeQueueCount(callback) {
@@ -273,15 +315,15 @@ export async function processOutboxQueue() {
         res = await supabase.from(item.target).insert(payload);
       } else if (item.mutation_type === "UPDATE") {
         if (payload.id && payload.values) {
-          res = await supabase.from(item.target).update(payload.values).eq("id", payload.id);
+          res = await supabase.from(item.target).update(payload.values).eq("id", payload.id).select("id");
         } else if (payload.id) {
           const { id, ...values } = payload;
-          res = await supabase.from(item.target).update(values).eq("id", id);
+          res = await supabase.from(item.target).update(values).eq("id", id).select("id");
         } else {
           res = await supabase.from(item.target).update(payload);
         }
       } else if (item.mutation_type === "DELETE") {
-        res = await supabase.from(item.target).delete().eq("id", payload.id || payload);
+        res = await supabase.from(item.target).delete().eq("id", payload.id || payload).select("id");
       } else {
         throw new Error(`Unsupported mutation type: ${item.mutation_type}`);
       }
@@ -289,6 +331,7 @@ export async function processOutboxQueue() {
       if (res?.error) {
         throw res.error;
       }
+      assertMutationAffectedRow(item.mutation_type, payload, res?.data, item.target);
       await markMutationSynced(item.id);
     } catch (err) {
       console.warn(`Outbox replay failed for mutation ${item.id}:`, err);

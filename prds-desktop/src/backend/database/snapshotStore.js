@@ -4,7 +4,7 @@
  * Ensures instant startup, persistent offline sessions, and full offline operations.
  */
 
-import { getSqliteDb, isTauriEnvironment } from "./sqliteClient.js";
+import { getSqliteDb, initSqliteSchema, isTauriEnvironment } from "./sqliteClient.js";
 
 const STORAGE_KEYS = {
   USER_SESSION: "prds_desktop_user_session",
@@ -23,11 +23,17 @@ const STORAGE_KEYS = {
   ACTIVITY_LOGS: "prds_snapshot_activity_logs",
   NOTIFICATIONS: "prds_snapshot_notifications",
   USERS: "prds_snapshot_users",
+  OTHER_PROGRAMS: "prds_snapshot_other_programs",
   LAST_SYNC_TIME: "prds_last_sync_timestamp",
 };
 
 const MEDICINE_CATALOG_VERSION_KEY = "prds_medicine_catalog_version";
 const MEDICINE_CATALOG_VERSION = "cho-2026-09-20";
+const SNAPSHOT_LIFECYCLE_VERSION_KEY = "prds_snapshot_lifecycle_version";
+const SNAPSHOT_LIFECYCLE_VERSION = "per-session-cache-2026-09-20";
+let snapshotRevision = 0;
+
+export const getSnapshotRevision = () => snapshotRevision;
 
 function invalidateRetiredMedicineSnapshots() {
   if (
@@ -55,6 +61,22 @@ function invalidateRetiredMedicineSnapshots() {
 }
 
 invalidateRetiredMedicineSnapshots();
+
+function invalidateLegacySharedSnapshots() {
+  if (
+    typeof localStorage === "undefined" ||
+    localStorage.getItem(SNAPSHOT_LIFECYCLE_VERSION_KEY) === SNAPSHOT_LIFECYCLE_VERSION
+  ) {
+    return;
+  }
+
+  Object.values(STORAGE_KEYS)
+    .filter((key) => key !== STORAGE_KEYS.USER_SESSION && key !== STORAGE_KEYS.USER_PROFILE)
+    .forEach((key) => localStorage.removeItem(key));
+  localStorage.setItem(SNAPSHOT_LIFECYCLE_VERSION_KEY, SNAPSHOT_LIFECYCLE_VERSION);
+}
+
+invalidateLegacySharedSnapshots();
 
 // --- Session & Profile Persistence ---
 
@@ -142,10 +164,10 @@ export function getCachedUserSession() {
   }
 }
 
-export function clearUserSession() {
+export async function clearUserSession() {
+  snapshotRevision += 1;
   try {
-    localStorage.removeItem(STORAGE_KEYS.USER_SESSION);
-    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+    Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
 
     // Also clear Supabase auth token keys from localStorage
     const keysToRemove = [];
@@ -157,28 +179,47 @@ export function clearUserSession() {
     }
     keysToRemove.forEach((k) => localStorage.removeItem(k));
 
-    // Clear from SQLite
-    if (isTauriEnvironment()) {
-      getSqliteDb()
-        .then(async (db) => {
-          await db.execute("DELETE FROM sync_metadata WHERE key IN ('cached_user', 'cached_profile')");
-        })
-        .catch((err) => console.warn("SQLite session clear error:", err));
-    }
   } catch (err) {
     console.warn("Failed to clear cached user session:", err);
+  }
+
+  if (isTauriEnvironment()) {
+    try {
+      await initSqliteSchema();
+      const db = await getSqliteDb();
+      for (const table of [
+        "facilities",
+        "medicines",
+        "suppliers",
+        "inventory",
+        "patients",
+        "dispensing_records",
+        "requests",
+        "transfers",
+        "monthly_dispensing_summary",
+      ]) {
+        await db.execute(`DELETE FROM ${table}`);
+      }
+      await db.execute("DELETE FROM sync_metadata WHERE key IN ('cached_user', 'cached_profile')");
+    } catch (err) {
+      console.warn("SQLite user snapshot clear error:", err);
+    }
   }
 }
 
 // --- Data Snapshot Persistence ---
 
 export function saveSnapshot(key, data) {
+  if (!getCachedUserSession().user) return false;
+
   try {
     if (data !== undefined && data !== null) {
       localStorage.setItem(key, JSON.stringify(data));
     }
+    return true;
   } catch (err) {
     console.warn(`Failed to save snapshot for ${key}:`, err);
+    return false;
   }
 }
 

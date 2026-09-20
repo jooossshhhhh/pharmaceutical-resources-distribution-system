@@ -1,7 +1,7 @@
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
-import { PillIcon, SearchIcon, UserPlusIcon } from "./DispensingUi";
+import { PillIcon, SearchIcon } from "./DispensingUi";
 
 function SkeletonBlock({ className = "" }) {
   return <div className={`animate-pulse rounded-lg bg-[#eef1f5] ${className}`} />;
@@ -94,13 +94,6 @@ export default function DispensingLoadingSkeleton({ error = "" }) {
                     Search by patient name or code, then select the patient for this walk-in claim.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white opacity-70 shadow-sm"
-                >
-                  <UserPlusIcon /> Register New Patient
-                </button>
               </div>
 
               <div className="space-y-3 p-4">

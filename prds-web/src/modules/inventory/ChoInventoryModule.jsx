@@ -8,6 +8,7 @@ import {
   FacilityPicker,
   InventoryTable,
   LayersIcon,
+  MedicineOrderToggle,
   MetricCard,
   PlusIcon,
   RequestIcon,
@@ -54,6 +55,7 @@ export default function ChoInventoryModule() {
     hasActiveFilters,
     openCreateModal,
     handleSort,
+    handleMedicineOrder,
     selectFacility,
     clearFilters,
     toggleStockFilter,
@@ -62,8 +64,25 @@ export default function ChoInventoryModule() {
     closeModal,
     handleFieldChange,
     handleSaveInventory,
-    fetchStockHistory,
   } = data;
+
+  const isViewingCho = viewingOwnFacility || selectedFacility?.facility_code === "CHO-NAGA";
+  const isSpecificFacility = Boolean(selectedFacility && !isViewingCho);
+  const facilityDisplayName = selectedFacility?.facility_name || "Health Center";
+
+  const headerCategory = isSpecificFacility
+    ? "Health center inventory"
+    : "Central stock command";
+
+  const headerTitle = isSpecificFacility
+    ? (facilityDisplayName.toLowerCase().endsWith("inventory")
+        ? facilityDisplayName
+        : `${facilityDisplayName} Inventory`)
+    : "CHO Inventory";
+
+  const headerDescription = isSpecificFacility
+    ? `Monitor stock levels, batches, and reorder status for ${facilityDisplayName}.`
+    : "Monitor central stock by medicine, lot number, thresholds, expirations, and reorder needs.";
 
   const totalItemsSub = `at ${selectedFacility?.facility_name || ownFacilityName}`;
 
@@ -83,11 +102,11 @@ export default function ChoInventoryModule() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0 lg:flex-1">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
-              Central stock command
+              {headerCategory}
             </p>
-            <h2 className="mt-1 text-xl font-black text-[#0d1117]">CHO Inventory</h2>
+            <h2 className="mt-1 text-xl font-black text-[#0d1117]">{headerTitle}</h2>
             <p className="mt-1 text-sm font-medium text-neutral-500">
-              Monitor central stock batches, thresholds, expirations, and reorder needs.
+              {headerDescription}
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
@@ -194,11 +213,15 @@ export default function ChoInventoryModule() {
                   setSearchTerm(event.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Search medicine, brand, batch..."
+                placeholder="Search medicine, brand, lot number..."
                 className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </label>
             <div className="flex items-center gap-2">
+              <MedicineOrderToggle
+                direction={inventorySort.key === "medicine" ? inventorySort.direction : "ASC"}
+                onToggle={handleMedicineOrder}
+              />
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -222,7 +245,7 @@ export default function ChoInventoryModule() {
         </div>
 
         <InventoryTable
-          variant="choBatch"
+          variant="medicine"
           rows={paginatedInventory}
           isLoading={isLoading}
           totalCount={filteredInventory.length}
@@ -254,10 +277,9 @@ export default function ChoInventoryModule() {
           onClose={closeModal}
           onChange={handleFieldChange}
           onSubmit={handleSaveInventory}
-          onEdit={() => selectedItem && openItemModal(selectedItem, "edit")}
+          onEditLot={(lot) => openItemModal(lot, "edit")}
           onCancelEdit={() => selectedItem && openItemModal(selectedItem, "view")}
           canEdit={canManage}
-          fetchStockHistory={fetchStockHistory}
         />
       )}
     </AdminShell>

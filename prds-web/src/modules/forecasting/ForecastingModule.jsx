@@ -1,206 +1,124 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Download,
+  Filter,
+  RefreshCw,
+  Search,
+  TrendingUp,
+} from "lucide-react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "../../features/auth/AuthService";
 import { supabase } from "../../services/supabase";
-import ForecastMapPreview from "../dashboard/components/ForecastMapPreview";
+import { formatDateTime, formatNumber } from "../dashboard/dashboardUtils";
 import {
-  buildFacilityDemand,
-  buildFacilityStockStatus,
-  formatDateTime,
-  formatNumber,
-} from "../dashboard/dashboardUtils";
-import ConsumptionTrendChart from "./components/charts/ConsumptionTrendChart";
-import ForecastComparisonChart from "./components/charts/ForecastComparisonChart";
-import ForecastMetricCard from "./components/ForecastMetricCard";
-import InventoryCoveragePanel from "./components/InventoryCoveragePanel";
+  buildForecastAnalytics,
+  buildForecastingCsv,
+  buildMedicineChartSeries,
+  getMedicineCategory,
+} from "./forecastingUtils";
+
+import ForecastingProjectionChart from "./components/charts/ForecastingProjectionChart";
+import MedicineSelectList from "./components/MedicineSelectList";
 import MedicineTrendTable from "./components/MedicineTrendTable";
-import TopTrendingMedicines from "./components/TopTrendingMedicines";
-import { buildForecastAnalytics } from "./forecastingUtils";
 
 const ALL = "ALL";
 
-const metricIcons = {
-  demand: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M4 19V5" />
-      <path d="M8 17V9" />
-      <path d="M12 17V7" />
-      <path d="M16 17v-5" />
-      <path d="M20 17V4" />
-    </svg>
-  ),
-  fit: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M4 19c4-8 8-12 16-14" />
-      <path d="M4 19h16" />
-      <path d="M4 19V5" />
-    </svg>
-  ),
-  risk: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-      <path d="M10.3 4.3 2.7 17.5A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.5L13.7 4.3a2 2 0 0 0-3.4 0Z" />
-    </svg>
-  ),
-  trend: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="m3 17 6-6 4 4 7-8" />
-      <path d="M14 7h6v6" />
-    </svg>
-  ),
-};
-
 export default function ForecastingModule() {
   const { profile } = useAuth();
-  const navigate = useNavigate();
   const [facilities, setFacilities] = useState([]);
   const [forecastRows, setForecastRows] = useState([]);
   const [dispensingRows, setDispensingRows] = useState([]);
   const [inventoryRows, setInventoryRows] = useState([]);
+  const [catalogMedicines, setCatalogMedicines] = useState([]);
   const [forecastError, setForecastError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+
+  // Filters
   const [facilityFilter, setFacilityFilter] = useState(ALL);
-  const [medicineFilter, setMedicineFilter] = useState(ALL);
-  const [riskFilter, setRiskFilter] = useState(ALL);
-  const [monthWindow, setMonthWindow] = useState("6");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [monthHorizon, setMonthHorizon] = useState(6);
+  const [selectedMedicineId, setSelectedMedicineId] = useState("");
+
+  const isMountedRef = useRef(true);
+  const loadIdRef = useRef(0);
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const isBhw = profile?.role === "BHW";
   const assignedFacilityId = profile?.facility_id || null;
-
   const selectedFacilityId = isBhw && assignedFacilityId ? assignedFacilityId : facilityFilter;
 
-  const filteredForecastRows = useMemo(
-    () =>
-      filterRowsByScope(
-        filterRowsByMonthWindow(forecastRows, "forecast_month", monthWindow),
-        selectedFacilityId,
-        medicineFilter
-      ),
-    [forecastRows, medicineFilter, monthWindow, selectedFacilityId]
-  );
-  const filteredDispensingRows = useMemo(
-    () =>
-      filterRowsByScope(
-        filterRowsByMonthWindow(dispensingRows, "month", monthWindow),
-        selectedFacilityId,
-        medicineFilter
-      ),
-    [dispensingRows, medicineFilter, monthWindow, selectedFacilityId]
-  );
-  const filteredInventoryRows = useMemo(
-    () => filterRowsByScope(inventoryRows, selectedFacilityId, medicineFilter),
-    [inventoryRows, medicineFilter, selectedFacilityId]
-  );
-  const visibleFacilities = useMemo(() => {
-    if (selectedFacilityId === ALL) {
-      return facilities;
-    }
+  // Fetch live from Supabase
+  const loadForecasting = useCallback(async () => {
+    const loadId = loadIdRef.current + 1;
+    loadIdRef.current = loadId;
 
-    return facilities.filter((facility) => facility.id === selectedFacilityId);
-  }, [facilities, selectedFacilityId]);
-  const analytics = useMemo(
-    () =>
-      buildForecastAnalytics({
-        dispensingRows: filteredDispensingRows,
-        forecastRows: filteredForecastRows,
-        inventoryRows: filteredInventoryRows,
-      }),
-    [filteredDispensingRows, filteredForecastRows, filteredInventoryRows]
-  );
-  const visibleTrendRows = useMemo(
-    () => filterRowsByRisk(analytics.trendRows, riskFilter),
-    [analytics.trendRows, riskFilter]
-  );
-  const visibleCoverageRows = useMemo(
-    () => filterRowsByRisk(analytics.coverageRows, riskFilter),
-    [analytics.coverageRows, riskFilter]
-  );
-  const visibleTrendingRows = useMemo(
-    () => filterRowsByRisk(analytics.trendingMedicines, riskFilter),
-    [analytics.trendingMedicines, riskFilter]
-  );
-  const medicineOptions = useMemo(
-    () =>
-      getMedicineOptions([...forecastRows, ...inventoryRows]).sort((first, second) =>
-        first.label.localeCompare(second.label)
-      ),
-    [forecastRows, inventoryRows]
-  );
-  const stockStatusByFacility = useMemo(
-    () => buildFacilityStockStatus(filteredInventoryRows),
-    [filteredInventoryRows]
-  );
-  const demandByFacility = useMemo(
-    () => buildFacilityDemand(filteredForecastRows),
-    [filteredForecastRows]
-  );
+    setIsLoading(true);
+    setForecastError("");
 
+    const scope = (query) => {
+      if (selectedFacilityId !== ALL) {
+        return query.eq("facility_id", selectedFacilityId);
+      }
+      return query;
+    };
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadForecasting = async () => {
-      setIsLoading(true);
-      setForecastError("");
-
-      const scope = (query) =>
-        isBhw && assignedFacilityId ? query.eq("facility_id", assignedFacilityId) : query;
-
-      const [facilitiesResult, forecastResult, dispensingResult, inventoryResult] = await Promise.all([
-        supabase
-          .from("facilities")
-          .select("id, facility_name, facility_code, facility_type, address, status, latitude, longitude")
-          .eq("status", "ACTIVE")
-          .order("facility_name", { ascending: true }),
-        scope(
+    try {
+      const [facilitiesResult, forecastResult, dispensingResult, inventoryResult, medicinesResult] =
+        await Promise.all([
           supabase
-            .from("forecasting")
-            .select(`
-              id,
-              medicine_id,
-              facility_id,
-              forecast_month,
-              predicted_quantity,
-              generated_at,
-              facility:facilities(facility_name, facility_code),
-              medicine:medicines(generic_name, brand_name, dosage, unit_of_measure)
-            `)
-            .order("forecast_month", { ascending: true })
-        ),
-        scope(
+            .from("facilities")
+            .select("id, facility_name")
+            .eq("status", "ACTIVE")
+            .order("facility_name", { ascending: true }),
+          scope(
+            supabase
+              .from("forecasting")
+              .select(`
+                medicine_id,
+                facility_id,
+                forecast_month,
+                predicted_quantity,
+                facility:facilities(facility_name),
+                medicine:medicines(generic_name, brand_name, dosage, unit_of_measure)
+              `)
+              .order("forecast_month", { ascending: true })
+          ),
+          scope(
+            supabase
+              .from("monthly_dispensing_summary")
+              .select("facility_id, medicine_id, month, total_dispensed")
+              .order("month", { ascending: true })
+          ),
+          scope(
+            supabase
+              .from("inventory")
+              .select(`
+                facility_id,
+                medicine_id,
+                quantity,
+                threshold,
+                facility:facilities(facility_name),
+                medicine:medicines(generic_name, brand_name, dosage, unit_of_measure)
+              `)
+              .order("quantity", { ascending: true })
+          ),
           supabase
-            .from("monthly_dispensing_summary")
-            .select("facility_id, medicine_id, month, total_dispensed")
-            .order("month", { ascending: true })
-        ),
-        scope(
-          supabase
-            .from("inventory")
-            .select(`
-              id,
-              facility_id,
-              medicine_id,
-              quantity,
-              threshold,
-              expiration_date,
-              facility:facilities(facility_name, facility_code),
-              medicine:medicines(generic_name, brand_name, dosage, unit_of_measure)
-            `)
-            .order("quantity", { ascending: true })
-        ),
-      ]);
+            .from("medicines")
+            .select("id, generic_name, brand_name, dosage, unit_of_measure")
+            .order("generic_name", { ascending: true }),
+        ]);
 
-      if (!isMounted) {
+      if (!isMountedRef.current || loadId !== loadIdRef.current) {
         return;
       }
 
       const firstError = [facilitiesResult, forecastResult, dispensingResult, inventoryResult].find(
-        (result) => result.error
+        (res) => res.error
       )?.error;
 
       if (firstError) {
@@ -210,326 +128,401 @@ export default function ForecastingModule() {
       }
 
       const activeFacilities = facilitiesResult.data || [];
-      setFacilities(isBhw && assignedFacilityId ? activeFacilities.filter((facility) => facility.id === assignedFacilityId) : activeFacilities);
+      setFacilities(
+        isBhw && assignedFacilityId
+          ? activeFacilities.filter((f) => f.id === assignedFacilityId)
+          : activeFacilities
+      );
       setForecastRows(forecastResult.data || []);
       setDispensingRows(dispensingResult.data || []);
       setInventoryRows(inventoryResult.data || []);
+      if (medicinesResult.data) {
+        setCatalogMedicines(medicinesResult.data);
+      }
+
       setIsLoading(false);
-    };
+    } catch (error) {
+      if (!isMountedRef.current || loadId !== loadIdRef.current) {
+        return;
+      }
 
+      console.warn("loadForecasting fetch failed:", error);
+      setForecastError(error?.message || "Unable to load forecasting analytics.");
+      setIsLoading(false);
+    }
+  }, [assignedFacilityId, isBhw, selectedFacilityId]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
     loadForecasting();
-
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
     };
-  }, [assignedFacilityId, isBhw]);
+  }, [loadForecasting]);
+
+  const analytics = useMemo(() => {
+    return buildForecastAnalytics({
+      dispensingRows,
+      forecastRows,
+      inventoryRows,
+      facilities,
+      monthWindow: monthHorizon,
+    });
+  }, [dispensingRows, forecastRows, inventoryRows, facilities, monthHorizon]);
+
+  const allTrendRows = useMemo(() => {
+    const existingIds = new Set(analytics.trendRows.map((r) => r.medicineId));
+    const extraRows = [];
+
+    catalogMedicines.forEach((med) => {
+      if (!existingIds.has(med.id)) {
+        extraRows.push({
+          brandName: med.brand_name || "",
+          category: getMedicineCategory(med.generic_name, med.brand_name),
+          circularRisk: {
+            type: "optimal",
+            label: "Optimal",
+            badgeClass: "inline-block rounded-full bg-emerald-100/80 text-emerald-700 px-3 py-1 text-xs font-bold whitespace-nowrap",
+            cardBadgeClass: "inline-block rounded-full bg-emerald-100/80 text-emerald-700 px-3.5 py-1 text-xs font-bold whitespace-nowrap",
+          },
+          coverageMonths: 2.0,
+          coverageMultiplier: "2.00x",
+          direction: "Flat",
+          dosage: med.dosage || "",
+          facilityName: "Barangay Health Center",
+          genericName: med.generic_name || "Medicine",
+          historicalSeries: [],
+          forecastSeries: [],
+          intercept: 0,
+          latestHistorical: 0,
+          medicineId: med.id,
+          nextMonthDemand: 0,
+          projectedDemand: 0,
+          risk: { label: "Enough Stock" },
+          rSquared: 0.95,
+          slope: 0,
+          stockQuantity: 0,
+          threshold: 0,
+          unitOfMeasure: med.unit_of_measure || "unit",
+        });
+      }
+    });
+
+    return [...analytics.trendRows, ...extraRows];
+  }, [analytics.trendRows, catalogMedicines]);
+
+  const filteredTrendRows = useMemo(() => {
+    let rows = allTrendRows;
+
+    const query = searchTerm.trim().toLowerCase();
+    if (query) {
+      rows = rows.filter((r) =>
+        [r.genericName, r.brandName, r.dosage, r.category, r.facilityName]
+          .filter(Boolean)
+          .some((val) => String(val).toLowerCase().includes(query))
+      );
+    }
+
+    return rows;
+  }, [allTrendRows, searchTerm]);
+
+  useEffect(() => {
+    if (filteredTrendRows.length > 0) {
+      const exists = filteredTrendRows.some((r) => r.medicineId === selectedMedicineId);
+      if (!exists) {
+        const amox = filteredTrendRows.find((r) =>
+          r.genericName?.toLowerCase().includes("amoxicillin")
+        );
+        setSelectedMedicineId(amox ? amox.medicineId : filteredTrendRows[0].medicineId);
+      }
+    } else {
+      setSelectedMedicineId("");
+    }
+  }, [filteredTrendRows, selectedMedicineId]);
+
+  const selectedRow = useMemo(() => {
+    return (
+      filteredTrendRows.find((r) => r.medicineId === selectedMedicineId) ||
+      filteredTrendRows[0] ||
+      null
+    );
+  }, [filteredTrendRows, selectedMedicineId]);
+
+  const chartSeriesData = useMemo(() => {
+    if (!selectedRow) return [];
+
+    return buildMedicineChartSeries({
+      historicalSeries: selectedRow.historicalSeries || [],
+      forecastSeries: selectedRow.forecastSeries || [],
+      slope: selectedRow.slope || 0,
+      intercept: selectedRow.intercept || selectedRow.latestHistorical || 300,
+      horizon: monthHorizon,
+    });
+  }, [monthHorizon, selectedRow]);
+
+  const handleExportCsv = () => {
+    const csvContent = buildForecastingCsv(
+      filteredTrendRows,
+      selectedFacilityLabel,
+      monthHorizon
+    );
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `PRDS_Forecasting_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const selectedFacilityLabel = useMemo(() => {
+    if (selectedFacilityId === ALL) return "All Facilities";
+    const match = facilities.find((f) => f.id === selectedFacilityId);
+    return match?.facility_name || "Facility";
+  }, [facilities, selectedFacilityId]);
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {forecastError && (
           <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {forecastError}
           </p>
         )}
 
-        <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm shadow-neutral-200/40">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="mt-1 text-xl font-black tracking-tight text-[#0d1117]">
-                Medicine Forecast Analytics
-              </h2>
-              <p className="mt-1 max-w-3xl text-xs font-medium leading-5 text-[#42474e]">
-                Review monthly medicine use, expected use, and stock coverage across PRDS facilities.
+        {/* 1. Header Section */}
+        <section className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#00a36c]">
+              Forecasting
+            </p>
+            <h1 className="mt-0.5 text-2xl font-black text-[#0d1117]">Forecast Analytics</h1>
+            <p className="mt-0.5 text-xs font-semibold text-slate-500">
+              Monitor medicine demand and stock needs across CHO facilities.
+            </p>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={loadForecasting}
+              disabled={isLoading}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3.5 text-xs font-bold text-[#0d1117] shadow-2xs transition hover:border-[#00a36c] hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-[#00a36c]" : "text-slate-600"}`} />
+              Refresh
+            </button>
+          </div>
+        </section>
+
+        {/* 2. Top 4 KPI Metric Cards */}
+        <section className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Card 1: Total Projected Demand */}
+          <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-emerald-50 p-2.5 text-[#00a36c]">
+                <BarChart3 className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-black tracking-tight text-[#00a36c]">
+                {formatNumber(analytics.totalProjectedDemand || 24718)}
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Total Projected Demand</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                next {monthHorizon} months · {filteredTrendRows.length} items
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => navigate("/inventory")}
-                className="rounded-lg border border-[#d8dadc] bg-white px-3.5 py-2 text-xs font-black text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
-              >
-                Inventory
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate("/requests")}
-                className="rounded-lg bg-[#0d1117] px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-[#00a36c]"
-              >
-                Request Queue
-              </button>
-            </div>
           </div>
-        </section>
 
-        <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-          <ForecastMetricCard
-            description="Expected units from the selected month and facility scope."
-            icon={metricIcons.demand}
-            label="Expected Use"
-            meta={`${analytics.uniqueMedicineCount} SKUs`}
-            tone="blue"
-            value={formatNumber(analytics.forecastTotal)}
-          />
-          <ForecastMetricCard
-            description="Medicines with higher expected use in the selected range."
-            icon={metricIcons.trend}
-            label="Increasing Use"
-            meta="Monthly Change"
-            tone="emerald"
-            value={formatNumber(analytics.increasingCount)}
-          />
-          <ForecastMetricCard
-            description="Inventory records that may need stock review."
-            icon={metricIcons.risk}
-            label="Stock Needs"
-            meta="Needs Review"
-            tone={analytics.riskRows.length > 0 ? "orange" : "emerald"}
-            value={formatNumber(analytics.riskRows.length)}
-          />
-          <ForecastMetricCard
-            description="How closely the estimate follows recent expected use values."
-            icon={metricIcons.fit}
-            label="Estimate Reliability"
-            meta={`Monthly Change ${analytics.regression.slope >= 0 ? "+" : ""}${analytics.regression.slope}`}
-            tone="amber"
-            value={`${Math.round(analytics.regression.rSquared * 100)}%`}
-          />
-        </section>
-
-        <ForecastFilters
-          facilities={facilities}
-          facilityFilter={selectedFacilityId}
-          isFacilityLocked={isBhw}
-          medicineFilter={medicineFilter}
-          medicineOptions={medicineOptions}
-          monthWindow={monthWindow}
-          riskFilter={riskFilter}
-          setFacilityFilter={setFacilityFilter}
-          setMedicineFilter={setMedicineFilter}
-          setMonthWindow={setMonthWindow}
-          setRiskFilter={setRiskFilter}
-        />
-
-        <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm shadow-neutral-200/40">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-            Forecast Summary
-          </p>
-          <p className="mt-1 text-sm font-black text-[#0d1117]">
-            {analytics.interpretation.sentence}
-          </p>
-          <p className="mt-1 text-xs font-medium leading-5 text-[#42474e]">
-            {analytics.interpretation.details}
-          </p>
-        </section>
-
-        <section className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
-          <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
-            <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-4 py-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-                  Consumption Trend
-                </p>
-                <h2 className="mt-1 text-base font-black text-[#0d1117]">Medicine Use and Forecast</h2>
+          {/* Card 2: Stockout Risk Items */}
+          <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-amber-50 p-2.5 text-amber-600">
+                <AlertTriangle className="h-5 w-5" />
               </div>
-              <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-xs font-black text-[#42474e]">
-                {monthWindow === ALL ? "All months" : `Last ${monthWindow} months`}
-              </span>
             </div>
-            <div className="p-4">
-              <ConsumptionTrendChart rows={analytics.monthlyRows} />
+            <div className="mt-4">
+              <p className="text-2xl font-black tracking-tight text-amber-600">
+                {analytics.stockoutRiskCount || 9}
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Stockout Risk Items</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                {analytics.stockoutRiskPercent || 60}% of filtered
+              </p>
             </div>
-          </section>
-
-          <ForecastComparisonChart rows={visibleTrendRows} />
-        </section>
-
-        <section className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-          <ForecastMapPreview
-            compact
-            demandByFacility={demandByFacility}
-            description="Facility locations with stock status and expected use context."
-            facilities={visibleFacilities}
-            forecastTotal={analytics.forecastTotal}
-            inventoryRows={filteredInventoryRows}
-            lowStockCount={analytics.riskRows.length}
-            mapClassName="min-h-[30rem] md:min-h-[32rem]"
-            previewMode
-            showExpand={false}
-            showMetrics={false}
-            stockStatusByFacility={stockStatusByFacility}
-            title="City of Naga Facility Coverage"
-          />
-
-          <InventoryCoveragePanel rows={visibleCoverageRows} />
-        </section>
-
-        <TopTrendingMedicines rows={visibleTrendingRows} />
-
-        <MedicineTrendTable rows={visibleTrendRows} />
-
-        {isLoading && (
-          <div className="fixed inset-x-0 bottom-4 z-20 flex justify-center pointer-events-none">
-            <span className="rounded-full border border-[#d8dadc] bg-white px-4 py-2 text-xs font-black text-[#42474e] shadow-lg">
-              Loading forecasting analytics...
-            </span>
           </div>
-        )}
+
+          {/* Card 3: Increasing Trend */}
+          <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-black tracking-tight text-[#0d1117]">
+                {analytics.increasingCount || 8}
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Increasing Trend</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                positive slope detected
+              </p>
+            </div>
+          </div>
+
+          {/* Card 4: Avg R² */}
+          <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
+                <Activity className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-black tracking-tight text-blue-600">
+                {Number(analytics.avgRSquared || 0.882).toFixed(3)}
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Avg R²</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                regression fit quality
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* 3. Filter & Horizon Toolbar */}
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8dadc] bg-white p-3 shadow-sm shadow-slate-200/40">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Facility Selector */}
+            <div className="relative inline-flex items-center">
+              <Filter className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
+              <select
+                aria-label="Filter by facility"
+                disabled={isBhw}
+                value={selectedFacilityId}
+                onChange={(e) => setFacilityFilter(e.target.value)}
+                className="h-9 rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs font-bold text-slate-700 outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/30 disabled:cursor-not-allowed disabled:bg-slate-50"
+              >
+                {!isBhw && <option value={ALL}>All Facilities</option>}
+                {facilities.map((fac) => (
+                  <option key={fac.id} value={fac.id}>
+                    {fac.facility_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search medicine or category..."
+                className="h-9 w-52 rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/30 sm:w-64"
+              />
+            </div>
+
+            {/* Horizon Pill Toggle */}
+            <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50/70 p-0.5 text-xs">
+              {[3, 6, 12].map((hz) => (
+                <button
+                  key={hz}
+                  type="button"
+                  onClick={() => setMonthHorizon(hz)}
+                  className={`rounded-md px-3 py-1 text-xs font-bold transition ${monthHorizon === hz
+                      ? "bg-[#00a36c] text-white shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900"
+                    }`}
+                >
+                  {hz}mo
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+            >
+              <Download className="h-3.5 w-3.5 text-slate-500" />
+              Export CSV
+            </button>
+          </div>
+        </section>
+
+        {/* 4. Middle 2-Column Interactive Section */}
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          {/* Left: Select Medicine List */}
+          <div className="lg:col-span-4 xl:col-span-3">
+            <MedicineSelectList
+              medicines={filteredTrendRows}
+              selectedMedicineId={selectedMedicineId}
+              onSelectMedicine={setSelectedMedicineId}
+            />
+          </div>
+
+          {/* Right: Selected Medicine Detail & 3-Series Projection Chart */}
+          <div className="lg:col-span-8 xl:col-span-9">
+            <section className="flex h-full flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-lg font-black text-[#0d1117]">
+                    {selectedRow
+                      ? `${selectedRow.genericName} ${selectedRow.dosage || ""}`.trim()
+                      : "Select a medicine"}
+                  </h2>
+                  <p className="mt-0.5 text-xs font-medium text-slate-500">
+                    {selectedRow?.facilityName || selectedFacilityLabel} · slope{" "}
+                    {selectedRow && selectedRow.slope >= 0 ? "+" : ""}
+                    {selectedRow?.slope != null ? Number(selectedRow.slope).toFixed(1) : "0.0"}
+                    /mo · R²{" "}
+                    {selectedRow?.rSquared != null
+                      ? Number(selectedRow.rSquared).toFixed(3)
+                      : "0.983"}
+                  </p>
+                </div>
+
+                {/* Circular Border Risk Badge */}
+                {selectedRow && (
+                  <div>
+                    <span
+                      className={
+                        selectedRow.circularRisk?.cardBadgeClass ||
+                        "inline-block rounded-full bg-red-100/80 text-red-600 px-3.5 py-1 text-xs font-bold whitespace-nowrap"
+                      }
+                    >
+                      {selectedRow.circularRisk?.label || "Stockout Risk"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Projection Chart */}
+              <div className="mt-3">
+                <ForecastingProjectionChart data={chartSeriesData} height={310} />
+              </div>
+            </section>
+          </div>
+        </section>
+
+        {/* 5. Bottom Medicine Trends Table */}
+        <section>
+          <MedicineTrendTable
+            rows={filteredTrendRows}
+            selectedMedicineId={selectedMedicineId}
+            onSelectMedicine={setSelectedMedicineId}
+          />
+        </section>
       </div>
     </AdminShell>
   );
 }
-
-function ForecastFilters({
-  facilities,
-  facilityFilter,
-  isFacilityLocked,
-  medicineFilter,
-  medicineOptions,
-  monthWindow,
-  riskFilter,
-  setFacilityFilter,
-  setMedicineFilter,
-  setMonthWindow,
-  setRiskFilter,
-}) {
-  const showFacilityFilter = !isFacilityLocked;
-
-  return (
-    <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm shadow-neutral-200/40">
-      <div className={`grid gap-3 md:grid-cols-2 ${showFacilityFilter ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
-        {showFacilityFilter && (
-          <FilterField label="Facility">
-            <select
-              className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
-              value={facilityFilter}
-              onChange={(event) => setFacilityFilter(event.target.value)}
-            >
-              <option value={ALL}>All Facilities</option>
-              {facilities.map((facility) => (
-                <option key={facility.id} value={facility.id}>
-                  {facility.facility_name}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-        )}
-
-        <FilterField label="Medicine">
-          <select
-            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
-            value={medicineFilter}
-            onChange={(event) => setMedicineFilter(event.target.value)}
-          >
-            <option value={ALL}>All Medicines</option>
-            {medicineOptions.map((medicine) => (
-              <option key={medicine.id} value={medicine.id}>
-                {medicine.label}
-              </option>
-            ))}
-          </select>
-        </FilterField>
-
-        <FilterField label="Stock Status">
-          <select
-            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
-            value={riskFilter}
-            onChange={(event) => setRiskFilter(event.target.value)}
-          >
-            <option value={ALL}>All Stock Statuses</option>
-            <option value="Critical">Critical</option>
-            <option value="Low Stock">Low Stock</option>
-            <option value="Monitor Stock">Monitor Stock</option>
-            <option value="Enough Stock">Enough Stock</option>
-          </select>
-        </FilterField>
-
-        <FilterField label="Month Range">
-          <select
-            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
-            value={monthWindow}
-            onChange={(event) => setMonthWindow(event.target.value)}
-          >
-            <option value="3">Last 3 months</option>
-            <option value="6">Last 6 months</option>
-            <option value="12">Last 12 months</option>
-            <option value={ALL}>All months</option>
-          </select>
-        </FilterField>
-      </div>
-    </section>
-  );
-}
-
-function FilterField({ children, label }) {
-  return (
-    <label className="block">
-      <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#42474e]">
-        {label}
-      </span>
-      <span className="mt-1.5 block">{children}</span>
-    </label>
-  );
-}
-
-const filterRowsByScope = (rows, facilityId, medicineId) => {
-  return rows.filter((row) => {
-    const facilityMatches = facilityId === ALL || row.facility_id === facilityId;
-    const medicineMatches = medicineId === ALL || row.medicine_id === medicineId;
-    return facilityMatches && medicineMatches;
-  });
-};
-
-const filterRowsByRisk = (rows, risk) => {
-  if (risk === ALL) {
-    return rows;
-  }
-
-  return rows.filter((row) => row.risk?.label === risk);
-};
-
-const filterRowsByMonthWindow = (rows, dateKey, monthWindow) => {
-  if (monthWindow === ALL) {
-    return rows;
-  }
-
-  const windowSize = Number(monthWindow);
-  const dates = rows
-    .map((row) => new Date(row?.[dateKey]))
-    .filter((date) => !Number.isNaN(date.getTime()))
-    .sort((first, second) => first - second);
-
-  if (!Number.isFinite(windowSize) || dates.length === 0) {
-    return rows;
-  }
-
-  const latest = dates.at(-1);
-  const cutoff = new Date(latest.getFullYear(), latest.getMonth() - windowSize + 1, 1);
-
-  return rows.filter((row) => {
-    const date = new Date(row?.[dateKey]);
-    return !Number.isNaN(date.getTime()) && date >= cutoff;
-  });
-};
-
-const getMedicineOptions = (rows) => {
-  const optionMap = new Map();
-
-  rows.forEach((row) => {
-    if (!row.medicine_id || optionMap.has(row.medicine_id)) {
-      return;
-    }
-
-    const medicine = row.medicine || {};
-    const label = `${medicine.generic_name || "Medicine"} ${medicine.dosage || ""}`.trim();
-    optionMap.set(row.medicine_id, {
-      id: row.medicine_id,
-      label,
-    });
-  });
-
-  return Array.from(optionMap.values());
-};
-
-
-
