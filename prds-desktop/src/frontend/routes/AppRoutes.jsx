@@ -1,34 +1,52 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import LoginPage from "@frontend/views/auth/LoginPage";
-import RegisterPage from "@frontend/views/auth/RegisterPage";
-import OTPVerification from "@frontend/views/auth/OTPVerification";
-import ForgotPassword from "@frontend/views/auth/ForgotPassword";
-import PendingApproval from "@frontend/views/auth/PendingApproval";
-import DashboardModule from "@frontend/views/dashboard/DashboardModule";
-import DispensingModule from "@frontend/views/dispensing/DispensingModule";
-import ActivityLogsModule from "@frontend/views/activity/ActivityLogsModule";
-import FacilitiesModule from "@frontend/views/facilities/FacilitiesModule";
-import ForecastingModule from "@frontend/views/forecasting/ForecastingModule";
-import InventoryModule from "@frontend/views/inventory/InventoryModule";
-import MedicinesModule from "@frontend/views/medicines/MedicinesModule";
-import NotificationsModule from "@frontend/views/notifications/NotificationsModule";
-import ProfileSettingsModule from "@frontend/views/profile/ProfileSettingsModule";
-import RequestsModule from "@frontend/views/requests/RequestsModule";
-import SuppliersModule from "@frontend/views/suppliers/SuppliersModule";
-import TransfersModule from "@frontend/views/transfers/TransfersModule";
-import UserManagementModule from "@frontend/views/users/UserManagementModule";
-import PatientsModule from "@frontend/views/patients/PatientsModule";
-import OtherProgramsModule from "@frontend/views/other-programs/OtherProgramsModule";
 import ProtectedRoutes from "./ProtectedRoutes";
 import RoleGuard from "./RoleGuard";
 import GoogleOAuthCallbackHandler from "./GoogleOAuthCallbackHandler";
+
+// Auth Views (Lazy loaded for fast initial app startup)
+const LoginPage = lazy(() => import("@frontend/views/auth/LoginPage"));
+const RegisterPage = lazy(() => import("@frontend/views/auth/RegisterPage"));
+const OTPVerification = lazy(() => import("@frontend/views/auth/OTPVerification"));
+const ForgotPassword = lazy(() => import("@frontend/views/auth/ForgotPassword"));
+const PendingApproval = lazy(() => import("@frontend/views/auth/PendingApproval"));
+
+// Main Application Modules (Lazy loaded on demand)
+const DashboardModule = lazy(() => import("@frontend/views/dashboard/DashboardModule"));
+const DispensingModule = lazy(() => import("@frontend/views/dispensing/DispensingModule"));
+const ActivityLogsModule = lazy(() => import("@frontend/views/activity/ActivityLogsModule"));
+const FacilitiesModule = lazy(() => import("@frontend/views/facilities/FacilitiesModule"));
+const ForecastingModule = lazy(() => import("@frontend/views/forecasting/ForecastingModule"));
+const InventoryModule = lazy(() => import("@frontend/views/inventory/InventoryModule"));
+const MedicinesModule = lazy(() => import("@frontend/views/medicines/MedicinesModule"));
+const NotificationsModule = lazy(() => import("@frontend/views/notifications/NotificationsModule"));
+const ProfileSettingsModule = lazy(() => import("@frontend/views/profile/ProfileSettingsModule"));
+const RequestsModule = lazy(() => import("@frontend/views/requests/RequestsModule"));
+const SuppliersModule = lazy(() => import("@frontend/views/suppliers/SuppliersModule"));
+const TransfersModule = lazy(() => import("@frontend/views/transfers/TransfersModule"));
+const UserManagementModule = lazy(() => import("@frontend/views/users/UserManagementModule"));
+const PatientsModule = lazy(() => import("@frontend/views/patients/PatientsModule"));
+const OtherProgramsModule = lazy(() => import("@frontend/views/other-programs/OtherProgramsModule"));
+const ReportModule = lazy(() => import("@frontend/views/reports/ReportModule"));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[#f8fafc]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-500 border-t-transparent" />
+        <span className="text-xs font-medium text-slate-500">Loading module...</span>
+      </div>
+    </div>
+  );
+}
 
 export default function AppRoutes() {
   return (
     <BrowserRouter>
       <GoogleOAuthCallbackHandler />
-      <Routes>
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/otp-verification" element={<OTPVerification />} />
@@ -79,6 +97,7 @@ export default function AppRoutes() {
           <Route path="/users/change-requests" element={<Navigate to="/users" replace />} />
           <Route path="/patients" element={<PatientsModule />} />
           <Route path="/dispensing" element={<DispensingModule />} />
+          <Route path="/reports" element={<ReportModule />} />
           <Route
             path="/other-programs"
             element={
@@ -90,6 +109,7 @@ export default function AppRoutes() {
           <Route path="/profile-settings" element={<ProfileSettingsModule />} />
         </Route>
       </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

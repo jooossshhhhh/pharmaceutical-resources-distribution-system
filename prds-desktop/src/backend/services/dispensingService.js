@@ -7,6 +7,8 @@ import {
   deductWalkInInventoryFefo,
   getBlockedPatientIdsFromClaimRows,
   getMonthRangeIso,
+  getPatientDispensingStatus,
+  getPatientMonthlyClaimsBreakdown,
 } from "@shared/utils/dispensingUtils";
 
 const DISPENSING_SELECT = `
@@ -25,7 +27,7 @@ const DISPENSING_SELECT = `
   dispense_date,
   voided_at,
   void_reason,
-  medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure),
+  medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost),
   patient:patients(
     id,
     patient_code,
@@ -216,41 +218,109 @@ export const getPatientClaimStatus = async (patientId) => {
   return claimed;
 };
 
-export const getClaimedPatientIds = async (patientIds) => {
+export const getPatientsMonthlyClaimOverview = async (patientIds) => {
   if (!patientIds || patientIds.length === 0) {
-    return [];
+    return new Map();
   }
 
   const { start } = getMonthRangeIso();
+  let claimRows = [];
   const isOnline = isCurrentNetworkOnline();
+
   if (isOnline) {
     try {
       const { data, error } = await supabase
         .from("medicine_dispensing")
-        .select("patient_id, medicine_id, dispensing_transaction_id, quantity, needed_quantity, is_manual_record, record_type")
+        .select(`
+          id,
+          patient_id,
+          medicine_id,
+          dispensing_transaction_id,
+          quantity,
+          needed_quantity,
+          follow_up_action,
+          follow_up_date,
+          dispense_date,
+          prescribed_by,
+          record_type,
+          is_manual_record,
+          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure),
+          referred_facility:facilities!medicine_dispensing_referred_facility_id_fkey(id, facility_name)
+        `)
         .in("patient_id", patientIds)
         .is("voided_at", null)
         .gte("dispense_date", start);
 
       if (!error && data) {
-        return getBlockedPatientIdsFromClaimRows(data);
+        claimRows = data;
       }
     } catch (err) {
-      console.warn("Online claimed patient IDs check failed, falling back to snapshot:", err);
+      console.warn("Online patient claim overview check failed, falling back to snapshot:", err);
     }
   }
 
-  const cachedDispensing = getSnapshot(STORAGE_KEYS.DISPENSING, []);
-  const filtered = cachedDispensing.filter(
-    (d) =>
-      patientIds.includes(d.patient_id || d.patient?.id) &&
-      !d.voided_at &&
-      (d.dispense_date || "") >= start
-  );
-  return getBlockedPatientIdsFromClaimRows(filtered);
+  if (claimRows.length === 0) {
+    const cachedDispensing = getSnapshot(STORAGE_KEYS.DISPENSING, []);
+    claimRows = cachedDispensing.filter(
+      (d) =>
+        patientIds.includes(d.patient_id || d.patient?.id) &&
+        !d.voided_at &&
+        (d.dispense_date || "") >= start
+    );
+  }
+
+  const overviewMap = new Map();
+  patientIds.forEach((pid) => {
+    const breakdown = getPatientMonthlyClaimsBreakdown(claimRows, pid);
+    const status = getPatientDispensingStatus({ claimsBreakdown: breakdown });
+    overviewMap.set(pid, {
+      breakdown,
+      status,
+      isBlocked: status.isBlocked,
+      hasPartial: breakdown.some((b) => !b.is_completed),
+    });
+  });
+
+  return overviewMap;
 };
 
-export const getDispensingHistory = async ({ patientId } = {}) => {
+export const getPatientActiveMonthlyClaims = async (patientId) => {
+  if (!patientId) {
+    return {
+      breakdown: [],
+      hasPartial: false,
+      isBlocked: false,
+      status: getPatientDispensingStatus({ claimsBreakdown: [] }),
+    };
+  }
+
+  const overview = await getPatientsMonthlyClaimOverview([patientId]);
+  return (
+    overview.get(patientId) || {
+      breakdown: [],
+      hasPartial: false,
+      isBlocked: false,
+      status: getPatientDispensingStatus({ claimsBreakdown: [] }),
+    }
+  );
+};
+
+export const getClaimedPatientIds = async (patientIds) => {
+  if (!patientIds || patientIds.length === 0) {
+    return [];
+  }
+
+  const overview = await getPatientsMonthlyClaimOverview(patientIds);
+  const blockedIds = [];
+  overview.forEach((value, pid) => {
+    if (value.isBlocked) {
+      blockedIds.push(pid);
+    }
+  });
+  return blockedIds;
+};
+
+export const getDispensingHistory = async ({ facilityId, patientId } = {}) => {
   const isOnline = isCurrentNetworkOnline();
   if (isOnline) {
     try {
@@ -258,6 +328,10 @@ export const getDispensingHistory = async ({ patientId } = {}) => {
         .from("medicine_dispensing")
         .select(DISPENSING_SELECT)
         .order("dispense_date", { ascending: false });
+
+      if (facilityId) {
+        query = query.eq("facility_id", facilityId);
+      }
 
       if (patientId) {
         query = query.eq("patient_id", patientId);
@@ -273,12 +347,18 @@ export const getDispensingHistory = async ({ patientId } = {}) => {
   }
 
   const cachedDispensing = getSnapshot(STORAGE_KEYS.DISPENSING, []);
+  let filtered = cachedDispensing;
+  if (facilityId) {
+    filtered = filtered.filter(
+      (d) => String(d.facility_id) === String(facilityId)
+    );
+  }
   if (patientId) {
-    return cachedDispensing.filter(
+    filtered = filtered.filter(
       (d) => String(d.patient_id || d.patient?.id) === String(patientId)
     );
   }
-  return cachedDispensing;
+  return filtered;
 };
 
 export const completeWalkInDispensing = async ({ facilityId, items, patientId, prescribedBy }) => {
@@ -311,18 +391,46 @@ export const completeWalkInDispensing = async ({ facilityId, items, patientId, p
       ? `OFFLINE-${Date.now().toString(36).toUpperCase()}`
       : data?.transaction_id || `TX-${Date.now()}`;
     const cachedDispensing = getSnapshot(STORAGE_KEYS.DISPENSING, []);
-    const newDispenseRecords = items.map((item) => ({
-      id: `disp-${Date.now()}-${item.medicine_id}`,
-      dispensing_transaction_id: txId,
-      facility_id: dispensingFacilityId,
-      patient_id: patientId,
-      medicine_id: item.medicine_id,
-      needed_quantity: Number(item.needed_quantity ?? item.quantity),
-      quantity: Number(item.quantity),
-      dispense_date: new Date().toISOString(),
-      prescribed_by: prescribedBy,
-      record_type: "LIVE_DISPENSING",
-    }));
+    const cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+    const medicinesMap = new Map(cachedMedicines.map((m) => [String(m.id), m]));
+
+    const newDispenseRecords = items.map((item) => {
+      const med =
+        item.medicine ||
+        medicinesMap.get(String(item.medicine_id)) ||
+        {};
+      const generic = (med.generic_name || item.generic_name || "").trim();
+      const brand = (med.brand_name || item.brand_name || "").trim();
+      const dosage = (med.dosage || item.dosage || "").trim();
+      const unit = (med.unit_of_measure || item.unit_of_measure || "").trim();
+      const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
+
+      return {
+        id: `disp-${Date.now()}-${item.medicine_id}`,
+        dispensing_transaction_id: txId,
+        facility_id: dispensingFacilityId,
+        patient_id: patientId,
+        medicine_id: item.medicine_id,
+        needed_quantity: Number(item.needed_quantity ?? item.quantity),
+        quantity: Number(item.quantity),
+        dispense_date: new Date().toISOString(),
+        prescribed_by: prescribedBy,
+        record_type: "LIVE_DISPENSING",
+        generic_name: generic,
+        brand_name: brand,
+        dosage,
+        unit_of_measure: unit,
+        unit_cost: unitCost,
+        medicine: {
+          id: item.medicine_id,
+          generic_name: generic,
+          brand_name: brand,
+          dosage,
+          unit_of_measure: unit,
+          unit_cost: unitCost,
+        },
+      };
+    });
     saveSnapshot(STORAGE_KEYS.DISPENSING, [...newDispenseRecords, ...cachedDispensing]);
   } catch (optErr) {
     console.warn("Optimistic local inventory update failed:", optErr);

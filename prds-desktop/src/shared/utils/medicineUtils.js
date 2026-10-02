@@ -81,11 +81,36 @@ export const normalizeMedicineText = (medicine) => {
     .toLowerCase();
 };
 
-export const filterMedicines = (medicines, searchTerm) => {
+export const extractUniqueCategories = (medicines = []) => {
+  const categorySet = new Set();
+  medicines.forEach((med) => {
+    const cats = parseMedicineCategories(med.categories);
+    cats.forEach((cat) => {
+      if (cat) categorySet.add(cat);
+    });
+  });
+  return Array.from(categorySet).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+};
+
+export const filterMedicines = (medicines, searchTerm = "", selectedCategory = "") => {
   const normalizedSearch = searchTerm.trim().toLowerCase();
+  const normalizedCategory = selectedCategory.trim().toLowerCase();
 
   return medicines.filter((medicine) => {
-    return !normalizedSearch || normalizeMedicineText(medicine).includes(normalizedSearch);
+    const matchesSearch =
+      !normalizedSearch || normalizeMedicineText(medicine).includes(normalizedSearch);
+    if (!matchesSearch) {
+      return false;
+    }
+
+    if (!normalizedCategory || normalizedCategory === "all") {
+      return true;
+    }
+
+    const categories = parseMedicineCategories(medicine.categories);
+    return categories.some((cat) => cat.toLowerCase() === normalizedCategory);
   });
 };
 

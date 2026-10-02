@@ -7,8 +7,8 @@ import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import { supabase } from "@backend/client/supabase";
 import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
-import { isCurrentNetworkOnline, useNetworkStatus } from "@backend/sync/networkStatus";
-import { fetchAllRows } from "@backend/sync/syncUtils";
+import { isCurrentNetworkOnline, setNetworkOnlineState, useNetworkStatus } from "@backend/sync/networkStatus";
+import { fetchAllRows, getFriendlyDashboardErrorMessage } from "@backend/sync/syncUtils";
 import EmptyState from "./components/EmptyState";
 import ForecastDemandBars from "./components/ForecastDemandBars";
 import ForecastMapPreview from "./components/ForecastMapPreview";
@@ -19,6 +19,7 @@ import StatCard from "./components/StatCard";
 import {
   buildFacilityDemand,
   buildFacilityStockStatus,
+  compileDashboardSnapshot,
   emptyStats,
   formatDateTime,
   formatNumber,
@@ -161,7 +162,29 @@ const expiringTone = (days) => {
 export default function DashboardModule() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const cachedDashboard = useMemo(() => getSnapshot(STORAGE_KEYS.DASHBOARD, null), []);
+  const isOffline = !useNetworkStatus();
+  const isBhw = profile?.role === "BHW";
+  const myFacilityId = profile?.facility_id || null;
+  const inventoryPath = isBhw ? "/inventory-bhw" : "/inventory";
+
+  const cachedDashboard = useMemo(() => {
+    const direct = getSnapshot(STORAGE_KEYS.DASHBOARD, null);
+    if (direct?.stats && (!isBhw || direct.facilityId === myFacilityId)) {
+      return direct;
+    }
+    return compileDashboardSnapshot({
+      inventory: getSnapshot(STORAGE_KEYS.INVENTORY, []) || [],
+      facilities: getSnapshot(STORAGE_KEYS.FACILITIES, []) || [],
+      patients: getSnapshot(STORAGE_KEYS.PATIENTS, []) || [],
+      requests: getSnapshot(STORAGE_KEYS.REQUESTS, []) || [],
+      dispensing: getSnapshot(STORAGE_KEYS.DISPENSING, []) || [],
+      forecasting: getSnapshot(STORAGE_KEYS.FORECASTING, []) || [],
+      users: getSnapshot(STORAGE_KEYS.USERS, []) || [],
+      facilityId: myFacilityId,
+      role: profile?.role,
+    });
+  }, [isBhw, myFacilityId, profile?.role]);
+
   const [stats, setStats] = useState(() => getCachedDashboardStats(cachedDashboard));
   const [facilities, setFacilities] = useState(() => cachedDashboard?.facilities || []);
   const [forecastRows, setForecastRows] = useState(() => cachedDashboard?.forecastRows || []);
@@ -175,18 +198,21 @@ export default function DashboardModule() {
   const [demandByFacility, setDemandByFacility] = useState(() => cachedDashboard?.demandByFacility || {});
   const [isLoading, setIsLoading] = useState(() => !cachedDashboard);
   const [dashboardError, setDashboardError] = useState("");
-  const isOffline = !useNetworkStatus();
   const [lastRefreshedAt, setLastRefreshedAt] = useState(() => cachedDashboard?.refreshedAt || null);
+
+  const hasOfflineData = Boolean(
+    cachedDashboard?.inventoryRows?.length ||
+    cachedDashboard?.stats?.stockedBatches ||
+    inventoryRows?.length ||
+    facilities?.length
+  );
+
   const visibleDashboardError = dashboardError || (
-    isOffline && !cachedDashboard
-      ? "Dashboard data is unavailable offline. Connect to the network to load it."
+    isOffline && !hasOfflineData
+      ? "Dashboard records are unavailable while offline. Please connect to the internet to load data."
       : ""
   );
   const isDashboardLoading = isLoading && !isOffline;
-
-  const isBhw = profile?.role === "BHW";
-  const myFacilityId = profile?.facility_id || null;
-  const inventoryPath = isBhw ? "/inventory-bhw" : "/inventory";
   const today = useMemo(() => formatDateTime(new Date()), []);
   const forecastTotal = useMemo(
     () => forecastRows.reduce((sum, row) => sum + Number(row.predicted_quantity || 0), 0),
@@ -266,12 +292,45 @@ export default function DashboardModule() {
     stats.criticalStock,
   ]);
 
+  const loadDashboardFromLocal = () => {
+    const direct = getSnapshot(STORAGE_KEYS.DASHBOARD, null);
+    let dashboardData = direct;
+    if (!dashboardData?.stats || (isBhw && dashboardData.facilityId !== myFacilityId)) {
+      dashboardData = compileDashboardSnapshot({
+        inventory: getSnapshot(STORAGE_KEYS.INVENTORY, []) || [],
+        facilities: getSnapshot(STORAGE_KEYS.FACILITIES, []) || [],
+        patients: getSnapshot(STORAGE_KEYS.PATIENTS, []) || [],
+        requests: getSnapshot(STORAGE_KEYS.REQUESTS, []) || [],
+        dispensing: getSnapshot(STORAGE_KEYS.DISPENSING, []) || [],
+        forecasting: getSnapshot(STORAGE_KEYS.FORECASTING, []) || [],
+        users: getSnapshot(STORAGE_KEYS.USERS, []) || [],
+        facilityId: myFacilityId,
+        role: profile?.role,
+      });
+    }
+
+    if (dashboardData) {
+      setStats(getCachedDashboardStats(dashboardData));
+      setFacilities(dashboardData.facilities || []);
+      setForecastRows(dashboardData.forecastRows || []);
+      setStockAlertRows(dashboardData.stockAlertRows || dashboardData.lowStockRows || []);
+      setExpiringRows(dashboardData.expiringRows || []);
+      setDispensingRows(dashboardData.dispensingRows || []);
+      setRequestStatus(dashboardData.requestStatus || defaultRequestStatus);
+      setStockStatusByFacility(dashboardData.stockStatusByFacility || {});
+      setInventoryRows(dashboardData.inventoryRows || []);
+      setDemandByFacility(dashboardData.demandByFacility || {});
+      setRecentRequests(dashboardData.recentRequests || []);
+      setLastRefreshedAt(dashboardData.refreshedAt || localStorage.getItem(STORAGE_KEYS.LAST_SYNC_TIME) || null);
+    }
+    setIsLoading(false);
+    return dashboardData;
+  };
+
   const loadDashboard = async () => {
     if (!isCurrentNetworkOnline()) {
-      setIsLoading(false);
-      if (!cachedDashboard) {
-        setDashboardError("Dashboard data is unavailable offline. Connect to the network to load it.");
-      }
+      loadDashboardFromLocal();
+      setDashboardError("");
       return;
     }
     if (isBhw && !myFacilityId) {
@@ -490,23 +549,31 @@ export default function DashboardModule() {
       });
     } catch (error) {
       console.warn("Dashboard online fetch failed, using snapshot:", error);
-      const fallbackSnapshot = getSnapshot(STORAGE_KEYS.DASHBOARD, null);
-      if (fallbackSnapshot) {
-        setStats(getCachedDashboardStats(fallbackSnapshot));
-        setFacilities(fallbackSnapshot.facilities || []);
-        setForecastRows(fallbackSnapshot.forecastRows || []);
-        setStockAlertRows(fallbackSnapshot.stockAlertRows || fallbackSnapshot.lowStockRows || []);
-        setExpiringRows(fallbackSnapshot.expiringRows || []);
-        setDispensingRows(fallbackSnapshot.dispensingRows || []);
-        setRequestStatus(fallbackSnapshot.requestStatus || defaultRequestStatus);
-        setStockStatusByFacility(fallbackSnapshot.stockStatusByFacility || {});
-        setInventoryRows(fallbackSnapshot.inventoryRows || []);
-        setDemandByFacility(fallbackSnapshot.demandByFacility || {});
-        setRecentRequests(fallbackSnapshot.recentRequests || []);
-        setLastRefreshedAt(fallbackSnapshot.refreshedAt || null);
-        setDashboardError(`Refresh failed; showing saved dashboard data. ${error?.message || "Unable to refresh."}`);
+      const isConnError =
+        !isCurrentNetworkOnline() ||
+        error?.message?.toLowerCase().includes("failed to fetch") ||
+        error?.message?.toLowerCase().includes("network") ||
+        error?.message?.toLowerCase().includes("timeout");
+
+      if (isConnError) {
+        setNetworkOnlineState(false);
+      }
+
+      const localData = loadDashboardFromLocal();
+      const hasLocalRecords = Boolean(
+        localData?.inventoryRows?.length ||
+        localData?.stats?.stockedBatches ||
+        localData?.facilities?.length
+      );
+
+      if (hasLocalRecords) {
+        if (isConnError) {
+          setDashboardError("");
+        } else {
+          setDashboardError(getFriendlyDashboardErrorMessage(error, true));
+        }
       } else {
-        setDashboardError(error?.message || "Unable to load dashboard data.");
+        setDashboardError(getFriendlyDashboardErrorMessage(error, false));
       }
     } finally {
       setIsLoading(false);
@@ -514,12 +581,15 @@ export default function DashboardModule() {
   };
 
   useEffect(() => {
-    if (isOffline) return undefined;
+    if (isOffline) {
+      loadDashboardFromLocal();
+      return undefined;
+    }
     const timerId = window.setTimeout(loadDashboard, 0);
     return () => window.clearTimeout(timerId);
     // Re-fetch when network availability changes; the callback uses current module state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOffline]);
+  }, [isOffline, myFacilityId, profile?.role]);
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
@@ -528,7 +598,7 @@ export default function DashboardModule() {
           {visibleDashboardError}
         </p>
       )}
-      {isOffline && cachedDashboard && (
+      {isOffline && hasOfflineData && (
         <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
           Offline view{lastRefreshedAt ? ` · Last refreshed ${formatDateTime(new Date(lastRefreshedAt))}` : " · Showing saved data"}
         </p>

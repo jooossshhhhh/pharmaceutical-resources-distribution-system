@@ -6,6 +6,7 @@ import {
   filterFacilities,
   getHealthMeta,
   getStockStatus,
+  isChoFacility,
   sortFacilities,
 } from "./facilityUtils.js";
 import { formatStatus } from "./facilityFormat.js";
@@ -139,4 +140,18 @@ test("sortFacilities keeps facility name order deterministic", () => {
 
   assert.deepEqual(sortFacilities(facilities, "ASC").map((item) => item.id), ["a", "b"]);
   assert.deepEqual(sortFacilities(facilities, "DESC").map((item) => item.id), ["b", "a"]);
+});
+
+test("isChoFacility accurately distinguishes the City Health Office central hub", () => {
+  assert.equal(isChoFacility({ facility_code: "CHO-NAGA" }), true);
+  assert.equal(isChoFacility({ facility_code: "cho" }), true);
+  assert.equal(isChoFacility({ facility_type: "MAIN_HEALTH_CENTER" }), true);
+  assert.equal(isChoFacility({ facility_name: "Central Health Office - City of Naga" }), true);
+  assert.equal(isChoFacility({ facility_name: "City Health Office Naga" }), true);
+
+  // Standard health stations should return false
+  assert.equal(isChoFacility({ facility_code: "IHC", facility_name: "Inayagan Health Station" }), false);
+  assert.equal(isChoFacility({ facility_code: "BHS-TUYAN", facility_name: "Tuyan Health Center" }), false);
+  assert.equal(isChoFacility(null), false);
+  assert.equal(isChoFacility(undefined), false);
 });

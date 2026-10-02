@@ -246,3 +246,17 @@ export const sortFacilities = (facilities, sortDirection = "ASC") => {
     return sortDirection === "ASC" ? comparison : -comparison;
   });
 };
+
+export const isChoFacility = (facility) => {
+  if (!facility) return false;
+  const code = (facility.facility_code || "").toUpperCase();
+  const type = (facility.facility_type || "").toUpperCase();
+  const name = (facility.facility_name || "").toLowerCase();
+  return (
+    code === "CHO-NAGA" ||
+    code === "CHO" ||
+    type === "MAIN_HEALTH_CENTER" ||
+    name.includes("central health office") ||
+    name.includes("city health office")
+  );
+};

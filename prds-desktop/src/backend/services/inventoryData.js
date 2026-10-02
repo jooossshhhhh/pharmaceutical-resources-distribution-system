@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { useAuth } from "@frontend/context/useAuth";
+import { downloadExportFile } from "@frontend/services/downloadManager";
 import { supabase } from "../client/supabase";
 import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "../database/snapshotStore";
 import { isCurrentNetworkOnline } from "../sync/networkStatus";
@@ -465,7 +466,7 @@ export function useInventoryData({ isBhw = false }) {
     setCurrentPage(1);
   };
 
-  const handleExportCsv = () => {
+  const handleExportExcel = () => {
     const headers = [
       "Medicine",
       "Brand",
@@ -506,24 +507,12 @@ export function useInventoryData({ isBhw = false }) {
       ];
     });
 
-    const escapeCell = (value) => {
-      const text = String(value ?? "");
-      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-    };
-
-    const csv = [headers, ...rows]
-      .map((row) => row.map(escapeCell).join(","))
-      .join("\n");
-
-    const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadExportFile({
+      filename: `inventory-export-${new Date().toISOString().slice(0, 10)}`,
+      headers,
+      rows,
+      recordCount: rows.length,
+    });
   };
 
   const openItemModal = (item, mode) => {
@@ -949,7 +938,8 @@ export function useInventoryData({ isBhw = false }) {
     selectFacility,
     clearFilters,
     toggleStockFilter,
-    handleExportCsv,
+    handleExportExcel,
+    handleExportCsv: handleExportExcel,
     openItemModal,
     closeModal,
     handleFieldChange,

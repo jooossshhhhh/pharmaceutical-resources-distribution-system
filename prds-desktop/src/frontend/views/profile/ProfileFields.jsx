@@ -1,18 +1,24 @@
 import { FieldIcon, GoogleIcon } from "./ProfileIcons";
 
-export function ProfileField({ icon, label, readOnly, ...props }) {
+export function ProfileField({ icon, label, value, className = "", readOnly, children, ...props }) {
+  const displayValue = (value !== undefined && value !== null && value !== "") ? value : (children || "—");
+
   return (
-    <label className="block rounded-lg bg-[#faf9f7] px-4 py-3">
-      <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
+    <div
+      {...props}
+      className={`flex flex-col justify-center rounded-xl border border-slate-100 bg-[#faf9f7] px-4 py-3 min-h-[4.25rem] ${className}`.trim()}
+    >
+      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
         <FieldIcon type={icon} />
-        {label}
-      </span>
-      <input
-        {...props}
-        readOnly={readOnly}
-        className="mt-3 w-full bg-transparent text-sm font-semibold text-black outline-none read-only:cursor-default"
-      />
-    </label>
+        <span>{label}</span>
+      </div>
+      <div
+        title={typeof displayValue === "string" ? displayValue : undefined}
+        className="mt-2 text-sm font-semibold text-slate-900 break-words whitespace-normal leading-relaxed select-text"
+      >
+        {displayValue}
+      </div>
+    </div>
   );
 }
 

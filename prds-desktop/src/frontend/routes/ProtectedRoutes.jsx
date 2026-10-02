@@ -21,8 +21,9 @@ export default function ProtectedRoutes() {
   const cachedSession = getCachedUserSession();
   const effectiveAuth = isAuthenticated || Boolean(cachedSession.user);
   const effectiveProfile = profile || cachedSession.profile;
+  const effectiveIsApproved = (profile?.status ?? cachedSession.profile?.status) === "ACTIVE";
 
-  if (loading && !maxLoadingReached && !effectiveAuth) {
+  if (!maxLoadingReached && (!effectiveAuth || (loading && !effectiveProfile))) {
     return (
       <main className="min-h-screen bg-[#f7f6f3] px-5 py-5 text-[#0d1117]">
         <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-[1280px] items-center justify-center">
@@ -45,7 +46,7 @@ export default function ProtectedRoutes() {
     return <Navigate to="/register" replace />;
   }
 
-  if (!isProfileApproved) {
+  if (!effectiveIsApproved) {
     return <Navigate to="/pending-approval" replace />;
   }
 

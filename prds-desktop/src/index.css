@@ -376,6 +376,25 @@ body {
   z-index: 1000 !important;
 }
 
+@keyframes prds-radar-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0.25;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+.prds-radar-pulse {
+  pointer-events: none;
+}
+
 @keyframes prds-step-in {
   from {
     opacity: 0;

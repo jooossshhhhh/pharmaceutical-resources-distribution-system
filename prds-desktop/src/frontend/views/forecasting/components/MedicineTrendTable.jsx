@@ -10,7 +10,7 @@ export default function MedicineTrendTable({
 }) {
   const {
     currentPage,
-    paginatedRows,
+    paginatedRows = [],
     pageSize,
     setCurrentPage,
     totalCount,

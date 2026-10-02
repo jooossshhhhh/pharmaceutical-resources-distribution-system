@@ -67,3 +67,87 @@ test("native snapshot writes serialize without pooled manual transactions", asyn
   assert.match(sqliteSource, /if \(initializationPromise\)/);
   assert.doesNotMatch(`${managerSource}\n${sqliteSource}`, /db\.execute\("(?:BEGIN|COMMIT|ROLLBACK)"\)/);
 });
+
+test("batchInsertOrReplace batches rows into chunked multi-row statements", async () => {
+  const { batchInsertOrReplace } = await import("../database/sqliteClient.js");
+
+  const executions = [];
+  const mockDb = {
+    execute: async (sql, params) => {
+      executions.push({ sql, params });
+      return { rowsAffected: params.length / 2 };
+    },
+  };
+
+  const columns = ["id", "name"];
+  const rows = [
+    ["1", "Item 1"],
+    ["2", "Item 2"],
+    ["3", "Item 3"],
+    ["4", "Item 4"],
+    ["5", "Item 5"],
+  ];
+
+  // Batch with chunkSize = 2 (produces 3 chunks: 2, 2, 1)
+  await batchInsertOrReplace(mockDb, "test_table", columns, rows, 2);
+
+  assert.equal(executions.length, 3);
+  assert.equal(executions[0].sql, "INSERT OR REPLACE INTO test_table (id, name) VALUES (?, ?), (?, ?)");
+  assert.deepEqual(executions[0].params, ["1", "Item 1", "2", "Item 2"]);
+  assert.equal(executions[1].sql, "INSERT OR REPLACE INTO test_table (id, name) VALUES (?, ?), (?, ?)");
+  assert.deepEqual(executions[1].params, ["3", "Item 3", "4", "Item 4"]);
+  assert.equal(executions[2].sql, "INSERT OR REPLACE INTO test_table (id, name) VALUES (?, ?)");
+  assert.deepEqual(executions[2].params, ["5", "Item 5"]);
+});
+
+test("batchDeleteByIds chunks deletions by ID within parameter limits", async () => {
+  const { batchDeleteByIds } = await import("../database/sqliteClient.js");
+
+  const executions = [];
+  const mockDb = {
+    execute: async (sql, params) => {
+      executions.push({ sql, params });
+      return { rowsAffected: params.length };
+    },
+  };
+
+  const ids = ["id-1", "id-2", "id-3", "id-4", "id-5"];
+
+  // Batch with chunkSize = 2 (produces 3 chunks: 2, 2, 1)
+  await batchDeleteByIds(mockDb, "medicines", ids, 2);
+
+  assert.equal(executions.length, 3);
+  assert.equal(executions[0].sql, "DELETE FROM medicines WHERE id IN (?, ?)");
+  assert.deepEqual(executions[0].params, ["id-1", "id-2"]);
+  assert.equal(executions[1].sql, "DELETE FROM medicines WHERE id IN (?, ?)");
+  assert.deepEqual(executions[1].params, ["id-3", "id-4"]);
+  assert.equal(executions[2].sql, "DELETE FROM medicines WHERE id IN (?)");
+  assert.deepEqual(executions[2].params, ["id-5"]);
+});
+
+test("syncManager includes delta watermark query, sync_tombstones, and stock deficit audits", async () => {
+  const source = await readFile(new URL("./syncManager.js", import.meta.url), "utf8");
+
+  assert.match(source, /getSafeWatermarkWindow/);
+  assert.match(source, /getDatasetSyncWatermark/);
+  assert.match(source, /setDatasetSyncWatermark/);
+  assert.match(source, /sync_tombstones/);
+  assert.match(source, /stock_deficit_audits/);
+  assert.match(source, /forceFullSync/);
+  assert.match(source, /mergeSnapshotDelta/);
+});
+
+test("sqliteClient exports watermark functions and defines stock_deficit_audits schema", async () => {
+  const sqlite = await import("../database/sqliteClient.js");
+
+  assert.equal(typeof sqlite.getDatasetSyncWatermark, "function");
+  assert.equal(typeof sqlite.setDatasetSyncWatermark, "function");
+  assert.equal(typeof sqlite.clearAllSyncWatermarks, "function");
+  assert.equal(typeof sqlite.batchDeleteByIds, "function");
+
+  const source = await readFile(new URL("../database/sqliteClient.js", import.meta.url), "utf8");
+  assert.match(source, /CREATE TABLE IF NOT EXISTS stock_deficit_audits/);
+  assert.match(source, /idx_stock_deficit_facility/);
+  assert.match(source, /idx_stock_deficit_status/);
+});
+

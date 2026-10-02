@@ -1,0 +1,2207 @@
+// Comprehensive PRDS ERD & Schema Visualizer Generator — Advanced Monochrome Edition
+// Supports:
+// 1. Multiple Paper Sizes: A4, Long Bond Paper (PH 8.5x13"), Short Bond (Letter 8.5x11"), US Legal (8.5x14"), Tabloid (11x17"), A3
+// 2. Line Visibility Options: All Lines, Selected Only, Hide Lines, Adjustable Line Thickness (1.5px, 2.5px, 3.5px)
+// 3. Density / Anti-Clutter Control: Full Schema vs. Keys & Relations Only (PK & FK)
+// 4. Organized Sorting & Filtering: Domain Filter, Workflow Order, Alphabetical (A-Z), Dependency Order
+// 5. Native Draw.io file with tabs for each paper size and domain
+
+import fs from 'fs';
+import path from 'path';
+
+export const PAPER_SIZES = {
+  tabloid: {
+    id: 'tabloid',
+    name: 'Tabloid / Ledger (11 × 17 in • Most Spacious)',
+    width: 1700,
+    height: 1100,
+    unit: 'in',
+    cssPage: '17in 11in',
+    desc: 'Extra-large format: wide gutters, massive text, zero line overlap'
+  },
+  long: {
+    id: 'long',
+    name: 'Long Bond Paper (8.5 × 13 in • PH Folio)',
+    width: 1300,
+    height: 850,
+    unit: 'in',
+    cssPage: '330.2mm 215.9mm',
+    desc: 'Standard Philippine Government / LGU Folio paper format'
+  },
+  a4: {
+    id: 'a4',
+    name: 'A4 Landscape (297 × 210 mm • ISO 216)',
+    width: 1169,
+    height: 827,
+    unit: 'mm',
+    cssPage: 'A4 landscape',
+    desc: 'International standard document format'
+  },
+  short: {
+    id: 'short',
+    name: 'Short Bond Paper / Letter (8.5 × 11 in)',
+    width: 1100,
+    height: 850,
+    unit: 'in',
+    cssPage: 'letter landscape',
+    desc: 'Standard US Letter paper format'
+  },
+  a3: {
+    id: 'a3',
+    name: 'A3 Landscape (420 × 297 mm)',
+    width: 1654,
+    height: 1169,
+    unit: 'mm',
+    cssPage: 'A3 landscape',
+    desc: 'Large architectural / technical blueprint size'
+  }
+};
+
+export const DOMAINS = {
+  core: {
+    id: 'core',
+    name: 'Facilities & User Management',
+    shortName: 'Core & Users',
+    color: '#000000',
+    lightColor: '#f4f4f5',
+    borderColor: '#000000',
+    headerFontColor: '#ffffff'
+  },
+  inventory: {
+    id: 'inventory',
+    name: 'Medicines Catalog & Inventory',
+    shortName: 'Medicines & Inventory',
+    color: '#000000',
+    lightColor: '#f4f4f5',
+    borderColor: '#000000',
+    headerFontColor: '#ffffff'
+  },
+  requests: {
+    id: 'requests',
+    name: 'Supply Requests & Allocation',
+    shortName: 'Supply Requests',
+    color: '#000000',
+    lightColor: '#f4f4f5',
+    borderColor: '#000000',
+    headerFontColor: '#ffffff'
+  },
+  transfers: {
+    id: 'transfers',
+    name: 'Stock Transfers & Logistics',
+    shortName: 'Stock Transfers',
+    color: '#000000',
+    lightColor: '#f4f4f5',
+    borderColor: '#000000',
+    headerFontColor: '#ffffff'
+  },
+  dispensing: {
+    id: 'dispensing',
+    name: 'Patient Records & Dispensing',
+    shortName: 'Patient Dispensing',
+    color: '#000000',
+    lightColor: '#f4f4f5',
+    borderColor: '#000000',
+    headerFontColor: '#ffffff'
+  },
+  programs: {
+    id: 'programs',
+    name: 'Health Programs & Forecasting',
+    shortName: 'Programs & SLR',
+    color: '#000000',
+    lightColor: '#f4f4f5',
+    borderColor: '#000000',
+    headerFontColor: '#ffffff'
+  },
+  system: {
+    id: 'system',
+    name: 'System Alerts & Audit Trail',
+    shortName: 'Alerts & Audit',
+    color: '#000000',
+    lightColor: '#f4f4f5',
+    borderColor: '#000000',
+    headerFontColor: '#ffffff'
+  }
+};
+
+export const TABLES = [
+  {
+    name: 'facilities',
+    domain: 'core',
+    title: 'facilities',
+    subtitle: 'City Health Office & 28 Health Centers',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true, desc: 'Primary Key' },
+      { name: 'facility_name', type: 'text', nn: true, desc: 'Full Name' },
+      { name: 'facility_code', type: 'text', nn: true, uq: true, desc: 'Short code (CHO, TNHC)' },
+      { name: 'facility_type', type: 'facility_type', nn: true, desc: "'CHO' | 'HEALTH_CENTER'" },
+      { name: 'address', type: 'text', nn: true, desc: 'Street / Barangay' },
+      { name: 'status', type: 'facility_status', nn: true, desc: "'ACTIVE' | 'INACTIVE'" },
+      { name: 'latitude', type: 'numeric(10,7)', desc: 'GPS Lat [-90..90]' },
+      { name: 'longitude', type: 'numeric(10,7)', desc: 'GPS Long [-180..180]' }
+    ]
+  },
+  {
+    name: 'profiles',
+    domain: 'core',
+    title: 'profiles',
+    subtitle: 'User accounts tied to auth.users',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, fk: 'auth.users.id', nn: true, desc: 'references auth.users(id)' },
+      { name: 'first_name', type: 'text', nn: true },
+      { name: 'last_name', type: 'text', nn: true },
+      { name: 'email', type: 'text', uq: true },
+      { name: 'phone_number', type: 'text' },
+      { name: 'avatar_url', type: 'text' },
+      { name: 'role', type: 'user_role', nn: true, desc: "'PHARMA_II'|'PHARMA_I'|'BHW'" },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id', desc: 'Assigned facility' },
+      { name: 'status', type: 'profile_status', nn: true, desc: "'PENDING'|'ACTIVE'|'DEACTIVATED'" },
+      { name: 'approved_by', type: 'uuid', fk: 'profiles.id', desc: 'Pharma II who approved' },
+      { name: 'approved_at', type: 'timestamptz' },
+      { name: 'created_at', type: 'timestamptz', nn: true },
+      { name: 'updated_at', type: 'timestamptz', nn: true }
+    ]
+  },
+  {
+    name: 'profile_facility_change_requests',
+    domain: 'core',
+    title: 'profile_facility_change_requests',
+    subtitle: 'Staff station reassignment requests',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'profile_id', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'current_facility_id', type: 'uuid', fk: 'facilities.id' },
+      { name: 'requested_facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'reason', type: 'text' },
+      { name: 'status', type: 'facility_change_request_status', nn: true, desc: "'PENDING'|'APPROVED'..." },
+      { name: 'reviewed_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'reviewed_at', type: 'timestamptz' },
+      { name: 'created_at', type: 'timestamptz', nn: true },
+      { name: 'updated_at', type: 'timestamptz', nn: true }
+    ]
+  },
+  {
+    name: 'medicines',
+    domain: 'inventory',
+    title: 'medicines',
+    subtitle: 'Master Formulary & Catalog',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'generic_name', type: 'text', nn: true },
+      { name: 'brand_name', type: 'text' },
+      { name: 'unit_of_measure', type: 'text', nn: true, desc: 'e.g. tablet, vial' },
+      { name: 'dosage', type: 'text', nn: true, desc: 'e.g. 500mg, 10mg/mL' },
+      { name: 'unit_cost', type: 'numeric(10,2)' },
+      { name: 'categories', type: 'text[]', nn: true, desc: 'Array of categories' }
+    ]
+  },
+  {
+    name: 'suppliers',
+    domain: 'inventory',
+    title: 'suppliers',
+    subtitle: 'Pharma distributors and sources',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'supplier_name', type: 'text', nn: true, uq: true },
+      { name: 'contact_number', type: 'text' },
+      { name: 'address', type: 'text' },
+      { name: 'status', type: 'supplier_status', nn: true, desc: "'ACTIVE'|'INACTIVE'" }
+    ]
+  },
+  {
+    name: 'inventory',
+    domain: 'inventory',
+    title: 'inventory',
+    subtitle: 'Per-facility batches & FEFO stocks',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
+      { name: 'supplier_id', type: 'uuid', fk: 'suppliers.id', nn: true },
+      { name: 'quantity', type: 'integer', nn: true, desc: 'Stock on hand >= 0' },
+      { name: 'threshold', type: 'integer', nn: true, desc: 'Reorder alert >= 0' },
+      { name: 'batch_number', type: 'text', nn: true },
+      { name: 'date_received', type: 'date', nn: true },
+      { name: 'expiration_date', type: 'date', nn: true, desc: 'FEFO sort key' },
+      { name: 'updated_at', type: 'timestamptz', nn: true }
+    ]
+  },
+  {
+    name: 'medicine_requests',
+    domain: 'requests',
+    title: 'medicine_requests',
+    subtitle: 'Facility replenishment requisitions',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'requested_by', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'request_date', type: 'timestamptz', nn: true },
+      { name: 'status', type: 'request_status', nn: true, desc: "'PENDING'|'APPROVED'|'COMPLETED'..." },
+      { name: 'approved_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'approved_at', type: 'timestamptz' },
+      { name: 'remarks', type: 'text' },
+      { name: 'request_source', type: 'text', nn: true, desc: "'SYSTEM'|'MANUAL_PAPER'" },
+      { name: 'manual_requested_by', type: 'text' },
+      { name: 'encoded_by', type: 'uuid', fk: 'profiles.id' }
+    ]
+  },
+  {
+    name: 'medicine_request_items',
+    domain: 'requests',
+    title: 'medicine_request_items',
+    subtitle: 'Requested medicine line items',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'request_id', type: 'uuid', fk: 'medicine_requests.id', nn: true },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
+      { name: 'quantity', type: 'integer', nn: true, desc: 'Requested qty > 0' }
+    ]
+  },
+  {
+    name: 'medicine_request_fulfillments',
+    domain: 'requests',
+    title: 'medicine_request_fulfillments',
+    subtitle: 'Audit of CHO batch deductions',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'request_id', type: 'uuid', fk: 'medicine_requests.id', nn: true },
+      { name: 'request_item_id', type: 'uuid', fk: 'medicine_request_items.id', nn: true },
+      { name: 'source_inventory_id', type: 'uuid', fk: 'inventory.id', nn: true, desc: 'CHO stock batch' },
+      { name: 'destination_inventory_id', type: 'uuid', fk: 'inventory.id', nn: true, desc: 'Barangay stock batch' },
+      { name: 'quantity', type: 'integer', nn: true, desc: 'Released qty > 0' },
+      { name: 'fulfilled_by', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'fulfilled_at', type: 'timestamptz', nn: true }
+    ]
+  },
+  {
+    name: 'stock_transfers',
+    domain: 'transfers',
+    title: 'stock_transfers',
+    subtitle: 'Inter-facility stock redistribution',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'source_facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'destination_facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'requested_by', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'approved_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'approved_at', type: 'timestamptz' },
+      { name: 'status', type: 'transfer_status', nn: true, desc: "'PENDING'|'READY_FOR_PICKUP'|'COMPLETED'..." },
+      { name: 'created_at', type: 'timestamptz', nn: true },
+      { name: 'transfer_date', type: 'timestamptz' },
+      { name: 'received_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'received_at', type: 'timestamptz' },
+      { name: 'remarks', type: 'text' }
+    ]
+  },
+  {
+    name: 'stock_transfer_items',
+    domain: 'transfers',
+    title: 'stock_transfer_items',
+    subtitle: 'Transfer items & requested quantities',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'transfer_id', type: 'uuid', fk: 'stock_transfers.id', nn: true },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
+      { name: 'quantity', type: 'integer', nn: true, desc: 'Transfer qty > 0' }
+    ]
+  },
+  {
+    name: 'stock_transfer_fulfillments',
+    domain: 'transfers',
+    title: 'stock_transfer_fulfillments',
+    subtitle: 'Batch lot allocation & receipt confirmation',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'transfer_id', type: 'uuid', fk: 'stock_transfers.id', nn: true },
+      { name: 'transfer_item_id', type: 'uuid', fk: 'stock_transfer_items.id', nn: true },
+      { name: 'source_inventory_id', type: 'uuid', fk: 'inventory.id', nn: true },
+      { name: 'destination_inventory_id', type: 'uuid', fk: 'inventory.id' },
+      { name: 'quantity', type: 'integer', nn: true, desc: '> 0' },
+      { name: 'fulfilled_by', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'fulfilled_at', type: 'timestamptz', nn: true },
+      { name: 'received_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'received_at', type: 'timestamptz' }
+    ]
+  },
+  {
+    name: 'patients',
+    domain: 'dispensing',
+    title: 'patients',
+    subtitle: 'Barangay healthcare beneficiaries',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'first_name', type: 'text', nn: true },
+      { name: 'middle_name', type: 'text' },
+      { name: 'last_name', type: 'text', nn: true },
+      { name: 'suffix', type: 'text' },
+      { name: 'gender', type: 'gender_type', nn: true, desc: "'MALE'|'FEMALE'" },
+      { name: 'date_of_birth', type: 'date', nn: true },
+      { name: 'contact_number', type: 'text' },
+      { name: 'address', type: 'text' },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'created_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'patient_code', type: 'text', nn: true, uq: true, desc: 'Universal ID' },
+      { name: 'created_at', type: 'timestamptz', nn: true },
+      { name: 'updated_at', type: 'timestamptz', nn: true },
+      { name: 'archived_at', type: 'timestamptz' },
+      { name: 'archived_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'archive_reason', type: 'text' }
+    ]
+  },
+  {
+    name: 'medicine_dispensing',
+    domain: 'dispensing',
+    title: 'medicine_dispensing',
+    subtitle: 'Dispensation visits & void audit',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'dispensing_transaction_id', type: 'uuid', desc: 'Multi-batch visit group' },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
+      { name: 'inventory_id', type: 'uuid', fk: 'inventory.id', nn: true },
+      { name: 'quantity', type: 'integer', nn: true, desc: 'Dispensed qty > 0' },
+      { name: 'needed_quantity', type: 'integer', nn: true, desc: 'Requested qty >= quantity' },
+      { name: 'prescribed_by', type: 'text' },
+      { name: 'follow_up_action', type: 'text', desc: "'SCHEDULE_NEXT_WEEK'|'REFER_TO_BARANGAY'" },
+      { name: 'follow_up_date', type: 'date' },
+      { name: 'referred_facility_id', type: 'uuid', fk: 'facilities.id' },
+      { name: 'dispensing_type', type: 'dispensing_type', nn: true, desc: "'WALK_IN'|'PROGRAM'|'REQUEST'" },
+      { name: 'dispensed_by', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'patient_id', type: 'uuid', fk: 'patients.id', nn: true },
+      { name: 'dispense_date', type: 'timestamptz', nn: true },
+      { name: 'record_type', type: 'text', nn: true, desc: "'LIVE_DISPENSING'|'HISTORY_ONLY'..." },
+      { name: 'voided_by', type: 'uuid', fk: 'profiles.id' },
+      { name: 'voided_at', type: 'timestamptz' },
+      { name: 'void_reason', type: 'text' }
+    ]
+  },
+  {
+    name: 'patient_medicine_records',
+    domain: 'dispensing',
+    title: 'patient_medicine_records',
+    subtitle: 'Monthly claim eligibility tracking',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'patient_id', type: 'uuid', fk: 'patients.id', nn: true },
+      { name: 'medicine_dispensing_id', type: 'uuid', fk: 'medicine_dispensing.id', nn: true },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
+      { name: 'medicine_quantity', type: 'integer', nn: true, desc: '> 0' },
+      { name: 'remarks', type: 'text' },
+      { name: 'dispensed_by', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'date_stamp', type: 'timestamptz', nn: true }
+    ]
+  },
+  {
+    name: 'other_programs',
+    domain: 'programs',
+    title: 'other_programs',
+    subtitle: 'Outreach events & medical missions',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id' },
+      { name: 'program_name', type: 'text', nn: true },
+      { name: 'program_date', type: 'date', nn: true },
+      { name: 'description', type: 'text' },
+      { name: 'status', type: 'text', nn: true, desc: "'UPCOMING'|'COMPLETED'|'CANCELLED'" },
+      { name: 'completed_at', type: 'timestamptz' },
+      { name: 'cancelled_at', type: 'timestamptz' }
+    ]
+  },
+  {
+    name: 'program_medicines',
+    domain: 'programs',
+    title: 'program_medicines',
+    subtitle: 'Medicines allocated for outreach',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'program_id', type: 'uuid', fk: 'other_programs.id', nn: true },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
+      { name: 'quantity_used', type: 'integer', nn: true, desc: '> 0' }
+    ]
+  },
+  {
+    name: 'forecasting',
+    domain: 'programs',
+    title: 'forecasting',
+    subtitle: 'Simple Linear Regression monthly demand',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
+      { name: 'forecast_month', type: 'date', nn: true },
+      { name: 'predicted_quantity', type: 'integer', nn: true, desc: 'SLR projected demand' },
+      { name: 'generated_at', type: 'timestamptz', nn: true }
+    ]
+  },
+  {
+    name: 'notifications',
+    domain: 'system',
+    title: 'notifications',
+    subtitle: 'Realtime alerts for stock & approvals',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'user_id', type: 'uuid', fk: 'profiles.id', nn: true },
+      { name: 'title', type: 'text', nn: true },
+      { name: 'message', type: 'text', nn: true },
+      { name: 'is_read', type: 'boolean', nn: true, desc: 'Default false' },
+      { name: 'created_at', type: 'timestamptz', nn: true }
+    ]
+  },
+  {
+    name: 'activity_logs',
+    domain: 'system',
+    title: 'activity_logs',
+    subtitle: 'Immutable audit trail of system events',
+    columns: [
+      { name: 'id', type: 'uuid', pk: true, nn: true },
+      { name: 'user_id', type: 'uuid', fk: 'profiles.id', desc: 'Actor ID' },
+      { name: 'action', type: 'text', nn: true, desc: 'Action name' },
+      { name: 'module', type: 'text', nn: true, desc: 'Module scope' },
+      { name: 'details', type: 'text', nn: true, desc: 'Payload / Audit context' },
+      { name: 'created_at', type: 'timestamptz', nn: true }
+    ]
+  }
+];
+
+export const RELATIONSHIPS = [
+  // Facilities relations
+  { from: 'facilities', fromCol: 'id', to: 'profiles', toCol: 'facility_id', label: 'assigned to', type: '1:N' },
+  { from: 'facilities', fromCol: 'id', to: 'profile_facility_change_requests', toCol: 'current_facility_id', label: 'current station', type: '1:N' },
+  { from: 'facilities', fromCol: 'id', to: 'profile_facility_change_requests', toCol: 'requested_facility_id', label: 'target station', type: '1:N' },
+  { from: 'facilities', fromCol: 'id', to: 'inventory', toCol: 'facility_id', label: 'stocks batch', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'patients', toCol: 'facility_id', label: 'registered at', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'medicine_requests', toCol: 'facility_id', label: 'submits request', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'stock_transfers', toCol: 'source_facility_id', label: 'source facility', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'stock_transfers', toCol: 'destination_facility_id', label: 'dest facility', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'medicine_dispensing', toCol: 'facility_id', label: 'dispenses at', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'medicine_dispensing', toCol: 'referred_facility_id', label: 'referred to', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'other_programs', toCol: 'facility_id', label: 'hosts program', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'facilities', fromCol: 'id', to: 'forecasting', toCol: 'facility_id', label: 'forecast target', type: '1:N', onDelete: 'RESTRICT' },
+
+  // Profiles relations
+  { from: 'profiles', fromCol: 'id', to: 'profiles', toCol: 'approved_by', label: 'approves profile', type: '1:N' },
+  { from: 'profiles', fromCol: 'id', to: 'profile_facility_change_requests', toCol: 'profile_id', label: 'submits change', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'profiles', fromCol: 'id', to: 'profile_facility_change_requests', toCol: 'reviewed_by', label: 'reviews change', type: '1:N' },
+  { from: 'profiles', fromCol: 'id', to: 'patients', toCol: 'created_by', label: 'registers patient', type: '1:N' },
+  { from: 'profiles', fromCol: 'id', to: 'patients', toCol: 'archived_by', label: 'archives patient', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'medicine_requests', toCol: 'requested_by', label: 'creates request', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'medicine_requests', toCol: 'approved_by', label: 'approves request', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'medicine_requests', toCol: 'encoded_by', label: 'encodes paper req', type: '1:N' },
+  { from: 'profiles', fromCol: 'id', to: 'medicine_request_fulfillments', toCol: 'fulfilled_by', label: 'fulfills lot', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'stock_transfers', toCol: 'requested_by', label: 'initiates transfer', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'stock_transfers', toCol: 'approved_by', label: 'approves transfer', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'stock_transfers', toCol: 'received_by', label: 'receives transfer', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'stock_transfer_fulfillments', toCol: 'fulfilled_by', label: 'allocates batch', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'stock_transfer_fulfillments', toCol: 'received_by', label: 'accepts batch', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'medicine_dispensing', toCol: 'dispensed_by', label: 'dispenses medicine', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'medicine_dispensing', toCol: 'voided_by', label: 'voids transaction', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'patient_medicine_records', toCol: 'dispensed_by', label: 'records dispensing', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'notifications', toCol: 'user_id', label: 'receives alert', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'profiles', fromCol: 'id', to: 'activity_logs', toCol: 'user_id', label: 'actor of log', type: '1:N', onDelete: 'SET NULL' },
+
+  // Medicines & Suppliers relations
+  { from: 'suppliers', fromCol: 'id', to: 'inventory', toCol: 'supplier_id', label: 'supplies batch', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'inventory', toCol: 'medicine_id', label: 'stored as batch', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'medicine_request_items', toCol: 'medicine_id', label: 'requested item', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'stock_transfer_items', toCol: 'medicine_id', label: 'transferred item', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'medicine_dispensing', toCol: 'medicine_id', label: 'dispensed drug', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'patient_medicine_records', toCol: 'medicine_id', label: 'claimed medicine', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'program_medicines', toCol: 'medicine_id', label: 'program supply', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'forecasting', toCol: 'medicine_id', label: 'forecast target', type: '1:N', onDelete: 'RESTRICT' },
+
+  // Requests module relations
+  { from: 'medicine_requests', fromCol: 'id', to: 'medicine_request_items', toCol: 'request_id', label: 'contains items', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'medicine_requests', fromCol: 'id', to: 'medicine_request_fulfillments', toCol: 'request_id', label: 'fulfilled by', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'medicine_request_items', fromCol: 'id', to: 'medicine_request_fulfillments', toCol: 'request_item_id', label: 'allocated from', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'inventory', fromCol: 'id', to: 'medicine_request_fulfillments', toCol: 'source_inventory_id', label: 'source CHO lot', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'inventory', fromCol: 'id', to: 'medicine_request_fulfillments', toCol: 'destination_inventory_id', label: 'dest BHW lot', type: '1:N', onDelete: 'RESTRICT' },
+
+  // Transfers module relations
+  { from: 'stock_transfers', fromCol: 'id', to: 'stock_transfer_items', toCol: 'transfer_id', label: 'contains items', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'stock_transfers', fromCol: 'id', to: 'stock_transfer_fulfillments', toCol: 'transfer_id', label: 'allocated batches', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'stock_transfer_items', fromCol: 'id', to: 'stock_transfer_fulfillments', toCol: 'transfer_item_id', label: 'fulfilled by lot', type: '1:N', onDelete: 'CASCADE' },
+  { from: 'inventory', fromCol: 'id', to: 'stock_transfer_fulfillments', toCol: 'source_inventory_id', label: 'source lot', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'inventory', fromCol: 'id', to: 'stock_transfer_fulfillments', toCol: 'destination_inventory_id', label: 'dest lot', type: '1:N', onDelete: 'RESTRICT' },
+
+  // Dispensing module relations
+  { from: 'inventory', fromCol: 'id', to: 'medicine_dispensing', toCol: 'inventory_id', label: 'deducts batch', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'patients', fromCol: 'id', to: 'medicine_dispensing', toCol: 'patient_id', label: 'receives medicine', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'patients', fromCol: 'id', to: 'patient_medicine_records', toCol: 'patient_id', label: 'patient history', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicine_dispensing', fromCol: 'id', to: 'patient_medicine_records', toCol: 'medicine_dispensing_id', label: 'claim record', type: '1:N', onDelete: 'RESTRICT' },
+
+  // Programs module relations
+  { from: 'other_programs', fromCol: 'id', to: 'program_medicines', toCol: 'program_id', label: 'uses medicines', type: '1:N', onDelete: 'CASCADE' }
+];
+
+function xmlEscape(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// Master Layout Positioning for TABLOID (1700 × 1100 pt) — Spacious, Zero Clutter, Wide Gutters
+export const TABLOID_POSITIONS = {
+  // Column 1: Core & Users (x: 50, width: 280)
+  facilities: { x: 50, y: 90, width: 280, height: 280 },
+  profiles: { x: 50, y: 400, width: 280, height: 370 },
+  profile_facility_change_requests: { x: 50, y: 800, width: 280, height: 260 },
+
+  // Column 2: Patients & Dispensing (x: 380, width: 280)
+  patients: { x: 380, y: 90, width: 280, height: 350 },
+  medicine_dispensing: { x: 380, y: 470, width: 280, height: 370 },
+  patient_medicine_records: { x: 380, y: 870, width: 280, height: 190 },
+
+  // Column 3: Medicines & Inventory (x: 710, width: 280)
+  suppliers: { x: 710, y: 90, width: 280, height: 180 },
+  medicines: { x: 710, y: 300, width: 280, height: 240 },
+  inventory: { x: 710, y: 570, width: 280, height: 300 },
+  _legend: { x: 710, y: 900, width: 280, height: 160 },
+
+  // Column 4: Requests & Transfers (x: 1040, width: 280)
+  medicine_requests: { x: 1040, y: 90, width: 280, height: 170 },
+  medicine_request_items: { x: 1040, y: 280, width: 280, height: 120 },
+  medicine_request_fulfillments: { x: 1040, y: 420, width: 280, height: 180 },
+  stock_transfers: { x: 1040, y: 620, width: 280, height: 170 },
+  stock_transfer_items: { x: 1040, y: 810, width: 280, height: 120 },
+  stock_transfer_fulfillments: { x: 1040, y: 950, width: 280, height: 130 },
+
+  // Column 5: Programs, System & Forecasting (x: 1370, width: 280)
+  other_programs: { x: 1370, y: 90, width: 280, height: 200 },
+  program_medicines: { x: 1370, y: 310, width: 280, height: 140 },
+  forecasting: { x: 1370, y: 470, width: 280, height: 180 },
+  notifications: { x: 1370, y: 670, width: 280, height: 170 },
+  activity_logs: { x: 1370, y: 860, width: 280, height: 180 }
+};
+
+// Master Layout Positioning for LONG BOND PAPER (1300 × 850 pt) — PH Folio
+export const LONG_BOND_POSITIONS = {
+  // Column 1: Core & Users (x: 40, width: 220)
+  facilities: { x: 40, y: 75, width: 220, height: 225 },
+  profiles: { x: 40, y: 320, width: 220, height: 290 },
+  profile_facility_change_requests: { x: 40, y: 630, width: 220, height: 200 },
+
+  // Column 2: Patients & Dispensing (x: 295, width: 220)
+  patients: { x: 295, y: 75, width: 220, height: 275 },
+  medicine_dispensing: { x: 295, y: 370, width: 220, height: 290 },
+  patient_medicine_records: { x: 295, y: 680, width: 220, height: 150 },
+
+  // Column 3: Medicines & Inventory (x: 550, width: 220)
+  suppliers: { x: 550, y: 75, width: 220, height: 145 },
+  medicines: { x: 550, y: 240, width: 220, height: 190 },
+  inventory: { x: 550, y: 450, width: 220, height: 235 },
+  _legend: { x: 550, y: 705, width: 220, height: 125 },
+
+  // Column 4: Requests & Transfers (x: 805, width: 220)
+  medicine_requests: { x: 805, y: 75, width: 220, height: 130 },
+  medicine_request_items: { x: 805, y: 220, width: 220, height: 100 },
+  medicine_request_fulfillments: { x: 805, y: 335, width: 220, height: 145 },
+  stock_transfers: { x: 805, y: 495, width: 220, height: 135 },
+  stock_transfer_items: { x: 805, y: 645, width: 220, height: 95 },
+  stock_transfer_fulfillments: { x: 805, y: 755, width: 220, height: 85 },
+
+  // Column 5: Programs & System (x: 1060, width: 205)
+  other_programs: { x: 1060, y: 75, width: 205, height: 155 },
+  program_medicines: { x: 1060, y: 245, width: 205, height: 110 },
+  forecasting: { x: 1060, y: 370, width: 205, height: 145 },
+  notifications: { x: 1060, y: 530, width: 205, height: 135 },
+  activity_logs: { x: 1060, y: 680, width: 205, height: 140 }
+};
+
+// Master Layout Positioning for A4 (1169 × 827 pt)
+export const A4_POSITIONS = {
+  facilities: { x: 35, y: 70, width: 205, height: 215 },
+  profiles: { x: 35, y: 300, width: 205, height: 275 },
+  profile_facility_change_requests: { x: 35, y: 590, width: 205, height: 195 },
+
+  patients: { x: 260, y: 70, width: 205, height: 260 },
+  medicine_dispensing: { x: 260, y: 345, width: 205, height: 275 },
+  patient_medicine_records: { x: 260, y: 635, width: 205, height: 150 },
+
+  suppliers: { x: 485, y: 70, width: 205, height: 140 },
+  medicines: { x: 485, y: 225, width: 205, height: 180 },
+  inventory: { x: 485, y: 420, width: 205, height: 220 },
+  _legend: { x: 485, y: 655, width: 205, height: 130 },
+
+  medicine_requests: { x: 710, y: 70, width: 205, height: 125 },
+  medicine_request_items: { x: 710, y: 205, width: 205, height: 95 },
+  medicine_request_fulfillments: { x: 710, y: 310, width: 205, height: 135 },
+  stock_transfers: { x: 710, y: 455, width: 205, height: 125 },
+  stock_transfer_items: { x: 710, y: 590, width: 205, height: 95 },
+  stock_transfer_fulfillments: { x: 710, y: 695, width: 205, height: 110 },
+
+  other_programs: { x: 935, y: 70, width: 200, height: 150 },
+  program_medicines: { x: 935, y: 230, width: 200, height: 110 },
+  forecasting: { x: 935, y: 350, width: 200, height: 140 },
+  notifications: { x: 935, y: 505, width: 200, height: 130 },
+  activity_logs: { x: 935, y: 650, width: 200, height: 135 }
+};
+
+// Domain-Specific Pages Layouts
+export const DOMAIN_PAGES = [
+  {
+    id: 'page_core',
+    name: '1. Facilities & User Accounts',
+    domainId: 'core',
+    title: 'PRDS — Facilities, Profiles & User Management Schema',
+    tables: ['facilities', 'profiles', 'profile_facility_change_requests'],
+    positions: {
+      facilities: { x: 80, y: 150, width: 290, height: 320 },
+      profiles: { x: 440, y: 150, width: 310, height: 420 },
+      profile_facility_change_requests: { x: 810, y: 150, width: 280, height: 340 }
+    }
+  },
+  {
+    id: 'page_inventory',
+    name: '2. Medicines Catalog & Inventory',
+    domainId: 'inventory',
+    title: 'PRDS — Medicines, Suppliers & Batch Inventory Schema',
+    tables: ['suppliers', 'medicines', 'inventory', 'facilities'],
+    positions: {
+      suppliers: { x: 70, y: 150, width: 280, height: 260 },
+      medicines: { x: 70, y: 440, width: 280, height: 280 },
+      inventory: { x: 440, y: 220, width: 340, height: 400 },
+      facilities: { x: 850, y: 260, width: 260, height: 280 }
+    }
+  },
+  {
+    id: 'page_requests',
+    name: '3. Supply Requests & Batch Allocation',
+    domainId: 'requests',
+    title: 'PRDS — Medicine Requests & Multi-Batch Fulfillment Schema',
+    tables: ['medicine_requests', 'medicine_request_items', 'medicine_request_fulfillments', 'inventory', 'facilities', 'profiles'],
+    positions: {
+      facilities: { x: 50, y: 140, width: 220, height: 240 },
+      profiles: { x: 50, y: 430, width: 220, height: 280 },
+      medicine_requests: { x: 320, y: 180, width: 260, height: 340 },
+      medicine_request_items: { x: 620, y: 180, width: 230, height: 200 },
+      medicine_request_fulfillments: { x: 890, y: 220, width: 240, height: 320 },
+      inventory: { x: 620, y: 420, width: 230, height: 290 }
+    }
+  },
+  {
+    id: 'page_transfers',
+    name: '4. Stock Transfers & Logistics',
+    domainId: 'transfers',
+    title: 'PRDS — Inter-Facility Stock Transfers & Fulfillment Schema',
+    tables: ['stock_transfers', 'stock_transfer_items', 'stock_transfer_fulfillments', 'inventory', 'facilities', 'profiles'],
+    positions: {
+      facilities: { x: 50, y: 140, width: 220, height: 240 },
+      profiles: { x: 50, y: 430, width: 220, height: 280 },
+      stock_transfers: { x: 320, y: 180, width: 260, height: 360 },
+      stock_transfer_items: { x: 620, y: 180, width: 230, height: 200 },
+      stock_transfer_fulfillments: { x: 890, y: 220, width: 240, height: 340 },
+      inventory: { x: 620, y: 430, width: 230, height: 280 }
+    }
+  },
+  {
+    id: 'page_dispensing',
+    name: '5. Patient Care & Walk-in Dispensing',
+    domainId: 'dispensing',
+    title: 'PRDS — Patient Records, Walk-in Dispensing & Monthly Claims',
+    tables: ['patients', 'medicine_dispensing', 'patient_medicine_records', 'inventory', 'medicines', 'facilities'],
+    positions: {
+      patients: { x: 50, y: 160, width: 260, height: 420 },
+      medicine_dispensing: { x: 360, y: 160, width: 300, height: 480 },
+      patient_medicine_records: { x: 710, y: 160, width: 250, height: 300 },
+      inventory: { x: 710, y: 480, width: 250, height: 240 },
+      medicines: { x: 990, y: 180, width: 150, height: 240 },
+      facilities: { x: 990, y: 450, width: 150, height: 240 }
+    }
+  },
+  {
+    id: 'page_programs',
+    name: '6. Programs, SLR Forecasting & Auditing',
+    domainId: 'programs',
+    title: 'PRDS — Health Outreach, SLR Demand Forecasting & Audit Logging',
+    tables: ['other_programs', 'program_medicines', 'forecasting', 'notifications', 'activity_logs', 'medicines'],
+    positions: {
+      other_programs: { x: 60, y: 160, width: 260, height: 280 },
+      program_medicines: { x: 60, y: 480, width: 260, height: 200 },
+      forecasting: { x: 380, y: 220, width: 260, height: 260 },
+      medicines: { x: 380, y: 520, width: 260, height: 200 },
+      notifications: { x: 700, y: 160, width: 240, height: 240 },
+      activity_logs: { x: 700, y: 440, width: 240, height: 250 }
+    }
+  }
+];
+
+// Generate Draw.io Multi-Page XML
+export function generateDrawioXml() {
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="Electron" agent="PRDS-Schema-Visualizer-Monochrome" version="24.0.0" type="device">
+`;
+
+  // 1. Tabloid / Spacious Page (17×11 in) — Ultra clear, wide channels, zero clutter
+  xml += generateDiagramXml('master_tabloid', 'PRDS Master (Tabloid 11x17 in • Extra Spacious)', TABLES, RELATIONSHIPS, TABLOID_POSITIONS, {
+    title: 'PHARMACEUTICAL RESOURCES DISTRIBUTION SYSTEM (PRDS) — ARCHITECTURE MASTER',
+    subtitle: 'City Health Office (CHO) of Naga, Cebu — Tabloid (11 × 17 in • 1700 × 1100 pt) • Clear Orthogonal Lines & Uncluttered Layout',
+    width: 1700,
+    height: 1100,
+    showLegend: true
+  });
+
+  // 2. Long Bond Paper Page (8.5×13 in) — Philippine Folio
+  xml += generateDiagramXml('master_long', 'PRDS Master (Long Bond 8.5x13 in • PH Folio)', TABLES, RELATIONSHIPS, LONG_BOND_POSITIONS, {
+    title: 'PHARMACEUTICAL RESOURCES DISTRIBUTION SYSTEM (PRDS)',
+    subtitle: 'City Health Office (CHO) of Naga, Cebu — Long Bond Paper (8.5 × 13 in / 216 × 330 mm) • Monochrome',
+    width: 1300,
+    height: 850,
+    showLegend: true
+  });
+
+  // 3. A4 Landscape Page (297×210 mm)
+  xml += generateDiagramXml('master_a4', 'PRDS Master (A4 Landscape 297x210 mm)', TABLES, RELATIONSHIPS, A4_POSITIONS, {
+    title: 'PHARMACEUTICAL RESOURCES DISTRIBUTION SYSTEM (PRDS)',
+    subtitle: 'City Health Office (CHO) of Naga, Cebu — ISO 216 A4 Landscape (297 × 210 mm) • Monochrome',
+    width: 1169,
+    height: 827,
+    showLegend: true
+  });
+
+  // 4. Domain Specific Pages
+  for (const page of DOMAIN_PAGES) {
+    const pageTables = TABLES.filter(t => page.tables.includes(t.name));
+    const pageRels = RELATIONSHIPS.filter(r => page.tables.includes(r.from) && page.tables.includes(r.to));
+    xml += generateDiagramXml(page.id, page.name, pageTables, pageRels, page.positions, {
+      title: page.title,
+      subtitle: `Domain Scope: ${DOMAINS[page.domainId]?.name || 'Domain'} — A4 Landscape • High Legibility`,
+      width: 1169,
+      height: 827,
+      showLegend: false
+    });
+  }
+
+  xml += `</mxfile>`;
+  return xml;
+}
+
+function generateDiagramXml(diagramId, diagramName, tables, relationships, positions, options) {
+  const w = options.width || 1169;
+  const h = options.height || 827;
+
+  let dXml = `  <diagram id="${diagramId}" name="${xmlEscape(diagramName)}">
+    <mxGraphModel dx="${w}" dy="${h}" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${w}" pageHeight="${h}" background="#ffffff" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+`;
+
+  // Title Banner
+  dXml += `        <mxCell id="header_banner_${diagramId}" value="&lt;b style=&quot;font-size:16px;color:#000000;&quot;&gt;${xmlEscape(options.title)}&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:11px;color:#333333;&quot;&gt;${xmlEscape(options.subtitle)}&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;spacingLeft=16;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="35" y="15" width="${w - 70}" height="44" as="geometry" />
+        </mxCell>
+`;
+
+  // Draw Tables
+  for (const table of tables) {
+    const pos = positions[table.name];
+    if (!pos) continue;
+
+    const tableId = `tbl_${diagramId}_${table.name}`;
+    const headerValue = `&lt;b&gt;${table.name}&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9.5px;font-weight:normal;opacity:0.9;&quot;&gt;${xmlEscape(table.subtitle)}&lt;/font&gt;`;
+    const startSize = 34;
+    const rowHeight = Math.max(17, Math.floor((pos.height - startSize) / table.columns.length));
+
+    dXml += `        <mxCell id="${tableId}" value="${headerValue}" style="swimlane;fontStyle=0;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=${startSize};horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;fillColor=#000000;fontColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;rounded=1;arcSize=4;shadow=0;fontSize=11;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="${pos.x}" y="${pos.y}" width="${pos.width}" height="${pos.height}" as="geometry" />
+        </mxCell>
+`;
+
+    let currentY = startSize;
+    table.columns.forEach((col, idx) => {
+      const colId = `${tableId}_c${idx}`;
+      let keyTag = '';
+      if (col.pk && col.fk) keyTag = '&lt;b style=&quot;color:#000000;&quot;&gt;PK,FK&lt;/b&gt;';
+      else if (col.pk) keyTag = '&lt;b style=&quot;color:#000000;&quot;&gt;PK&lt;/b&gt;';
+      else if (col.fk) keyTag = '&lt;b style=&quot;color:#000000;&quot;&gt;FK&lt;/b&gt;';
+      else if (col.uq) keyTag = '&lt;b style=&quot;color:#000000;&quot;&gt;UQ&lt;/b&gt;';
+      else keyTag = '&lt;span style=&quot;color:#71717a;&quot;&gt;•&lt;/span&gt;';
+
+      const rowBg = idx % 2 === 0 ? '#f4f4f5' : '#ffffff';
+      const colHtml = `&lt;table width=&quot;100%&quot; style=&quot;font-size:10px;font-family:Helvetica;&quot;&gt;&lt;tr&gt;&lt;td width=&quot;36&quot;&gt;${keyTag}&lt;/td&gt;&lt;td&gt;&lt;b style=&quot;color:#000000;&quot;&gt;${col.name}&lt;/b&gt;&lt;/td&gt;&lt;td align=&quot;right&quot; style=&quot;color:#52525b;&quot;&gt;${col.type}&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;`;
+
+      dXml += `        <mxCell id="${colId}" value="${colHtml}" style="text;strokeColor=none;fillColor=${rowBg};align=left;verticalAlign=middle;spacingLeft=6;spacingRight=6;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" vertex="1" parent="${tableId}">
+          <mxGeometry y="${currentY}" width="${pos.width}" height="${rowHeight}" as="geometry" />
+        </mxCell>
+`;
+      currentY += rowHeight;
+    });
+  }
+
+  // Draw Legend
+  if (options.showLegend && positions._legend) {
+    const lPos = positions._legend;
+    const legendHtml = `&lt;b style=&quot;font-size:11px;color:#000000;&quot;&gt;ERD NOTATION &amp; KEYS&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;font-size:9.5px;color:#000000;line-height:1.4;&quot;&gt;&lt;b&gt;PK&lt;/b&gt; Primary Key (UUID)&lt;br&gt;&lt;b&gt;FK&lt;/b&gt; Foreign Key Target&lt;br&gt;&lt;b&gt;UQ&lt;/b&gt; Unique Constraint&lt;br&gt;———&lt;b&gt;—&amp;gt;&lt;/b&gt; 1-to-Many Crow&apos;s Foot&lt;br&gt;&lt;span style=&quot;color:#52525b;&quot;&gt;Format: ${w} × ${h} pt&lt;/span&gt;&lt;/div&gt;`;
+    dXml += `        <mxCell id="erd_legend_${diagramId}" value="${legendHtml}" style="swimlane;startSize=22;align=center;verticalAlign=top;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;rounded=1;shadow=0;fontSize=10;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="${lPos.x}" y="${lPos.y}" width="${lPos.width}" height="${lPos.height}" as="geometry" />
+        </mxCell>
+`;
+  }
+
+  // Draw Connectors (Orthogonal lines with Crow's Foot markers)
+  for (const rel of relationships) {
+    const sourceTableId = `tbl_${diagramId}_${rel.from}`;
+    const targetTableId = `tbl_${diagramId}_${rel.to}`;
+
+    if (!tables.some(t => t.name === rel.from) || !tables.some(t => t.name === rel.to)) {
+      continue;
+    }
+
+    const edgeId = `edge_${diagramId}_${rel.from}_${rel.to}_${rel.toCol}`;
+    dXml += `        <mxCell id="${edgeId}" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;startArrow=ERmandOne;startFill=0;endArrow=ERmany;endFill=0;strokeColor=#000000;strokeWidth=1.5;" edge="1" parent="1" source="${sourceTableId}" target="${targetTableId}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+`;
+  }
+
+  dXml += `      </root>
+    </mxGraphModel>
+  </diagram>
+`;
+  return dXml;
+}
+
+// Generate Interactive HTML Visualizer with Paper Sizes, Line Controls, Density Switcher, and Organized Sorting
+export function generateHtmlVisualizer() {
+  const jsonData = JSON.stringify({
+    paperSizes: PAPER_SIZES,
+    domains: DOMAINS,
+    tables: TABLES,
+    relationships: RELATIONSHIPS,
+    positions: {
+      tabloid: TABLOID_POSITIONS,
+      long: LONG_BOND_POSITIONS,
+      a4: A4_POSITIONS,
+      short: A4_POSITIONS, // reuses A4 base with scaling
+      a3: TABLOID_POSITIONS
+    },
+    domainPages: DOMAIN_PAGES
+  });
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRDS Database Schema Visualizer — Professional Monochrome</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --card-bg: #18181b;
+      --border-dark: #27272a;
+      --border-light: #3f3f46;
+      --text-white: #ffffff;
+      --text-muted: #a1a1aa;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: #000000;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Organized Control Header */
+    header.toolbar-container {
+      background: #09090b;
+      border-bottom: 1px solid #27272a;
+      display: flex;
+      flex-direction: column;
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    /* Top Row: Brand & Primary Actions */
+    .toolbar-top-row {
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      border-bottom: 1px solid #18181b;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 30px;
+      height: 30px;
+      background: #ffffff;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 16px;
+      color: #000000;
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-badge {
+      font-size: 10px;
+      font-weight: 600;
+      background: #27272a;
+      color: #d4d4d8;
+      padding: 2px 7px;
+      border-radius: 4px;
+      border: 1px solid #3f3f46;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease-in-out;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn-secondary {
+      background: #18181b;
+      color: #ffffff;
+      border-color: #3f3f46;
+    }
+
+    .btn-secondary:hover {
+      background: #27272a;
+      border-color: #71717a;
+    }
+
+    .btn-primary {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: #e4e4e7;
+    }
+
+    /* Second Row: Organized Filter & Display Control Groups */
+    .controls-row {
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: #121215;
+      overflow-x: auto;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .control-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #71717a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .control-select {
+      background: #18181b;
+      color: #f4f4f5;
+      border: 1px solid #3f3f46;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .control-select:hover {
+      border-color: #71717a;
+    }
+
+    .control-select:focus {
+      border-color: #ffffff;
+    }
+
+    .divider {
+      width: 1px;
+      height: 20px;
+      background: #27272a;
+      flex-shrink: 0;
+    }
+
+    .search-box {
+      position: relative;
+      width: 220px;
+    }
+
+    .search-box input {
+      width: 100%;
+      background: #18181b;
+      border: 1px solid #3f3f46;
+      color: #ffffff;
+      padding: 5px 10px 5px 28px;
+      border-radius: 5px;
+      font-size: 12px;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .search-box input:focus {
+      border-color: #ffffff;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #71717a;
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    /* Main Workspace */
+    .workspace {
+      display: flex;
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      background-color: #121215;
+      background-image: radial-gradient(circle, #27272a 1px, transparent 1px);
+      background-size: 20px 20px;
+      overflow: hidden;
+      cursor: grab;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .canvas-container:active {
+      cursor: grabbing;
+    }
+
+    /* Physical Paper Canvas Sheet */
+    .paper-sheet {
+      position: absolute;
+      background: #ffffff;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1.5px #000000;
+      transform-origin: 0 0;
+      border-radius: 2px;
+      overflow: visible;
+      transition: width 0.2s, height 0.2s;
+    }
+
+    .paper-watermark {
+      position: absolute;
+      right: 20px;
+      bottom: 12px;
+      font-size: 10px;
+      color: #71717a;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      pointer-events: none;
+    }
+
+    /* Zoom Widget */
+    .zoom-widget {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      background: #09090b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+      z-index: 40;
+    }
+
+    .zoom-btn {
+      background: #18181b;
+      color: #ffffff;
+      border: 1px solid #3f3f46;
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .zoom-btn:hover {
+      background: #27272a;
+      border-color: #71717a;
+    }
+
+    .zoom-text {
+      font-size: 12px;
+      color: #ffffff;
+      font-weight: 600;
+      min-width: 44px;
+      text-align: center;
+    }
+
+    /* Inspector Drawer */
+    .inspector-drawer {
+      width: 360px;
+      background: #ffffff;
+      border-left: 2px solid #000000;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      z-index: 45;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+    }
+
+    .inspector-drawer.open {
+      transform: translateX(0);
+    }
+
+    .inspector-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #000000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #000000;
+      color: #ffffff;
+    }
+
+    .inspector-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .inspector-close {
+      background: none;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      color: #ffffff;
+      line-height: 1;
+    }
+
+    .inspector-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .inspector-section {
+      margin-bottom: 20px;
+    }
+
+    .inspector-section h4 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #000000;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .inspector-col-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      border-bottom: 1px solid #e4e4e7;
+    }
+
+    .badge-pk, .badge-fk, .badge-uq {
+      background: #000000;
+      color: #ffffff;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-weight: bold;
+      font-size: 9.5px;
+    }
+
+    .badge-fk {
+      background: #3f3f46;
+    }
+
+    .badge-uq {
+      background: #71717a;
+    }
+
+    /* SVG Diagram Styling */
+    svg.erd-svg {
+      width: 100%;
+      height: 100%;
+      user-select: none;
+    }
+
+    .table-group {
+      cursor: pointer;
+      transition: filter 0.2s, opacity 0.2s;
+    }
+
+    .table-group:hover rect.table-bg {
+      stroke-width: 2.5px;
+    }
+
+    .table-group.selected rect.table-bg {
+      stroke: #000000 !important;
+      stroke-width: 3.5px;
+      filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.4));
+    }
+
+    .table-group.dimmed {
+      opacity: 0.2;
+    }
+
+    /* Relationship Lines Styling */
+    .rel-line {
+      fill: none;
+      stroke: #000000;
+      transition: stroke-width 0.2s, opacity 0.2s;
+    }
+
+    .rel-line:hover {
+      stroke-width: 4px !important;
+      filter: drop-shadow(0 0 3px rgba(0,0,0,0.5));
+    }
+
+    .rel-line.active {
+      stroke-width: 3.5px !important;
+      stroke-dasharray: 6 3;
+      animation: dash 1s linear infinite;
+    }
+
+    .rel-line.dimmed {
+      opacity: 0.08;
+    }
+
+    .rel-line.hidden-mode {
+      display: none;
+    }
+
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -18;
+      }
+    }
+
+    /* Print Stylesheet */
+    @media print {
+      @page {
+        margin: 8mm;
+      }
+
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        overflow: visible !important;
+        height: auto !important;
+      }
+
+      header.toolbar-container, .zoom-widget, .inspector-drawer {
+        display: none !important;
+      }
+
+      .workspace, .canvas-container {
+        position: static !important;
+        display: block !important;
+        overflow: visible !important;
+        background: none !important;
+      }
+
+      .paper-sheet {
+        position: static !important;
+        transform: none !important;
+        box-shadow: none !important;
+        width: 100% !important;
+        height: 100% !important;
+        border: none !important;
+      }
+
+      svg.erd-svg {
+        width: 100% !important;
+        height: auto !important;
+      }
+    }
+  </style>
+  <style id="dynamicPrintStyle"></style>
+</head>
+<body>
+
+  <!-- Top Organized Header -->
+  <header class="toolbar-container">
+    <!-- Top Row: Brand & Actions -->
+    <div class="toolbar-top-row">
+      <div class="brand-section">
+        <div class="brand-logo">P</div>
+        <div>
+          <div class="brand-title">
+            PRDS Schema Visualizer
+            <span class="brand-badge">Monochrome</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar-actions">
+        <button class="btn btn-secondary" id="btnFit" title="Fit to Screen Canvas">Fit to Canvas</button>
+        <button class="btn btn-secondary" id="btnPrint" title="Print to Selected Paper Size">🖨️ Print Sheet</button>
+        <button class="btn btn-secondary" id="btnExportSvg" title="Export High-Res SVG">Export SVG</button>
+        <button class="btn btn-primary" id="btnDownloadDrawio" title="Download Draw.io Multi-Page File">📥 Download .drawio</button>
+      </div>
+    </div>
+
+    <!-- Second Row: Organized Filters, Paper Sizes & Display Controls -->
+    <div class="controls-row">
+      <!-- Paper Size Selector -->
+      <div class="control-group">
+        <span class="control-label">Paper:</span>
+        <select id="paperSelect" class="control-select">
+          <option value="tabloid">Tabloid (11 × 17 in • Extra Spacious)</option>
+          <option value="long">Long Bond Paper (8.5 × 13 in • PH Folio)</option>
+          <option value="a4" selected>A4 Landscape (297 × 210 mm)</option>
+          <option value="short">Short Bond Paper (8.5 × 11 in • Letter)</option>
+          <option value="a3">A3 Landscape (420 × 297 mm)</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- View / Domain Scope Selector -->
+      <div class="control-group">
+        <span class="control-label">View:</span>
+        <select id="viewSelect" class="control-select">
+          <option value="master">All 20 Tables (Master Architecture)</option>
+          <option value="page_core">1. Facilities & User Accounts</option>
+          <option value="page_inventory">2. Medicines Catalog & Inventory</option>
+          <option value="page_requests">3. Supply Requests & Batch Allocation</option>
+          <option value="page_transfers">4. Stock Transfers & Logistics</option>
+          <option value="page_dispensing">5. Patient Care & Walk-in Dispensing</option>
+          <option value="page_programs">6. Programs, SLR Forecasting & Auditing</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Domain Filter Dropdown -->
+      <div class="control-group">
+        <span class="control-label">Domain:</span>
+        <select id="domainSelect" class="control-select">
+          <option value="all">All Domains (20 Tables)</option>
+          <option value="core">Core Facilities & Users (3)</option>
+          <option value="inventory">Medicines & Inventory (3)</option>
+          <option value="requests">Supply Requests (3)</option>
+          <option value="transfers">Stock Transfers (3)</option>
+          <option value="dispensing">Patient Dispensing (3)</option>
+          <option value="programs">Programs & SLR (3)</option>
+          <option value="system">Alerts & Logs (2)</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Sort Tables Dropdown -->
+      <div class="control-group">
+        <span class="control-label">Sort:</span>
+        <select id="sortSelect" class="control-select">
+          <option value="workflow">System Workflow (Default)</option>
+          <option value="name_asc">Table Name (A → Z)</option>
+          <option value="domain">Domain Grouping</option>
+          <option value="cols_desc">Column Count (Highest First)</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Lines Visibility Option -->
+      <div class="control-group">
+        <span class="control-label">Lines:</span>
+        <select id="linesModeSelect" class="control-select">
+          <option value="all" selected>Show All Lines</option>
+          <option value="selected">Selected Table Only (Clean)</option>
+          <option value="none">Hide Lines</option>
+        </select>
+      </div>
+
+      <!-- Line Thickness Option -->
+      <div class="control-group">
+        <span class="control-label">Line Weight:</span>
+        <select id="lineWidthSelect" class="control-select">
+          <option value="1.5">Normal (1.5px)</option>
+          <option value="2.5" selected>Bold (2.5px • High Visibility)</option>
+          <option value="3.5">Heavy (3.5px • Prominent)</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Detail Density: Full Schema vs Keys Only -->
+      <div class="control-group">
+        <span class="control-label">Density:</span>
+        <select id="densitySelect" class="control-select">
+          <option value="full" selected>Full Attributes</option>
+          <option value="keys">Keys Only (Uncluttered PK & FK)</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Search Input -->
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Search table or column...">
+      </div>
+    </div>
+  </header>
+
+  <!-- Workspace -->
+  <div class="workspace">
+    <div class="canvas-container" id="canvasContainer">
+      <div class="paper-sheet" id="paperSheet">
+        <svg id="erdSvg" class="erd-svg" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow-many" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#000000" stroke-width="1.8" />
+            </marker>
+          </defs>
+          <g id="svgGrid"></g>
+          <g id="svgRelations"></g>
+          <g id="svgTables"></g>
+        </svg>
+        <div class="paper-watermark" id="paperWatermark">PRDS • ISO 216 A4 Landscape (297 × 210 mm) • Monochrome</div>
+      </div>
+    </div>
+
+    <!-- Zoom Widget -->
+    <div class="zoom-widget">
+      <button class="zoom-btn" id="btnZoomOut" title="Zoom Out">−</button>
+      <span class="zoom-text" id="zoomText">100%</span>
+      <button class="zoom-btn" id="btnZoomIn" title="Zoom In">+</button>
+      <button class="zoom-btn" id="btnZoomReset" title="Reset (100%)" style="font-size:11px;width:auto;padding:0 8px;">1:1</button>
+    </div>
+
+    <!-- Inspector Drawer -->
+    <div class="inspector-drawer" id="inspectorDrawer">
+      <div class="inspector-header">
+        <div>
+          <div class="inspector-title" id="inspTableName">Table Name</div>
+          <div style="font-size:11px;color:#d4d4d8;" id="inspTableDomain">Domain</div>
+        </div>
+        <button class="inspector-close" id="inspCloseBtn">×</button>
+      </div>
+      <div class="inspector-body">
+        <div class="inspector-section">
+          <h4>Business Purpose</h4>
+          <p id="inspTableDesc" style="font-size:12.5px;color:#18181b;line-height:1.5;"></p>
+        </div>
+
+        <div class="inspector-section">
+          <h4>Attributes & Types (<span id="inspColCount">0</span>)</h4>
+          <div id="inspColsList"></div>
+        </div>
+
+        <div class="inspector-section">
+          <h4>Connected Relationships</h4>
+          <div id="inspRelList" style="font-size:12px;color:#27272a;"></div>
+        </div>
+
+        <div class="inspector-section">
+          <h4>SQL Quick Reference</h4>
+          <pre id="inspSqlCode" style="background:#000000;color:#ffffff;padding:10px;border-radius:6px;font-size:11px;overflow-x:auto;"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATA = ${jsonData};
+
+    // State
+    let currentPaper = 'a4';
+    let currentView = 'master';
+    let currentDomain = 'all';
+    let currentSort = 'workflow';
+    let currentLinesMode = 'all'; // 'all', 'selected', 'none'
+    let currentLineWidth = 2.5;
+    let currentDensity = 'full'; // 'full', 'keys'
+    let selectedTable = null;
+
+    let zoomLevel = 1.0;
+    let panX = 0;
+    let panY = 0;
+    let isPanning = false;
+    let startX = 0;
+    let startY = 0;
+
+    // DOM Elements
+    const canvasContainer = document.getElementById('canvasContainer');
+    const paperSheet = document.getElementById('paperSheet');
+    const erdSvg = document.getElementById('erdSvg');
+    const svgGrid = document.getElementById('svgGrid');
+    const svgRelations = document.getElementById('svgRelations');
+    const svgTables = document.getElementById('svgTables');
+    const paperSelect = document.getElementById('paperSelect');
+    const viewSelect = document.getElementById('viewSelect');
+    const domainSelect = document.getElementById('domainSelect');
+    const sortSelect = document.getElementById('sortSelect');
+    const linesModeSelect = document.getElementById('linesModeSelect');
+    const lineWidthSelect = document.getElementById('lineWidthSelect');
+    const densitySelect = document.getElementById('densitySelect');
+    const searchInput = document.getElementById('searchInput');
+    const inspectorDrawer = document.getElementById('inspectorDrawer');
+    const zoomText = document.getElementById('zoomText');
+    const paperWatermark = document.getElementById('paperWatermark');
+    const dynamicPrintStyle = document.getElementById('dynamicPrintStyle');
+
+    function init() {
+      setupEventListeners();
+      applyPaperDimensions();
+      renderCurrentView();
+      fitToScreen();
+    }
+
+    function applyPaperDimensions() {
+      const p = DATA.paperSizes[currentPaper] || DATA.paperSizes.a4;
+      paperSheet.style.width = p.width + 'px';
+      paperSheet.style.height = p.height + 'px';
+      erdSvg.setAttribute('viewBox', \`0 0 \${p.width} \${p.height}\`);
+      paperWatermark.textContent = \`PRDS • \${p.name} • Monochrome Uncluttered Architecture\`;
+      dynamicPrintStyle.innerHTML = \`@media print { @page { size: \${p.cssPage}; margin: 8mm; } }\`;
+    }
+
+    function getSortedTables(tables) {
+      const copy = [...tables];
+      if (currentSort === 'name_asc') {
+        copy.sort((a, b) => a.name.localeCompare(b.name));
+      } else if (currentSort === 'domain') {
+        copy.sort((a, b) => a.domain.localeCompare(b.domain) || a.name.localeCompare(b.name));
+      } else if (currentSort === 'cols_desc') {
+        copy.sort((a, b) => b.columns.length - a.columns.length);
+      }
+      return copy;
+    }
+
+    function renderCurrentView() {
+      svgGrid.innerHTML = '';
+      svgRelations.innerHTML = '';
+      svgTables.innerHTML = '';
+
+      const paper = DATA.paperSizes[currentPaper] || DATA.paperSizes.a4;
+      let activeTables = [];
+      let positions = {};
+      let title = '';
+      let subtitle = '';
+
+      if (currentView === 'master') {
+        activeTables = getSortedTables(DATA.tables);
+        positions = DATA.positions[currentPaper] || DATA.positions.a4;
+        title = 'PHARMACEUTICAL RESOURCES DISTRIBUTION SYSTEM (PRDS) — DATABASE SCHEMA';
+        subtitle = \`City Health Office (CHO) of Naga, Cebu • \${paper.name} • Strict Monochrome\`;
+      } else {
+        const domainPage = DATA.domainPages.find(p => p.id === currentView);
+        if (domainPage) {
+          activeTables = DATA.tables.filter(t => domainPage.tables.includes(t.name));
+          positions = domainPage.positions;
+          title = domainPage.title;
+          subtitle = \`Scope: \${DATA.domains[domainPage.domainId]?.name || 'Domain'} • \${paper.name}\`;
+        }
+      }
+
+      // Title Banner inside SVG
+      const bannerG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      bannerG.innerHTML = \`
+        <rect x="35" y="15" width="\${paper.width - 70}" height="44" rx="4" fill="#ffffff" stroke="#000000" stroke-width="1.5" />
+        <text x="50" y="32" font-size="13.5" font-weight="700" fill="#000000" font-family="system-ui, -apple-system, sans-serif">\${title}</text>
+        <text x="50" y="48" font-size="10" font-weight="500" fill="#52525b" font-family="system-ui, -apple-system, sans-serif">\${subtitle}</text>
+      \`;
+      svgGrid.appendChild(bannerG);
+
+      // Render Tables
+      activeTables.forEach(table => {
+        const pos = positions[table.name];
+        if (!pos) return;
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'table-group');
+        g.setAttribute('id', \`g_tbl_\${table.name}\`);
+        g.setAttribute('data-name', table.name);
+        g.setAttribute('data-domain', table.domain);
+
+        const isDimmed = currentDomain !== 'all' && table.domain !== currentDomain;
+        if (isDimmed) g.classList.add('dimmed');
+
+        // Determine Columns to Display based on Density
+        let colsToRender = table.columns;
+        if (currentDensity === 'keys') {
+          colsToRender = table.columns.filter(c => c.pk || c.fk);
+          if (colsToRender.length === 0) colsToRender = [table.columns[0]];
+        }
+
+        const startSize = currentView === 'master' ? 32 : 36;
+        const calcHeight = currentDensity === 'keys' 
+          ? Math.max(90, startSize + colsToRender.length * 20)
+          : pos.height;
+        const rowHeight = Math.max(18, Math.floor((calcHeight - startSize) / colsToRender.length));
+
+        let rowsHtml = '';
+        colsToRender.forEach((col, idx) => {
+          const y = pos.y + startSize + idx * rowHeight;
+          const bg = idx % 2 === 0 ? '#f4f4f5' : '#ffffff';
+
+          let badgeText = '•';
+          let badgeWeight = 'normal';
+          if (col.pk && col.fk) { badgeText = 'PK,FK'; badgeWeight = 'bold'; }
+          else if (col.pk) { badgeText = 'PK'; badgeWeight = 'bold'; }
+          else if (col.fk) { badgeText = 'FK'; badgeWeight = 'bold'; }
+          else if (col.uq) { badgeText = 'UQ'; badgeWeight = 'bold'; }
+
+          rowsHtml += \`
+            <rect x="\${pos.x}" y="\${y}" width="\${pos.width}" height="\${rowHeight}" fill="\${bg}" />
+            <text x="\${pos.x + 8}" y="\${y + rowHeight/2 + 3.5}" font-size="9" font-weight="\${badgeWeight}" fill="#000000" font-family="system-ui, -apple-system, sans-serif">\${badgeText}</text>
+            <text x="\${pos.x + 42}" y="\${y + rowHeight/2 + 3.5}" font-size="9.5" font-weight="600" fill="#000000" font-family="system-ui, -apple-system, sans-serif">\${col.name}</text>
+            <text x="\${pos.x + pos.width - 8}" y="\${y + rowHeight/2 + 3.5}" font-size="9" fill="#52525b" text-anchor="end" font-family="monospace">\${col.type}</text>
+          \`;
+        });
+
+        g.innerHTML = \`
+          <rect class="table-bg" x="\${pos.x}" y="\${pos.y}" width="\${pos.width}" height="\${calcHeight}" rx="4" fill="#ffffff" stroke="#000000" stroke-width="1.5" />
+          <path d="M \${pos.x} \${pos.y + 4} A 4 4 0 0 1 \${pos.x + 4} \${pos.y} L \${pos.x + pos.width - 4} \${pos.y} A 4 4 0 0 1 \${pos.x + pos.width} \${pos.y + 4} L \${pos.x + pos.width} \${pos.y + startSize} L \${pos.x} \${pos.y + startSize} Z" fill="#000000" />
+          <text x="\${pos.x + pos.width/2}" y="\${pos.y + 16}" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">\${table.name}</text>
+          <text x="\${pos.x + pos.width/2}" y="\${pos.y + 28}" font-size="9" fill="#d4d4d8" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">\${table.subtitle}</text>
+          \${rowsHtml}
+        \`;
+
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectTable(table.name);
+        });
+
+        svgTables.appendChild(g);
+      });
+
+      // Master Legend Box
+      if (currentView === 'master' && positions._legend) {
+        const l = positions._legend;
+        const legG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        legG.innerHTML = \`
+          <rect x="\${l.x}" y="\${l.y}" width="\${l.width}" height="\${l.height}" rx="4" fill="#ffffff" stroke="#000000" stroke-width="1.5" />
+          <rect x="\${l.x}" y="\${l.y}" width="\${l.width}" height="22" rx="4" fill="#000000" />
+          <text x="\${l.x + l.width/2}" y="\${l.y + 15}" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">ERD NOTATION &amp; KEYS</text>
+          
+          <text x="\${l.x + 12}" y="\${l.y + 40}" font-size="9.5" font-weight="700" fill="#000000">PK</text>
+          <text x="\${l.x + 36}" y="\${l.y + 40}" font-size="9.5" fill="#000000">Primary Key (UUID)</text>
+
+          <text x="\${l.x + 12}" y="\${l.y + 58}" font-size="9.5" font-weight="700" fill="#000000">FK</text>
+          <text x="\${l.x + 36}" y="\${l.y + 58}" font-size="9.5" fill="#000000">Foreign Key Target</text>
+
+          <text x="\${l.x + 12}" y="\${l.y + 76}" font-size="9.5" font-weight="700" fill="#000000">UQ</text>
+          <text x="\${l.x + 36}" y="\${l.y + 76}" font-size="9.5" fill="#000000">Unique Constraint</text>
+
+          <line x1="\${l.x + 12}" y1="\${l.y + 92}" x2="\${l.x + 40}" y2="\${l.y + 92}" stroke="#000000" stroke-width="2.5" />
+          <text x="\${l.x + 48}" y="\${l.y + 95}" font-size="9" fill="#000000">1-to-Many Crow's Foot</text>
+
+          <text x="\${l.x + 12}" y="\${l.y + 115}" font-size="8.5" fill="#52525b">\${paper.name}</text>
+        \`;
+        svgGrid.appendChild(legG);
+      }
+
+      // Render Relationships
+      renderRelationships(positions, activeTables);
+    }
+
+    function renderRelationships(positions, activeTables) {
+      svgRelations.innerHTML = '';
+      if (currentLinesMode === 'none') return;
+
+      const activeNames = activeTables.map(t => t.name);
+
+      DATA.relationships.forEach((rel, idx) => {
+        if (!activeNames.includes(rel.from) || !activeNames.includes(rel.to)) return;
+
+        const pFrom = positions[rel.from];
+        const pTo = positions[rel.to];
+        if (!pFrom || !pTo) return;
+
+        let x1, y1, x2, y2;
+
+        if (pFrom.x + pFrom.width < pTo.x) {
+          x1 = pFrom.x + pFrom.width;
+          y1 = pFrom.y + 40;
+          x2 = pTo.x;
+          y2 = pTo.y + 40;
+        } else if (pTo.x + pTo.width < pFrom.x) {
+          x1 = pFrom.x;
+          y1 = pFrom.y + 50;
+          x2 = pTo.x + pTo.width;
+          y2 = pTo.y + 50;
+        } else {
+          x1 = pFrom.x + pFrom.width / 2;
+          y1 = pFrom.y < pTo.y ? pFrom.y + pFrom.height : pFrom.y;
+          x2 = pTo.x + pTo.width / 2;
+          y2 = pFrom.y < pTo.y ? pTo.y : pTo.y + pTo.height;
+        }
+
+        const midX = (x1 + x2) / 2;
+        const pathData = \`M \${x1} \${y1} C \${midX} \${y1}, \${midX} \${y2}, \${x2} \${y2}\`;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pathData);
+        path.setAttribute('class', 'rel-line');
+        path.setAttribute('id', \`rel_\${rel.from}_\${rel.to}_\${idx}\`);
+        path.setAttribute('data-from', rel.from);
+        path.setAttribute('data-to', rel.to);
+        path.setAttribute('stroke', '#000000');
+        path.setAttribute('stroke-width', currentLineWidth);
+        path.setAttribute('marker-end', 'url(#arrow-many)');
+
+        if (currentLinesMode === 'selected' && (!selectedTable || (selectedTable !== rel.from && selectedTable !== rel.to))) {
+          path.classList.add('hidden-mode');
+        }
+
+        const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        titleEl.textContent = \`\${rel.from}.\${rel.fromCol} → \${rel.to}.\${rel.toCol} (\${rel.label}) [\${rel.onDelete || 'RESTRICT'}]\`;
+        path.appendChild(titleEl);
+
+        svgRelations.appendChild(path);
+      });
+    }
+
+    function selectTable(tableName) {
+      selectedTable = tableName;
+      const allGroups = document.querySelectorAll('.table-group');
+      const allLines = document.querySelectorAll('.rel-line');
+
+      if (!tableName) {
+        allGroups.forEach(g => g.classList.remove('selected', 'dimmed'));
+        allLines.forEach(l => {
+          l.classList.remove('active', 'dimmed');
+          if (currentLinesMode === 'selected') l.classList.add('hidden-mode');
+        });
+        inspectorDrawer.classList.remove('open');
+        return;
+      }
+
+      const connectedTables = new Set([tableName]);
+      allLines.forEach(line => {
+        const f = line.getAttribute('data-from');
+        const t = line.getAttribute('data-to');
+        if (f === tableName || t === tableName) {
+          connectedTables.add(f);
+          connectedTables.add(t);
+          line.classList.add('active');
+          line.classList.remove('dimmed', 'hidden-mode');
+        } else {
+          line.classList.remove('active');
+          if (currentLinesMode === 'selected') {
+            line.classList.add('hidden-mode');
+          } else {
+            line.classList.add('dimmed');
+          }
+        }
+      });
+
+      allGroups.forEach(g => {
+        const name = g.getAttribute('data-name');
+        if (name === tableName) {
+          g.classList.add('selected');
+          g.classList.remove('dimmed');
+        } else if (connectedTables.has(name)) {
+          g.classList.remove('selected', 'dimmed');
+        } else {
+          g.classList.remove('selected');
+          g.classList.add('dimmed');
+        }
+      });
+
+      populateInspector(tableName);
+    }
+
+    function populateInspector(tableName) {
+      const table = DATA.tables.find(t => t.name === tableName);
+      if (!table) return;
+
+      const domain = DATA.domains[table.domain] || DATA.domains.core;
+
+      document.getElementById('inspTableName').textContent = table.name;
+      document.getElementById('inspTableDomain').textContent = domain.name;
+      document.getElementById('inspTableDesc').textContent = table.subtitle;
+      document.getElementById('inspColCount').textContent = table.columns.length;
+
+      const colsList = document.getElementById('inspColsList');
+      colsList.innerHTML = table.columns.map(c => \`
+        <div class="inspector-col-item">
+          <div>
+            \${c.pk ? '<span class="badge-pk">PK</span> ' : ''}
+            \${c.fk ? '<span class="badge-fk">FK</span> ' : ''}
+            \${c.uq ? '<span class="badge-uq">UQ</span> ' : ''}
+            <strong>\${c.name}</strong>
+          </div>
+          <div style="color:#52525b;font-family:monospace;">\${c.type}</div>
+        </div>
+      \`).join('');
+
+      const relsList = document.getElementById('inspRelList');
+      const outgoing = DATA.relationships.filter(r => r.from === tableName);
+      const incoming = DATA.relationships.filter(r => r.to === tableName);
+
+      let relHtml = '';
+      if (outgoing.length > 0) {
+        relHtml += '<div style="font-weight:700;margin-top:4px;color:#000000;">Parent To (1:N):</div>';
+        outgoing.forEach(r => {
+          relHtml += \`<div style="padding:2px 0;">→ <b>\${r.to}</b> via <span style="font-family:monospace;">\${r.toCol}</span></div>\`;
+        });
+      }
+      if (incoming.length > 0) {
+        relHtml += '<div style="font-weight:700;margin-top:8px;color:#000000;">Child Of (N:1):</div>';
+        incoming.forEach(r => {
+          relHtml += \`<div style="padding:2px 0;">← <b>\${r.from}</b> via <span style="font-family:monospace;">\${r.toCol}</span></div>\`;
+        });
+      }
+      relsList.innerHTML = relHtml || '<div>No direct relationships</div>';
+
+      const sqlCode = \`CREATE TABLE \${table.name} (\\n  \${table.columns.map(c => \`\${c.name} \${c.type}\${c.pk ? ' PRIMARY KEY' : ''}\${c.nn ? ' NOT NULL' : ''}\`).join(',\\n  ')}\\n);\`;
+      document.getElementById('inspSqlCode').textContent = sqlCode;
+
+      inspectorDrawer.classList.add('open');
+    }
+
+    function updateTransform() {
+      paperSheet.style.transform = \`translate(\${panX}px, \${panY}px) scale(\${zoomLevel})\`;
+      zoomText.textContent = \`\${Math.round(zoomLevel * 100)}%\`;
+    }
+
+    function fitToScreen() {
+      const containerWidth = canvasContainer.clientWidth;
+      const containerHeight = canvasContainer.clientHeight;
+      const paper = DATA.paperSizes[currentPaper] || DATA.paperSizes.a4;
+
+      const scaleX = (containerWidth - 60) / paper.width;
+      const scaleY = (containerHeight - 60) / paper.height;
+      zoomLevel = Math.min(scaleX, scaleY, 1.3);
+
+      panX = (containerWidth - paper.width * zoomLevel) / 2;
+      panY = (containerHeight - paper.height * zoomLevel) / 2;
+
+      updateTransform();
+    }
+
+    function setupEventListeners() {
+      // Pan with Mouse Drag
+      canvasContainer.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.table-group') || e.target.closest('.zoom-widget') || e.target.closest('.inspector-drawer')) return;
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        updateTransform();
+      });
+
+      window.addEventListener('mouseup', () => {
+        isPanning = false;
+      });
+
+      // Zoom with Wheel
+      canvasContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        const newZoom = Math.min(Math.max(0.2, zoomLevel + delta), 2.5);
+
+        const rect = canvasContainer.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        panX -= (mouseX - panX) * (newZoom / zoomLevel - 1);
+        panY -= (mouseY - panY) * (newZoom / zoomLevel - 1);
+        zoomLevel = newZoom;
+
+        updateTransform();
+      }, { passive: false });
+
+      // Click outside to deselect
+      canvasContainer.addEventListener('click', (e) => {
+        if (!e.target.closest('.table-group')) {
+          selectTable(null);
+        }
+      });
+
+      // Zoom Buttons
+      document.getElementById('btnZoomIn').addEventListener('click', () => {
+        zoomLevel = Math.min(2.5, zoomLevel + 0.15);
+        updateTransform();
+      });
+
+      document.getElementById('btnZoomOut').addEventListener('click', () => {
+        zoomLevel = Math.max(0.2, zoomLevel - 0.15);
+        updateTransform();
+      });
+
+      document.getElementById('btnZoomReset').addEventListener('click', () => {
+        zoomLevel = 1.0;
+        updateTransform();
+      });
+
+      document.getElementById('btnFit').addEventListener('click', fitToScreen);
+
+      // Paper Size Selector
+      paperSelect.addEventListener('change', (e) => {
+        currentPaper = e.target.value;
+        applyPaperDimensions();
+        renderCurrentView();
+        fitToScreen();
+      });
+
+      // View Selector
+      viewSelect.addEventListener('change', (e) => {
+        currentView = e.target.value;
+        selectTable(null);
+        renderCurrentView();
+        fitToScreen();
+      });
+
+      // Domain Filter
+      domainSelect.addEventListener('change', (e) => {
+        currentDomain = e.target.value;
+        document.querySelectorAll('.table-group').forEach(g => {
+          const domain = g.getAttribute('data-domain');
+          if (currentDomain === 'all' || domain === currentDomain) {
+            g.classList.remove('dimmed');
+          } else {
+            g.classList.add('dimmed');
+          }
+        });
+      });
+
+      // Sort Filter
+      sortSelect.addEventListener('change', (e) => {
+        currentSort = e.target.value;
+        renderCurrentView();
+      });
+
+      // Lines Visibility Mode
+      linesModeSelect.addEventListener('change', (e) => {
+        currentLinesMode = e.target.value;
+        const positions = DATA.positions[currentPaper] || DATA.positions.a4;
+        renderRelationships(positions, DATA.tables);
+      });
+
+      // Line Width Option
+      lineWidthSelect.addEventListener('change', (e) => {
+        currentLineWidth = parseFloat(e.target.value);
+        document.querySelectorAll('.rel-line').forEach(line => {
+          line.setAttribute('stroke-width', currentLineWidth);
+        });
+      });
+
+      // Density / Clutter Control
+      densitySelect.addEventListener('change', (e) => {
+        currentDensity = e.target.value;
+        renderCurrentView();
+      });
+
+      // Search Box
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        if (!query) {
+          document.querySelectorAll('.table-group').forEach(g => g.classList.remove('dimmed'));
+          return;
+        }
+
+        document.querySelectorAll('.table-group').forEach(g => {
+          const tableName = g.getAttribute('data-name');
+          const table = DATA.tables.find(t => t.name === tableName);
+          const matchTable = tableName.toLowerCase().includes(query);
+          const matchCol = table?.columns.some(c => c.name.toLowerCase().includes(query) || c.type.toLowerCase().includes(query));
+
+          if (matchTable || matchCol) {
+            g.classList.remove('dimmed');
+          } else {
+            g.classList.add('dimmed');
+          }
+        });
+      });
+
+      document.getElementById('inspCloseBtn').addEventListener('click', () => {
+        selectTable(null);
+      });
+
+      document.getElementById('btnPrint').addEventListener('click', () => {
+        window.print();
+      });
+
+      document.getElementById('btnExportSvg').addEventListener('click', () => {
+        const svgEl = document.getElementById('erdSvg');
+        const serializer = new XMLSerializer();
+        let source = serializer.serializeToString(svgEl);
+
+        if (!source.match(/^<svg[^>]+xmlns="http\\:\\/\\/www\\.w3\\.org\\/2000\\/svg"/)) {
+          source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+        }
+
+        const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(source);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = \`PRDS_ERD_\${currentView}_\${currentPaper}.svg\`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      });
+
+      document.getElementById('btnDownloadDrawio').addEventListener('click', () => {
+        const a = document.createElement('a');
+        a.href = 'prds_erd_schema_a4.drawio';
+        a.download = 'prds_erd_schema_a4.drawio';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      });
+
+      window.addEventListener('resize', fitToScreen);
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
+`;
+}
+
+// Build Runner
+function main() {
+  const rootDir = 'd:/prds';
+  const databaseDir = path.join(rootDir, 'database');
+  const docDir = path.join(rootDir, 'documentation', '2-Database');
+
+  console.log('Generating Enhanced Black & White Draw.io XML with Multi-Paper Pages...');
+  const drawioContent = generateDrawioXml();
+  const drawioDbPath = path.join(databaseDir, 'prds_erd_schema_a4.drawio');
+  const drawioDocPath = path.join(docDir, 'prds_erd_schema_a4.drawio');
+  fs.writeFileSync(drawioDbPath, drawioContent, 'utf8');
+  fs.writeFileSync(drawioDocPath, drawioContent, 'utf8');
+  console.log(`Saved: ${drawioDbPath}`);
+  console.log(`Saved: ${drawioDocPath}`);
+
+  console.log('Generating Enhanced Black & White Interactive HTML Schema Visualizer...');
+  const htmlContent = generateHtmlVisualizer();
+  const htmlDbPath = path.join(databaseDir, 'erd-visualizer.html');
+  const htmlDocPath = path.join(docDir, 'erd-visualizer.html');
+  fs.writeFileSync(htmlDbPath, htmlContent, 'utf8');
+  fs.writeFileSync(htmlDocPath, htmlContent, 'utf8');
+  console.log(`Saved: ${htmlDbPath}`);
+  console.log(`Saved: ${htmlDocPath}`);
+
+  const guideContent = `# PRDS Database Entity Relationship Diagram (ERD) & Schema Visualizer (Multi-Paper Edition)
+
+## Overview
+This directory contains the official **Black & White (Monochrome)** Entity Relationship Diagram (ERD) and interactive Schema Visualizer for the **Pharmaceutical Resources Distribution System (PRDS)** for the City Health Office (CHO) of Naga, Cebu.
+
+---
+
+## What's New in this Edition
+
+1. **Multiple Paper Sizes Supported:**
+   - **Tabloid / Ledger (11 × 17 in • 1700 × 1100 pt):** Ultra-spacious layout with 50pt wide channels between table columns, large 13pt font, and zero line collisions.
+   - **Long Bond Paper (8.5 × 13 in • 1300 × 850 pt • Philippine Folio):** Standard Philippine government/LGU bond paper dimensions.
+   - **A4 Landscape (297 × 210 mm • 1169 × 827 pt):** International standard A4 paper format.
+   - **Short Bond Paper (8.5 × 11 in • 1100 × 850 pt • US Letter):** Standard letter size.
+   - **A3 Landscape (420 × 297 mm • 1654 × 1169 pt):** Large engineering blueprint sheet.
+
+2. **Line Visibility Controls:**
+   - **Show All Lines:** Displays all 40 foreign key relationships with high-contrast orthogonal lines.
+   - **Selected Table Only:** Hides all background lines and only shows connections for the table you click/hover. Eliminates visual line clutter completely.
+   - **Line Thickness Adjuster:** Toggle between **Normal (1.5px)**, **Bold (2.5px)**, and **Heavy (3.5px)** for maximum line prominence on printouts.
+
+3. **Anti-Clutter Density Mode:**
+   - **Full Attributes:** Displays all columns, types, and constraints.
+   - **Keys Only (PK & FK):** Shrinks tables down to Table Header + Primary Keys + Foreign Keys. Cuts table height by ~60%, creating massive vertical gaps and zero text clutter.
+
+4. **Organized Sorting & Filtering:**
+   - Sort by **System Workflow**, **Table Name (A-Z)**, **Domain Grouping**, or **Column Count**.
+   - Filter by specific domain or search by table/column name.
+
+---
+
+## Files
+
+| File | Path | Purpose |
+|---|---|---|
+| **Interactive Visualizer** | [\`erd-visualizer.html\`](file:///d:/prds/database/erd-visualizer.html) | Interactive web visualizer with live paper switcher, line controls, and density toggles. |
+| **Draw.io Diagram** | [\`prds_erd_schema_a4.drawio\`](file:///d:/prds/database/prds_erd_schema_a4.drawio) | Native Draw.io file with tabs for Tabloid, Long Bond, A4, and Domain deep-dives. |
+
+---
+
+## How to Print on Different Paper Sizes
+1. Open \`erd-visualizer.html\` in Chrome or Edge.
+2. Select your desired paper size from the **Paper:** dropdown (e.g. *Tabloid*, *Long Bond Paper*, or *A4*).
+3. Under **Lines:**, select *Bold (2.5px)* or *Heavy (3.5px)* so lines stand out clearly.
+4. If you want a clean overview without cluttered text, change **Density:** to *Keys Only*.
+5. Click **🖨️ Print Sheet** (or \`Ctrl + P\`) and select your printer's paper size.
+`;
+
+  const guidePath = path.join(databaseDir, 'README_ERD.md');
+  const guideDocPath = path.join(docDir, 'PRDS_Database_ERD_Guide.md');
+  fs.writeFileSync(guidePath, guideContent, 'utf8');
+  fs.writeFileSync(guideDocPath, guideContent, 'utf8');
+  console.log(`Saved: ${guidePath}`);
+  console.log(`Saved: ${guideDocPath}`);
+
+  console.log('Build completed successfully!');
+}
+
+main();

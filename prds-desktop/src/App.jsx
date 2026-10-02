@@ -13,7 +13,8 @@ function App() {
   }, []);
 
   const [isPinned, setIsPinned] = useState(() => {
-    return localStorage.getItem("prds-titlebar-pinned") === "true";
+    const saved = localStorage.getItem("prds-titlebar-pinned");
+    return saved !== null ? saved === "true" : true;
   });
 
   const handleTogglePin = () => {

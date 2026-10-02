@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { MapContainer, Marker, Popup, TileLayer, Tooltip, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
+import {
+  AlertCircle,
+  ArrowRightLeft,
+  Boxes,
+  Building2,
+  CheckCircle2,
+  Eye,
+  MapPin,
+  X,
+} from "lucide-react";
 
 import "leaflet/dist/leaflet.css";
 
@@ -10,7 +22,11 @@ import {
   NAGA_BOUNDS_SOUTH_WEST,
   NAGA_CENTER,
 } from "@shared/utils/nagaMap";
-import { formatNumber, getFacilityStockTone } from "@shared/utils/dashboardUtils";
+import {
+  formatNumber,
+  getFacilityStockTone,
+  getStockStatus,
+} from "@shared/utils/dashboardUtils";
 
 const MIN_ZOOM = 12;
 const MAX_ZOOM = 18;
@@ -28,6 +44,10 @@ const DEMAND_TIERS = [
   { key: "medium", label: "100 – 499", color: "#f59e0b" },
   { key: "high", label: "500+", color: "#ef4444" },
 ];
+
+import { isChoFacility } from "@shared/utils/facilityUtils";
+
+export { isChoFacility };
 
 export const BASEMAP_MODES = [
   {
@@ -87,7 +107,47 @@ export const BASEMAP_MODES = [
   },
 ];
 
-const createFacilityIcon = (color, highlighted = false, isDark = false) => {
+const createFacilityIcon = (
+  color,
+  highlighted = false,
+  isDark = false,
+  isChoHub = false,
+  isPulsing = false,
+  pulseColor = "rgba(239, 68, 68, 0.65)"
+) => {
+  if (isChoHub) {
+    const highlightStyle = highlighted
+      ? "outline:3px solid #065f46;outline-offset:2px;"
+      : "";
+    const shadowStyle = isDark
+      ? "box-shadow:0 0 0 2px rgba(0,0,0,0.8), 0 4px 14px rgba(0,0,0,0.9);"
+      : "box-shadow:0 3px 12px rgba(0, 163, 108, 0.5), 0 1px 3px rgba(0,0,0,0.25);";
+
+    return L.divIcon({
+      className: "prds-map-marker-hub",
+      html: `
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;width:48px;height:52px;">
+          ${
+            isPulsing
+              ? `<span class="prds-radar-pulse" style="position:absolute;width:34px;height:34px;border-radius:9999px;background:${pulseColor};animation:prds-radar-ring 2s cubic-bezier(0.2,0,0.4,1) infinite;top:0;left:7px;pointer-events:none;"></span>`
+              : ""
+          }
+          <span style="position:relative;display:flex;width:34px;height:34px;align-items:center;justify-content:center;border-radius:9999px;background:linear-gradient(135deg, #059669 0%, #047857 100%);border:2.5px solid #ffffff;${shadowStyle}${highlightStyle}">
+            <svg style="width:18px;height:18px;fill:#ffffff;" viewBox="0 0 24 24">
+              <path d="M19 10.5h-5.5V5c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v5.5H5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5h5.5V19c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-5.5H19c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5z"/>
+            </svg>
+          </span>
+          <span style="display:inline-block;margin-top:2px;font-size:8px;font-weight:900;letter-spacing:0.06em;background:#064e3b;color:#ecfdf5;padding:1px 5px;border-radius:9999px;border:1px solid #10b981;box-shadow:0 2px 4px rgba(0,0,0,0.3);white-space:nowrap;line-height:1.2;">
+            CHO HUB
+          </span>
+        </div>
+      `,
+      iconSize: [48, 52],
+      iconAnchor: [24, 17],
+      popupAnchor: [0, -22],
+    });
+  }
+
   const highlightStyle = highlighted
     ? "outline:3px solid rgba(13,17,23,0.85);outline-offset:2px;"
     : "";
@@ -98,13 +158,20 @@ const createFacilityIcon = (color, highlighted = false, isDark = false) => {
   return L.divIcon({
     className: "prds-map-marker",
     html: `
-      <span style="display:flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:9999px;background:${color};border:2px solid #ffffff;${shadowStyle}${highlightStyle}">
-        <span style="width:7px;height:7px;border-radius:9999px;background:#0d1117;"></span>
-      </span>
+      <div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
+        ${
+          isPulsing
+            ? `<span class="prds-radar-pulse" style="position:absolute;width:24px;height:24px;border-radius:9999px;background:${pulseColor};animation:prds-radar-ring 2s cubic-bezier(0.2,0,0.4,1) infinite;top:0;left:0;pointer-events:none;"></span>`
+            : ""
+        }
+        <span style="position:relative;display:flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:9999px;background:${color};border:2px solid #ffffff;${shadowStyle}${highlightStyle}">
+          <span style="width:7px;height:7px;border-radius:9999px;background:#0d1117;"></span>
+        </span>
+      </div>
     `,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-    popupAnchor: [0, -12],
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -14],
   });
 };
 
@@ -265,6 +332,8 @@ export default function FacilityMap({
   stockStatusByFacility = {},
   inventoryRows = null,
   demandByFacility = {},
+  metricFilter = "all",
+  onMetricFilterChange = null,
   className = "h-72",
   fitToCoverage = false,
   showExpand = true,
@@ -273,12 +342,14 @@ export default function FacilityMap({
   focusPosition = null,
   initialBasemap = "light",
 }) {
+  const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [hiddenStatuses, setHiddenStatuses] = useState([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hiddenDemandKeys, setHiddenDemandKeys] = useState([]);
   const [colorMode, setColorMode] = useState("stock");
   const [basemapId, setBasemapId] = useState(initialBasemap);
+  const [inspectorFacility, setInspectorFacility] = useState(null);
   const mapRef = useRef(null);
   const isPreview = controlsMode === "preview";
 
@@ -287,6 +358,15 @@ export default function FacilityMap({
     [basemapId]
   );
   const isDark = basemapId === "satellite";
+
+  // Automatically align color mode with active metric filter
+  useEffect(() => {
+    if (metricFilter === "demand") {
+      setColorMode("demand");
+    } else if (metricFilter === "review") {
+      setColorMode("stock");
+    }
+  }, [metricFilter]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -307,11 +387,13 @@ export default function FacilityMap({
     };
   }, [isFullscreen]);
 
-  const hasDemand = Object.keys(demandByFacility).length > 0;
+  const hasDemand = Boolean(
+    demandByFacility && typeof demandByFacility === "object" && Object.keys(demandByFacility).length > 0
+  );
 
   const pinnedFacilities = useMemo(
     () =>
-      facilities.filter((facility) => {
+      (Array.isArray(facilities) ? facilities : []).filter((facility) => {
         const latitude = Number(facility.latitude);
         const longitude = Number(facility.longitude);
         return Number.isFinite(latitude) && Number.isFinite(longitude);
@@ -333,12 +415,21 @@ export default function FacilityMap({
     return pinnedFacilities.filter((facility) => {
       if (needle && !matchesQuery(facility, needle)) return false;
 
+      // Metric card filter
+      if (metricFilter === "demand") {
+        const demand = (demandByFacility || {})[facility.id] ?? 0;
+        if (demand <= 0) return false;
+      } else if (metricFilter === "review") {
+        const status = (stockStatusByFacility || {})[facility.id] || "HEALTHY";
+        if (status !== "CRITICAL" && status !== "LOW") return false;
+      }
+
       if (colorMode === "demand") {
-        const tierKey = demandTierFor(demandByFacility[facility.id] || 0).key;
+        const tierKey = demandTierFor((demandByFacility || {})[facility.id] ?? 0).key;
         return !hiddenDemandKeys.includes(tierKey);
       }
 
-      const status = stockStatusByFacility[facility.id] || "HEALTHY";
+      const status = (stockStatusByFacility || {})[facility.id] || "HEALTHY";
       return !hiddenStatuses.includes(status);
     });
   }, [
@@ -346,6 +437,7 @@ export default function FacilityMap({
     demandByFacility,
     hiddenDemandKeys,
     hiddenStatuses,
+    metricFilter,
     pinnedFacilities,
     query,
     stockStatusByFacility,
@@ -363,7 +455,7 @@ export default function FacilityMap({
   const statusCounts = useMemo(() => {
     const counts = { CRITICAL: 0, LOW: 0, WATCH: 0, HEALTHY: 0 };
     pinnedFacilities.forEach((facility) => {
-      const status = stockStatusByFacility[facility.id] || "HEALTHY";
+      const status = (stockStatusByFacility || {})[facility.id] || "HEALTHY";
       if (counts[status] !== undefined) counts[status] += 1;
     });
     return counts;
@@ -372,18 +464,28 @@ export default function FacilityMap({
   const demandCounts = useMemo(() => {
     const counts = { none: 0, low: 0, medium: 0, high: 0 };
     pinnedFacilities.forEach((facility) => {
-      const tierKey = demandTierFor(demandByFacility[facility.id] || 0).key;
+      const tierKey = demandTierFor((demandByFacility || {})[facility.id] ?? 0).key;
       counts[tierKey] += 1;
     });
     return counts;
   }, [demandByFacility, pinnedFacilities]);
 
   const stockAlertsByFacility = useMemo(() => {
-    if (!inventoryRows) return null;
+    if (!Array.isArray(inventoryRows)) return {};
 
     return inventoryRows.reduce((acc, row) => {
-      if (!row.is_below_threshold) return acc;
-      const facilityId = row.facility_id;
+      const quantity = Number(row?.quantity || 0);
+      const threshold = Number(row?.threshold || 0);
+      const isAlert =
+        row?.is_below_threshold ||
+        quantity <= threshold ||
+        ["CRITICAL", "LOW"].includes(getStockStatus(row));
+
+      if (!isAlert) return acc;
+
+      const facilityId = row?.facility_id;
+      if (!facilityId) return acc;
+
       if (!acc[facilityId]) acc[facilityId] = [];
       acc[facilityId].push(row);
       return acc;
@@ -407,7 +509,7 @@ export default function FacilityMap({
   };
 
   return (
-    <div className="relative h-full">
+    <div className="relative isolate h-full">
       <MapContainer
         ref={mapRef}
         center={NAGA_CENTER}
@@ -438,22 +540,38 @@ export default function FacilityMap({
         <FlyToFacility focus={focusPosition} />
 
         {visibleFacilities.map((facility) => {
-          const status = stockStatusByFacility[facility.id] || "HEALTHY";
-          const demand = demandByFacility[facility.id] || 0;
+          const status = (stockStatusByFacility || {})[facility.id] || "HEALTHY";
+          const demand = (demandByFacility || {})[facility.id] ?? 0;
           const color = STOCK_TIERS.find((tier) => tier.key === status)?.color || "#00a36c";
           const tone = getFacilityStockTone(status);
-          const highlighted = highlightedIds.has(facility.id);
-          const alerts = stockAlertsByFacility?.[facility.id] || [];
+          const isSelected = inspectorFacility?.id === facility.id;
+          const highlighted = isSelected || highlightedIds.has(facility.id);
+          const alerts = (stockAlertsByFacility || {})[facility.id] || [];
+          const isHub = isChoFacility(facility);
+          const isPulsing = status === "CRITICAL" || status === "LOW";
+          const pulseColor = status === "CRITICAL" ? "rgba(239, 68, 68, 0.65)" : "rgba(249, 115, 22, 0.65)";
 
           return (
             <Marker
               key={facility.id}
               position={[Number(facility.latitude), Number(facility.longitude)]}
-              icon={createFacilityIcon(color, highlighted, isDark)}
+              icon={createFacilityIcon(color, highlighted, isDark, isHub, isPulsing, pulseColor)}
+              eventHandlers={{
+                click: () => {
+                  setInspectorFacility(facility);
+                },
+              }}
             >
-              <Tooltip direction="top" offset={[0, -6]} opacity={1}>
+              <Tooltip direction="top" offset={[0, isHub ? -18 : -6]} opacity={1}>
                 <div>
-                  <p className="text-xs font-black text-[#0d1117]">{facility.facility_name}</p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs font-black text-[#0d1117]">{facility.facility_name}</p>
+                    {isHub && (
+                      <span className="rounded bg-emerald-100 px-1 text-[9px] font-black text-emerald-800">
+                        HUB
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] font-semibold text-neutral-500">
                     {colorMode === "demand"
                       ? `${formatNumber(demand)} expected use`
@@ -462,19 +580,26 @@ export default function FacilityMap({
                 </div>
               </Tooltip>
               <Popup className="prds-map-popup">
-                <div className="min-w-40 text-sm">
-                  <p className="font-black text-[#0d1117]">{facility.facility_name}</p>
+                <div className="min-w-44 text-sm">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="font-black text-[#0d1117]">{facility.facility_name}</p>
+                    {isHub && (
+                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black text-emerald-800">
+                        CHO HUB
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs font-semibold text-neutral-500">
                     {facility.facility_code} · {formatFacilityType(facility.facility_type)}
                   </p>
                   {facility.address && (
                     <p className="mt-1 text-xs font-medium text-neutral-600">{facility.address}</p>
                   )}
-                  <p className="mt-1.5">
+                  <p className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-black ${tone.className}`}>
                       {status} stock
                     </span>
-                    <span className="ml-1.5 text-xs font-semibold text-neutral-400">
+                    <span className="text-xs font-semibold text-neutral-400">
                       {formatStatus(facility.status)}
                     </span>
                   </p>
@@ -484,17 +609,17 @@ export default function FacilityMap({
                       {alerts.length > 0 ? (
                         <>
                           <p className="text-[11px] font-black uppercase tracking-wide text-red-600">
-                            Low / out of stock
+                            Low / out of stock ({alerts.length})
                           </p>
                           <ul className="mt-1 space-y-1">
-                            {alerts.slice(0, 4).map((alert) => {
+                            {alerts.slice(0, 3).map((alert) => {
                               const medicine = alert.medicine;
                               const name = [medicine?.generic_name, medicine?.dosage]
                                 .filter(Boolean)
                                 .join(" ");
 
                               return (
-                                <li key={alert.id} className="flex items-center justify-between gap-2 text-xs">
+                                <li key={alert.id || alert.batch_number || name} className="flex items-center justify-between gap-2 text-xs">
                                   <span className="min-w-0 truncate font-semibold text-neutral-700">
                                     {name || "Stock item"}
                                   </span>
@@ -505,9 +630,9 @@ export default function FacilityMap({
                               );
                             })}
                           </ul>
-                          {alerts.length > 4 && (
+                          {alerts.length > 3 && (
                             <p className="mt-1 text-[11px] font-bold text-neutral-400">
-                              +{alerts.length - 4} more
+                              +{alerts.length - 3} more
                             </p>
                           )}
                         </>
@@ -517,15 +642,25 @@ export default function FacilityMap({
                     </div>
                   )}
 
-                  {onSelectFacility && (
+                  <div className="mt-2.5 flex flex-col gap-1">
                     <button
                       type="button"
-                      onClick={() => onSelectFacility(facility)}
-                      className="mt-2 w-full rounded-lg bg-emerald-50 py-1.5 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+                      onClick={() => setInspectorFacility(facility)}
+                      className="w-full rounded-lg bg-emerald-700 py-1.5 text-xs font-black text-white transition hover:bg-emerald-800 flex items-center justify-center gap-1.5 shadow-sm"
                     >
-                      View details
+                      <Eye className="h-3.5 w-3.5" />
+                      Quick Inspect
                     </button>
-                  )}
+                    {onSelectFacility && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectFacility(facility)}
+                        className="w-full rounded-lg bg-neutral-100 py-1.5 text-xs font-black text-neutral-700 transition hover:bg-neutral-200"
+                      >
+                        Facility Profile
+                      </button>
+                    )}
+                  </div>
                 </div>
               </Popup>
             </Marker>
@@ -533,6 +668,30 @@ export default function FacilityMap({
         })}
       </MapContainer>
 
+      {/* Empty State Overlay */}
+      {visibleFacilities.length === 0 && (
+        <div className="absolute inset-x-4 top-20 z-[1150] mx-auto max-w-sm rounded-xl border border-neutral-200 bg-white/95 p-4 text-center shadow-lg backdrop-blur-md">
+          <p className="text-xs font-black text-neutral-700">No matching facilities</p>
+          <p className="mt-0.5 text-[11px] text-neutral-500">
+            {metricFilter === "review"
+              ? "No facilities currently have low or critical stock alerts."
+              : metricFilter === "demand"
+                ? "No facilities currently have recorded demand forecasts."
+                : "Try adjusting your search or legend filter."}
+          </p>
+          {metricFilter !== "all" && onMetricFilterChange && (
+            <button
+              type="button"
+              onClick={() => onMetricFilterChange("all")}
+              className="mt-2 inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+            >
+              Show all facilities
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Floating Facility Search */}
       {!isPreview && (
         <div className="absolute left-3 top-3 z-[1200] w-52">
           <div className="relative">
@@ -635,6 +794,7 @@ export default function FacilityMap({
         )}
       </div>
 
+      {/* Legend */}
       <div className={`absolute z-[1100] ${isPreview ? "bottom-2 left-2" : "bottom-3 left-3"}`}>
         {isPreview ? (
           <PreviewLegend counts={statusCounts} />
@@ -653,29 +813,239 @@ export default function FacilityMap({
         )}
       </div>
 
-      {isFullscreen && (
-        <div className="fixed inset-0 z-[2000] flex flex-col bg-white">
-          <div className="border-b border-neutral-100 px-5 py-3">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
-              City of Naga
-            </p>
-            <h2 className="text-base font-black text-[#0d1117]">Facility & Stock Map</h2>
+      {/* Slide-over Facility Quick-Inspector Drawer */}
+      {inspectorFacility && (
+        <aside
+          aria-label="Facility quick inspector"
+          className="absolute right-3 top-14 bottom-3 z-[1250] flex w-80 max-w-[calc(100%-24px)] flex-col rounded-xl border border-neutral-200/90 bg-white/95 shadow-2xl backdrop-blur-md transition-all duration-300"
+        >
+          {/* Header */}
+          <div className="relative border-b border-neutral-100 p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 pr-6">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">
+                    {inspectorFacility.facility_code}
+                  </span>
+                  {isChoFacility(inspectorFacility) && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                      <Building2 className="h-3 w-3" />
+                      CHO HUB
+                    </span>
+                  )}
+                </div>
+                <h3 className="mt-1 text-sm font-black text-[#0d1117] leading-snug truncate" title={inspectorFacility.facility_name}>
+                  {inspectorFacility.facility_name}
+                </h3>
+                <p className="mt-0.5 text-[11px] font-semibold text-neutral-500">
+                  {formatFacilityType(inspectorFacility.facility_type)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectorFacility(null)}
+                aria-label="Close inspector"
+                className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-          <div className="min-h-0 flex-1 p-4">
-            <FacilityMap
-              facilities={facilities}
-              stockStatusByFacility={stockStatusByFacility}
-              inventoryRows={inventoryRows}
-              demandByFacility={demandByFacility}
-              className="h-full"
-              initialBasemap={basemapId}
-              onExitFullscreen={() => setIsFullscreen(false)}
-              onSelectFacility={onSelectFacility}
-              focusPosition={focusPosition}
-            />
+
+          {/* Scrollable Content */}
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Location */}
+            <div className="rounded-lg bg-neutral-50 p-2.5 text-xs">
+              <div className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                <div className="min-w-0">
+                  <p className="font-semibold text-neutral-700">
+                    {inspectorFacility.address || "City of Naga, Cebu"}
+                  </p>
+                  <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                    {Number(inspectorFacility.latitude).toFixed(4)}, {Number(inspectorFacility.longitude).toFixed(4)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-neutral-100 p-2.5">
+                <p className="text-[10px] font-black uppercase text-neutral-400">Stock Status</p>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{
+                      backgroundColor:
+                        STOCK_TIERS.find(
+                          (t) => t.key === ((stockStatusByFacility || {})[inspectorFacility.id] || "HEALTHY")
+                        )?.color || "#00a36c",
+                    }}
+                  />
+                  <span className="text-xs font-black text-neutral-800">
+                    {(stockStatusByFacility || {})[inspectorFacility.id] || "HEALTHY"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-neutral-100 p-2.5">
+                <p className="text-[10px] font-black uppercase text-neutral-400">Expected Demand</p>
+                <p className="mt-1 text-xs font-black text-neutral-800">
+                  {formatNumber((demandByFacility || {})[inspectorFacility.id] ?? 0)} units
+                </p>
+              </div>
+            </div>
+
+            {/* Stock Alerts Breakdown */}
+            <div>
+              <div className="flex items-center justify-between pb-1.5">
+                <p className="text-[11px] font-black uppercase tracking-wide text-neutral-600">
+                  Stock Review Items
+                </p>
+                {((stockAlertsByFacility || {})[inspectorFacility.id] || []).length > 0 && (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-black text-red-700">
+                    {((stockAlertsByFacility || {})[inspectorFacility.id] || []).length} alert{((stockAlertsByFacility || {})[inspectorFacility.id] || []).length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+
+              {((stockAlertsByFacility || {})[inspectorFacility.id] || []).length > 0 ? (
+                <div className="space-y-2">
+                  {((stockAlertsByFacility || {})[inspectorFacility.id] || []).map((alert) => {
+                    const med = alert.medicine;
+                    const name = med?.generic_name || "Stock item";
+                    const dosage = med?.dosage || "";
+                    const brand = med?.brand_name ? `(${med.brand_name})` : "";
+                    const qty = Number(alert.quantity || 0);
+                    const thresh = Number(alert.threshold || 0);
+                    const isCrit = qty === 0 || qty <= Math.max(1, Math.floor(thresh * 0.25));
+
+                    return (
+                      <div
+                        key={alert.id || alert.batch_number || `${alert.medicine_id}-${qty}`}
+                        className="rounded-lg border border-red-100 bg-red-50/50 p-2.5 text-xs"
+                      >
+                        <div className="flex items-start justify-between gap-1.5">
+                          <p className="font-bold text-neutral-800 truncate" title={`${name} ${dosage} ${brand}`}>
+                            {name} <span className="font-normal text-neutral-500">{dosage}</span>
+                          </p>
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${isCrit ? "bg-red-600 text-white" : "bg-orange-500 text-white"}`}>
+                            {isCrit ? "CRITICAL" : "LOW"}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between text-[11px] text-neutral-600">
+                          <span>Qty: <strong className="text-red-700">{qty}</strong> / Min: {thresh}</span>
+                          {alert.batch_number && (
+                            <span className="text-neutral-400 font-mono text-[10px]">
+                              #{alert.batch_number}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-center">
+                  <CheckCircle2 className="mx-auto h-5 w-5 text-emerald-600" />
+                  <p className="mt-1 text-xs font-bold text-emerald-800">
+                    Optimal Stock Health
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-emerald-600">
+                    All monitored items are within healthy operating thresholds.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+
+          {/* Quick Actions Footer */}
+          <div className="border-t border-neutral-100 bg-neutral-50/70 p-3 space-y-1.5">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigate("/inventory", {
+                    state: {
+                      facilityId: inspectorFacility.id,
+                      facilityName: inspectorFacility.facility_name,
+                    },
+                  });
+                }}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-black text-neutral-700 shadow-xs transition hover:bg-neutral-100"
+              >
+                <Boxes className="h-3.5 w-3.5 text-emerald-700" />
+                Inventory
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigate("/transfers", {
+                    state: {
+                      destFacilityId: inspectorFacility.id,
+                      facilityName: inspectorFacility.facility_name,
+                    },
+                  });
+                }}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-black text-neutral-700 shadow-xs transition hover:bg-neutral-100"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 text-blue-700" />
+                Transfer
+              </button>
+            </div>
+
+            {onSelectFacility && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectFacility(inspectorFacility);
+                }}
+                className="w-full rounded-lg bg-emerald-700 py-2 text-xs font-black text-white shadow-xs transition hover:bg-emerald-800"
+              >
+                Open Facility Details
+              </button>
+            )}
+          </div>
+        </aside>
       )}
+
+      {isFullscreen &&
+        createPortal(
+          <div className="fixed inset-0 z-[2000] flex flex-col bg-white">
+            <div className="border-b border-neutral-100 px-5 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                  City of Naga
+                </p>
+                <h2 className="text-base font-black text-[#0d1117]">Facility & Stock Map</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-bold text-neutral-700 hover:bg-neutral-200"
+              >
+                Close Fullscreen
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 p-4">
+              <FacilityMap
+                facilities={facilities}
+                stockStatusByFacility={stockStatusByFacility}
+                inventoryRows={inventoryRows}
+                demandByFacility={demandByFacility}
+                metricFilter={metricFilter}
+                onMetricFilterChange={onMetricFilterChange}
+                className="h-full"
+                initialBasemap={basemapId}
+                onExitFullscreen={() => setIsFullscreen(false)}
+                onSelectFacility={onSelectFacility}
+                focusPosition={focusPosition}
+              />
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

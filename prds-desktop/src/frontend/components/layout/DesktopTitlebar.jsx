@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { isTauriEnvironment } from "@backend/database/sqliteClient";
 import { useAuth } from "@frontend/context/useAuth";
-import { getCachedUserSession } from "@backend/database/snapshotStore";
-import SyncStatusBadge from "../common/SyncStatusBadge";
+import { getCachedUserSession, clearUserSession } from "@backend/database/snapshotStore";
+
+const REMEMBER_SESSION_KEY = "prds_remember_session_on_exit";
 
 export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin }) {
   const { isAuthenticated, profile, signOut } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
   const [internalPinned, setInternalPinned] = useState(() => {
-    return localStorage.getItem("prds-titlebar-pinned") === "true";
+    const saved = localStorage.getItem("prds-titlebar-pinned");
+    return saved !== null ? saved === "true" : true;
   });
   const [showExitModal, setShowExitModal] = useState(false);
-  const [rememberSession, setRememberSession] = useState(false);
+  const [rememberSession, setRememberSession] = useState(() => {
+    const saved = localStorage.getItem(REMEMBER_SESSION_KEY);
+    return saved !== null ? saved === "true" : true;
+  });
   const [exitError, setExitError] = useState("");
+  const [isExiting, setIsExiting] = useState(false);
   const hideTimeoutRef = useRef(null);
+  const unlistenCloseRef = useRef(null);
   const [appWindow, setAppWindow] = useState(null);
 
   const isPinned = propIsPinned !== undefined ? propIsPinned : internalPinned;
@@ -30,8 +37,16 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
     }
   };
 
+  const openExitModal = () => {
+    const hasActiveSession = Boolean(isAuthenticated || getCachedUserSession().user);
+    const saved = localStorage.getItem(REMEMBER_SESSION_KEY);
+    setRememberSession(hasActiveSession ? (saved !== null ? saved === "true" : true) : false);
+    setExitError("");
+    setShowExitModal(true);
+    setIsVisible(true);
+  };
+
   useEffect(() => {
-    let unlistenFn = null;
     if (isTauriEnvironment()) {
       import("@tauri-apps/api/window")
         .then(async ({ getCurrentWindow }) => {
@@ -39,13 +54,11 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
           setAppWindow(win);
 
           try {
-            unlistenFn = await win.onCloseRequested((event) => {
+            const unlisten = await win.onCloseRequested((event) => {
               event.preventDefault();
-              setRememberSession(false);
-              setExitError("");
-              setShowExitModal(true);
-              setIsVisible(true);
+              openExitModal();
             });
+            unlistenCloseRef.current = unlisten;
           } catch (e) {
             console.warn("onCloseRequested setup error:", e);
           }
@@ -54,8 +67,9 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
     }
 
     return () => {
-      if (unlistenFn) {
-        unlistenFn();
+      if (unlistenCloseRef.current) {
+        unlistenCloseRef.current();
+        unlistenCloseRef.current = null;
       }
     };
   }, [isAuthenticated]);
@@ -90,34 +104,69 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
 
   const handleCloseClick = (e) => {
     e?.stopPropagation();
-    setRememberSession(false);
-    setExitError("");
-    setShowExitModal(true);
-    setIsVisible(true);
+    openExitModal();
   };
 
   const handleConfirmExit = async () => {
-    if (
-      !rememberSession &&
-      (isAuthenticated || getCachedUserSession().user || exitError)
-    ) {
+    if (isExiting) return;
+    setIsExiting(true);
+    setExitError("");
+
+    const hasActiveSession = Boolean(isAuthenticated || getCachedUserSession().user);
+
+    if (!rememberSession && hasActiveSession) {
       try {
         await signOut();
       } catch (err) {
-        console.warn("Logout error:", err);
-        setExitError("Could not sign out. Check your connection and try again.");
-        return;
+        console.warn("Network sign out failed during exit; clearing local session directly:", err);
+        try {
+          await clearUserSession();
+        } catch (clearErr) {
+          console.warn("Failed to clear local session cache:", clearErr);
+        }
+      }
+    }
+
+    // Detach close-requested listener so it cannot intercept the subsequent destroy/close
+    if (unlistenCloseRef.current) {
+      try {
+        unlistenCloseRef.current();
+        unlistenCloseRef.current = null;
+      } catch (e) {
+        console.warn("Error unlistening close request:", e);
       }
     }
 
     setShowExitModal(false);
-    if (appWindow) {
+
+    let win = appWindow;
+    if (!win && isTauriEnvironment()) {
       try {
-        await appWindow.destroy();
-      } catch {
-        await appWindow.close();
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        win = getCurrentWindow();
+      } catch (e) {
+        console.warn("Failed to retrieve current window:", e);
       }
     }
+
+    if (win) {
+      try {
+        await win.destroy();
+      } catch (err) {
+        console.warn("win.destroy() failed, falling back to win.close():", err);
+        try {
+          await win.close();
+        } catch (closeErr) {
+          console.error("Failed to close window:", closeErr);
+        }
+      }
+    } else {
+      try {
+        window.close();
+      } catch {}
+    }
+
+    setIsExiting(false);
   };
 
   const handleDoubleClick = async (e) => {
@@ -169,11 +218,6 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
 
         {/* Right: Actions & Window Controls */}
         <div className="flex items-center gap-2">
-          {/* Sync Status Badge */}
-          <div className="scale-90 origin-right">
-            <SyncStatusBadge />
-          </div>
-
           {/* Pin / Auto-Hide Toggle */}
           <button
             type="button"
@@ -280,18 +324,27 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
                   type="checkbox"
                   checked={rememberSession}
                   onChange={(event) => {
-                    setRememberSession(event.target.checked);
+                    const checked = event.target.checked;
+                    setRememberSession(checked);
                     setExitError("");
+                    localStorage.setItem(REMEMBER_SESSION_KEY, String(checked));
                   }}
                   disabled={!isAuthenticated && !getCachedUserSession().user}
-                  className="mt-0.5 h-4 w-4 accent-emerald-600"
+                  className="mt-0.5 h-4 w-4 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed"
                 />
                 <span>
                   <span className="block text-xs font-bold text-neutral-800">
                     Remember my session on this device
+                    {!isAuthenticated && !getCachedUserSession().user && (
+                      <span className="ml-1.5 text-[11px] font-normal text-neutral-400">
+                        (No active session)
+                      </span>
+                    )}
                   </span>
                   <span className="mt-1 block text-[11.5px] leading-4 text-neutral-500">
-                    Keep me signed in when PRDS opens again. Uncheck this to require a new Google or phone verification code.
+                    {rememberSession
+                      ? "Keep me signed in when PRDS opens again. You will automatically be logged in to your account."
+                      : "Clear session on exit. You will need to sign in with your phone number or Google verification code when PRDS opens again."}
                   </span>
                 </span>
               </label>
@@ -303,21 +356,33 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
               </p>
             )}
 
-            {/* Cancel Button */}
+            {/* Modal Actions */}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowExitModal(false)}
-                className="px-4 py-2 rounded-lg text-xs font-bold text-neutral-600 hover:bg-neutral-100 transition-colors cursor-pointer"
+                disabled={isExiting}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-neutral-600 hover:bg-neutral-100 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmExit}
-                className="rounded-lg bg-black px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#0d1117] cursor-pointer"
+                disabled={isExiting}
+                className="rounded-lg bg-black px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#0d1117] disabled:opacity-60 cursor-pointer flex items-center gap-1.5"
               >
-                Close Application
+                {isExiting ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Closing PRDS...</span>
+                  </>
+                ) : (
+                  <span>Close Application</span>
+                )}
               </button>
             </div>
           </div>

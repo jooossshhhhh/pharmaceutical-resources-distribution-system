@@ -5,6 +5,8 @@ import { isProfileRegistrationComplete } from "@shared/utils/authRegistrationUti
 
 export { isProfileRegistrationComplete };
 
+let isAvatarUpdatedAtSupported = false;
+
 const PROFILE_COLUMNS =
   `
     id,
@@ -36,6 +38,7 @@ const normalizeProfile = (profile) => {
 
   return {
     ...profile,
+    has_passcode: Boolean(profile.has_passcode),
     facility_name: profile.facility?.facility_name || "",
     facility_code: profile.facility?.facility_code || "",
     facility_type: profile.facility?.facility_type || "",
@@ -61,13 +64,69 @@ const fetchProfileById = async (profileId) => {
 
   const normalized = normalizeProfile(data);
   if (normalized) {
+    // Optionally fetch avatar_updated_at if available without failing
+    if (isAvatarUpdatedAtSupported !== false) {
+      try {
+        const { data: avatarMeta, error: avatarErr } = await supabase
+          .from("profiles")
+          .select("avatar_updated_at")
+          .eq("id", profileId)
+          .maybeSingle();
+        if (avatarErr) {
+          if (
+            avatarErr.code === "42703" ||
+            String(avatarErr.message || "").toLowerCase().includes("does not exist")
+          ) {
+            isAvatarUpdatedAtSupported = false;
+          }
+        } else {
+          isAvatarUpdatedAtSupported = true;
+          if (avatarMeta?.avatar_updated_at) {
+            normalized.avatar_updated_at = avatarMeta.avatar_updated_at;
+          }
+        }
+      } catch {
+        isAvatarUpdatedAtSupported = false;
+      }
+    }
+
+    // Preserve has_passcode from cached session or user_metadata if present
+    const cached = getCachedUserSession();
+    if (cached?.profile?.id === profileId && typeof cached.profile.has_passcode === "boolean") {
+      normalized.has_passcode = cached.profile.has_passcode;
+    }
+    if (cached?.user?.user_metadata?.has_passcode !== undefined) {
+      normalized.has_passcode = Boolean(cached.user.user_metadata.has_passcode);
+    }
     saveUserSession(null, normalized);
   }
   return normalized;
 };
 
-export const getProfileByIdForRegistration = (profileId) =>
-  fetchProfileById(profileId);
+export const getProfileByIdForRegistration = async (profileId, email) => {
+  const profile = await fetchProfileById(profileId);
+  if (profile) {
+    return profile;
+  }
+
+  if (email) {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(PROFILE_COLUMNS)
+        .eq("email", email)
+        .maybeSingle();
+
+      if (!error && data) {
+        return normalizeProfile(data);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+};
 
 export const getProfileById = async (profileId) => {
   if (!profileId) {
@@ -241,6 +300,10 @@ export const getSupabaseProfile = async (supabaseUser) => {
   const existingProfile = await getProfileById(supabaseUser?.id);
 
   if (existingProfile) {
+    if (supabaseUser?.user_metadata?.has_passcode !== undefined) {
+      existingProfile.has_passcode = Boolean(supabaseUser.user_metadata.has_passcode);
+    }
+
     if (
       supabaseUser?.email &&
       existingProfile.email !== supabaseUser.email
@@ -253,7 +316,13 @@ export const getSupabaseProfile = async (supabaseUser) => {
           phoneNumber: existingProfile.phone_number,
         });
 
-        return await getProfileById(supabaseUser.id);
+        const refreshed = await getProfileById(supabaseUser.id);
+        if (refreshed) {
+          if (supabaseUser?.user_metadata?.has_passcode !== undefined) {
+            refreshed.has_passcode = Boolean(supabaseUser.user_metadata.has_passcode);
+          }
+          return refreshed;
+        }
       } catch {
         return existingProfile;
       }
@@ -270,6 +339,9 @@ export const getProfileAvatarUrl = async (profileId) => {
     return "";
   }
 
+  const cached = getCachedUserSession();
+  const cachedAvatar = cached?.profile?.id === profileId ? cached.profile?.avatar_url || "" : "";
+
   try {
     const { data, error } = await supabase
       .from("profiles")
@@ -277,9 +349,9 @@ export const getProfileAvatarUrl = async (profileId) => {
       .eq("id", profileId)
       .maybeSingle();
 
-    return error ? "" : (data?.avatar_url || "");
+    return error ? cachedAvatar : (data?.avatar_url || cachedAvatar);
   } catch {
-    return "";
+    return cachedAvatar;
   }
 };
 
@@ -294,12 +366,16 @@ export const updateOwnProfileAvatar = async (avatarUrl) => {
 };
 
 export const uploadProfileAvatar = async ({ file, userId }) => {
-  const extension = (file.name.split(".").pop() || "jpg").replace(/[^a-zA-Z0-9]/g, "");
-  const path = `${userId}/avatar-${Date.now()}.${extension}`;
+  const path = `${userId}/avatar.webp`;
+  const contentType = file.type || "image/webp";
 
   const { error } = await supabase.storage
     .from(AVATAR_BUCKET)
-    .upload(path, file, { cacheControl: "3600", upsert: true });
+    .upload(path, file, {
+      contentType,
+      cacheControl: "3600",
+      upsert: true,
+    });
 
   if (error) {
     throw error;
@@ -307,7 +383,7 @@ export const uploadProfileAvatar = async ({ file, userId }) => {
 
   const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
 
-  return data?.publicUrl || "";
+  return `${data?.publicUrl || ""}?t=${Date.now()}`;
 };
 
 export const removeProfileAvatar = async ({ userId }) => {

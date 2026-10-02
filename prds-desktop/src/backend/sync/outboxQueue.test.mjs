@@ -177,3 +177,51 @@ test("new offline mutations require a signed-in owner", async () => {
     globalThis.localStorage = originalStorage;
   }
 });
+
+test("getOutboxEntries, retryMutation, and dismissMutation manage individual outbox items", async () => {
+  const { dismissMutation, getOutboxEntries, retryMutation } = await import("./outboxQueue.js");
+
+  const originalStorage = globalThis.localStorage;
+  const stored = new Map([
+    ["prds_desktop_user_session", JSON.stringify({ id: "user-1" })],
+    ["prds_desktop_user_profile", JSON.stringify({ id: "user-1" })],
+    ["prds_offline_outbox_queue", JSON.stringify([
+      { id: "item-1", user_id: "user-1", status: "PENDING", target: "patients", created_at: "2026-09-28T10:00:00Z" },
+      { id: "item-2", user_id: "user-1", status: "FAILED", target: "medicine_dispensing", error_message: "Expired batch", created_at: "2026-09-28T11:00:00Z" },
+      { id: "item-3", user_id: "user-2", status: "PENDING", target: "inventory", created_at: "2026-09-28T12:00:00Z" },
+    ])],
+  ]);
+
+  globalThis.localStorage = {
+    getItem: (key) => stored.get(key) || null,
+    setItem: (key, value) => stored.set(key, value),
+    get length() { return stored.size; },
+    key: (index) => [...stored.keys()][index] || null,
+  };
+
+  try {
+    // 1. Get entries for user-1 (sorted desc by created_at)
+    const entries = await getOutboxEntries("user-1");
+    assert.equal(entries.length, 2);
+    assert.equal(entries[0].id, "item-2");
+    assert.equal(entries[1].id, "item-1");
+
+    // 2. Retry item-2 (changes status to PENDING and clears error)
+    const retryResult = await retryMutation("item-2", "user-1");
+    assert.equal(retryResult, true);
+    const updatedEntries = await getOutboxEntries("user-1");
+    const item2 = updatedEntries.find((e) => e.id === "item-2");
+    assert.equal(item2.status, "PENDING");
+    assert.equal(item2.error_message, null);
+
+    // 3. Dismiss item-1 (removes from queue)
+    const dismissResult = await dismissMutation("item-1", "user-1");
+    assert.equal(dismissResult, true);
+    const remainingEntries = await getOutboxEntries("user-1");
+    assert.equal(remainingEntries.length, 1);
+    assert.equal(remainingEntries[0].id, "item-2");
+  } finally {
+    globalThis.localStorage = originalStorage;
+  }
+});
+

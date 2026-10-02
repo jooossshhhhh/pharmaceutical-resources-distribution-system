@@ -1,29 +1,13 @@
 const toneClasses = {
-  emerald: {
-    icon: "bg-emerald-100 text-emerald-600",
-    badge: "bg-emerald-100 text-emerald-700",
-  },
-  orange: {
-    icon: "bg-orange-100 text-orange-600",
-    badge: "bg-orange-50 text-orange-600",
-  },
-  red: {
-    icon: "bg-red-50 text-red-500",
-    badge: "bg-red-50 text-red-600",
-  },
-  blue: {
-    icon: "bg-blue-100 text-blue-600",
-    badge: "bg-blue-50 text-blue-600",
-  },
-  teal: {
-    icon: "bg-teal-100 text-teal-600",
-    badge: "bg-teal-50 text-teal-700",
-  },
+  emerald: "bg-emerald-100 text-emerald-700",
+  orange: "bg-orange-50 text-orange-600",
+  red: "bg-red-50 text-red-600",
+  blue: "bg-blue-50 text-blue-600",
+  teal: "bg-teal-50 text-teal-700",
 };
 
 export default function StatCard({
   description,
-  icon,
   isLoading = false,
   label,
   note,
@@ -44,21 +28,16 @@ export default function StatCard({
           : ""
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span
-          className={`flex h-6 w-6 items-center justify-center rounded-lg ${classes.icon}`}
-        >
-          {icon}
-        </span>
+      <div className="flex min-h-5 items-start justify-end gap-2">
         {note && (
           <span
-            className={`rounded-full px-2.5 py-1 text-xs font-black ${classes.badge}`}
+            className={`rounded-full px-2.5 py-1 text-xs font-black ${classes}`}
           >
             {note}
           </span>
         )}
       </div>
-      <p className="mt-2 text-2xl font-black leading-7 tracking-tight text-[#0d1117]">
+      <p className="mt-1 text-2xl font-black leading-7 tracking-tight text-[#0d1117]">
         {isLoading ? (
           <span className="inline-block h-7 w-16 animate-pulse rounded-md bg-neutral-100" />
         ) : (

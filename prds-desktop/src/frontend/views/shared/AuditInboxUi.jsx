@@ -9,29 +9,14 @@ export function AuditSummaryGrid({ children }) {
 
 export function AuditSummaryCard({
   count,
-  icon,
   isActive = false,
   label,
   meta,
   onClick,
-  tone = "emerald",
 }) {
-  const toneClass = {
-    amber: "bg-amber-50 text-amber-700",
-    blue: "bg-blue-50 text-blue-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    red: "bg-red-50 text-red-700",
-    slate: "bg-slate-50 text-slate-700",
-  }[tone];
-
   const content = (
     <>
-      <div className="flex items-start gap-3">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClass}`}>
-          {icon}
-        </span>
-      </div>
-      <p className="mt-4 text-2xl font-black tabular-nums text-[#0d1117]">
+      <p className="text-2xl font-black tabular-nums text-[#0d1117]">
         {count}
       </p>
       <h3 className="mt-1 text-sm font-black text-[#0d1117]">{label}</h3>

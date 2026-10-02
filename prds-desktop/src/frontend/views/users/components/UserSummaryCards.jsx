@@ -1,20 +1,3 @@
-import { AlertIcon, BanIcon, CheckIcon, UserIcon } from "./UserManagementIcons";
-
-const toneClasses = {
-  amber: "bg-amber-50 text-amber-700 ring-amber-100",
-  blue: "bg-blue-50 text-blue-700 ring-blue-100",
-  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-  neutral: "bg-neutral-50 text-neutral-700 ring-neutral-100",
-  teal: "bg-[#e8fff7] text-[#007f5f] ring-[#6be9c2]/40",
-};
-
-const iconMap = {
-  active: CheckIcon,
-  deactivated: BanIcon,
-  pending: AlertIcon,
-  total: UserIcon,
-};
-
 export default function UserSummaryCards({ onSelectStatus, statusFilter, summary }) {
   const cards = [
     {
@@ -23,7 +6,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
       id: "total",
       label: "Total Users",
       onClick: () => onSelectStatus("ALL"),
-      tone: "teal",
       value: summary.total,
     },
     {
@@ -32,7 +14,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
       id: "pending",
       label: "Pending Approval",
       onClick: () => onSelectStatus("PENDING"),
-      tone: "amber",
       value: summary.pending,
     },
     {
@@ -41,7 +22,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
       id: "active",
       label: "Active",
       onClick: () => onSelectStatus("ACTIVE"),
-      tone: "blue",
       value: summary.active,
     },
     {
@@ -50,7 +30,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
       id: "deactivated",
       label: "Deactivated",
       onClick: () => onSelectStatus("DEACTIVATED"),
-      tone: "neutral",
       value: summary.deactivated,
     },
   ];
@@ -58,30 +37,31 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => {
-        const Icon = iconMap[card.id] || UserIcon;
-
         return (
           <button
             key={card.id}
             type="button"
             onClick={card.onClick}
-            className={`group rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-              card.active ? "border-[#6be9c2] ring-2 ring-[#6be9c2]/30" : "border-neutral-200"
+            className={`group rounded-xl border bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${
+              card.active ? "border-[#00a36c] ring-2 ring-emerald-100" : "border-[#d8dadc] hover:border-slate-300"
             }`}
           >
-            <div className="flex items-start justify-between gap-3">
-              <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ring-1 ${toneClasses[card.tone]}`}>
-                <Icon />
-              </span>
-              {card.active ? (
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-2xl font-black tracking-tight text-[#0d1117] leading-none">
+                {card.value}
+              </p>
+              {card.active && (
                 <span className="rounded-full bg-[#6be9c2]/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#0d1117]">
                   Selected
                 </span>
-              ) : null}
+              )}
             </div>
-            <p className="mt-4 text-2xl font-black text-black">{card.value}</p>
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-neutral-500">{card.label}</p>
-            <p className="mt-1 line-clamp-2 text-xs font-semibold text-neutral-500">{card.description}</p>
+            <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-neutral-500">
+              {card.label}
+            </p>
+            <p className="mt-1 line-clamp-2 text-xs font-semibold text-neutral-400">
+              {card.description}
+            </p>
           </button>
         );
       })}

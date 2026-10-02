@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownAZ, ArrowDownZA } from "lucide-react";
 
 import { computeDaysOfSupply } from "@shared/utils/demandUtils";
 import {
@@ -13,15 +14,7 @@ import {
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import PaginationControls from "../../components/PaginationControls";
 
-export function MetricCard({ label, value, sub, tone, onClick, active, children, compact = false }) {
-  const toneClasses = {
-    emerald: "bg-emerald-100 text-emerald-600",
-    teal: "bg-teal-100 text-teal-600",
-    red: "bg-red-100 text-red-500",
-    orange: "bg-orange-100 text-orange-600",
-    amber: "bg-amber-100 text-amber-600",
-  };
-
+export function MetricCard({ label, value, sub, onClick, active, compact = false }) {
   const interactiveClass = onClick
     ? "cursor-pointer transition hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md hover:shadow-emerald-100"
     : "";
@@ -36,18 +29,9 @@ export function MetricCard({ label, value, sub, tone, onClick, active, children,
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
-      <div className="flex items-start justify-between gap-2.5">
-        <span
-          className={`flex items-center justify-center rounded-lg ${
-            compact ? "h-7 w-7" : "h-8 w-8"
-          } ${toneClasses[tone]}`}
-        >
-          {children}
-        </span>
-      </div>
       <p
         className={`font-black tracking-tight text-[#0d1117] ${
-          compact ? "mt-3 text-xl" : "mt-4 text-2xl"
+          compact ? "mt-1 text-xl" : "mt-1 text-2xl"
         }`}
       >
         {value}
@@ -364,18 +348,7 @@ export function InventoryTable({
           <table className="w-full min-w-[920px] text-left text-sm">
             <thead className="sticky top-0 z-10 border-y border-neutral-100 bg-[#f7f6f3] text-[11px] font-black uppercase tracking-[0.14em] text-[#42474e]">
               <tr>
-                <th className="w-[34%] px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => onSort("medicine")}
-                    className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
-                  >
-                    Medicine name
-                    <SortArrowIcon
-                      direction={sortKey === "medicine" ? sortDirection : null}
-                    />
-                  </button>
-                </th>
+                <th className="w-[34%] px-4 py-3">Medicine name</th>
                 <th className="w-[16%] px-4 py-3">Brand name</th>
                 <th className="w-[15%] px-4 py-3">Unit of Measurement</th>
                 <th className="w-[15%] px-4 py-3">
@@ -527,18 +500,7 @@ export function InventoryTable({
         <table className="min-w-[980px] w-full text-left text-sm">
           <thead className="sticky top-0 z-10 border-y border-neutral-100 bg-[#f7f6f3] text-[11px] font-black uppercase tracking-[0.14em] text-[#42474e]">
             <tr>
-              <th className="min-w-[15rem] px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => onSort("medicine")}
-                  className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
-                >
-                  Medicine
-                  <SortArrowIcon
-                    direction={sortKey === "medicine" ? sortDirection : null}
-                  />
-                </button>
-              </th>
+              <th className="min-w-[15rem] px-4 py-3">Medicine</th>
               <th className="px-4 py-3">Batch</th>
               <th className="px-4 py-3">Supplier</th>
               <th className="min-w-[12rem] px-4 py-3">
@@ -1054,19 +1016,22 @@ export function SortArrowIcon({ direction }) {
 
 export function MedicineOrderToggle({ direction = "ASC", onToggle }) {
   const nextDirection = direction === "ASC" ? "DESC" : "ASC";
+  const isAsc = direction === "ASC";
 
   return (
     <button
       type="button"
       onClick={() => onToggle(nextDirection)}
-      aria-label={`Sort medicine ${direction === "ASC" ? "Z to A" : "A to Z"}`}
-      className="group inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 text-sm font-black text-[#0d1117] shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 active:translate-y-0"
+      title={isAsc ? "Sort medicine Z to A (currently A to Z)" : "Sort medicine A to Z (currently Z to A)"}
+      aria-label={`Sort medicine ${isAsc ? "Z to A" : "A to Z"}`}
+      className="group inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 active:translate-y-0 cursor-pointer"
     >
-      <span className="transition-transform duration-300 ease-out group-hover:-translate-y-0.5">
-        <SortArrowIcon direction={direction} />
-      </span>
-      <span className="min-w-8 transition-colors duration-300">
-        {direction === "ASC" ? "A-Z" : "Z-A"}
+      <span className="transition-transform duration-200 group-hover:scale-110">
+        {isAsc ? (
+          <ArrowDownAZ className="h-4.5 w-4.5" />
+        ) : (
+          <ArrowDownZA className="h-4.5 w-4.5" />
+        )}
       </span>
     </button>
   );

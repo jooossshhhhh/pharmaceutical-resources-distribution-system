@@ -269,3 +269,72 @@ test("explains the already-registered phone error instead of forwarding raw text
     "Phone OTP expired"
   );
 });
+
+test("accurately detects offline Google identities and resolves connected Gmail login", () => {
+  const offlineIdentities = [
+    {
+      id: "google-identity",
+      user_id: "usr-pharma-2",
+      provider: "google",
+      email: "joshlroa27@gmail.com",
+      identity_data: { email: "joshlroa27@gmail.com" },
+    },
+  ];
+
+  const googleEmail = getGoogleIdentityEmail(offlineIdentities);
+  assert.equal(googleEmail, "joshlroa27@gmail.com");
+
+  const linkedGmail = getLinkedGmailEmail({
+    identities: offlineIdentities,
+    profileEmail: "joshlroa27@gmail.com",
+  });
+  assert.equal(linkedGmail, "joshlroa27@gmail.com");
+
+  const action = getLoginMethodAction({
+    hasGmailLogin: Boolean(googleEmail && linkedGmail),
+    hasPhoneLogin: false,
+  });
+  assert.deepEqual(action, { kind: "phone", label: "Add Phone Number" });
+});
+
+test("validateAvatarFile enforces 2 MB limit, allowed formats, and blocks SVG files", async () => {
+  const { validateAvatarFile, MAX_AVATAR_SIZE } = await import("./profileSettingsUtils.js");
+
+  assert.equal(validateAvatarFile(null), "Please select an image file.");
+  assert.equal(validateAvatarFile({ name: "hacked.svg", type: "image/svg+xml", size: 1000 }), "SVG images are not allowed for security reasons. Please use JPG, PNG, or WebP.");
+  assert.equal(validateAvatarFile({ name: "photo.gif", type: "image/gif", size: 1000 }), "Only JPG, PNG, or WebP images are allowed.");
+  assert.equal(validateAvatarFile({ name: "huge.jpg", type: "image/jpeg", size: MAX_AVATAR_SIZE + 10 }), "Image file must be 2 MB or smaller.");
+  assert.equal(validateAvatarFile({ name: "valid.jpg", type: "image/jpeg", size: 500 * 1024 }), "");
+  assert.equal(validateAvatarFile({ name: "valid.webp", type: "image/webp", size: 50 * 1024 }), "");
+  assert.equal(validateAvatarFile({ name: "valid.png", type: "image/png", size: 300 * 1024 }), "");
+});
+
+test("canUpdateAvatar enforces once-a-week (7-day) update cooldown", async () => {
+  const { canUpdateAvatar } = await import("./profileSettingsUtils.js");
+
+  // No previous update -> allowed
+  assert.equal(canUpdateAvatar(null).allowed, true);
+  assert.equal(canUpdateAvatar("").allowed, true);
+
+  const baseDate = new Date("2026-09-28T12:00:00Z");
+
+  // 1 day later -> blocked
+  const oneDayLater = new Date("2026-09-29T12:00:00Z");
+  const blockedState = canUpdateAvatar(baseDate, oneDayLater);
+  assert.equal(blockedState.allowed, false);
+  assert.equal(blockedState.remainingDays, 6);
+  assert.match(blockedState.message, /once a week/);
+
+  // 6 days later -> still blocked
+  const sixDaysLater = new Date("2026-10-04T11:00:00Z");
+  assert.equal(canUpdateAvatar(baseDate, sixDaysLater).allowed, false);
+
+  // Exactly 7 days later -> allowed
+  const sevenDaysLater = new Date("2026-10-05T12:00:01Z");
+  assert.equal(canUpdateAvatar(baseDate, sevenDaysLater).allowed, true);
+
+  // 10 days later -> allowed
+  const tenDaysLater = new Date("2026-10-08T12:00:00Z");
+  assert.equal(canUpdateAvatar(baseDate, tenDaysLater).allowed, true);
+});
+

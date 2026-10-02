@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
   Download,
   Filter,
   RefreshCw,
   Search,
-  TrendingUp,
 } from "lucide-react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
+import { downloadExportFile } from "../../services/downloadManager";
 import { logoutUser } from "@backend/services/auth/authService";
 import { supabase } from "@backend/client/supabase";
 import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
 import { isCurrentNetworkOnline } from "@backend/sync/networkStatus";
+import { formatUserFacingError } from "@backend/sync/syncUtils";
 import { formatDateTime, formatNumber } from "@shared/utils/dashboardUtils";
 import {
   buildCategoryForecastRows,
@@ -31,7 +29,7 @@ import MedicineTrendTable from "./components/MedicineTrendTable";
 
 const scopeRowsWithMedicine = (rows, facilityId, medicinesById) =>
   rows
-    .filter((row) => row.facility_id === facilityId)
+    .filter((row) => !facilityId || row.facility_id === facilityId)
     .map((row) => {
       const catalogMedicine = medicinesById.get(row.medicine_id);
       return {
@@ -48,6 +46,7 @@ const scopeRowsWithMedicine = (rows, facilityId, medicinesById) =>
 
 export default function ForecastingModule() {
   const { profile } = useAuth();
+  const isBhw = profile?.role === "BHW";
   const [facilities, setFacilities] = useState(() => getSnapshot(STORAGE_KEYS.FACILITIES, []));
   const [forecastRows, setForecastRows] = useState(() => getSnapshot(STORAGE_KEYS.FORECASTING, []));
   const [dispensingRows, setDispensingRows] = useState(() => getSnapshot(STORAGE_KEYS.DISPENSING_SUMMARY, []));
@@ -62,20 +61,24 @@ export default function ForecastingModule() {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [monthHorizon, setMonthHorizon] = useState(6); // 3, 6, or 12 months
   const [selectedMedicineId, setSelectedMedicineId] = useState("");
+  const [choFacilityId, setChoFacilityId] = useState(profile?.facility_id || "");
 
   const isMountedRef = useRef(true);
   const loadIdRef = useRef(0);
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const assignedFacilityId = profile?.facility_id || null;
-  const selectedFacilityId = assignedFacilityId;
+  const queryFacilityId = isBhw ? assignedFacilityId : null;
+  const selectedFacilityId = isBhw
+    ? assignedFacilityId
+    : choFacilityId || assignedFacilityId || facilities[0]?.id || null;
 
   // Load data from Supabase backend with offline fallback
   const loadForecasting = useCallback(async () => {
     const loadId = loadIdRef.current + 1;
     loadIdRef.current = loadId;
 
-    if (!selectedFacilityId) {
+    if (isBhw && !queryFacilityId) {
       setIsLoading(false);
       return;
     }
@@ -88,9 +91,9 @@ export default function ForecastingModule() {
     setIsLoading(true);
     setForecastError("");
 
-    const scope = (query) => {
-      return query.eq("facility_id", selectedFacilityId);
-    };
+    const scope = (query) => queryFacilityId
+      ? query.eq("facility_id", queryFacilityId)
+      : query;
 
     try {
       const [facilitiesResult, forecastResult, dispensingResult, inventoryResult, medicinesResult] =
@@ -156,7 +159,12 @@ export default function ForecastingModule() {
       }
 
       const activeFacilities = facilitiesResult.data || [];
-      setFacilities(activeFacilities.filter((f) => f.id === selectedFacilityId));
+      setFacilities(queryFacilityId
+        ? activeFacilities.filter((facility) => facility.id === queryFacilityId)
+        : activeFacilities);
+      if (!isBhw && activeFacilities[0]) {
+        setChoFacilityId((current) => current || assignedFacilityId || activeFacilities[0].id);
+      }
       setForecastRows(forecastResult.data || []);
       setDispensingRows(dispensingResult.data || []);
       setInventoryRows(inventoryResult.data || []);
@@ -178,12 +186,11 @@ export default function ForecastingModule() {
       console.warn("loadForecasting fetch failed, using snapshot:", error);
       const cached = getSnapshot(STORAGE_KEYS.FORECASTING, []);
       if (cached.length === 0) {
-        setForecastError(error?.message || "Unable to load forecasting analytics.");
+        setForecastError(formatUserFacingError(error, "Unable to load forecasting analytics right now. Please try again."));
       }
       setIsLoading(false);
     }
-  }, [selectedFacilityId]);
-
+  }, [assignedFacilityId, isBhw, queryFacilityId]);
   useEffect(() => {
     isMountedRef.current = true;
     loadForecasting();
@@ -194,24 +201,24 @@ export default function ForecastingModule() {
 
   // Compute analytics using Simple Linear Regression
   const scopedFacilities = useMemo(
-    () => facilities.filter((facility) => facility.id === assignedFacilityId),
-    [assignedFacilityId, facilities]
+    () => facilities.filter((facility) => facility.id === selectedFacilityId),
+    [facilities, selectedFacilityId]
   );
   const medicinesById = useMemo(
     () => new Map(catalogMedicines.map((medicine) => [medicine.id, medicine])),
     [catalogMedicines]
   );
   const scopedForecastRows = useMemo(
-    () => scopeRowsWithMedicine(forecastRows, assignedFacilityId, medicinesById),
-    [assignedFacilityId, forecastRows, medicinesById]
+    () => scopeRowsWithMedicine(forecastRows, selectedFacilityId, medicinesById),
+    [forecastRows, medicinesById, selectedFacilityId]
   );
   const scopedDispensingRows = useMemo(
-    () => scopeRowsWithMedicine(dispensingRows, assignedFacilityId, medicinesById),
-    [assignedFacilityId, dispensingRows, medicinesById]
+    () => scopeRowsWithMedicine(dispensingRows, selectedFacilityId, medicinesById),
+    [dispensingRows, medicinesById, selectedFacilityId]
   );
   const scopedInventoryRows = useMemo(
-    () => scopeRowsWithMedicine(inventoryRows, assignedFacilityId, medicinesById),
-    [assignedFacilityId, inventoryRows, medicinesById]
+    () => scopeRowsWithMedicine(inventoryRows, selectedFacilityId, medicinesById),
+    [inventoryRows, medicinesById, selectedFacilityId]
   );
 
   const categoryOptions = useMemo(
@@ -249,7 +256,7 @@ export default function ForecastingModule() {
 
   // Keep the ranked dataset small; the table paginates the first 10 rows.
   const filteredTrendRows = useMemo(() => {
-    let rows = analytics.trendingMedicines.slice(0, 20);
+    let rows = (analytics?.trendingMedicines || []).slice(0, 20);
 
     const query = searchTerm.trim().toLowerCase();
     if (query) {
@@ -261,7 +268,7 @@ export default function ForecastingModule() {
     }
 
     return rows;
-  }, [analytics.trendingMedicines, searchTerm]);
+  }, [analytics?.trendingMedicines, searchTerm]);
 
   // Set default selected medicine
   useEffect(() => {
@@ -292,30 +299,23 @@ export default function ForecastingModule() {
       historicalSeries: selectedRow.historicalSeries || [],
       forecastSeries: selectedRow.forecastSeries || [],
       slope: selectedRow.slope || 0,
-      intercept: selectedRow.intercept || selectedRow.latestHistorical || 300,
+      intercept: selectedRow.intercept || selectedRow.latestHistorical || 0,
       horizon: monthHorizon,
     });
   }, [monthHorizon, selectedRow]);
 
-  // Export CSV handler
-  const handleExportCsv = () => {
+  // Export Excel handler
+  const handleExportExcel = () => {
     const csvContent = buildForecastingCsv(
       filteredTrendRows,
       selectedFacilityLabel,
       monthHorizon
     );
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute(
-      "download",
-      `PRDS_Forecasting_${new Date().toISOString().slice(0, 10)}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadExportFile({
+      filename: `PRDS_Forecasting_${new Date().toISOString().slice(0, 10)}`,
+      csv: csvContent,
+      recordCount: filteredTrendRows.length,
+    });
   };
 
   const selectedFacilityLabel =
@@ -359,14 +359,9 @@ export default function ForecastingModule() {
         <section className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
           {/* Card 1: Total Projected Demand */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
-            <div className="flex items-center justify-between">
-              <div className="rounded-xl bg-emerald-50 p-2.5 text-[#00a36c]">
-                <BarChart3 className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-4">
+            <div>
               <p className="text-2xl font-black tracking-tight text-[#00a36c]">
-                {formatNumber(analytics.totalProjectedDemand || 24718)}
+                {formatNumber(analytics.totalProjectedDemand ?? 0)}
               </p>
               <p className="mt-1 text-xs font-bold text-slate-800">Total Projected Demand</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
@@ -377,32 +372,22 @@ export default function ForecastingModule() {
 
           {/* Card 2: Stockout Risk Items */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
-            <div className="flex items-center justify-between">
-              <div className="rounded-xl bg-amber-50 p-2.5 text-amber-600">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-4">
+            <div>
               <p className="text-2xl font-black tracking-tight text-amber-600">
-                {analytics.stockoutRiskCount || 9}
+                {analytics.stockoutRiskCount ?? 0}
               </p>
               <p className="mt-1 text-xs font-bold text-slate-800">Stockout Risk Items</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                {analytics.stockoutRiskPercent || 60}% of filtered
+                {analytics.stockoutRiskPercent ?? 0}% of filtered
               </p>
             </div>
           </div>
 
           {/* Card 3: Increasing Trend */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
-            <div className="flex items-center justify-between">
-              <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700">
-                <TrendingUp className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-4">
+            <div>
               <p className="text-2xl font-black tracking-tight text-[#0d1117]">
-                {analytics.increasingCount || 8}
+                {analytics.increasingCount ?? 0}
               </p>
               <p className="mt-1 text-xs font-bold text-slate-800">Increasing Trend</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
@@ -413,14 +398,11 @@ export default function ForecastingModule() {
 
           {/* Card 4: Avg R² */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
-            <div className="flex items-center justify-between">
-              <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
-                <Activity className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-4">
+            <div>
               <p className="text-2xl font-black tracking-tight text-blue-600">
-                {Number(analytics.avgRSquared || 0.882).toFixed(3)}
+                {analytics.avgRSquared != null && analytics.avgRSquared > 0
+                  ? Number(analytics.avgRSquared).toFixed(3)
+                  : "0.000"}
               </p>
               <p className="mt-1 text-xs font-bold text-slate-800">Avg R²</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
@@ -433,22 +415,23 @@ export default function ForecastingModule() {
         {/* 3. Filter & Horizon Toolbar */}
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8dadc] bg-white p-3 shadow-sm shadow-slate-200/40">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Facility Selector */}
-            <div className="relative inline-flex items-center">
-              <Filter className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
-              <select
-                aria-label="Facility scope"
-                disabled
-                value={selectedFacilityId}
-                className="h-9 rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs font-bold text-slate-700 outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/30 disabled:cursor-not-allowed disabled:bg-slate-50"
-              >
-                {scopedFacilities.map((fac) => (
-                  <option key={fac.id} value={fac.id}>
-                    {fac.facility_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isBhw && (
+              <div className="relative inline-flex items-center">
+                <Filter className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
+                <select
+                  aria-label="Facility scope"
+                  value={selectedFacilityId || ""}
+                  onChange={(event) => setChoFacilityId(event.target.value)}
+                  className="h-9 max-w-64 rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs font-bold text-slate-700 outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/30"
+                >
+                  {(facilities || []).map((facility) => (
+                    <option key={facility.id} value={facility.id}>
+                      {facility.facility_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Search Input */}
             <div className="relative">
@@ -483,11 +466,11 @@ export default function ForecastingModule() {
           <div>
             <button
               type="button"
-              onClick={handleExportCsv}
+              onClick={handleExportExcel}
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
             >
               <Download className="h-3.5 w-3.5 text-slate-500" />
-              Export CSV
+              Export
             </button>
           </div>
         </section>
@@ -525,7 +508,7 @@ export default function ForecastingModule() {
                     /mo · R²{" "}
                     {selectedRow?.rSquared != null
                       ? Number(selectedRow.rSquared).toFixed(3)
-                      : "0.983"}
+                      : "0.000"}
                   </p>
                 </div>
 

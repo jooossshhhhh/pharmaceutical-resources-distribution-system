@@ -294,7 +294,7 @@ export default function LocationPicker({ value = null, onChange, label = null })
         )}
       </div>
 
-      <div className="relative">
+      <div className="relative isolate">
         <MapContainer
           ref={mapRef}
           center={pinnedPosition}

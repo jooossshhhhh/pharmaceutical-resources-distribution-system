@@ -10,7 +10,7 @@ const listeners = new Set();
 let isOnlineState = typeof navigator !== "undefined" ? navigator.onLine : true;
 let pingTimerId = null;
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL;
 
 async function checkInternetConnection() {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -54,6 +54,11 @@ async function verifyAndNotify() {
 }
 
 if (typeof window !== "undefined") {
+  // Immediate connectivity verification on startup
+  setTimeout(() => {
+    verifyAndNotify();
+  }, 0);
+
   window.addEventListener("online", () => {
     verifyAndNotify();
   });
@@ -66,6 +71,16 @@ if (typeof window !== "undefined") {
   pingTimerId = setInterval(() => {
     verifyAndNotify();
   }, PING_INTERVAL_MS);
+}
+
+export function setNetworkOnlineState(status) {
+  notifyListeners(Boolean(status));
+}
+
+export async function verifyInternetConnection() {
+  const online = await checkInternetConnection();
+  notifyListeners(online);
+  return online;
 }
 
 export function subscribeNetworkStatus(callback) {

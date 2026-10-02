@@ -926,14 +926,6 @@ function ActivityDetailModal({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-200/60 hover:text-neutral-700 transition cursor-pointer"
-            aria-label="Close modal"
-          >
-            <CloseIcon className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Modal Body */}

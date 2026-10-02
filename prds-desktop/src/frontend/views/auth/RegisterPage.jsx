@@ -6,8 +6,11 @@ import { supabase } from "@backend/client/supabase";
 import {
   checkGoogleRegistrationProfile,
   getGoogleRegistrationOutcome,
+  getPasswordStrength,
   MIN_PASSWORD_LENGTH,
+  normalizePhilippinePhone,
   routeGoogleRegistrationProfile,
+  sanitizeName,
   validateRegistrationFields,
 } from "@shared/utils/authRegistrationUtils";
 import {
@@ -66,6 +69,7 @@ export default function RegisterPage() {
   const [googleAccountCheckAttempt, setGoogleAccountCheckAttempt] = useState(0);
 
   const isGoogleRegistration = Boolean(supabaseUser?.email);
+  const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
   const verifiedProfile =
     googleAccountCheck.userId === supabaseUser?.id
       ? googleAccountCheck.profile
@@ -118,7 +122,7 @@ export default function RegisterPage() {
       try {
         const { profile: existingProfile } = await checkGoogleRegistrationProfile(
           supabaseUser.id,
-          getProfileByIdForRegistration,
+          (id) => getProfileByIdForRegistration(id, supabaseUser.email),
         );
         if (!isCurrent) {
           return;
@@ -181,9 +185,12 @@ export default function RegisterPage() {
       return;
     }
 
+    const sanitizedFirstName = sanitizeName(firstNameValue);
+    const sanitizedLastName = sanitizeName(lastNameValue);
+
     const sharedError = validateRegistrationFields({
-      firstName: firstNameValue,
-      lastName: lastNameValue,
+      firstName: sanitizedFirstName,
+      lastName: sanitizedLastName,
       phoneNumber,
       facilityId: facilityIdValue,
       facilities,
@@ -192,6 +199,7 @@ export default function RegisterPage() {
       password,
       confirmPassword,
       isGoogleRegistration,
+      options: { enforceComplexity: true },
     });
 
     if (sharedError) {
@@ -205,7 +213,7 @@ export default function RegisterPage() {
       if (isGoogleRegistration) {
         const { profile: existingProfile } = await checkGoogleRegistrationProfile(
           supabaseUser.id,
-          getProfileByIdForRegistration,
+          (id) => getProfileByIdForRegistration(id, supabaseUser.email),
         );
         const routeResult = await routeGoogleRegistrationProfile(existingProfile, {
           logout: logoutUser,
@@ -227,8 +235,8 @@ export default function RegisterPage() {
         await createGoogleProfile({
           email: supabaseUser.email,
           facilityId: facilityIdValue,
-          firstName: firstNameValue,
-          lastName: lastNameValue,
+          firstName: sanitizedFirstName,
+          lastName: sanitizedLastName,
           role: roleValue,
           userId: supabaseUser.id,
         });
@@ -245,8 +253,8 @@ export default function RegisterPage() {
 
       setPendingPhoneOtp({
         purpose: PHONE_OTP_PURPOSES.REGISTRATION,
-        firstName: firstNameValue,
-        lastName: lastNameValue,
+        firstName: sanitizedFirstName,
+        lastName: sanitizedLastName,
         facilityId: facilityIdValue,
         phoneNumber: normalizedPhoneNumber,
         role: roleValue,
@@ -365,6 +373,7 @@ export default function RegisterPage() {
                   type="text"
                   value={firstNameValue}
                   onChange={(event) => setFirstName(event.target.value)}
+                  onBlur={(event) => setFirstName(sanitizeName(event.target.value))}
                   autoComplete="given-name"
                   required
                   className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
@@ -383,6 +392,7 @@ export default function RegisterPage() {
                   type="text"
                   value={lastNameValue}
                   onChange={(event) => setLastName(event.target.value)}
+                  onBlur={(event) => setLastName(sanitizeName(event.target.value))}
                   autoComplete="family-name"
                   required
                   className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-sm outline-none transition focus:border-[#008f68] focus:ring-2 focus:ring-[#6be9c2]/35"
@@ -541,13 +551,56 @@ export default function RegisterPage() {
                     </svg>
                   </button>
                 </div>
-                <div className="mt-1 min-h-8" aria-live="polite">
-                  {(isPasswordFocused || password.length > 0) && (
-                    <p className="text-xs font-medium text-slate-500">
-                      {password.length >= MIN_PASSWORD_LENGTH
-                        ? "Minimum length met."
-                        : `Use at least ${MIN_PASSWORD_LENGTH} characters (${MIN_PASSWORD_LENGTH - password.length} more). Passphrases are accepted.`}
-                    </p>
+                <div className="mt-2 min-h-12" aria-live="polite">
+                  {password.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-slate-500">Password strength:</span>
+                        <span
+                          className={`font-bold ${
+                            passwordStrength.level === "strong"
+                              ? "text-emerald-600"
+                              : passwordStrength.level === "fair"
+                                ? "text-amber-600"
+                                : "text-rose-600"
+                          }`}
+                        >
+                          {passwordStrength.label}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 h-1.5">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            passwordStrength.level === "weak"
+                              ? "bg-rose-500"
+                              : passwordStrength.level === "fair"
+                                ? "bg-amber-500"
+                                : passwordStrength.level === "strong"
+                                  ? "bg-emerald-500"
+                                  : "bg-gray-200"
+                          }`}
+                        />
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            passwordStrength.level === "fair"
+                              ? "bg-amber-500"
+                              : passwordStrength.level === "strong"
+                                ? "bg-emerald-500"
+                                : "bg-gray-200"
+                          }`}
+                        />
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            passwordStrength.level === "strong"
+                              ? "bg-emerald-500"
+                              : "bg-gray-200"
+                          }`}
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-tight">
+                        Requires 12+ chars, uppercase, lowercase, number, and special symbol.
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -588,9 +641,23 @@ export default function RegisterPage() {
             </div>
 
             {errorMessage && !isGoogleAccountCheckFailed && (
-              <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700" role="alert">
-                {errorMessage}
-              </p>
+              <div
+                className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700"
+                role="alert"
+              >
+                <p>{errorMessage}</p>
+                {!isGoogleRegistration && (errorMessage.includes("SMS") || errorMessage.includes("Twilio") || errorMessage.includes("provider")) && (
+                  <button
+                    type="button"
+                    onClick={handleGoogleRegister}
+                    disabled={isSubmitting || isGoogleSubmitting}
+                    className="mt-2.5 inline-flex items-center gap-2 rounded-lg bg-red-100 px-3.5 py-1.5 text-xs font-bold text-red-900 transition hover:bg-red-200 cursor-pointer"
+                  >
+                    <span>Use Google Registration Instead</span>
+                    <span aria-hidden="true">&rarr;</span>
+                  </button>
+                )}
+              </div>
             )}
 
             {visibleOauthNotice && (

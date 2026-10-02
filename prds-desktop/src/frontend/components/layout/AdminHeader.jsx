@@ -6,6 +6,20 @@ import {
   updateOwnNotificationReadStatus,
 } from "@backend/services/notificationService";
 import SyncStatusBadge from "../common/SyncStatusBadge";
+import SystemPreferencesModal from "./SystemPreferencesModal";
+import DownloadsPopover from "./DownloadsPopover";
+import OpeningFileProgressModal from "./OpeningFileProgressModal";
+import {
+  clearOpeningExportState,
+  clearRecentExports,
+  getDownloadPreferences,
+  getIsExporting,
+  getOpeningExportState,
+  getRecentExports,
+  subscribeExports,
+  viewExport,
+} from "../../services/downloadManager";
+
 
 const pageTitles = {
   "/dashboard": {
@@ -52,8 +66,8 @@ const pageTitles = {
     subtitle: "Review accounts, approvals, roles, and facility assignments",
   },
   "/profile-settings": {
-    title: "Profile & Settings",
-    subtitle: "Manage your account and system preferences",
+    title: "My Profile",
+    subtitle: "Manage personal account details, credentials, and security",
   },
 };
 
@@ -61,6 +75,14 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  const [isDownloadsOpen, setIsDownloadsOpen] = useState(false);
+  const [showDownloadIcon, setShowDownloadIcon] = useState(false);
+  const [unreadExportCount, setUnreadExportCount] = useState(0);
+  const [recentExportsList, setRecentExportsList] = useState(() => getRecentExports());
+  const [isExportingFile, setIsExportingFile] = useState(() => getIsExporting());
+  const [downloadPrefs, setDownloadPrefs] = useState(() => getDownloadPreferences());
+  const [openingExport, setOpeningExport] = useState(() => getOpeningExportState());
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const [notifications, setNotifications] = useState([]);
@@ -126,6 +148,31 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
     };
   }, [profile?.id]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeExports((event) => {
+      if (event.type === "export-registered") {
+        setRecentExportsList(event.payload.allExports || []);
+        setShowDownloadIcon(true);
+        setUnreadExportCount((count) => count + 1);
+      } else if (event.type === "exports-cleared") {
+        setRecentExportsList([]);
+        setShowDownloadIcon(false);
+        setUnreadExportCount(0);
+      } else if (event.type === "export-status-changed") {
+        setIsExportingFile(Boolean(event.payload.isExporting));
+        if (event.payload.isExporting) {
+          setShowDownloadIcon(true);
+        }
+      } else if (event.type === "preferences-changed") {
+        setDownloadPrefs(event.payload);
+      } else if (event.type === "export-opening-status") {
+        setOpeningExport(event.payload);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.is_read).length,
     [notifications]
@@ -161,6 +208,24 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
     );
   };
 
+  const handleToggleDownloads = () => {
+    setIsNotificationsOpen(false);
+    if (isDownloadsOpen) {
+      setIsDownloadsOpen(false);
+      setShowDownloadIcon(false);
+      setUnreadExportCount(0);
+    } else {
+      setIsDownloadsOpen(true);
+      setUnreadExportCount(0);
+    }
+  };
+
+  const handleCloseDownloads = () => {
+    setIsDownloadsOpen(false);
+    setShowDownloadIcon(false);
+    setUnreadExportCount(0);
+  };
+
   return (
     <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-[#d8dadc] bg-[#f8f9ff] px-6 shadow-sm shadow-neutral-200/50">
       <div className="min-w-0">
@@ -182,7 +247,10 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
 
         <button
           type="button"
-          onClick={() => setIsNotificationsOpen((isOpen) => !isOpen)}
+          onClick={() => {
+            setIsDownloadsOpen(false);
+            setIsNotificationsOpen((isOpen) => !isOpen);
+          }}
           className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
           aria-label="Open notifications"
         >
@@ -194,18 +262,41 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
           )}
         </button>
 
+        {(showDownloadIcon || isExportingFile) && (
+          <button
+            type="button"
+            onClick={handleToggleDownloads}
+            className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition ${
+              isDownloadsOpen
+                ? "bg-[#e8fff7] text-[#007f5f] ring-1 ring-[#007f5f]/30"
+                : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
+            }`}
+            aria-label="Open recent exports"
+            title="Recent Exports"
+          >
+            <DownloadTrayIcon isExporting={isExportingFile} />
+            {unreadExportCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#007f5f] px-1 text-[10px] font-black text-white ring-2 ring-white">
+                {unreadExportCount}
+              </span>
+            )}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => {
             setIsNotificationsOpen(false);
-            navigate("/profile-settings");
+            setIsDownloadsOpen(false);
+            setIsPreferencesOpen(true);
           }}
           className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
-            location.pathname === "/profile-settings"
+            isPreferencesOpen
               ? "bg-[#eff4ff] text-[#0d1117] ring-1 ring-[#d8dadc]"
               : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
           }`}
-          aria-label="Open profile settings"
+          aria-label="Open system preferences"
+          title="System Preferences"
         >
           <SettingsIcon />
         </button>
@@ -337,6 +428,44 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
           </div>
         </div>
       )}
+
+      <DownloadsPopover
+        isOpen={isDownloadsOpen}
+        onClose={handleCloseDownloads}
+        exports={recentExportsList}
+        isExporting={isExportingFile}
+        openingExport={openingExport}
+        downloadPath={downloadPrefs.downloadPath}
+        onClear={() => {
+          clearRecentExports();
+          setRecentExportsList([]);
+          setIsDownloadsOpen(false);
+          setShowDownloadIcon(false);
+          setUnreadExportCount(0);
+        }}
+        onOpenSettings={() => {
+          setIsDownloadsOpen(false);
+          setShowDownloadIcon(false);
+          setIsPreferencesOpen(true);
+        }}
+      />
+
+      <OpeningFileProgressModal
+        openingState={openingExport}
+        onClose={() => clearOpeningExportState()}
+        onRetry={() => {
+          if (openingExport?.exportItem) {
+            viewExport(openingExport.exportItem, {
+              forceOpenWith: openingExport.forceOpenWith,
+            });
+          }
+        }}
+      />
+
+      <SystemPreferencesModal
+        isOpen={isPreferencesOpen}
+        onClose={() => setIsPreferencesOpen(false)}
+      />
     </header>
   );
 }
@@ -441,3 +570,24 @@ function LogoutIcon() {
     </svg>
   );
 }
+
+function DownloadTrayIcon({ isExporting }) {
+  if (isExporting) {
+    return (
+      <svg className="h-5 w-5 animate-bounce text-[#007f5f]" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+

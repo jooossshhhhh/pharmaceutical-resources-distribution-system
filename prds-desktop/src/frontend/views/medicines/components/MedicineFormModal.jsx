@@ -52,14 +52,6 @@ export default function MedicineFormModal({
                 : "Use the exact medicine details used in inventory and requests."}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
-            aria-label="Close medicine modal"
-          >
-            <XIcon />
-          </button>
         </div>
 
         <div className="prds-modal-scrollbar flex-1 overflow-y-auto px-6 py-5">
@@ -99,7 +91,6 @@ export default function MedicineFormModal({
                 onBlur={onBlur}
                 disabled={isReadOnly}
                 error={fieldErrors.brand_name}
-                placeholder="Optional"
               />
               <UnitField
                 error={fieldErrors.unit_of_measure}
@@ -148,7 +139,6 @@ export default function MedicineFormModal({
                 onChange={onChange}
                 onBlur={onBlur}
                 disabled={isReadOnly}
-                placeholder="Optional"
                 prefix="PHP"
                 className="pl-11"
                 error={fieldErrors.unit_cost}

@@ -5,16 +5,12 @@ import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import { useInventoryData } from "@backend/services/inventoryData";
 import {
-  AlertCircleIcon,
-  ClockIcon,
   DownloadIcon,
   InventoryTable,
-  LayersIcon,
   MedicineOrderToggle,
   MetricCard,
   RequestIcon,
   SearchIcon,
-  TriangleIcon,
 } from "./inventoryComponents";
 import { formatNumber } from "@shared/utils/inventoryUtils";
 import { BhwStockModal } from "./components/BhwStockModal";
@@ -62,12 +58,9 @@ export default function BhwInventoryModule() {
         <MetricCard
           label="Total Items"
           value={formatNumber(summary.totalItems)}
-          tone="emerald"
           onClick={() => toggleStockFilter("ALL")}
           active={stockFilter === "ALL"}
-        >
-          <LayersIcon />
-        </MetricCard>
+        />
         <MetricCard
           label="Critical Stock"
           value={formatNumber(summary.critical)}
@@ -76,22 +69,16 @@ export default function BhwInventoryModule() {
               ? `${formatNumber(summary.stockedOut)} fully stocked out`
               : "needs immediate restock"
           }
-          tone="red"
           onClick={() => toggleStockFilter("CRITICAL")}
           active={stockFilter === "CRITICAL"}
-        >
-          <AlertCircleIcon />
-        </MetricCard>
+        />
         <MetricCard
           label="Low Stock"
           value={formatNumber(summary.low)}
           sub="restock recommended"
-          tone="orange"
           onClick={() => toggleStockFilter("LOW")}
           active={stockFilter === "LOW"}
-        >
-          <TriangleIcon />
-        </MetricCard>
+        />
         <MetricCard
           label="Expiring Soon"
           value={formatNumber(summary.expiring)}
@@ -100,12 +87,9 @@ export default function BhwInventoryModule() {
               ? `${formatNumber(summary.expired)} already expired`
               : "within the next 30 days"
           }
-          tone="amber"
           onClick={() => toggleStockFilter("EXPIRING")}
           active={stockFilter === "EXPIRING"}
-        >
-          <ClockIcon />
-        </MetricCard>
+        />
       </div>
 
       <section className="mt-5 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
@@ -143,7 +127,7 @@ export default function BhwInventoryModule() {
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-4 text-sm font-black text-neutral-700 shadow-sm hover:bg-neutral-50"
               >
                 <DownloadIcon />
-                Export CSV
+                Export
               </button>
               <Link
                 to="/requests"

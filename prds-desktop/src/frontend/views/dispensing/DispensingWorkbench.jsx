@@ -12,26 +12,29 @@ import {
   completeWalkInDispensing,
   getClaimedPatientIds,
   getFacilityMedicineStockOverview,
+  getPatientsMonthlyClaimOverview,
   getWalkInInventory,
   searchDispensingPatients,
 } from "@backend/services/dispensingService";
+import { downloadExportFile } from "@frontend/services/downloadManager";
 import {
   buildDispensingCsv,
   buildFefoPreview,
   buildMedicineOptions,
-  downloadCsv,
   FOLLOW_UP_ACTIONS,
   formatDispensingDateTime,
   formatTransactionNumber,
   getCartLineError,
   getDispensingStepBlocker,
   getDefaultFollowUpDate,
+  getFollowUpDisplay,
   getMedicineFullLabel,
   getMedicineLabel,
 } from "@shared/utils/dispensingUtils";
 import {
   ArrowRightIcon,
   CheckIcon,
+  ChevronDownIcon,
   DispensingModal,
   FOCUS_RING,
   Input,
@@ -179,7 +182,7 @@ function ReceiptModal({ onClose, onExport, receipt }) {
             onClick={onExport}
             className={`h-10 rounded-lg border border-[#d8dadc] bg-white px-5 text-sm font-bold text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff] ${FOCUS_RING}`}
           >
-            Export CSV
+            Export
           </button>
           <button
             type="button"
@@ -194,23 +197,27 @@ function ReceiptModal({ onClose, onExport, receipt }) {
   );
 }
 
-
 export default function DispensingWorkbench() {
   const { profile } = useAuth();
   const profileFacilityId = profile?.facility_id;
 
+  // Wizard step
   const [wizardStep, setWizardStep] = useState(1);
 
   const [inventoryRows, setInventoryRows] = useState([]);
   const [isLoadingInventory, setIsLoadingInventory] = useState(true);
   const [error, setError] = useState("");
 
+  // Patient search state
   const [patientKeyword, setPatientKeyword] = useState("");
   const [patientResults, setPatientResults] = useState([]);
   const [isSearchingPatients, setIsSearchingPatients] = useState(false);
+  const [patientsOverview, setPatientsOverview] = useState(() => new Map());
   const [claimedIds, setClaimedIds] = useState(() => new Set());
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [activePatientClaim, setActivePatientClaim] = useState(null);
 
+  // Cart & dispensing state
   const [medicineKeyword, setMedicineKeyword] = useState("");
   const [cart, setCart] = useState([]);
   const [prescribedBy, setPrescribedBy] = useState("");
@@ -265,6 +272,7 @@ export default function DispensingWorkbench() {
 
     if (!term) {
       setPatientResults([]);
+      setPatientsOverview(new Map());
       setClaimedIds(new Set());
       setIsSearchingPatients(false);
       return;
@@ -277,8 +285,18 @@ export default function DispensingWorkbench() {
         keyword: term,
       });
       setPatientResults(rows);
-      const claimed = await getClaimedPatientIds(rows.map((row) => row.id));
-      setClaimedIds(new Set(claimed));
+
+      const patientIds = rows.map((row) => row.id);
+      const overviewMap = await getPatientsMonthlyClaimOverview(patientIds);
+      setPatientsOverview(overviewMap);
+
+      const blockedIds = [];
+      overviewMap.forEach((entry, pId) => {
+        if (entry.isBlocked) {
+          blockedIds.push(pId);
+        }
+      });
+      setClaimedIds(new Set(blockedIds));
     } catch (searchError) {
       setError(searchError.message || "Unable to search patients.");
     } finally {
@@ -297,7 +315,6 @@ export default function DispensingWorkbench() {
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       const heading = document.querySelector("[data-step-heading]");
-
       if (heading instanceof HTMLElement) {
         heading.focus();
       }
@@ -324,9 +341,20 @@ export default function DispensingWorkbench() {
           buildMedicineOptions(inventoryRows, "").find((entry) => entry.medicine_id === line.medicine_id) ||
           null;
 
+        const patientClaim = line.is_existing_claim
+          ? {
+              is_completed: false,
+              needed_quantity: line.needed_quantity,
+              remaining_quantity: line.remaining_quantity,
+              released_quantity: line.previous_released || 0,
+            }
+          : null;
+
         return {
           ...line,
-          error: option ? getCartLineError({ line, medicineOptions: [option] }) : "This medicine is no longer in stock.",
+          error: option
+            ? getCartLineError({ line, medicineOptions: [option], patientClaim })
+            : "This medicine is no longer in stock.",
           option,
           preview: option ? buildFefoPreview(option.batches, line.quantity) : { allocations: [], shortfall: 0 },
         };
@@ -342,7 +370,8 @@ export default function DispensingWorkbench() {
         .filter(
           (line) =>
             line.follow_up_action === FOLLOW_UP_ACTIONS.refer &&
-            Number(line.needed_quantity || 0) > Number(line.quantity || 0)
+            Number(line.needed_quantity || 0) >
+              (Number(line.previous_released || 0) + Number(line.quantity || 0))
         )
         .map((line) => line.medicine_id),
     [cart]
@@ -434,32 +463,106 @@ export default function DispensingWorkbench() {
       step: target,
     });
 
-  const selectPatient = (patient) => {
-    if (claimedIds.has(patient.id)) {
+  const selectPatient = (patient, explicitOverview = null) => {
+    const overview = explicitOverview || patientsOverview.get(patient.id);
+
+    if (overview?.isBlocked) {
       return;
     }
 
-    setCart([]);
-    setPrescribedBy("");
-    setSelectedPatient((current) => (current?.id === patient.id ? null : patient));
+    if (selectedPatient?.id === patient.id) {
+      setSelectedPatient(null);
+      setActivePatientClaim(null);
+      setCart([]);
+      setPrescribedBy("");
+      return;
+    }
+
+    setSelectedPatient(patient);
+    setActivePatientClaim(overview || null);
+
+    if (overview?.hasPartial) {
+      const pendingItems = overview.breakdown.filter((b) => !b.is_completed);
+      const initialCart = pendingItems.map((item) => {
+        const option = buildMedicineOptions(inventoryRows, "").find(
+          (entry) => entry.medicine_id === item.medicine_id
+        );
+        const stock = option ? option.total_quantity : 0;
+        const initialRelease = Math.min(item.remaining_quantity, Math.max(1, stock));
+
+        return {
+          follow_up_action: "",
+          follow_up_date: "",
+          is_existing_claim: true,
+          medicine_id: item.medicine_id,
+          needed_quantity: item.needed_quantity,
+          previous_released: item.released_quantity,
+          quantity: stock > 0 ? initialRelease : 1,
+          referred_facility_id: "",
+          remaining_quantity: item.remaining_quantity,
+        };
+      });
+
+      setCart(initialCart);
+      const doctor = pendingItems.find((p) => p.prescribed_by)?.prescribed_by;
+      setPrescribedBy(doctor || "");
+    } else {
+      setCart([]);
+      setPrescribedBy("");
+    }
   };
 
   const addToCart = (option) => {
-    setCart((current) =>
-      current.some((line) => line.medicine_id === option.medicine_id)
-        ? current
-        : [
-            ...current,
-            {
-              follow_up_action: "",
-              follow_up_date: "",
-              medicine_id: option.medicine_id,
-              needed_quantity: 1,
-              quantity: 1,
-              referred_facility_id: "",
-            },
-          ]
+    const existingBreakdownItem = activePatientClaim?.breakdown?.find(
+      (b) => b.medicine_id === option.medicine_id
     );
+
+    if (existingBreakdownItem) {
+      if (existingBreakdownItem.is_completed) {
+        return;
+      }
+
+      setCart((current) =>
+        current.some((line) => line.medicine_id === option.medicine_id)
+          ? current
+          : [
+              ...current,
+              {
+                follow_up_action: "",
+                follow_up_date: "",
+                is_existing_claim: true,
+                medicine_id: option.medicine_id,
+                needed_quantity: existingBreakdownItem.needed_quantity,
+                previous_released: existingBreakdownItem.released_quantity,
+                quantity: Math.min(
+                  existingBreakdownItem.remaining_quantity,
+                  Math.max(1, option.total_quantity)
+                ),
+                referred_facility_id: "",
+                remaining_quantity: existingBreakdownItem.remaining_quantity,
+              },
+            ]
+      );
+    } else {
+      setCart((current) =>
+        current.some((line) => line.medicine_id === option.medicine_id)
+          ? current
+          : [
+              ...current,
+              {
+                follow_up_action: "",
+                follow_up_date: "",
+                is_existing_claim: false,
+                medicine_id: option.medicine_id,
+                needed_quantity: 1,
+                previous_released: 0,
+                quantity: 1,
+                referred_facility_id: "",
+                remaining_quantity: null,
+              },
+            ]
+      );
+    }
   };
 
   const updateCartQuantity = (medicineId, field, value) => {
@@ -473,16 +576,27 @@ export default function DispensingWorkbench() {
           return line;
         }
 
-        const nextValue = value === "" ? "" : Number(value);
-        const nextLine = { ...line, [field]: nextValue };
-        const needed = Number(nextLine.needed_quantity || 0);
-        const released = Number(nextLine.quantity || 0);
-
-        if (field === "quantity" && released > needed) {
-          nextLine.needed_quantity = nextValue;
+        if (field === "needed_quantity" && line.is_existing_claim) {
+          return line;
         }
 
-        if (Number(nextLine.needed_quantity || 0) <= Number(nextLine.quantity || 0)) {
+        const nextValue = value === "" ? "" : Number(value);
+        const nextLine = { ...line, [field]: nextValue };
+
+        if (line.is_existing_claim) {
+          if (field === "quantity" && nextValue !== "" && nextValue > line.remaining_quantity) {
+            nextLine.quantity = line.remaining_quantity;
+          }
+        } else {
+          const needed = Number(nextLine.needed_quantity || 0);
+          const released = Number(nextLine.quantity || 0);
+          if (field === "quantity" && released > needed) {
+            nextLine.needed_quantity = nextValue;
+          }
+        }
+
+        const totalReleasedSoFar = (line.previous_released || 0) + Number(nextLine.quantity || 0);
+        if (Number(nextLine.needed_quantity || 0) <= totalReleasedSoFar) {
           nextLine.follow_up_action = "";
           nextLine.follow_up_date = "";
           nextLine.referred_facility_id = "";
@@ -501,20 +615,73 @@ export default function DispensingWorkbench() {
         }
 
         const option = optionsById.get(medicineId);
-        const ceiling = option ? option.total_quantity : null;
+        const stockCeiling = option ? option.total_quantity : null;
+        const maxAllowed = line.is_existing_claim
+          ? Math.min(
+              line.remaining_quantity,
+              stockCeiling !== null ? stockCeiling : line.remaining_quantity
+            )
+          : stockCeiling;
+
         const next = Number(line.quantity || 1) + delta;
-        const bounded =
-          ceiling !== null ? Math.min(Math.max(1, next), ceiling) : Math.max(1, next);
-        const needed = Math.max(Number(line.needed_quantity || 1), bounded);
+        const bounded = maxAllowed !== null ? Math.min(Math.max(1, next), maxAllowed) : Math.max(1, next);
+        const needed = line.is_existing_claim
+          ? line.needed_quantity
+          : Math.max(Number(line.needed_quantity || 1), bounded);
+
+        const totalReleasedSoFar = (line.previous_released || 0) + bounded;
+        const hasBalance = Number(needed || 0) > totalReleasedSoFar;
 
         return {
           ...line,
-          follow_up_action: needed > bounded ? line.follow_up_action : "",
-          follow_up_date: needed > bounded ? line.follow_up_date : "",
+          follow_up_action: hasBalance ? line.follow_up_action : "",
+          follow_up_date: hasBalance ? line.follow_up_date : "",
           needed_quantity: needed,
           quantity: bounded,
-          referred_facility_id: needed > bounded ? line.referred_facility_id : "",
+          referred_facility_id: hasBalance ? line.referred_facility_id : "",
         };
+      })
+    );
+  };
+
+  const commitQuantity = (medicineId, field = "quantity") => {
+    setCart((current) =>
+      current.map((line) => {
+        if (line.medicine_id !== medicineId) {
+          return line;
+        }
+
+        if (field === "needed_quantity" && line.is_existing_claim) {
+          return line;
+        }
+
+        const option = optionsById.get(medicineId);
+        const stockCeiling = option ? option.total_quantity : null;
+        const maxAllowed = line.is_existing_claim
+          ? Math.min(
+              line.remaining_quantity,
+              stockCeiling !== null ? stockCeiling : line.remaining_quantity
+            )
+          : stockCeiling;
+
+        const parsed = Math.max(1, Math.floor(Number(line[field]) || 1));
+        const bounded = field === "quantity" && maxAllowed !== null ? Math.min(parsed, maxAllowed) : parsed;
+        const nextLine = Number(line[field]) === bounded ? { ...line } : { ...line, [field]: bounded };
+        const needed = Number(nextLine.needed_quantity || 0);
+        const released = Number(nextLine.quantity || 0);
+
+        if (!line.is_existing_claim && field === "quantity" && released > needed) {
+          nextLine.needed_quantity = released;
+        }
+
+        const totalReleasedSoFar = (line.previous_released || 0) + Number(nextLine.quantity || 0);
+        if (Number(nextLine.needed_quantity || 0) <= totalReleasedSoFar) {
+          nextLine.follow_up_action = "";
+          nextLine.follow_up_date = "";
+          nextLine.referred_facility_id = "";
+        }
+
+        return nextLine;
       })
     );
   };
@@ -582,6 +749,7 @@ export default function DispensingWorkbench() {
       setCart([]);
       setPrescribedBy("");
       setSelectedPatient(null);
+      setActivePatientClaim(null);
       setClaimedIds(new Set());
       setWizardStep(1);
       await Promise.all([loadInventory(), runPatientSearch()]);
@@ -616,7 +784,8 @@ export default function DispensingWorkbench() {
             quantity: allocation.quantity,
             follow_up_action: line.follow_up_action || null,
             follow_up_date: line.follow_up_date || null,
-            referred_facility: line.follow_up_action === FOLLOW_UP_ACTIONS.refer ? receipt.patient.facility : null,
+            referred_facility:
+              line.follow_up_action === FOLLOW_UP_ACTIONS.refer ? receipt.patient.facility : null,
           }))
         ),
         totalQuantity: receipt.lines.reduce((total, line) => total + Number(line.quantity || 0), 0),
@@ -625,37 +794,10 @@ export default function DispensingWorkbench() {
       },
     ]);
 
-    downloadCsv(csv, `${receipt.transactionId}-receipt.csv`);
-  };
-
-  const commitQuantity = (medicineId, field = "quantity") => {
-    setCart((current) =>
-      current.map((line) => {
-        if (line.medicine_id !== medicineId) {
-          return line;
-        }
-
-        const option = optionsById.get(medicineId);
-        const ceiling = option ? option.total_quantity : null;
-        const parsed = Math.max(1, Math.floor(Number(line[field]) || 1));
-        const bounded = field === "quantity" && ceiling !== null ? Math.min(parsed, ceiling) : parsed;
-        const nextLine = Number(line[field]) === bounded ? { ...line } : { ...line, [field]: bounded };
-        const needed = Number(nextLine.needed_quantity || 0);
-        const released = Number(nextLine.quantity || 0);
-
-        if (field === "quantity" && released > needed) {
-          nextLine.needed_quantity = released;
-        }
-
-        if (Number(nextLine.needed_quantity || 0) <= Number(nextLine.quantity || 0)) {
-          nextLine.follow_up_action = "";
-          nextLine.follow_up_date = "";
-          nextLine.referred_facility_id = "";
-        }
-
-        return nextLine;
-      })
-    );
+    downloadExportFile({
+      filename: `${receipt.transactionId}-receipt`,
+      csv,
+    });
   };
 
   const renderReferralStockOverview = (line) => {
@@ -670,7 +812,11 @@ export default function DispensingWorkbench() {
     const stock = referralStockByMedicineId.get(line.medicine_id);
 
     if (!stock || stock.totalUnits <= 0) {
-      return <p className="rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] p-4 text-sm text-[#5f6673]">No available stock recorded.</p>;
+      return (
+        <p className="rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] p-4 text-sm text-[#5f6673]">
+          No available stock recorded.
+        </p>
+      );
     }
 
     return (
@@ -692,14 +838,24 @@ export default function DispensingWorkbench() {
   };
 
   const renderFollowUpControl = (line) => {
-    const isPartialRelease = Number(line.needed_quantity || 0) > Number(line.quantity || 0);
+    const totalReleasedSoFar = Number(line.previous_released || 0) + Number(line.quantity || 0);
+    const needed = Number(line.needed_quantity || line.quantity || 0);
+    const remainingAfterThisRelease = Math.max(0, needed - totalReleasedSoFar);
+    const isPartialRelease = remainingAfterThisRelease > 0;
 
     if (!isPartialRelease) {
-      return <span className="text-xs font-semibold text-[#5f6673]">None</span>;
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#008f68]">
+          <CheckIcon /> All {needed} units released
+        </span>
+      );
     }
 
     return (
       <div className="min-w-[240px] space-y-2">
+        <p className="text-[11px] font-bold text-amber-800">
+          {remainingAfterThisRelease} unit{remainingAfterThisRelease === 1 ? "" : "s"} left to release:
+        </p>
         <label className="flex items-center gap-2 text-xs font-semibold text-[#42474e]">
           <input
             name={`follow-up-${line.medicine_id}`}
@@ -761,182 +917,305 @@ export default function DispensingWorkbench() {
           </div>
         )}
 
-        <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-4 shadow-sm">
+        {/* Top Header Card */}
+        <section className="rounded-xl border border-[#d8dadc] bg-white px-5 py-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#008f68]">Walk-in service</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#008f68]">
+              Dispensing Management
+            </p>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#6be9c2] px-3 py-1 text-xs font-bold text-[#0d1117]">
-              <PillIcon /> Active workflow
+              <PillIcon /> CHO Medicine Release
             </span>
           </div>
           <h1 className="mt-2 text-xl font-bold text-[#0d1117]">Dispensing</h1>
           <p className="mt-1 max-w-3xl text-sm text-[#5f6673]">
-            Find a patient, confirm their monthly eligibility, select available medicines, then release the claim.
+            Find a patient, check their monthly medicine status, select available medicines, then release the claim.
           </p>
         </section>
 
+        {/* Stepper Progress */}
         <StepperBar blockerFor={stepBlockers} onStepClick={setWizardStep} step={wizardStep} />
 
+        {/* STEP 1: PATIENT SEARCH */}
         {wizardStep === 1 && (
           <div className="prds-step-in">
             <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-3">
-                  <div>
-                    <h2 className="text-base font-bold text-[#0d1117] focus:outline-none" tabIndex={-1} data-step-heading>
-                      Search Patient
-                    </h2>
-                    <p className="mt-1 text-sm text-[#5f6673]">
-                      Search by patient name or code, then select the patient for this walk-in claim.
-                    </p>
-                  </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-3">
+                <div>
+                  <h2
+                    className="text-base font-bold text-[#0d1117] focus:outline-none"
+                    tabIndex={-1}
+                    data-step-heading
+                  >
+                    Search Patient
+                  </h2>
+                  <p className="mt-1 text-sm text-[#5f6673]">
+                    Search by patient name or code. Patients with pending follow-up schedules remain selectable.
+                  </p>
                 </div>
+              </div>
 
-                <div className="p-4">
-                  <div className="space-y-4">
-                    <label className="relative block">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
-                        <SearchIcon />
-                      </span>
-                      <Input
-                        value={patientKeyword}
-                        onChange={(event) => setPatientKeyword(event.target.value)}
-                        placeholder="Search patient name or code..."
-                        className="pl-9"
-                      />
-                    </label>
+              <div className="p-4">
+                <div className="space-y-4">
+                  <label className="relative block">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
+                      <SearchIcon />
+                    </span>
+                    <Input
+                      value={patientKeyword}
+                      onChange={(event) => setPatientKeyword(event.target.value)}
+                      placeholder="Search patient name or code..."
+                      className="pl-9"
+                    />
+                  </label>
 
-                    <div
-                      aria-busy={isSearchingPatients}
-                      className="prds-main-scrollbar flex max-h-[520px] flex-col gap-2 overflow-auto pr-1"
-                    >
-                      {isSearchingPatients && (
-                        <>
-                          {[0, 1, 2].map((key) => (
-                            <div key={key} className="h-[76px] animate-pulse rounded-xl bg-[#f8f9ff]" />
-                          ))}
-                          <div role="status" className="sr-only">
-                            Searching patients
-                          </div>
-                        </>
-                      )}
+                  <div
+                    aria-busy={isSearchingPatients}
+                    className="prds-main-scrollbar flex max-h-[520px] flex-col gap-2.5 overflow-auto pr-1"
+                  >
+                    {isSearchingPatients && (
+                      <>
+                        {[0, 1, 2].map((key) => (
+                          <div key={key} className="h-[84px] animate-pulse rounded-xl bg-[#f8f9ff]" />
+                        ))}
+                        <div role="status" className="sr-only">
+                          Searching patients
+                        </div>
+                      </>
+                    )}
 
-                      {!isSearchingPatients &&
-                        patientResults.map((patient) => {
-                          const claimed = claimedIds.has(patient.id);
-                          const isSelectedCard = selectedPatient?.id === patient.id;
-                          const patientName = formatPatientName(patient);
+                    {!isSearchingPatients &&
+                      patientResults.map((patient) => {
+                        const overview = patientsOverview.get(patient.id);
+                        const isBlocked = overview?.isBlocked ?? claimedIds.has(patient.id);
+                        const status = overview?.status;
+                        const isSelectedCard = selectedPatient?.id === patient.id;
+                        const patientName = formatPatientName(patient);
 
-                          return (
-                            <div
-                              key={patient.id}
-                              className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 ${
-                                claimed
-                                  ? "border-[#e5e7eb] bg-[#f4f5f7] text-[#8a93a3]"
-                                  : "border-[#e5e7eb] bg-[#f8f9ff]"
-                              }`}
-                            >
+                        return (
+                          <div
+                            key={patient.id}
+                            className={`flex w-full flex-col gap-3 rounded-xl border p-4 transition ${
+                              isBlocked
+                                ? "border-[#e5e7eb] bg-[#f4f5f7] opacity-85"
+                                : isSelectedCard
+                                  ? "border-[#6be9c2] bg-[#ecfff8]/40 ring-1 ring-[#6be9c2]"
+                                  : "border-[#e5e7eb] bg-[#f8f9ff] hover:border-[#c7ccd3] hover:bg-white"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-3">
                                 <PatientAvatar name={patientName} sizeClass="h-10 w-10 text-xs" />
                                 <div className="min-w-0">
-                                  <p
-                                    className={`max-w-full truncate rounded-md px-2 py-1 text-sm font-bold ${
-                                      claimed
-                                        ? "text-[#5f6673]"
-                                        : isSelectedCard
-                                          ? "bg-white text-[#0d1117] shadow-sm ring-1 ring-[#d8dadc]"
-                                          : "text-[#0d1117]"
-                                    }`}
-                                  >
-                                    {patientName}
-                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-bold text-[#0d1117] truncate">
+                                      {patientName}
+                                    </p>
+                                    <span className="font-mono text-xs text-[#5f6673]">
+                                      {formatPatientCode(patient.patient_code)}
+                                    </span>
+                                  </div>
                                   {patient.address && (
                                     <p className="mt-0.5 truncate text-xs text-[#5f6673]">{patient.address}</p>
-                                  )}
-                                  {claimed && (
-                                    <p className="mt-1 text-xs font-bold text-[#6b7280]">
-                                      Monthly claim already recorded.
-                                    </p>
                                   )}
                                 </div>
                               </div>
 
-                              {claimed ? (
-                                <button
-                                  type="button"
-                                  disabled
-                                  aria-label={`${patientName} cannot be selected`}
-                                  className="h-9 shrink-0 cursor-not-allowed rounded-lg border border-[#d8dadc] bg-white/70 px-3 text-xs font-bold text-[#8a93a3]"
-                                >
-                                  Select
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  aria-label={`${isSelectedCard ? "Unselect" : "Select"} ${patientName}`}
-                                  onClick={() => selectPatient(patient)}
-                                  className={`h-9 shrink-0 rounded-lg px-4 text-xs font-bold shadow-sm transition ${FOCUS_RING} ${
-                                    isSelectedCard
-                                      ? "border border-[#d8dadc] bg-white text-[#0d1117] hover:bg-[#f7f6f3]"
-                                      : "bg-black text-white hover:bg-[#0d1117]"
-                                  }`}
-                                >
-                                  {isSelectedCard ? "Unselect" : "Select"}
-                                </button>
-                              )}
+                              {/* Status Badge */}
+                              <div className="shrink-0">
+                                {status?.code === "COMPLETED" ? (
+                                  <span className="inline-flex items-center rounded-full bg-gray-200/80 px-2.5 py-1 text-xs font-bold text-[#5f6673]">
+                                    Already received all medicines for this month
+                                  </span>
+                                ) : status?.code === "PARTIAL_SCHEDULED" ? (
+                                  <span className="inline-flex items-center rounded-full bg-amber-100 border border-amber-300 px-2.5 py-1 text-xs font-bold text-amber-800">
+                                    {status.label}
+                                  </span>
+                                ) : status?.code === "PARTIAL_REFERRED" ? (
+                                  <span className="inline-flex items-center rounded-full bg-indigo-100 border border-indigo-300 px-2.5 py-1 text-xs font-bold text-indigo-800">
+                                    {status.label}
+                                  </span>
+                                ) : status?.code === "PARTIAL_READY" ? (
+                                  <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-1 text-xs font-bold text-[#008f68]">
+                                    {status.label}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-[#ecfff8] border border-[#6be9c2] px-2.5 py-1 text-xs font-bold text-[#008f68]">
+                                    Ready to claim
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Action Button */}
+                              <div className="shrink-0">
+                                {isBlocked ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    aria-label={`${patientName} cannot be selected - completed`}
+                                    className="h-9 cursor-not-allowed rounded-lg border border-[#d8dadc] bg-white/70 px-3 text-xs font-bold text-[#8a93a3]"
+                                  >
+                                    Completed
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    aria-label={`${isSelectedCard ? "Unselect" : "Select"} ${patientName}`}
+                                    onClick={() => selectPatient(patient)}
+                                    className={`h-9 rounded-lg px-4 text-xs font-bold shadow-sm transition ${FOCUS_RING} ${
+                                      isSelectedCard
+                                        ? "border border-[#d8dadc] bg-white text-[#0d1117] hover:bg-[#f7f6f3]"
+                                        : "bg-black text-white hover:bg-[#0d1117]"
+                                    }`}
+                                  >
+                                    {isSelectedCard ? "Unselect" : "Select"}
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          );
-                        })}
 
-                      {!isSearchingPatients && patientResults.length === 0 && (
-                        <div className="w-full rounded-xl bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
-                          {patientKeyword.trim()
-                            ? "No matching patients found. Register the patient in the Patient module before dispensing."
-                            : "Search patient"}
-                        </div>
-                      )}
-                    </div>
+                            {/* Active Monthly Claims Itemized Breakdown (if existing) */}
+                            {overview?.breakdown?.length > 0 && (
+                              <div className="rounded-lg border border-[#e5e7eb] bg-white p-2.5 text-xs">
+                                <p className="mb-1.5 font-bold uppercase tracking-wider text-[10px] text-[#6b7280]">
+                                  Monthly Prescription Progress:
+                                </p>
+                                <div className="grid gap-1 sm:grid-cols-2">
+                                  {overview.breakdown.map((item) => (
+                                    <div
+                                      key={item.medicine_id}
+                                      className="flex items-center justify-between gap-2 text-xs"
+                                    >
+                                      <span className="font-medium text-[#0d1117] truncate">
+                                        {getMedicineLabel(item.medicine)}
+                                      </span>
+                                      <span className="shrink-0 tabular-nums">
+                                        {item.is_completed ? (
+                                          <span className="font-bold text-[#008f68]">
+                                            {item.released_quantity}/{item.needed_quantity} (Done)
+                                          </span>
+                                        ) : (
+                                          <span className="font-bold text-amber-700">
+                                            {item.released_quantity}/{item.needed_quantity} (
+                                            {item.remaining_quantity} left)
+                                          </span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
 
-                    {selectedPatient && (
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8dadc] bg-[#f8f9ff] px-4 py-3">
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-bold uppercase tracking-wide text-[#5f6673]">
-                            Selected patient
-                          </p>
-                          <p className="mt-1 truncate text-sm font-bold text-[#0d1117]">
-                            {formatPatientName(selectedPatient)}
-                          </p>
-                          {selectedPatient.address && (
-                            <p className="mt-0.5 text-xs text-[#5f6673]">{selectedPatient.address}</p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setWizardStep(2)}
-                          disabled={selectedClaimed}
-                          className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
-                        >
-                          Continue to Medicines <ArrowRightIcon />
-                        </button>
+                    {!isSearchingPatients && patientResults.length === 0 && (
+                      <div className="w-full rounded-xl bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
+                        {patientKeyword.trim()
+                          ? "No matching patients found. Register the patient in the Patient module before dispensing."
+                          : "Search patient to start"}
                       </div>
                     )}
                   </div>
+
+                  {selectedPatient && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8dadc] bg-[#f8f9ff] px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#5f6673]">
+                          Selected patient
+                        </p>
+                        <p className="mt-1 truncate text-sm font-bold text-[#0d1117]">
+                          {formatPatientName(selectedPatient)}
+                        </p>
+                        {selectedPatient.address && (
+                          <p className="mt-0.5 text-xs text-[#5f6673]">{selectedPatient.address}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setWizardStep(2)}
+                        disabled={selectedClaimed}
+                        className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+                      >
+                        Continue to Medicines <ArrowRightIcon />
+                      </button>
+                    </div>
+                  )}
                 </div>
+              </div>
             </section>
           </div>
         )}
 
+        {/* STEP 2: CHOOSE MEDICINES */}
         {wizardStep === 2 && (
           <div className="prds-step-in">
             <section className="self-start rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-                <div className="border-b border-[#e5e7eb] px-4 py-3">
-                  <h2 className="text-base font-bold text-[#0d1117] focus:outline-none" tabIndex={-1} data-step-heading>
-                    Choose medicine
-                  </h2>
-                  <p className="mt-1 text-sm text-[#5f6673]">
-                    Pick medicines from available stock, then review the quantities.
-                  </p>
-                </div>
+              <div className="border-b border-[#e5e7eb] px-4 py-3">
+                <h2
+                  className="text-base font-bold text-[#0d1117] focus:outline-none"
+                  tabIndex={-1}
+                  data-step-heading
+                >
+                  Choose medicine
+                </h2>
+                <p className="mt-1 text-sm text-[#5f6673]">
+                  Pick medicines from available stock, then review the quantities.
+                </p>
+              </div>
 
-                <div className="grid gap-4 px-4 pb-4 pt-3 lg:grid-cols-[minmax(0,1fr)_480px] xl:grid-cols-[minmax(0,1fr)_540px]">
+              <div className="p-4">
+                {/* Active Monthly Prescription Card */}
+                {activePatientClaim?.breakdown?.length > 0 && (
+                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+                    <h3 className="text-sm font-bold text-amber-950">
+                      Active Monthly Prescription for this Patient
+                    </h3>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {activePatientClaim.breakdown.map((item) => (
+                        <div
+                          key={item.medicine_id}
+                          className={`flex items-center justify-between gap-3 rounded-lg border p-2.5 text-xs ${
+                            item.is_completed
+                              ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                              : "border-amber-200 bg-white text-[#0d1117]"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold truncate">{getMedicineLabel(item.medicine)}</p>
+                            <p className="text-[11px] text-[#5f6673]">
+                              Prescribed: <span className="font-semibold">{item.needed_quantity}</span> ·
+                              Released: <span className="font-semibold">{item.released_quantity}</span>
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            {item.is_completed ? (
+                              <span className="inline-flex items-center gap-1 font-bold text-[#008f68]">
+                                <CheckIcon /> All released
+                              </span>
+                            ) : (
+                              <div>
+                                <span className="font-bold text-amber-700 tabular-nums">
+                                  {item.remaining_quantity} remaining
+                                </span>
+                                {item.follow_up_action === FOLLOW_UP_ACTIONS.schedule && item.follow_up_date && (
+                                  <p className="text-[10px] text-[#5f6673]">Return: {item.follow_up_date}</p>
+                                )}
+                                {item.follow_up_action === FOLLOW_UP_ACTIONS.refer && (
+                                  <p className="text-[10px] text-[#5f6673]">Referred</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_480px] xl:grid-cols-[minmax(0,1fr)_540px]">
+                  {/* Available Medicines Catalog */}
                   <section className="min-w-0 rounded-xl border border-[#e5e7eb] bg-white p-3">
                     <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
                       <div>
@@ -948,91 +1227,110 @@ export default function DispensingWorkbench() {
                       </span>
                     </div>
 
-                  <label className="relative block">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
-                      <SearchIcon />
-                    </span>
-                    <Input
-                      value={medicineKeyword}
-                      onChange={(event) => setMedicineKeyword(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && medicineOptions[0]) {
-                          event.preventDefault();
-                          addToCart(medicineOptions[0]);
-                        }
-                      }}
-                      placeholder="Search available medicine, brand, dosage..."
-                      title="Press Enter to add the closest match"
-                      className="pl-9"
-                    />
-                  </label>
+                    <label className="relative block">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
+                        <SearchIcon />
+                      </span>
+                      <Input
+                        value={medicineKeyword}
+                        onChange={(event) => setMedicineKeyword(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && medicineOptions[0]) {
+                            event.preventDefault();
+                            addToCart(medicineOptions[0]);
+                          }
+                        }}
+                        placeholder="Search available medicine, brand, dosage..."
+                        title="Press Enter to add the closest match"
+                        className="pl-9"
+                      />
+                    </label>
 
-                  {isLoadingInventory ? (
-                    <div className="mt-3">
-                      <div className="h-40 animate-pulse rounded-xl bg-[#f8f9ff]" />
-                      <div role="status" className="sr-only">
-                        Loading available medicine stock
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-3 grid max-h-[520px] gap-2 overflow-auto pr-1 xl:grid-cols-2">
-                      {medicineOptions.map((option) => {
-                        const inCart = cart.some((line) => line.medicine_id === option.medicine_id);
-                        const lowStock = option.total_quantity <= 10;
-
-                        return (
-                          <button
-                            type="button"
-                            key={option.medicine_id}
-                            onClick={() => addToCart(option)}
-                            disabled={inCart}
-                            aria-label={`Add ${getMedicineLabel(option.medicine)} to claim`}
-                            className={`rounded-xl border p-3 text-left transition-all duration-200 ${FOCUS_RING} ${
-                              inCart
-                                ? "cursor-default border-[#d8dadc] bg-[#f7f6f3]"
-                                : "border-[#e5e7eb] bg-[#f8f9ff] hover:border-[#c7ccd3] hover:bg-white hover:shadow-sm"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="text-sm font-bold text-[#0d1117]">
-                                  {getMedicineLabel(option.medicine)}
-                                </p>
-                                <p className="mt-1 text-xs text-[#5f6673]">
-                                  {getMedicineFullLabel(option.medicine)}
-                                </p>
-                              </div>
-                              <span
-                                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ${
-                                  lowStock ? "bg-amber-100 text-amber-700" : "bg-[#f7f6f3] text-[#42474e]"
-                                }`}
-                              >
-                                {option.total_quantity.toLocaleString()} units
-                              </span>
-                            </div>
-                            {inCart && <p className="mt-2 text-xs font-bold text-[#5f6673]">Added</p>}
-                            {lowStock && !inCart && (
-                              <p className="mt-2 text-xs font-bold text-amber-700">
-                                Low stock — confirm remaining supply
-                              </p>
-                            )}
-                          </button>
-                        );
-                      })}
-
-                      {medicineOptions.length === 0 && (
-                        <div className="col-span-full rounded-xl bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
-                          No medicine stock is currently available at your facility.
+                    {isLoadingInventory ? (
+                      <div className="mt-3">
+                        <div className="h-40 animate-pulse rounded-xl bg-[#f8f9ff]" />
+                        <div role="status" className="sr-only">
+                          Loading available medicine stock
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid max-h-[520px] gap-2 overflow-auto pr-1 xl:grid-cols-2">
+                        {medicineOptions.map((option) => {
+                          const inCart = cart.some((line) => line.medicine_id === option.medicine_id);
+                          const lowStock = option.total_quantity <= 10;
+                          const existingClaimItem = activePatientClaim?.breakdown?.find(
+                            (b) => b.medicine_id === option.medicine_id
+                          );
+                          const isCompletedForMonth = existingClaimItem?.is_completed;
+
+                          return (
+                            <button
+                              type="button"
+                              key={option.medicine_id}
+                              onClick={() => addToCart(option)}
+                              disabled={inCart || isCompletedForMonth}
+                              aria-label={`Add ${getMedicineLabel(option.medicine)} to claim`}
+                              className={`rounded-xl border p-3 text-left transition-all duration-200 ${FOCUS_RING} ${
+                                isCompletedForMonth
+                                  ? "cursor-not-allowed border-[#e5e7eb] bg-[#f4f5f7] opacity-60"
+                                  : inCart
+                                    ? "cursor-default border-[#d8dadc] bg-[#f7f6f3]"
+                                    : "border-[#e5e7eb] bg-[#f8f9ff] hover:border-[#c7ccd3] hover:bg-white hover:shadow-sm"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-bold text-[#0d1117]">
+                                    {getMedicineLabel(option.medicine)}
+                                  </p>
+                                  <p className="mt-1 text-xs text-[#5f6673]">
+                                    {getMedicineFullLabel(option.medicine)}
+                                  </p>
+                                </div>
+                                <span
+                                  className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ${
+                                    lowStock
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-[#f7f6f3] text-[#42474e]"
+                                  }`}
+                                >
+                                  {option.total_quantity.toLocaleString()} units
+                                </span>
+                              </div>
+
+                              {isCompletedForMonth && (
+                                <p className="mt-2 text-xs font-bold text-[#008f68]">
+                                  Already completed this month
+                                </p>
+                              )}
+                              {inCart && !isCompletedForMonth && (
+                                <p className="mt-2 text-xs font-bold text-[#5f6673]">Added</p>
+                              )}
+                              {lowStock && !inCart && !isCompletedForMonth && (
+                                <p className="mt-2 text-xs font-bold text-amber-700">
+                                  Low stock — confirm remaining supply
+                                </p>
+                              )}
+                            </button>
+                          );
+                        })}
+
+                        {medicineOptions.length === 0 && (
+                          <div className="col-span-full rounded-xl bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
+                            No medicine stock is currently available at your facility.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </section>
 
+                  {/* Selected Medicines (Cart aside) */}
                   <aside className="min-w-0 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-3 lg:sticky lg:top-4 lg:self-start">
                     <div className="mb-3">
                       <h3 className="text-sm font-bold text-[#0d1117]">Selected medicines</h3>
-                      <p className="mt-0.5 text-xs text-[#5f6673]">Confirm patient, doctor, and quantities.</p>
+                      <p className="mt-0.5 text-xs text-[#5f6673]">
+                        Confirm patient, doctor, and quantities.
+                      </p>
                     </div>
 
                     <div className="mb-3 space-y-3">
@@ -1045,7 +1343,9 @@ export default function DispensingWorkbench() {
                             {formatPatientName(selectedPatient)}
                           </p>
                           {selectedPatient.address && (
-                            <p className="mt-0.5 truncate text-xs text-[#5f6673]">{selectedPatient.address}</p>
+                            <p className="mt-0.5 truncate text-xs text-[#5f6673]">
+                              {selectedPatient.address}
+                            </p>
                           )}
                         </section>
                       )}
@@ -1062,18 +1362,18 @@ export default function DispensingWorkbench() {
                       </label>
                     </div>
 
-                  {cartLines.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-[#d8dadc] bg-white px-4 py-10 text-center">
-                      <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#f7f6f3] text-[#9aa1ad]">
-                        <PillIcon />
-                      </span>
-                      <p className="mt-3 text-sm font-bold text-[#0d1117]">No medicines added yet</p>
-                      <p className="mt-1 text-sm text-[#5f6673]">
-                        Select from available stock to prepare this release.
-                      </p>
-                    </div>
-                  ) : (
-                    <ul className="max-h-[460px] space-y-3 overflow-auto pr-1">
+                    {cartLines.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[#d8dadc] bg-white px-4 py-10 text-center">
+                        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#f7f6f3] text-[#9aa1ad]">
+                          <PillIcon />
+                        </span>
+                        <p className="mt-3 text-sm font-bold text-[#0d1117]">No medicines added yet</p>
+                        <p className="mt-1 text-sm text-[#5f6673]">
+                          Select from available stock to prepare this release.
+                        </p>
+                      </div>
+                    ) : (
+                      <ul className="max-h-[460px] space-y-3 overflow-auto pr-1">
                         {cartLines.map((line) => {
                           const stockAfterRelease = Math.max(
                             0,
@@ -1086,7 +1386,7 @@ export default function DispensingWorkbench() {
                               className="rounded-xl border border-[#e5e7eb] bg-white p-4 prds-flash-once"
                             >
                               <div className="space-y-3">
-                                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+                                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto]">
                                   <div className="min-w-0">
                                     <p className="text-sm font-bold text-[#0d1117]">
                                       {line.option ? getMedicineLabel(line.option.medicine) : "Unavailable"}
@@ -1096,22 +1396,45 @@ export default function DispensingWorkbench() {
                                         {getMedicineFullLabel(line.option.medicine)}
                                       </p>
                                     )}
+                                    {line.is_existing_claim && (
+                                      <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                                        Prior release: {line.previous_released || 0} units · Balance:{" "}
+                                        {line.remaining_quantity} units
+                                      </p>
+                                    )}
                                   </div>
+
                                   <label className="block">
                                     <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                                      Needed quantity
+                                      {line.is_existing_claim ? "Prescribed" : "Needed quantity"}
                                     </span>
                                     <Input
                                       aria-label={`${line.option ? getMedicineLabel(line.option.medicine) : "Medicine"} needed quantity`}
                                       value={line.needed_quantity}
                                       inputMode="numeric"
+                                      disabled={line.is_existing_claim}
+                                      readOnly={line.is_existing_claim}
                                       onChange={(event) =>
-                                        updateCartQuantity(line.medicine_id, "needed_quantity", event.target.value)
+                                        updateCartQuantity(
+                                          line.medicine_id,
+                                          "needed_quantity",
+                                          event.target.value
+                                        )
                                       }
                                       onBlur={() => commitQuantity(line.medicine_id, "needed_quantity")}
-                                      className="text-center tabular-nums"
+                                      className={`text-center tabular-nums ${
+                                        line.is_existing_claim
+                                          ? "cursor-not-allowed bg-[#f4f5f7] text-[#5f6673]"
+                                          : ""
+                                      }`}
+                                      title={
+                                        line.is_existing_claim
+                                          ? "Doctor prescribed needed quantity cannot be altered during follow-up."
+                                          : undefined
+                                      }
                                     />
                                   </label>
+
                                   <button
                                     type="button"
                                     aria-label={`Remove ${line.option ? getMedicineLabel(line.option.medicine) : "medicine"} from claim`}
@@ -1123,9 +1446,17 @@ export default function DispensingWorkbench() {
                                 </div>
 
                                 <div className="rounded-lg bg-[#f8f9ff] p-3">
-                                  <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                                    Release quantity
-                                  </span>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                                      Release quantity
+                                    </span>
+                                    {line.is_existing_claim && (
+                                      <span className="text-[11px] font-bold text-amber-800">
+                                        Max allowed: {line.remaining_quantity}
+                                      </span>
+                                    )}
+                                  </div>
+
                                   <div className="flex items-center gap-2">
                                     <button
                                       type="button"
@@ -1149,16 +1480,22 @@ export default function DispensingWorkbench() {
                                     <button
                                       type="button"
                                       aria-label={`Increase ${line.option ? getMedicineLabel(line.option.medicine) : "medicine"} quantity`}
+                                      disabled={
+                                        line.is_existing_claim &&
+                                        Number(line.quantity) >= line.remaining_quantity
+                                      }
                                       onClick={() => bumpQuantity(line.medicine_id, 1)}
-                                      className={`h-10 w-10 rounded-lg border border-[#d8dadc] bg-white text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
+                                      className={`h-10 w-10 rounded-lg border border-[#d8dadc] bg-white text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] disabled:opacity-40 ${FOCUS_RING}`}
                                     >
                                       +
                                     </button>
                                   </div>
+
                                   <p className="mt-2 text-xs font-medium text-[#5f6673]">
                                     Stock after release: {stockAfterRelease.toLocaleString()}
                                   </p>
                                 </div>
+
                                 {line.error && (
                                   <p className="text-xs font-bold text-red-600">{line.error}</p>
                                 )}
@@ -1166,12 +1503,12 @@ export default function DispensingWorkbench() {
                             </li>
                           );
                         })}
-                    </ul>
-                  )}
+                      </ul>
+                    )}
                   </aside>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e5e7eb] px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e5e7eb] pt-4 mt-4">
                   <button
                     type="button"
                     onClick={() => setWizardStep(1)}
@@ -1189,120 +1526,128 @@ export default function DispensingWorkbench() {
                     Review <ArrowRightIcon />
                   </button>
                 </div>
+              </div>
             </section>
           </div>
         )}
 
+        {/* STEP 3: REVIEW & RELEASE */}
         {wizardStep === 3 && (
           <div className="prds-step-in">
             <section className="self-start rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-                <div className="border-b border-[#e5e7eb] px-4 py-3">
-                  <h2 className="text-base font-bold text-[#0d1117] focus:outline-none" tabIndex={-1} data-step-heading>
-                    Review &amp; Release
-                  </h2>
-                  <p className="mt-1 text-sm text-[#5f6673]">
-                    Verify every detail before the medicine is released.
+              <div className="border-b border-[#e5e7eb] px-4 py-3">
+                <h2
+                  className="text-base font-bold text-[#0d1117] focus:outline-none"
+                  tabIndex={-1}
+                  data-step-heading
+                >
+                  Review &amp; Release
+                </h2>
+                <p className="mt-1 text-sm text-[#5f6673]">
+                  Verify every detail before the medicine is released.
+                </p>
+              </div>
+
+              <div className="space-y-4 px-4 pb-4 pt-3">
+                {selectedClaimed && (
+                  <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
+                    This patient already received all prescribed medicines for this month.
+                  </div>
+                )}
+
+                <section className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Patient</p>
+                  <p className="mt-1 text-base font-bold text-[#0d1117]">
+                    {formatPatientName(selectedPatient)}
                   </p>
+                  <p className="mt-1 text-xs text-[#5f6673]">
+                    {calculateAge(selectedPatient.date_of_birth) ?? "?"} yrs
+                  </p>
+                  <p className="mt-1 text-xs text-[#5f6673]">
+                    {selectedPatient.address || "No address on file"}
+                  </p>
+                </section>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                      Dispensed By
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-[#0d1117]">
+                      {profile?.first_name ? `${profile.first_name} ${profile.last_name}` : "Unknown user"}
+                    </p>
+                    <p className="mt-1 text-xs text-[#5f6673]">{profile?.role || "No role"}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                      Prescribed By
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-[#0d1117]">
+                      {prescribedBy.trim() || "Not provided"}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-4 px-4 pb-4 pt-3">
-                  {selectedClaimed && (
-                    <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
-                      This patient already received free medicine this month. The system will reject
-                      this claim.
-                    </div>
-                  )}
-
-                  <section className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Patient</p>
-                    <p className="mt-1 text-base font-bold text-[#0d1117]">
-                      {formatPatientName(selectedPatient)}
-                    </p>
-                    <p className="mt-1 text-xs text-[#5f6673]">
-                      {calculateAge(selectedPatient.date_of_birth) ?? "?"} yrs
-                    </p>
-                    <p className="mt-1 text-xs text-[#5f6673]">
-                      {selectedPatient.address || "No address on file"}
-                    </p>
-                  </section>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                        Dispensed By
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-[#0d1117]">
-                        {profile?.first_name ? `${profile.first_name} ${profile.last_name}` : "Unknown user"}
-                      </p>
-                      <p className="mt-1 text-xs text-[#5f6673]">{profile?.role || "No role"}</p>
-                    </div>
-                    <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                        Prescribed By
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-[#0d1117]">
-                        {prescribedBy.trim() || "Not provided"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto rounded-xl border border-[#e5e7eb]">
-                    <table className="w-full min-w-[720px] text-left text-sm">
-                      <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                        <tr>
-                          <th className="px-4 py-3">Medicine</th>
-                          <th className="px-4 py-3 text-right">Needed quantity</th>
-                          <th className="px-4 py-3 text-right">Release quantity</th>
-                          <th className="px-4 py-3">Follow-up</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#edf0f2]">
-                        {cartLines.map((line) => (
-                          <tr key={line.medicine_id}>
-                            <td className="px-4 py-3">
-                              <p className="font-bold text-[#0d1117]">
-                                {line.option ? getMedicineLabel(line.option.medicine) : "Unavailable"}
+                <div className="overflow-x-auto rounded-xl border border-[#e5e7eb]">
+                  <table className="w-full min-w-[720px] text-left text-sm">
+                    <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                      <tr>
+                        <th className="px-4 py-3">Medicine</th>
+                        <th className="px-4 py-3 text-right">Needed quantity</th>
+                        <th className="px-4 py-3 text-right">Release quantity</th>
+                        <th className="px-4 py-3">Follow-up</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#edf0f2]">
+                      {cartLines.map((line) => (
+                        <tr key={line.medicine_id}>
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-[#0d1117]">
+                              {line.option ? getMedicineLabel(line.option.medicine) : "Unavailable"}
+                            </p>
+                            {line.option && (
+                              <p className="text-xs text-[#5f6673]">
+                                {getMedicineFullLabel(line.option.medicine)}
                               </p>
-                              {line.option && (
-                                <p className="text-xs text-[#5f6673]">
-                                  {getMedicineFullLabel(line.option.medicine)}
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
-                              {Number(line.needed_quantity ?? line.quantity).toLocaleString()}
-                            </td>
-                            <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
-                              {Number(line.quantity).toLocaleString()}
-                            </td>
-                            <td className="px-4 py-3 align-top">
-                              {renderFollowUpControl(line)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                            {Number(line.needed_quantity ?? line.quantity).toLocaleString()}
+                            {line.is_existing_claim && (
+                              <span className="block text-[11px] font-normal text-[#5f6673]">
+                                ({line.previous_released || 0} already released)
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                            {Number(line.quantity).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 align-top">{renderFollowUpControl(line)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+              </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e5e7eb] px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep(2)}
-                    className={`h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
-                  >
-                    Back to Medicines
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleComplete}
-                    disabled={!canComplete || isSaving}
-                    title={stepBlockers(3) || undefined}
-                    className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
-                  >
-                    <CheckIcon /> Release
-                  </button>
-                </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e5e7eb] px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setWizardStep(2)}
+                  className={`h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
+                >
+                  Back to Medicines
+                </button>
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  disabled={!canComplete || isSaving}
+                  title={stepBlockers(3) || undefined}
+                  className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+                >
+                  <CheckIcon /> Release
+                </button>
+              </div>
             </section>
           </div>
         )}

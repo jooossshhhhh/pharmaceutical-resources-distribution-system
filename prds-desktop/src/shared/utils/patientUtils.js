@@ -287,9 +287,19 @@ export const buildPatientsCsv = ({ archiveMode = PATIENT_ARCHIVE_MODES.active, p
   return [headers.map(escapeCell).join(","), ...rows].join("\n");
 };
 
+export const sanitizePatientName = (input) => {
+  if (!input) return "";
+  return String(input)
+    .replace(/<[^>]*>/g, "")
+    .replace(/[<>]/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+};
+
 export const isValidPatientName = (value = "") => {
   const trimmed = String(value || "").trim();
-  return /^[A-Za-z]+(?: [A-Za-z]+)*$/.test(trimmed);
+  if (!trimmed || trimmed.length < 2 || trimmed.length > 50) return false;
+  return /^[a-zA-ZñÑáéíóúÁÉÍÓÚ]+(?:[-' ][a-zA-ZñÑáéíóúÁÉÍÓÚ]+)*$/.test(trimmed);
 };
 
 export const normalizePatientContactNumber = (value = "") => {
@@ -320,11 +330,11 @@ export const validatePatientForm = (formValues = {}) => {
   }
 
   if (!isValidPatientName(formValues.first_name)) {
-    return "First name may only contain letters and spaces.";
+    return "First name may only contain letters, hyphens, and apostrophes.";
   }
 
   if (formValues.middle_name?.trim() && !isValidPatientName(formValues.middle_name)) {
-    return "Middle name may only contain letters and spaces.";
+    return "Middle name may only contain letters, hyphens, and apostrophes.";
   }
 
   if (!formValues.last_name?.trim()) {
@@ -332,7 +342,7 @@ export const validatePatientForm = (formValues = {}) => {
   }
 
   if (!isValidPatientName(formValues.last_name)) {
-    return "Last name may only contain letters and spaces.";
+    return "Last name may only contain letters, hyphens, and apostrophes.";
   }
 
   if (!formValues.gender) {
@@ -352,6 +362,12 @@ export const validatePatientForm = (formValues = {}) => {
   const today = new Date();
   if (birthDate > today) {
     return "Date of birth cannot be in the future.";
+  }
+
+  const maxAgeDate = new Date();
+  maxAgeDate.setFullYear(today.getFullYear() - 120);
+  if (birthDate < maxAgeDate) {
+    return "Date of birth cannot be older than 120 years.";
   }
 
   if (!formValues.facility_id) {

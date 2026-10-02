@@ -17,12 +17,14 @@ import {
   formatPatientRegisteredAt,
   getPatientSortLabel,
   isArchivedPatient,
+  isValidPatientName,
   matchesPatientFilters,
   matchesPatientHistoryDateFilter,
   normalizePatientText,
   PATIENT_ARCHIVE_MODES,
   PATIENT_HISTORY_DATE_MODES,
   PATIENT_MANUAL_RECORD_TYPES,
+  sanitizePatientName,
   sortPatients,
   validateManualPatientRecord,
   validatePatientForm,
@@ -270,7 +272,7 @@ test("validatePatientForm checks required fields", () => {
       date_of_birth: "1990-05-15",
       facility_id: "f1",
     }),
-    "First name may only contain letters and spaces."
+    "First name may only contain letters, hyphens, and apostrophes."
   );
   assert.equal(
     validatePatientForm({
@@ -281,7 +283,7 @@ test("validatePatientForm checks required fields", () => {
       date_of_birth: "1990-05-15",
       facility_id: "f1",
     }),
-    "Middle name may only contain letters and spaces."
+    "Middle name may only contain letters, hyphens, and apostrophes."
   );
   assert.equal(
     validatePatientForm({
@@ -291,7 +293,27 @@ test("validatePatientForm checks required fields", () => {
       date_of_birth: "1990-05-15",
       facility_id: "f1",
     }),
-    "Last name may only contain letters and spaces."
+    ""
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes#1",
+      gender: "FEMALE",
+      date_of_birth: "1990-05-15",
+      facility_id: "f1",
+    }),
+    "Last name may only contain letters, hyphens, and apostrophes."
+  );
+  assert.equal(
+    validatePatientForm({
+      first_name: "Maria",
+      last_name: "Reyes",
+      gender: "FEMALE",
+      date_of_birth: "1890-01-01",
+      facility_id: "f1",
+    }),
+    "Date of birth cannot be older than 120 years."
   );
   assert.equal(
     validatePatientForm({
@@ -541,3 +563,38 @@ test("buildPatientDispensingFacilityOptions only includes current and patient fa
     ["inayagan"]
   );
 });
+
+test("isValidPatientName supports Filipino names with ñ, Ñ, accented characters, hyphens, and apostrophes", () => {
+  // Valid names
+  assert.equal(isValidPatientName("Juan"), true);
+  assert.equal(isValidPatientName("Maria Clara"), true);
+  assert.equal(isValidPatientName("Peña"), true);
+  assert.equal(isValidPatientName("Niño"), true);
+  assert.equal(isValidPatientName("Dela-Cruz"), true);
+  assert.equal(isValidPatientName("Mary-Ann"), true);
+  assert.equal(isValidPatientName("D'Angelo"), true);
+  assert.equal(isValidPatientName("José"), true);
+  assert.equal(isValidPatientName("Ángel"), true);
+  assert.equal(isValidPatientName("O'Connor"), true);
+
+  // Invalid names
+  assert.equal(isValidPatientName(""), false);
+  assert.equal(isValidPatientName("A"), false); // too short (< 2)
+  assert.equal(isValidPatientName("Juan123"), false);
+  assert.equal(isValidPatientName("Maria <script>"), false);
+  assert.equal(isValidPatientName("Santos!"), false);
+  assert.equal(isValidPatientName("Dela@Cruz"), false);
+  assert.equal(isValidPatientName("A".repeat(51)), false); // too long (> 50)
+});
+
+test("sanitizePatientName removes HTML tags, angle brackets, and normalizes whitespace", () => {
+  assert.equal(sanitizePatientName(""), "");
+  assert.equal(sanitizePatientName(null), "");
+  assert.equal(sanitizePatientName(undefined), "");
+  assert.equal(sanitizePatientName("  Maria   Clara  "), "Maria Clara");
+  assert.equal(sanitizePatientName("Maria<script>alert(1)</script>"), "Mariaalert(1)");
+  assert.equal(sanitizePatientName("<b>Peña</b>"), "Peña");
+  assert.equal(sanitizePatientName("Dela-Cruz<img src=x onerror=alert(1)>"), "Dela-Cruz");
+  assert.equal(sanitizePatientName("<>D'Angelo<>"), "D'Angelo");
+});
+

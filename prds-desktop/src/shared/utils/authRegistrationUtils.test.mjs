@@ -148,3 +148,102 @@ test("pending Google accounts route to approval without signing out", async () =
 
   assert.deepEqual(events, [["navigate", "/pending-approval", { replace: true }]]);
 });
+
+test("normalizePhilippinePhone and isPhilippineMobileNumber support 09, +63, and 63 prefixes", async () => {
+  const {
+    normalizePhilippinePhone,
+    toE164Phone,
+    isPhilippineMobileNumber,
+  } = await import("./authRegistrationUtils.js");
+
+  assert.equal(normalizePhilippinePhone("0917 123 4567"), "09171234567");
+  assert.equal(normalizePhilippinePhone("+63 917 123 4567"), "09171234567");
+  assert.equal(normalizePhilippinePhone("639171234567"), "09171234567");
+  assert.equal(toE164Phone("09171234567"), "+639171234567");
+
+  assert.equal(isPhilippineMobileNumber("09171234567"), true);
+  assert.equal(isPhilippineMobileNumber("+63 917 123 4567"), true);
+  assert.equal(isPhilippineMobileNumber("639171234567"), true);
+  assert.equal(isPhilippineMobileNumber("028123456"), false); // landline
+  assert.equal(isPhilippineMobileNumber("091234567"), false); // too short
+  assert.equal(isPhilippineMobileNumber(""), false);
+});
+
+test("sanitizeName strips angle brackets and trims extra spaces", async () => {
+  const { sanitizeName, isValidPersonName } = await import("./authRegistrationUtils.js");
+
+  assert.equal(sanitizeName("<script>alert('xss')</script>Juan"), "alert('xss')Juan");
+  assert.equal(sanitizeName("  Maria   Clara  "), "Maria Clara");
+
+  assert.equal(isValidPersonName("Juan Dela Cruz"), true);
+  assert.equal(isValidPersonName("Niño Peña"), true);
+  assert.equal(isValidPersonName("Mary-Ann D'Angelo"), true);
+  assert.equal(isValidPersonName("A"), false); // too short
+  assert.equal(isValidPersonName("Juan123"), false); // contains numbers
+  assert.equal(isValidPersonName("<script>"), false);
+});
+
+test("password complexity and strength meters evaluate clinical security rules", async () => {
+  const {
+    checkPasswordComplexity,
+    getPasswordStrength,
+    validatePasswordComplexity,
+    getLockoutDurationSeconds,
+  } = await import("./authRegistrationUtils.js");
+
+  assert.equal(checkPasswordComplexity("short").isComplete, false);
+  assert.equal(checkPasswordComplexity("AllLettersNoDigits!").isComplete, false);
+  assert.equal(checkPasswordComplexity("P@ssw0rd123456").isComplete, true);
+
+  const strong = getPasswordStrength("P@ssw0rd123456");
+  assert.equal(strong.level, "strong");
+  assert.equal(strong.color, "green");
+
+  const fair = getPasswordStrength("password123456");
+  assert.equal(fair.level, "fair");
+
+  const weak = getPasswordStrength("weak");
+  assert.equal(weak.level, "weak");
+
+  assert.match(validatePasswordComplexity("password123456"), /uppercase/);
+  assert.equal(validatePasswordComplexity("P@ssw0rd123456"), "");
+
+  assert.equal(getLockoutDurationSeconds(4), 0);
+  assert.equal(getLockoutDurationSeconds(5), 30);
+  assert.equal(getLockoutDurationSeconds(6), 60);
+  assert.equal(getLockoutDurationSeconds(7), 60);
+  assert.equal(getLockoutDurationSeconds(8), 300);
+});
+
+test("validateRegistrationFields validates cultural names and supports enforceComplexity option", async () => {
+  const { validateRegistrationFields } = await import("./authRegistrationUtils.js");
+  const base = {
+    firstName: "Ava",
+    lastName: "Naga",
+    phoneNumber: "09123456789",
+    facilityId: "facility-1",
+    facilities: [{ id: "facility-1", status: "ACTIVE" }],
+    role: "PHARMA_I",
+    allowedRoles: ["PHARMA_I"],
+    password: "Password12345!",
+    confirmPassword: "Password12345!",
+  };
+
+  assert.equal(validateRegistrationFields(base), "");
+
+  assert.match(
+    validateRegistrationFields({ ...base, firstName: "1234" }),
+    /letters, hyphens, and apostrophes only/
+  );
+
+  assert.match(
+    validateRegistrationFields({
+      ...base,
+      password: "simplepassword",
+      confirmPassword: "simplepassword",
+      options: { enforceComplexity: true },
+    }),
+    /uppercase letter/
+  );
+});
+

@@ -11,11 +11,14 @@
     "core:window:allow-maximize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-start-dragging",
     "sql:default",
     "sql:allow-execute",
     "sql:allow-select",
     "deep-link:default",
+    "dialog:default",
+    "dialog:allow-open",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://pcktrkqqwykcmgswkjlj.supabase.co/**" }]

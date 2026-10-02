@@ -5,6 +5,7 @@
  * as soon as network connectivity is detected.
  */
 
+import { supabase } from "../client/supabase.js";
 import { getSqliteDb, initSqliteSchema, isTauriEnvironment } from "../database/sqliteClient.js";
 import { getCachedUserSession } from "../database/snapshotStore.js";
 import { getMutationFailureStatus } from "../client/networkErrorUtils.js";
@@ -12,6 +13,7 @@ import { getMutationFailureStatus } from "../client/networkErrorUtils.js";
 const OUTBOX_STORAGE_KEY = "prds_offline_outbox_queue";
 const SUPPORTED_MUTATION_TYPES = new Set(["RPC", "INSERT", "UPDATE", "DELETE"]);
 const listeners = new Set();
+const outboxListeners = new Set();
 let cachedPendingCount = 0;
 
 export const filterMutationsForUser = (mutations, userId) =>
@@ -109,6 +111,13 @@ async function getQueueEntries(userId) {
 
 function notifyQueueChange() {
   listeners.forEach((listener) => listener(cachedPendingCount));
+  outboxListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (e) {
+      console.warn("Outbox queue listener error:", e);
+    }
+  });
 }
 
 export async function enqueueMutation({
@@ -292,8 +301,70 @@ export function subscribeQueueCount(callback) {
   };
 }
 
+export function subscribeOutboxQueue(callback) {
+  outboxListeners.add(callback);
+  return () => {
+    outboxListeners.delete(callback);
+  };
+}
+
+export async function getOutboxEntries(userId = getCachedOwnerId()) {
+  if (!userId) return [];
+  const entries = await getQueueEntries(userId);
+  return entries
+    .filter((item) => item.status === "PENDING" || item.status === "FAILED")
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+}
+
+export async function retryMutation(id, userId = getCachedOwnerId()) {
+  if (!userId || !id) return false;
+
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      await db.execute(
+        "UPDATE offline_mutation_queue SET status = 'PENDING', error_message = NULL WHERE id = $1 AND user_id = $2",
+        [id, userId]
+      );
+    } catch (err) {
+      console.warn("Failed to retry mutation in SQLite:", err);
+    }
+  }
+
+  memoryQueue = readLocalStorageQueue().map((item) =>
+    item.user_id === userId && item.id === id
+      ? { ...item, status: "PENDING", error_message: null }
+      : item
+  );
+  writeLocalStorageQueue(memoryQueue);
+  await refreshPendingCount();
+  return true;
+}
+
+export async function dismissMutation(id, userId = getCachedOwnerId()) {
+  if (!userId || !id) return false;
+
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      await db.execute(
+        "DELETE FROM offline_mutation_queue WHERE id = $1 AND user_id = $2",
+        [id, userId]
+      );
+    } catch (err) {
+      console.warn("Failed to delete mutation in SQLite:", err);
+    }
+  }
+
+  memoryQueue = readLocalStorageQueue().filter(
+    (item) => !(item.user_id === userId && item.id === id)
+  );
+  writeLocalStorageQueue(memoryQueue);
+  await refreshPendingCount();
+  return true;
+}
+
 export async function processOutboxQueue() {
-  const { supabase } = await import("../client/supabase");
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
 

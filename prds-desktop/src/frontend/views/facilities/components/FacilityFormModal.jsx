@@ -40,14 +40,6 @@ export function FacilityFormModal({
               Fill in the required details and locate the facility on the map.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-            aria-label="Close facility form"
-          >
-            <XIcon />
-          </button>
         </div>
 
         <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#f8faf7] px-6 py-5">

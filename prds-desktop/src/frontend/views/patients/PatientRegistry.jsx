@@ -30,9 +30,11 @@ import {
   matchesPatientFilters,
   normalizePatientContactNumber,
   PATIENT_ARCHIVE_MODES,
+  sanitizePatientName,
   sortPatients,
   validatePatientForm,
 } from "@shared/utils/patientUtils";
+import { downloadExportFile } from "../../services/downloadManager";
 
 const emptyPatientForm = {
   first_name: "",
@@ -207,9 +209,9 @@ export default function PatientRegistry({
     }
 
     const payload = {
-      first_name: formValues.first_name.trim(),
-      middle_name: formValues.middle_name?.trim() || null,
-      last_name: formValues.last_name.trim(),
+      first_name: sanitizePatientName(formValues.first_name),
+      middle_name: formValues.middle_name?.trim() ? sanitizePatientName(formValues.middle_name) : null,
+      last_name: sanitizePatientName(formValues.last_name),
       suffix: formValues.suffix || null,
       gender: formValues.gender,
       date_of_birth: formValues.date_of_birth,
@@ -319,17 +321,13 @@ export default function PatientRegistry({
     }
   };
 
-  const handleExportCsv = () => {
+  const handleExportExcel = () => {
     const csv = buildPatientsCsv({ archiveMode, patients: sortedPatients });
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `prds-patients-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadExportFile({
+      filename: `prds-patients-${new Date().toISOString().slice(0, 10)}`,
+      csv,
+      recordCount: sortedPatients.length,
+    });
   };
 
   const handleRefreshPatients = async () => {
@@ -407,7 +405,7 @@ export default function PatientRegistry({
               </button>
               <button
                 type="button"
-                onClick={handleExportCsv}
+                onClick={handleExportExcel}
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
               >
                 <ExportIcon />

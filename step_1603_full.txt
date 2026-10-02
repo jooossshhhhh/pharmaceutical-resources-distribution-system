@@ -1,0 +1,218 @@
+Created At: 2026-10-01T01:20:25+08:00
+Completed At: 2026-10-01T01:20:26+08:00
+
+				The command exited with code 0.
+				Output:
+				<truncated 7822 lines>
+-    anchor.click();
+-    URL.revokeObjectURL(url);
++    const filename = viewMode === "incoming" ? "bhw-incoming-transfers" : "bhw-transfer-history";
++    downloadExportFile({
++      filename,
++      csv,
++      recordCount: visibleTransfers.length,
++    });
+   };
+ 
+   const setStatusFilter = (status) => {
+diff --git a/prds-desktop/src/frontend/views/transfers/TransferUi.jsx b/prds-desktop/src/frontend/views/transfers/TransferUi.jsx
+index 51e983c..df324af 100644
+--- a/prds-desktop/src/frontend/views/transfers/TransferUi.jsx
++++ b/prds-desktop/src/frontend/views/transfers/TransferUi.jsx
+@@ -96,117 +96,6 @@ export const StatusBadge = ({ status }) => (
+ 
+ export function FilterChip({ active, children, icon, onClick }) {
+   return (
+-    <button
+-      type="button"
+-      onClick={onClick}
+-      className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 ${
+-        active
+-          ? "bg-black text-white shadow-md shadow-black/10"
+-          : "bg-[#f7f6f3] text-[#0d1117] hover:bg-[#eff4ff]"
+-      }`}
+-    >
+-      {icon}
+-      {children}
+-    </button>
+-  );
+-}
+-
+-export function SortToggleButton({ onClick, sort }) {
+-  return (
+-    <button
+-      type="button"
+-      onClick={onClick}
+-      className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+-      title={sort === "newest" ? "Newest first" : "Oldest first"}
+-      aria-label={sort === "newest" ? "Sort newest first" : "Sort oldest first"}
+-    >
+-      <SortDirectionIcon direction={sort} />
+-      <span>{sort === "newest" ? "Newest" : "Oldest"}</span>
+-    </button>
+-  );
+-}
+-
+-export function MetricCard({ active, icon, label, onClick, value, detail }) {
+-  return (
+-    <button
+-      type="button"
+-      onClick={onClick}
+-      className={`rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md ${
+-        active ? "border-[#6be9c2] ring-1 ring-[#6be9c2]" : "border-[#d8dadc]"
+-      }`}
+-    >
+-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-[#dffbf2] text-[#008f68]">
+-        {icon}
+-      </div>
+-      <p className="text-2xl font-bold leading-none text-[#0d1117]">{value}</p>
+-      <p className="mt-2 text-xs font-bold text-[#0d1117]">{label}</p>
+-      <p className="mt-1 text-xs text-[#5f6673]">{detail}</p>
+-    </button>
+-  );
+-}
+-
+-export function Field({ children, label }) {
+-  return (
+-    <label className="block">
+-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+-        {label}
+-      </span>
+-      {children}
+-    </label>
+-  );
+-}
+-
+-export function Input(props) {
+-  return (
+-    <input
+-      {...props}
+-      className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+-    />
+-  );
+-}
+-
+-export function Select(props) {
+-  return (
+-    <select
+-      {...props}
+-      className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-medium text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+-    />
+-  );
+-}
+-
+-export function Textarea(props) {
+-  return (
+-    <textarea
+-      {...props}
+-      className={`min-h-24 w-full resize-none rounded-lg border border-[#d8dadc] bg-white px-3 py-2 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+-    />
+-  );
+-}
+-
+-export function TransferModal({ children, onClose, title, subtitle, widthClass = "max-w-4xl" }) {
+-  return (
+-    <ModalShell
+-      labelledBy="transfer-modal-title"
+-      onClose={onClose}
+-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+-      panelClassName={widthClass}
+-    >
+-      <div className="max-h-[86vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">
+-        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] px-5 py-4">
+-          <div>
+-            <h2 id="transfer-modal-title" className="text-lg font-bold text-[#0d1117]">
+-              {title}
+-            </h2>
+-            {subtitle && <p className="mt-1 text-sm text-[#5f6673]">{subtitle}</p>}
+-          </div>
+-          <button
+-            type="button"
+-            onClick={onClose}
+-            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
+-            aria-label="Close modal"
+-          >
+-            <XIcon />
+-          </button>
+         </div>
+         <div className="max-h-[calc(86vh-76px)] overflow-auto p-5">{children}</div>
+       </div>
+diff --git a/prds-desktop/src/frontend/views/users/components/UserSummaryCards.jsx b/prds-desktop/src/frontend/views/users/components/UserSummaryCards.jsx
+index 012cced..713aa70 100644
+--- a/prds-desktop/src/frontend/views/users/components/UserSummaryCards.jsx
++++ b/prds-desktop/src/frontend/views/users/components/UserSummaryCards.jsx
+@@ -1,20 +1,3 @@
+-import { AlertIcon, BanIcon, CheckIcon, UserIcon } from "./UserManagementIcons";
+-
+-const toneClasses = {
+-  amber: "bg-amber-50 text-amber-700 ring-amber-100",
+-  blue: "bg-blue-50 text-blue-700 ring-blue-100",
+-  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+-  neutral: "bg-neutral-50 text-neutral-700 ring-neutral-100",
+-  teal: "bg-[#e8fff7] text-[#007f5f] ring-[#6be9c2]/40",
+-};
+-
+-const iconMap = {
+-  active: CheckIcon,
+-  deactivated: BanIcon,
+-  pending: AlertIcon,
+-  total: UserIcon,
+-};
+-
+ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary }) {
+   const cards = [
+     {
+@@ -23,7 +6,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
+       id: "total",
+       label: "Total Users",
+       onClick: () => onSelectStatus("ALL"),
+-      tone: "teal",
+       value: summary.total,
+     },
+     {
+@@ -32,7 +14,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
+       id: "pending",
+       label: "Pending Approval",
+       onClick: () => onSelectStatus("PENDING"),
+-      tone: "amber",
+       value: summary.pending,
+     },
+     {
+@@ -41,7 +22,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
+       id: "active",
+       label: "Active",
+       onClick: () => onSelectStatus("ACTIVE"),
+-      tone: "blue",
+       value: summary.active,
+     },
+     {
+@@ -50,7 +30,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
+       id: "deactivated",
+       label: "Deactivated",
+       onClick: () => onSelectStatus("DEACTIVATED"),
+-      tone: "neutral",
+       value: summary.deactivated,
+     },
+   ];
+@@ -58,8 +37,6 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
+   return (
+     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+       {cards.map((card) => {
+-        const Icon = iconMap[card.id] || UserIcon;
+-
+         return (
+           <button
+             key={card.id}
+@@ -69,10 +46,7 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
+               card.active ? "border-[#6be9c2] ring-2 ring-[#6be9c2]/30" : "border-neutral-200"
+             }`}
+           >
+-            <div className="flex items-start justify-between gap-3">
+-              <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ring-1 ${toneClasses[card.tone]}`}>
+-                <Icon />
+-              </span>
++            <div className="flex min-h-5 items-start justify-end gap-3">
+               {card.active ? (
+                 <span className="rounded-full bg-[#6be9c2]/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#0d1117]">
+                   Selected
+

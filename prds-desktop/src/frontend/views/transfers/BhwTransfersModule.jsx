@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
+import { downloadExportFile } from "../../services/downloadManager";
 import { logoutUser } from "@backend/services/auth/authService";
 import PaginationControls from "../../components/PaginationControls";
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
@@ -1021,13 +1022,12 @@ export default function BhwTransfersModule() {
 
   const exportHistory = () => {
     const csv = buildTransfersCsv(visibleTransfers);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = viewMode === "incoming" ? "bhw-incoming-transfers.csv" : "bhw-transfer-history.csv";
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const filename = viewMode === "incoming" ? "bhw-incoming-transfers" : "bhw-transfer-history";
+    downloadExportFile({
+      filename,
+      csv,
+      recordCount: visibleTransfers.length,
+    });
   };
 
   const setStatusFilter = (status) => {

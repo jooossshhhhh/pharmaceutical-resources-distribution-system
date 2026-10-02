@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import ModalShell from "../../components/ModalShell";
@@ -7,6 +7,7 @@ import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import { formatDateTime } from "@shared/utils/dashboardUtils";
+import { downloadExportFile } from "../../services/downloadManager";
 import {
   confirmRequestReceived,
   createBhwMedicineRequest,
@@ -312,18 +313,13 @@ export default function BhwRequestsModule() {
     }
   };
 
-  const exportCsv = () => {
+  const exportExcel = () => {
     const csv = buildRequestsCsv(filteredRequests);
-    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `bhw-requests-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadExportFile({
+      filename: `bhw-requests-${new Date().toISOString().slice(0, 10)}`,
+      csv,
+      recordCount: filteredRequests.length,
+    });
   };
 
   const confirmedRequest = confirmedRequestId
@@ -382,12 +378,12 @@ export default function BhwRequestsModule() {
                 </span>
               </IconButton>
               <ActionButton
-                onClick={exportCsv}
+                onClick={exportExcel}
                 disabled={filteredRequests.length === 0}
                 tone="soft"
               >
                 <UiDownloadIcon />
-                Export CSV
+                Export Excel
               </ActionButton>
             </div>
           }

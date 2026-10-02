@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { TrendingUp } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -27,10 +28,13 @@ export default function ForecastingProjectionChart({
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex h-72 w-full flex-col items-center justify-center rounded-xl bg-slate-50 text-center">
-        <p className="text-sm font-bold text-slate-700">No chart data available</p>
-        <p className="mt-1 text-xs text-slate-400">
-          Select a medicine to view historical trends and linear regression projections.
+      <div className="flex h-72 w-full flex-col items-center justify-center rounded-xl bg-slate-50/70 p-6 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+          <TrendingUp className="h-6 w-6" />
+        </div>
+        <p className="mt-3 text-sm font-bold text-slate-700">No Dispensing History Available</p>
+        <p className="mt-1 max-w-sm text-xs font-medium text-slate-400">
+          This medicine does not have historical dispensing records at this facility yet. Demand forecasts and linear regression require historical dispensing transactions.
         </p>
       </div>
     );

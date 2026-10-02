@@ -12,6 +12,7 @@ import MedicineFormModal from "./components/MedicineFormModal";
 import MedicineToolbar from "./components/MedicineToolbar";
 import {
   emptyMedicineForm,
+  extractUniqueCategories,
   filterMedicines,
   findDuplicateMedicines,
   formatDateTime,
@@ -19,6 +20,7 @@ import {
   parseMedicineCategories,
   sortMedicines,
 } from "@shared/utils/medicineUtils";
+import { exportMedicinesList } from "@shared/utils/medicineExportUtils";
 
 const fetchMedicineRows = async () => {
   if (!isCurrentNetworkOnline()) {
@@ -49,6 +51,7 @@ export default function MedicinesModule() {
   const { profile } = useAuth();
   const [medicines, setMedicines] = useState(() => getSnapshot(STORAGE_KEYS.MEDICINES, []));
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [medicineSort, setMedicineSort] = useState("ASC");
   const [isLoading, setIsLoading] = useState(() => getSnapshot(STORAGE_KEYS.MEDICINES, []).length === 0);
   const [isSaving, setIsSaving] = useState(false);
@@ -62,9 +65,11 @@ export default function MedicinesModule() {
 
   const today = useMemo(() => formatDateTime(new Date()), []);
 
+  const categories = useMemo(() => extractUniqueCategories(medicines), [medicines]);
+
   const filteredMedicines = useMemo(
-    () => filterMedicines(medicines, searchTerm),
-    [medicines, searchTerm]
+    () => filterMedicines(medicines, searchTerm, selectedCategory),
+    [medicines, searchTerm, selectedCategory]
   );
 
   const sortedMedicines = useMemo(
@@ -79,6 +84,22 @@ export default function MedicinesModule() {
     totalCount,
     totalPages,
   } = usePaginatedRows(sortedMedicines);
+
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
+  const handleCategoryChange = (value) => {
+    setSelectedCategory(value);
+    setCurrentPage(1);
+  };
+
+  const handleExportMedicines = () => {
+    exportMedicinesList({
+      medicines: sortedMedicines,
+    });
+  };
 
   const loadMedicines = useCallback(async () => {
     setIsLoading(true);
@@ -357,13 +378,17 @@ export default function MedicinesModule() {
 
       <div className="mt-5 space-y-5">
         <MedicineToolbar
+          categories={categories}
           medicineSort={medicineSort}
           onAdd={openCreateModal}
-          onSearchChange={setSearchTerm}
+          onCategoryChange={handleCategoryChange}
+          onExport={handleExportMedicines}
+          onSearchChange={handleSearchChange}
           onSortChange={() =>
             setMedicineSort((currentSort) => (currentSort === "ASC" ? "DESC" : "ASC"))
           }
           searchTerm={searchTerm}
+          selectedCategory={selectedCategory}
           shownCount={sortedMedicines.length}
           totalCount={medicines.length}
         />
@@ -374,7 +399,11 @@ export default function MedicinesModule() {
           isLoading={isLoading}
           medicines={paginatedMedicines}
           onAdd={openCreateModal}
-          onClearSearch={() => setSearchTerm("")}
+          onClearSearch={() => {
+            setSearchTerm("");
+            setSelectedCategory("");
+            setCurrentPage(1);
+          }}
           onPageChange={setCurrentPage}
           onSelectMedicine={(medicine) => openMedicineModal(medicine, "view")}
           pageSize={pageSize}

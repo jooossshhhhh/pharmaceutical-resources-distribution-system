@@ -28,6 +28,8 @@ import prdsLogo from "@frontend/assets/prds-logo-main.svg";
 import { getLoginAccountStatus } from "@shared/utils/authRegistrationUtils.js";
 
 const OTP_EXPIRY_SECONDS = 120;
+const RESEND_COOLDOWN_SECONDS = 60;
+const MAX_OTP_ATTEMPTS = 3;
 
 function maskEmail(email) {
   if (!email || typeof email !== "string" || !email.includes("@")) {
@@ -52,6 +54,8 @@ export default function OTPVerification() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(OTP_EXPIRY_SECONDS);
+  const [resendCooldown, setResendCooldown] = useState(RESEND_COOLDOWN_SECONDS);
+  const [failedAttempts, setFailedAttempts] = useState(0);
 
   useEffect(() => {
     if (!pendingOtp) {
@@ -72,6 +76,18 @@ export default function OTPVerification() {
 
     return () => window.clearInterval(timerId);
   }, [pendingOtp, secondsRemaining]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) {
+      return undefined;
+    }
+
+    const timerId = window.setInterval(() => {
+      setResendCooldown((current) => (current > 0 ? current - 1 : 0));
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [resendCooldown]);
 
   if (!pendingOtp) {
     return null;
@@ -100,6 +116,11 @@ export default function OTPVerification() {
     event.preventDefault();
     setErrorMessage("");
     setResendNotice("");
+
+    if (failedAttempts >= MAX_OTP_ATTEMPTS) {
+      setErrorMessage("Maximum verification attempts reached (3/3). This code has been invalidated. Please request a new code.");
+      return;
+    }
 
     if (isOtpExpired) {
       setErrorMessage("Verification code has expired. Please request a new code.");
@@ -229,13 +250,23 @@ export default function OTPVerification() {
 
       navigate("/dashboard", { replace: true });
     } catch (error) {
-      setErrorMessage(getAuthErrorMessage(error));
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+      if (nextAttempts >= MAX_OTP_ATTEMPTS) {
+        setErrorMessage("Maximum verification attempts reached (3/3). This code has been invalidated. Please request a new code.");
+      } else {
+        const errorMsg = getAuthErrorMessage(error);
+        setErrorMessage(`${errorMsg} (${nextAttempts}/${MAX_OTP_ATTEMPTS} attempts used)`);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleResendCode = async () => {
+    if (resendCooldown > 0) {
+      return;
+    }
     setErrorMessage("");
     setResendNotice("");
     setIsResending(true);
@@ -249,6 +280,9 @@ export default function OTPVerification() {
         setResendNotice("A new verification code has been sent to your phone.");
       }
       setSecondsRemaining(OTP_EXPIRY_SECONDS);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setFailedAttempts(0);
+      setVerificationCode("");
     } catch (error) {
       setErrorMessage(getAuthErrorMessage(error));
     } finally {
@@ -332,26 +366,36 @@ export default function OTPVerification() {
                   </>
                 )}
               </p>
-              <div className="mt-3 flex items-center justify-center gap-3">
+              <div className="mt-3 flex flex-col items-center justify-center gap-1.5 sm:flex-row sm:gap-3">
                 <p
                   className={`text-sm font-bold ${
-                    isOtpExpired ? "text-red-600" : "text-green-700"
+                    isOtpExpired || failedAttempts >= MAX_OTP_ATTEMPTS
+                      ? "text-red-600"
+                      : "text-green-700"
                   }`}
                 >
-                  {isOtpExpired
-                    ? "Code expired"
-                    : `Code expires in ${formattedTimeRemaining}`}
+                  {failedAttempts >= MAX_OTP_ATTEMPTS
+                    ? "Code invalidated (3/3 attempts used)"
+                    : isOtpExpired
+                      ? "Code expired"
+                      : `Code expires in ${formattedTimeRemaining}`}
                 </p>
-                {isOtpExpired && (
-                  <button
-                    type="button"
-                    onClick={handleResendCode}
-                    disabled={isResending}
-                    className="text-xs font-bold text-[#1d3f8c] hover:text-green-700 hover:underline disabled:opacity-70"
-                  >
-                    {isResending ? "Resending..." : "Resend Code"}
-                  </button>
-                )}
+                <div>
+                  {resendCooldown > 0 ? (
+                    <span className="text-xs font-medium text-slate-500">
+                      Resend code in {resendCooldown}s
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResendCode}
+                      disabled={isResending}
+                      className="text-xs font-bold text-[#1d3f8c] hover:text-green-700 hover:underline disabled:opacity-70 cursor-pointer"
+                    >
+                      {isResending ? "Resending..." : "Resend Code"}
+                    </button>
+                  )}
+                </div>
               </div>
               {resendNotice && (
                 <p className="mt-2 text-xs font-semibold text-green-700">
@@ -379,7 +423,7 @@ export default function OTPVerification() {
                 const pastedText = event.clipboardData.getData("text") || "";
                 setVerificationCode(pastedText.replace(/\D/g, "").slice(0, 8));
               }}
-              placeholder="Enter code"
+              placeholder="Enter 6-digit code"
               required
               className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-center text-lg font-bold tracking-[0.35em] text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
             />
@@ -392,7 +436,7 @@ export default function OTPVerification() {
 
             <button
               type="submit"
-              disabled={isSubmitting || isOtpExpired}
+              disabled={isSubmitting || isOtpExpired || failedAttempts >= MAX_OTP_ATTEMPTS}
               className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#008000] px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-md shadow-green-800/10 transition-all duration-150 hover:bg-[#006600] hover:shadow-lg hover:shadow-green-800/20 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isSubmitting

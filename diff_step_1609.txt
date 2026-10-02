@@ -1,0 +1,175 @@
+Created At: 2026-10-01T01:20:40+08:00
+Completed At: 2026-10-01T01:20:41+08:00
+
+				The command exited with code 0.
+				Output:
+				<truncated 1091 lines>
+-          onClose={() => setAddPhoneLogin(emptyAddPhoneLogin)}
+-          overlayClassName="bg-white/95 backdrop-blur-sm"
+-        >
+-          <form
+-            onSubmit={handleAddPhoneLoginSubmit}
+-            className="w-full max-w-[460px] overflow-hidden rounded-xl bg-white shadow-2xl"
+-          >
+-            <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-5">
+-              <div>
+-                <h3 id="add-phone-modal-title" className="text-lg font-black text-black">Add Phone Number</h3>
+-                <p className="mt-1 text-sm font-medium text-neutral-500">
+-                  A verification code will be sent before this phone login is saved.
+-                </p>
+-              </div>
+-              <button
+-                type="button"
+-                onClick={() => setAddPhoneLogin(emptyAddPhoneLogin)}
+-                className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
+-                aria-label="Close add phone number"
+-              >
+-                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+-                  <path d="M18 6 6 18M6 6l12 12" />
+-                </svg>
+-              </button>
+             </div>
+ 
+             <div className="px-6 py-5">
+@@ -1382,9 +1310,8 @@ return true;
+ 
+                   return (
+                     <span
+-                      className={`text-xs font-bold normal-case tracking-normal ${
+-                        isValid ? "text-emerald-700" : "text-red-700"
+-                      }`}
++                      className={`text-xs font-bold normal-case tracking-normal ${isValid ? "text-emerald-700" : "text-red-700"
++                        }`}
+                     >
+                       {isValid
+                         ? "Valid phone number."
+@@ -1405,81 +1332,64 @@ return true;
+             </div>
+ 
+             <div className="flex justify-end gap-3 border-t border-neutral-100 px-6 py-5">
++            </div>
++
++            <div className="p-6 space-y-4">
++              <div className="rounded-xl border border-amber-200/70 bg-amber-50/60 p-4 text-xs leading-relaxed text-amber-900 space-y-1.5">
++                <p className="font-bold">Are you sure you want to sign out other sessions?</p>
++                <p className="text-amber-800/90 text-[11px]">
++                  This will immediately invalidate active sessions for <strong className="font-bold">{linkedGmailEmail || profile?.email || "this account"}</strong> on all other web browsers, desktop terminals, and mobile devices.
++                </p>
++              </div>
++
++              <div className="rounded-xl border border-slate-100 bg-[#f8f9fc] p-3.5 text-xs text-slate-600 flex items-start gap-2.5">
++                <svg className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
++                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
++                  <path d="m9 12 2 2 4-4" />
++                </svg>
++                <p className="text-[11px] font-medium text-slate-600">
++                  <strong className="font-bold text-slate-700">Your current session is safe:</strong> You will remain logged in on this terminal without interruption.
++                </p>
++              </div>
++
++              {signOutOthersError && (
++                <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
++                  {signOutOthersError}
++                </p>
++              )}
++            </div>
++
++            <div className="flex items-center justify-end gap-3 border-t border-neutral-100 bg-slate-50/50 px-6 py-4">
+               <button
+                 type="button"
+-                onClick={() => setAddPhoneLogin(emptyAddPhoneLogin)}
+-                className="rounded-lg bg-neutral-50 px-5 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-100"
++                onClick={() => setIsSignOutOthersModalOpen(false)}
++                disabled={isSigningOutOthers}
++                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+               >
+                 Cancel
+               </button>
+               <button
+-                type="submit"
+-                disabled={addPhoneLogin.isSending || isSaving}
+-                className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
++                type="button"
++                onClick={handleConfirmSignOutOthers}
++                disabled={isSigningOutOthers}
++                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-black transition cursor-pointer disabled:opacity-50 shadow-sm"
+               >
+-                {addPhoneLogin.isSending || isSaving ? "Sending OTP..." : "Send OTP"}
++                {isSigningOutOthers ? (
++                  <>
++                    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
++                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
++                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
++                    </svg>
++                    <span>Signing out...</span>
++                  </>
++                ) : (
++                  <span>Sign Out Other Devices</span>
++                )}
+               </button>
+             </div>
+-          </form>
++          </div>
+         </ModalShell>
+       )}
+-
+-      {phoneVerification.isOpen && (
+-        <OtpModal
+-          code={phoneVerification.code}
+-          error={phoneVerification.error}
+-          isBusy={phoneVerification.isVerifying}
+-          isResending={phoneVerification.isResending}
+-          onBack={() => {
+-            const previousPhoneNumber = phoneVerification.phoneNumber;
+-            const source = phoneVerification.source;
+-            setPhoneVerification(emptyPhoneVerification);
+-            if (source === "login-method") {
+-              setAddPhoneLogin({
+-                ...emptyAddPhoneLogin,
+-                isOpen: true,
+-                phoneNumber: previousPhoneNumber,
+-              });
+-            } else {
+-              setIsEditing(true);
+-            }
+-          }}
+-          onChange={(code) =>
+-            setPhoneVerification((current) => ({ ...current, code }))
+-          }
+-          onResend={handleResendPhoneChangeOtp}
+-          onSubmit={handleVerifyPhoneChange}
+-          subtitle={`Enter the verification code sent to ${toPhilippineE164PhoneNumber(phoneVerification.phoneNumber)}.`}
+-          submitLabel="Verify OTP and Save"
+-          title="Verify Phone Number"
+-        />
+-      )}
+-
+-      {passwordVerification.isOpen && (
+-        <PasswordModal
+-          authEmail={linkedGmailEmail}
+-          onChange={setPasswordVerification}
+-          onClose={() => setPasswordVerification(emptyPasswordVerification)}
+-          onSend={handleSendPasswordVerification}
+-          onSubmit={handleVerifyPasswordAndSave}
+-          phoneNumber={profile?.phone_number || ""}
+-          state={passwordVerification}
+-        />
+-      )}
+-
+-      {removeLoginMethod.isOpen && (
+-        <RemoveLoginMethodModal
+-          error={removeLoginMethod.error}
+-          isRemoving={removeLoginMethod.isRemoving}
+-          methodLabel={removeLoginMethod.method === "gmail" ? "Gmail Login" : "Phone Login"}
+-          onClose={() => setRemoveLoginMethod(emptyRemoveLoginMethod)}
+-          onPasswordChange={(password) =>
+-            setRemoveLoginMethod((current) => ({ ...current, password }))
+-          }
+-          onSubmit={handleRemoveLoginMethod}
+-          password={removeLoginMethod.password}
+-        />
+-      )}
+     </AdminShell>
+   );
+ }
+

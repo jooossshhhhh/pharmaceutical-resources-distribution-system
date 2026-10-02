@@ -873,9 +873,9 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
         >
           <div className="facility-detail-stats grid gap-3">
             <HealthGaugeCard percent={facility.healthPercent} health={facility.stockHealth} />
-            <DetailStat label="Inventory Value" value={formatCurrency(facility.stockCounts.totalValue)} icon={<CurrencyIcon />} />
-            <DetailStat label="Total Units" value={formatNumber(facility.stockCounts.totalQuantity)} icon={<StockIcon />} />
-            <DetailStat label="Patients" value={formatNumber(facility.patientCount)} icon={<UsersIcon />} />
+            <DetailStat label="Inventory Value" value={formatCurrency(facility.stockCounts.totalValue)} />
+            <DetailStat label="Total Units" value={formatNumber(facility.stockCounts.totalQuantity)} />
+            <DetailStat label="Patients" value={formatNumber(facility.patientCount)} />
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-neutral-200 bg-white p-2 shadow-sm">
@@ -1218,15 +1218,10 @@ function HealthGaugeCard({ percent, health }) {
   );
 }
 
-function DetailStat({ label, value, tone = "HEALTHY", icon }) {
-  const healthMeta = getHealthMeta(tone);
-
+function DetailStat({ label, value }) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${tone ? healthMeta.iconClass : "bg-[#faf9f7] text-neutral-500"}`}>
-        {icon}
-      </span>
-      <p className="mt-3 text-2xl font-black text-black">{value}</p>
+      <p className="text-2xl font-black text-black">{value}</p>
       <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</p>
     </div>
   );
@@ -1260,31 +1255,11 @@ function ProfileLine({ label, value }) {
   );
 }
 
-function CurrencyIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <path d="M12 2v20" />
-      <path d="M17 5.5H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6" />
-    </svg>
-  );
-}
-
 function TrendIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
       <path d="m4 17 6-6 4 4 6-7" />
       <path d="M15 8h5v5" />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
-      <circle cx="9" cy="8" r="4" />
-      <path d="M2 21a7 7 0 0 1 14 0" />
-      <path d="M17 11a4 4 0 0 0 0-8" />
-      <path d="M20 21a5 5 0 0 0-3-5" />
     </svg>
   );
 }

@@ -8,17 +8,68 @@ The implementation is selectively offline-capable. It does not currently guarant
 
 ## Architecture
 
+### System Data Flow & Storage Topology
+
 ```mermaid
-flowchart LR
-    UI[React modules and services] -->|read| CACHE[Snapshot cache\nlocalStorage + SQLite]
-    UI -->|supported offline mutation| OUTBOX[Mutation outbox\nlocalStorage + SQLite]
-    UI -->|online request or mutation| SB[Supabase Auth and Postgres]
-    NET[Connectivity monitor] --> SYNC[Sync manager]
-    OUTBOX -->|replay as signed-in owner| SYNC
-    SYNC -->|push queued mutations first| SB
-    SB -->|fetch current snapshots| SYNC
-    SYNC -->|replace/update cached data| CACHE
+flowchart TD
+    subgraph Cloud ["Cloud Database Layer (Supabase / PostgreSQL)"]
+        SB_AUTH["Supabase Auth\n(JWT / PKCE)"]
+        SB_TABLES[("Remote PostgreSQL Tables\nmedicines, inventory, dispensing,\npatients, requests, transfers")]
+    end
+
+    subgraph DesktopApp ["Desktop Application Shell (Tauri v2 + React 19)"]
+        subgraph Engine ["Unified Sync & Data Engine"]
+            NET["Connectivity Monitor\n(networkStatus.js)"]
+            SYNC["Sync Manager\n(syncManager.js)"]
+            CLIENT["Data Client Bridge\n(dataClient.js)"]
+            OUTBOX["Outbox Mutation Queue\n(outboxQueue.js)"]
+        end
+
+        subgraph StorageLayer ["Dual-Layer Local Storage"]
+            subgraph L1 ["Layer 1: Fast-Boot Snapshot Store"]
+                LS[("LocalStorage / LevelDB\n• prds_snapshot_*\n• 0ms React UI Boot\n• Session Tokens")]
+            end
+
+            subgraph L2 ["Layer 2: Relational Embedded Storage"]
+                SQLITE[("Native SQLite Database\nprds.db\n• Structured Offline Tables\n• offline_mutation_queue")]
+            end
+        end
+
+        subgraph UILayer ["User Interface (React Views)"]
+            UI["Dashboard, Inventory, Dispensing,\nRequests, Transfers, Patients"]
+        end
+    end
+
+    %% Cloud Ingestion
+    SB_TABLES -->|"HTTPS REST / RPC\n(14 concurrent snapshots)"| SYNC
+    SYNC -->|"Save JSON snapshots"| LS
+    SYNC -->|"Upsert relational rows"| SQLITE
+
+    %% Local Reads
+    LS -->|"Instant cached read"| UI
+    SQLITE -->|"Local query fallback"| UI
+
+    %% Local Writes
+    UI -->|"User Action"| CLIENT
+    CLIENT -->|"Online: Direct RPC"| SB_TABLES
+    CLIENT -->|"Offline: Enqueue mutation"| OUTBOX
+    OUTBOX -->|"Persist PENDING with UUID"| SQLITE
+    OUTBOX -->|"Mirror queue"| LS
+
+    %% Reconnection Drain
+    NET -->|"Online detected"| SYNC
+    SYNC -->|"1. Replay queued mutations (FIFO)"| SB_TABLES
+    SB_TABLES -->|"2. Pull fresh server state"| SYNC
 ```
+
+### Physical Storage Paths on Disk (Windows)
+
+| Storage Layer | Technology | Physical Location on User's Computer |
+|---|---|---|
+| **Layer 1: Snapshot Cache** | WebView2 LevelDB | `%LOCALAPPDATA%\com.prds.naga\EBWebView\Default\Local Storage\leveldb\` |
+| **Layer 2: Relational Database** | Native SQLite (`prds.db`) | `%APPDATA%\com.prds.naga\prds.db`<br>*(also accompanied by `prds.db-wal` and `prds.db-shm`)* |
+
+---
 
 ### Main Components
 
@@ -62,11 +113,68 @@ If a device has no snapshots yet, offline mode cannot display remote data that w
 
 ### 2. Offline Changes
 
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Health Worker
+    participant UI as React UI View
+    participant DC as dataClient.js
+    participant OQ as outboxQueue.js
+    participant SQLite as SQLite (prds.db)
+    participant LS as LocalStorage
+
+    User->>UI: Submit dispensing / stock request
+    UI->>DC: rpc(functionName, params)
+    DC->>DC: Check network connectivity (OFFLINE)
+    DC->>OQ: enqueueMutation({ type, target, payload, userId })
+    OQ->>OQ: Generate client UUID (crypto.randomUUID())
+    OQ->>SQLite: INSERT INTO offline_mutation_queue (status='PENDING')
+    OQ->>LS: Mirror to prds_offline_outbox_queue
+    DC-->>UI: Return { status: 'QUEUED_OFFLINE', mutationId }
+    UI->>UI: Optimistically render update & notify user
+```
+
 Only mutations routed through `enqueueMutation` are queued. Each queue record stores the signed-in `user_id`, optional `facility_id`, mutation type, target, payload, status, and creation time. The queue is persisted in localStorage and, in Tauri, also in SQLite. Queue reads and replay are filtered to the currently cached user's ID; queued work is not intentionally submitted as another user's work.
 
 Supported queue operation types are `RPC`, `INSERT`, `UPDATE`, and `DELETE`. Which user actions are actually available offline depends on whether that module's service uses the queue. Some features still require a live Supabase connection; for example, Other Programs currently blocks saving while offline. A queued change is not the same as a committed server change, so the UI should treat it as pending until replay succeeds.
 
 ### 3. Reconnection and Replay
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Net as networkStatus.js
+    participant Sync as syncManager.js
+    participant Queue as outboxQueue.js
+    participant SB as Supabase Cloud
+    participant Local as prds.db & LocalStorage
+
+    Net->>Sync: Connection Restored (Online Event)
+    Sync->>Sync: Set status = 'SYNCING'
+    
+    %% Drain Queue
+    Sync->>Queue: processOutboxQueue()
+    loop For each PENDING mutation (FIFO order)
+        Queue->>SB: Execute RPC / INSERT / UPDATE
+        alt Success
+            SB-->>Queue: OK (Committed)
+            Queue->>Local: UPDATE offline_mutation_queue SET status='SYNCED'
+        else Transient Error (Timeout / Socket Drop)
+            SB-->>Queue: Network Disconnect
+            Queue->>Queue: Keep status='PENDING' (retry next cycle)
+        else Business Rule Violation (400 / 403)
+            SB-->>Queue: Validation Error
+            Queue->>Local: UPDATE status='FAILED', error_message=...
+        end
+    end
+
+    %% Refresh Snapshots
+    Sync->>SB: Fetch fresh snapshots (14 datasets)
+    SB-->>Sync: Return fresh records
+    Sync->>Local: Update prds.db & LocalStorage
+    Sync->>Sync: Set status = 'SUCCESS', update lastSyncTime
+    Sync-->>UI: Broadcast sync status badge
+```
 
 Connectivity is assessed using browser network events and a periodic reachability request to the Supabase REST endpoint. When the application detects an offline-to-online transition, the sync manager schedules a sync. It also checks for pending work periodically while online, and the sync status control offers a manual retry.
 

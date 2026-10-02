@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  extractUniqueCategories,
   filterMedicines,
   findDuplicateMedicines,
   formatCurrency,
@@ -28,6 +29,7 @@ const medicines = [
     dosage: "500mg",
     unit_of_measure: "tablet",
     unit_cost: 3.75,
+    categories: ["Analgesic"],
   },
   {
     id: "med-3",
@@ -36,6 +38,7 @@ const medicines = [
     dosage: "5mg",
     unit_of_measure: "tablet",
     unit_cost: null,
+    categories: ["Cardiovascular"],
   },
 ];
 
@@ -46,7 +49,7 @@ test("normalizeMedicineText includes searchable medicine fields", () => {
   );
 });
 
-test("filterMedicines matches name, brand, dosage, unit, and cost", () => {
+test("filterMedicines matches name, brand, dosage, unit, cost, and category", () => {
   assert.deepEqual(
     filterMedicines(medicines, "relief").map((medicine) => medicine.id),
     ["med-2"]
@@ -60,6 +63,28 @@ test("filterMedicines matches name, brand, dosage, unit, and cost", () => {
     filterMedicines(medicines, "HIV Program").map((medicine) => medicine.id),
     ["med-1"]
   );
+  assert.deepEqual(
+    filterMedicines(medicines, "", "Analgesic").map((medicine) => medicine.id),
+    ["med-2"]
+  );
+  assert.deepEqual(
+    filterMedicines(medicines, "", "all").map((medicine) => medicine.id),
+    ["med-1", "med-2", "med-3"]
+  );
+  assert.deepEqual(
+    filterMedicines(medicines, "500mg", "Anti-Infectives").map((medicine) => medicine.id),
+    ["med-1"]
+  );
+  assert.equal(filterMedicines(medicines, "500mg", "Cardiovascular").length, 0);
+});
+
+test("extractUniqueCategories extracts and deduplicates sorted categories", () => {
+  assert.deepEqual(extractUniqueCategories(medicines), [
+    "Analgesic",
+    "Anti-Infectives",
+    "Cardiovascular",
+    "HIV Program",
+  ]);
 });
 
 test("medicine categories parse, deduplicate, and format", () => {

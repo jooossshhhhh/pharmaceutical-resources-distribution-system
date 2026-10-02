@@ -53,7 +53,7 @@ export const getDispensingStepBlocker = ({
     }
 
     if (claimed) {
-      return "This patient already claimed free medicine this month.";
+      return "This patient already received all medicines for this month.";
     }
 
     return "";
@@ -65,7 +65,7 @@ export const getDispensingStepBlocker = ({
     }
 
     if (claimed) {
-      return "This patient already claimed free medicine this month.";
+      return "This patient already received all medicines for this month.";
     }
 
     if (!lineCount) {
@@ -261,7 +261,7 @@ export const buildFefoPreview = (batches, requestedQuantity) => {
   return { allocations, shortfall: remaining };
 };
 
-export const getCartLineError = ({ line, medicineOptions }) => {
+export const getCartLineError = ({ line, medicineOptions, patientClaim = null }) => {
   const option = medicineOptions.find((entry) => entry.medicine_id === line.medicine_id);
 
   if (!option) {
@@ -281,6 +281,16 @@ export const getCartLineError = ({ line, medicineOptions }) => {
 
   if (neededQuantity < quantity) {
     return "Needed quantity cannot be lower than release quantity.";
+  }
+
+  if (patientClaim) {
+    if (patientClaim.is_completed || patientClaim.remaining_quantity <= 0) {
+      return "This medicine was already completed for this month.";
+    }
+
+    if (quantity > patientClaim.remaining_quantity) {
+      return `Release quantity cannot exceed the remaining balance of ${patientClaim.remaining_quantity} units.`;
+    }
   }
 
   if (quantity > option.total_quantity) {
@@ -354,6 +364,183 @@ export const getBlockedPatientIdsFromClaimRows = (rows = []) => {
   return Array.from(patientIdsWithClaims).filter((patientId) => !patientIdsWithOpenPartials.has(patientId));
 };
 
+export const getPatientMonthlyClaimsBreakdown = (rows = [], patientId = null, monthRange = null) => {
+  const { start, end } = monthRange || getMonthRangeIso();
+  const claims = new Map();
+
+  rows
+    .filter((row) => {
+      if (row.voided_at) return false;
+      const recordType = row.record_type || (row.is_manual_record ? "HISTORY_ONLY" : "LIVE_DISPENSING");
+      if (recordType === "HISTORY_ONLY") return false;
+      const rowPatientId = String(row.patient_id || row.patient?.id || "");
+      if (patientId && rowPatientId !== String(patientId)) return false;
+      const dispenseDate = row.dispense_date || "";
+      if (start && dispenseDate < start) return false;
+      if (end && dispenseDate >= end) return false;
+      return true;
+    })
+    .forEach((row) => {
+      const rowPatientId = String(row.patient_id || row.patient?.id || "");
+      const medicineId = String(row.medicine_id || row.medicine?.id || "");
+      const key = `${rowPatientId}:${medicineId}`;
+
+      if (!claims.has(key)) {
+        claims.set(key, {
+          patient_id: rowPatientId,
+          medicine_id: medicineId,
+          medicine: row.medicine || null,
+          needed_quantity: 0,
+          released_quantity: 0,
+          remaining_quantity: 0,
+          is_completed: false,
+          prescribed_by: row.prescribed_by || "",
+          follow_up_action: row.follow_up_action || "",
+          follow_up_date: row.follow_up_date || "",
+          referred_facility: row.referred_facility || null,
+          referred_facility_id: row.referred_facility_id || (row.referred_facility ? row.referred_facility.id : ""),
+          last_dispense_date: row.dispense_date || "",
+          transactions: [],
+        });
+      }
+
+      const claim = claims.get(key);
+      const needed = Number(row.needed_quantity || row.quantity || 0);
+      claim.needed_quantity = Math.max(claim.needed_quantity, needed);
+      claim.released_quantity += Number(row.quantity || 0);
+      if (row.medicine && !claim.medicine) {
+        claim.medicine = row.medicine;
+      }
+      if (row.prescribed_by && !claim.prescribed_by) {
+        claim.prescribed_by = row.prescribed_by;
+      }
+      if (row.follow_up_action) {
+        claim.follow_up_action = row.follow_up_action;
+        claim.follow_up_date = row.follow_up_date || "";
+        claim.referred_facility = row.referred_facility || null;
+        claim.referred_facility_id = row.referred_facility_id || (row.referred_facility ? row.referred_facility.id : "");
+      }
+      if (row.dispense_date && (!claim.last_dispense_date || row.dispense_date > claim.last_dispense_date)) {
+        claim.last_dispense_date = row.dispense_date;
+      }
+      if (row.dispensing_transaction_id) {
+        claim.transactions.push(row.dispensing_transaction_id);
+      }
+    });
+
+  return Array.from(claims.values()).map((claim) => {
+    const remaining = Math.max(0, claim.needed_quantity - claim.released_quantity);
+    return {
+      ...claim,
+      remaining_quantity: remaining,
+      is_completed: remaining === 0,
+    };
+  });
+};
+
+export const getPatientDispensingStatus = ({
+  claimsBreakdown = [],
+  today = new Date().toISOString().slice(0, 10),
+} = {}) => {
+  if (!claimsBreakdown || claimsBreakdown.length === 0) {
+    return {
+      code: "UNCLAIMED",
+      label: "Ready to claim",
+      badgeColor: "emerald",
+      description: "No medicine claimed yet this month",
+      isBlocked: false,
+      isFutureSchedule: false,
+      pendingMedicines: [],
+      completedMedicines: [],
+    };
+  }
+
+  const pending = claimsBreakdown.filter((item) => !item.is_completed);
+  const completed = claimsBreakdown.filter((item) => item.is_completed);
+
+  if (pending.length === 0) {
+    return {
+      code: "COMPLETED",
+      label: "Already received all medicines for this month",
+      badgeColor: "gray",
+      description: "All prescribed medicines completed",
+      isBlocked: true,
+      isFutureSchedule: false,
+      pendingMedicines: [],
+      completedMedicines: completed,
+    };
+  }
+
+  const scheduledItems = pending.filter(
+    (item) => item.follow_up_action === FOLLOW_UP_ACTIONS.schedule && item.follow_up_date
+  );
+
+  if (scheduledItems.length > 0) {
+    scheduledItems.sort((a, b) => a.follow_up_date.localeCompare(b.follow_up_date));
+    const earliestDate = scheduledItems[0].follow_up_date;
+
+    if (earliestDate > today) {
+      const todayDate = new Date(today);
+      const targetDate = new Date(earliestDate);
+      const diffMs = targetDate.getTime() - todayDate.getTime();
+      const daysLeft = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+      return {
+        code: "PARTIAL_SCHEDULED",
+        label: `Scheduled for ${earliestDate}`,
+        badgeColor: "amber",
+        description: `${pending.length} medicine(s) pending (${daysLeft} day${daysLeft === 1 ? "" : "s"} left)`,
+        isBlocked: false,
+        isFutureSchedule: true,
+        scheduledDate: earliestDate,
+        pendingMedicines: pending,
+        completedMedicines: completed,
+      };
+    }
+
+    return {
+      code: "PARTIAL_READY",
+      label: "Ready for pickup",
+      badgeColor: "emerald",
+      description: `${pending.length} medicine(s) pending (Scheduled for ${earliestDate})`,
+      isBlocked: false,
+      isFutureSchedule: false,
+      scheduledDate: earliestDate,
+      pendingMedicines: pending,
+      completedMedicines: completed,
+    };
+  }
+
+  const referredItems = pending.filter(
+    (item) => item.follow_up_action === FOLLOW_UP_ACTIONS.refer
+  );
+
+  if (referredItems.length > 0) {
+    const facilityName = referredItems[0]?.referred_facility?.facility_name || "Barangay Health Center";
+    return {
+      code: "PARTIAL_REFERRED",
+      label: `Referred to ${facilityName}`,
+      badgeColor: "indigo",
+      description: `${pending.length} medicine(s) pending`,
+      isBlocked: false,
+      isFutureSchedule: false,
+      pendingMedicines: pending,
+      completedMedicines: completed,
+    };
+  }
+
+  return {
+    code: "PARTIAL_READY",
+    label: "Has remaining medicine to claim",
+    badgeColor: "emerald",
+    description: `${pending.length} medicine(s) pending`,
+    isBlocked: false,
+    isFutureSchedule: false,
+    pendingMedicines: pending,
+    completedMedicines: completed,
+  };
+};
+
 export const groupHistoryByTransaction = (rows) => {
   const groups = new Map();
 
@@ -387,11 +574,37 @@ export const groupHistoryByTransaction = (rows) => {
     }
   });
 
-  return Array.from(groups.values()).map((group) => ({
-    ...group,
-    medicineLines: groupMedicineRows(group.rows),
-    totalQuantity: getTransactionTotalQuantity(group.rows),
-  }));
+  return Array.from(groups.values()).map((group) => {
+    const medicineLines = groupMedicineRows(group.rows);
+    const hasPendingScheduled = !group.voidedAt && medicineLines.some(
+      (line) => line.releasedQuantity < line.neededQuantity && line.followUpAction === FOLLOW_UP_ACTIONS.schedule
+    );
+    const hasReferred = !group.voidedAt && medicineLines.some(
+      (line) => line.releasedQuantity < line.neededQuantity && line.followUpAction === FOLLOW_UP_ACTIONS.refer
+    );
+    const isCompleted = !group.voidedAt && medicineLines.every(
+      (line) => line.releasedQuantity >= line.neededQuantity
+    );
+
+    let status = "COMPLETED";
+    if (group.voidedAt) {
+      status = "VOIDED";
+    } else if (hasPendingScheduled) {
+      status = "SCHEDULED";
+    } else if (hasReferred) {
+      status = "REFERRED";
+    }
+
+    return {
+      ...group,
+      hasPendingScheduled,
+      hasReferred,
+      isCompleted,
+      medicineLines,
+      status,
+      totalQuantity: getTransactionTotalQuantity(group.rows),
+    };
+  });
 };
 
 const groupMedicineRows = (rows) => {
@@ -457,6 +670,18 @@ export const matchesHistoryFilters = ({ keyword = "", status = "ALL", transactio
   }
 
   if (status === "ACTIVE" && transaction.voidedAt) {
+    return false;
+  }
+
+  if (status === "SCHEDULED" && (transaction.voidedAt || !transaction.hasPendingScheduled)) {
+    return false;
+  }
+
+  if (status === "REFERRED" && (transaction.voidedAt || !transaction.hasReferred)) {
+    return false;
+  }
+
+  if (status === "COMPLETED" && (transaction.voidedAt || !transaction.isCompleted)) {
     return false;
   }
 
@@ -532,6 +757,11 @@ export const buildDispensingCsv = (transactions) => {
 };
 
 export const downloadCsv = (csv, filename) => {
+  if (typeof window !== "undefined" && typeof window.__prdsDownloadExportFile === "function") {
+    return window.__prdsDownloadExportFile({ filename, csv });
+  }
+
+  if (typeof document === "undefined") return;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -540,4 +770,17 @@ export const downloadCsv = (csv, filename) => {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("prds:register-export", {
+        detail: {
+          filename,
+          format: "CSV",
+          size: blob.size,
+          blob,
+        },
+      })
+    );
+  }
 };

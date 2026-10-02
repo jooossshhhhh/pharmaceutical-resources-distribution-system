@@ -72,7 +72,7 @@ export default function DispensingLoadingSkeleton({ error = "" }) {
           </div>
           <h1 className="mt-2 text-xl font-bold text-[#0d1117]">Dispensing</h1>
           <p className="mt-1 max-w-3xl text-sm text-[#5f6673]">
-            Find a patient, confirm their monthly eligibility, select available medicines, then complete the claim.
+            Find a patient, check their monthly medicine status, select available medicines, then complete the claim.
           </p>
         </section>
 

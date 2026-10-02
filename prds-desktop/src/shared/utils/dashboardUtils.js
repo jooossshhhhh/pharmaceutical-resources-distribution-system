@@ -233,3 +233,136 @@ export const groupDispensingByMonth = (rows = []) => {
     return summary;
   }, {});
 };
+
+export const compileDashboardSnapshot = ({
+  inventory = [],
+  facilities = [],
+  patients = [],
+  requests = [],
+  dispensing = [],
+  forecasting = [],
+  users = [],
+  facilityId = null,
+  role = null,
+} = {}) => {
+  const isBhw = role === "BHW";
+  const now = new Date();
+  const formatLocalDate = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const scopedFacilities = isBhw && facilityId
+    ? facilities.filter((f) => f.id === facilityId)
+    : facilities;
+
+  const inventoryData = isBhw && facilityId
+    ? inventory.filter((item) => item.facility_id === facilityId)
+    : inventory;
+
+  const inventoryMetrics = getDashboardInventoryMetrics(inventoryData);
+  const stockedRows = inventoryData.filter((row) => Number(row.quantity || 0) > 0);
+  const expiringCutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 90);
+  const todayDate = formatLocalDate(now);
+  const cutoffDate = formatLocalDate(expiringCutoff);
+
+  const expiringRows = stockedRows
+    .filter((row) => row.expiration_date >= todayDate && row.expiration_date <= cutoffDate)
+    .slice(0, 5);
+
+  const riskRank = { CRITICAL: 0, LOW: 1 };
+  const stockAlertRows = inventoryData
+    .filter((row) => ["CRITICAL", "LOW"].includes(getStockStatus(row)))
+    .sort((first, second) =>
+      riskRank[getStockStatus(first)] - riskRank[getStockStatus(second)] ||
+      Number(first.quantity || 0) - Number(second.quantity || 0)
+    )
+    .slice(0, 5);
+
+  const scopedRequests = isBhw && facilityId
+    ? requests.filter((r) => r.facility_id === facilityId)
+    : requests;
+
+  const defaultRequestStatus = { APPROVED: 0, PENDING: 0, DISPENSED: 0, REJECTED: 0 };
+  const statusSummary = scopedRequests.reduce(
+    (summary, row) => {
+      const status = row.status === "COMPLETED" ? "DISPENSED" : row.status;
+      if (summary[status] !== undefined) {
+        summary[status] += 1;
+      }
+      return summary;
+    },
+    { ...defaultRequestStatus }
+  );
+
+  const recentRequests = scopedRequests.slice(0, 5).map((request) => {
+    const firstItem = request.items?.[0];
+    const medicine = firstItem?.medicine;
+    const medicineLabel = medicine
+      ? `${medicine.generic_name || "Medicine"} ${medicine.dosage || ""}`.trim()
+      : "Medicine request";
+    return {
+      date: request.request_date ? new Date(request.request_date).toISOString().slice(0, 10) : "",
+      facility: request.facility?.facility_name || "Facility not assigned",
+      id: request.id,
+      shortId: request.id ? String(request.id).slice(0, 8).toUpperCase() : "",
+      itemCount: request.items?.length || 0,
+      medicine: request.items?.length > 1 ? `${medicineLabel} + ${request.items.length - 1} more` : medicineLabel,
+      quantity: request.items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0,
+      status: request.status,
+    };
+  });
+
+  const scopedDispensing = isBhw && facilityId
+    ? dispensing.filter((d) => d.facility_id === facilityId)
+    : dispensing;
+
+  const validDispensing = scopedDispensing.filter((d) => !d.voided_at && d.record_type !== "HISTORY_ONLY");
+
+  const chartMonthRows = new Map();
+  for (const row of validDispensing) {
+    if (!row.dispense_date) continue;
+    const date = new Date(row.dispense_date);
+    if (Number.isNaN(date.getTime())) continue;
+    const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+    chartMonthRows.set(month, (chartMonthRows.get(month) || 0) + Number(row.quantity || 0));
+  }
+  const dispensingRows = [...chartMonthRows].map(([month, total_dispensed]) => ({ month, total_dispensed }));
+
+  const scopedPatients = isBhw && facilityId
+    ? patients.filter((p) => p.facility_id === facilityId && !p.archived_at)
+    : patients.filter((p) => !p.archived_at);
+
+  const pendingRequestsCount = scopedRequests.filter((r) => r.status === "PENDING").length;
+  const pendingApprovalsCount = users.filter((u) => u.status === "PENDING").length;
+
+  const compiledStats = {
+    ...inventoryMetrics,
+    dispensedThisMonth: getMonthlyDispensedQuantity(validDispensing, now),
+    activePatients: scopedPatients.length,
+    pendingRequests: pendingRequestsCount,
+    pendingApprovals: pendingApprovalsCount,
+  };
+
+  const scopedForecast = isBhw && facilityId
+    ? forecasting.filter((fc) => fc.facility_id === facilityId)
+    : forecasting;
+
+  return {
+    stats: compiledStats,
+    facilities: scopedFacilities,
+    forecastRows: scopedForecast,
+    stockAlertRows,
+    expiringRows,
+    dispensingRows,
+    requestStatus: statusSummary,
+    stockStatusByFacility: buildFacilityStockStatus(inventoryData),
+    inventoryRows: inventoryData,
+    demandByFacility: buildFacilityDemand(scopedForecast),
+    recentRequests,
+    facilityId,
+    refreshedAt: new Date().toISOString(),
+  };
+};

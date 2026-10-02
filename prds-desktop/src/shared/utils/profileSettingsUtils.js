@@ -291,3 +291,83 @@ export const getAuthCallbackParams = (url) => {
       "",
   };
 };
+
+export const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
+
+export const ALLOWED_AVATAR_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
+
+export const validateAvatarFile = (file) => {
+  if (!file) {
+    return "Please select an image file.";
+  }
+
+  const fileName = String(file.name || "").toLowerCase();
+  const fileType = String(file.type || "").toLowerCase();
+
+  if (fileType === "image/svg+xml" || fileName.endsWith(".svg")) {
+    return "SVG images are not allowed for security reasons. Please use JPG, PNG, or WebP.";
+  }
+
+  if (!ALLOWED_AVATAR_MIME_TYPES.includes(fileType)) {
+    return "Only JPG, PNG, or WebP images are allowed.";
+  }
+
+  if (file.size > MAX_AVATAR_SIZE) {
+    return "Image file must be 2 MB or smaller.";
+  }
+
+  return "";
+};
+
+export const canUpdateAvatar = (avatarUpdatedAt, referenceNow = new Date()) => {
+  if (!avatarUpdatedAt) {
+    return {
+      allowed: true,
+      remainingDays: 0,
+      nextAllowedDate: null,
+      message: "",
+    };
+  }
+
+  const lastUpdate = new Date(avatarUpdatedAt);
+  if (Number.isNaN(lastUpdate.getTime())) {
+    return {
+      allowed: true,
+      remainingDays: 0,
+      nextAllowedDate: null,
+      message: "",
+    };
+  }
+
+  const nowTime = referenceNow instanceof Date ? referenceNow.getTime() : new Date(referenceNow).getTime();
+  const cooldownPeriodMs = 7 * 24 * 60 * 60 * 1000;
+  const elapsedMs = nowTime - lastUpdate.getTime();
+
+  if (elapsedMs < cooldownPeriodMs) {
+    const nextAllowedDateObj = new Date(lastUpdate.getTime() + cooldownPeriodMs);
+    const remainingDays = Math.max(1, Math.ceil((cooldownPeriodMs - elapsedMs) / (24 * 60 * 60 * 1000)));
+    const formattedDate = new Intl.DateTimeFormat("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(nextAllowedDateObj);
+
+    return {
+      allowed: false,
+      remainingDays,
+      nextAllowedDate: formattedDate,
+      message: `Profile picture can only be changed once a week. Next update available on ${formattedDate} (${remainingDays} day${remainingDays > 1 ? "s" : ""} remaining).`,
+    };
+  }
+
+  return {
+    allowed: true,
+    remainingDays: 0,
+    nextAllowedDate: null,
+    message: "",
+  };
+};

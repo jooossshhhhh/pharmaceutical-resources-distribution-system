@@ -83,7 +83,7 @@ export default function ModalShell({
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
-      className="prds-modal-root fixed inset-0 z-[90] flex items-center justify-center px-4 py-5"
+      className="prds-modal-root fixed inset-0 z-[9990] flex items-center justify-center px-4 py-5"
     >
       <div
         className={`absolute inset-0 ${

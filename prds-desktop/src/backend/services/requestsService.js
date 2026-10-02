@@ -79,13 +79,13 @@ const buildRequestSelect = (withReceiptFields, withSourceFields) => `
         ? "receiver:profiles!medicine_requests_received_by_fkey(id, first_name, last_name),"
         : ""
     }
-    items:medicine_request_items(
-      id,
-      request_id,
-      medicine_id,
-      quantity,
-      medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure)
-    )
+      items:medicine_request_items(
+        id,
+        request_id,
+        medicine_id,
+        quantity,
+        medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost)
+      )
 `;
 
 const isMissingReceiptColumns = (error) => {
@@ -152,9 +152,12 @@ const fetchRequestById = async (requestId) => {
   return requests.find((request) => request.id === requestId) || null;
 };
 
-export const getRequestsData = async () => {
+export const getRequestsData = async ({ facilityId = null } = {}) => {
   if (!isCurrentNetworkOnline()) {
-    const cachedRequests = getSnapshot(STORAGE_KEYS.REQUESTS, []);
+    let cachedRequests = getSnapshot(STORAGE_KEYS.REQUESTS, []);
+    if (facilityId) {
+      cachedRequests = cachedRequests.filter((r) => String(r.facility_id) === String(facilityId));
+    }
     const cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
     const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
     const cachedForecasts = getSnapshot(STORAGE_KEYS.FORECASTING, []);
@@ -177,7 +180,7 @@ export const getRequestsData = async () => {
       medicinesResult,
       fulfillmentsResult,
     ] = await Promise.all([
-      fetchRequestsWithFallback({ facilityId: null }),
+      fetchRequestsWithFallback({ facilityId }),
       supabase
         .from("facilities")
         .select("id, facility_name, facility_code, facility_type")
@@ -192,7 +195,7 @@ export const getRequestsData = async () => {
         .order("forecast_month", { ascending: false }),
       supabase
         .from("medicines")
-        .select("id, generic_name, brand_name, dosage, unit_of_measure")
+        .select("id, generic_name, brand_name, dosage, unit_of_measure, unit_cost")
         .order("generic_name", { ascending: true }),
       supabase
         .from("medicine_request_fulfillments")
@@ -230,7 +233,9 @@ export const getRequestsData = async () => {
       fulfillments: fulfillmentsByRequest.get(request.id) || [],
     }));
 
-    saveSnapshot(STORAGE_KEYS.REQUESTS, requests);
+    if (!facilityId) {
+      saveSnapshot(STORAGE_KEYS.REQUESTS, requests);
+    }
 
     return {
       facilities: facilitiesResult.data || [],
@@ -241,12 +246,16 @@ export const getRequestsData = async () => {
     };
   } catch (err) {
     console.warn("getRequestsData fetch failed, using snapshots:", err);
+    let fallbackRequests = getSnapshot(STORAGE_KEYS.REQUESTS, []);
+    if (facilityId) {
+      fallbackRequests = fallbackRequests.filter((r) => String(r.facility_id) === String(facilityId));
+    }
     return {
       facilities: getSnapshot(STORAGE_KEYS.FACILITIES, []),
       forecastRows: getSnapshot(STORAGE_KEYS.FORECASTING, []),
       inventoryRows: getSnapshot(STORAGE_KEYS.INVENTORY, []),
       medicines: getSnapshot(STORAGE_KEYS.MEDICINES, []),
-      requests: getSnapshot(STORAGE_KEYS.REQUESTS, []),
+      requests: fallbackRequests,
     };
   }
 };

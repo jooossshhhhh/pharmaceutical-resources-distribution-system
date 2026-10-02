@@ -15,6 +15,7 @@ import {
   HeartHandshake,
   History,
   Bell,
+  FileSpreadsheet,
 } from "lucide-react";
 
 import prdsLogo from "@frontend/assets/prds-logo-main.svg";
@@ -26,7 +27,9 @@ const navIcons = {
   Requests: ClipboardList,
   Request: ClipboardList,
   Transfer: ArrowRightLeft,
+  Transfers: ArrowRightLeft,
   Dispensing: PackageCheck,
+  Reports: FileSpreadsheet,
   Patients: UserRound,
   Medicines: Pill,
   Forecasting: ChartLine,
@@ -43,20 +46,21 @@ const navItems = [
   { label: "Dashboard", path: "/dashboard", category: "Overview" },
   { label: "Inventory", path: "/inventory", category: "Operations" },
   { label: "Requests", path: "/requests", category: "Operations" },
-  { label: "Transfer", path: "/transfers", category: "Operations" },
+  { label: "Transfers", path: "/transfers", category: "Operations" },
   { label: "Dispensing", path: "/dispensing", category: "Operations" },
   { label: "Patients", path: "/patients", category: "Operations" },
-  { label: "Medicines", path: "/medicines", roles: ["PHARMA_I", "PHARMA_II"], category: "Medicine & Planning" },
-  { label: "Forecasting", path: "/forecasting", category: "Medicine & Planning" },
+  { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_II"], category: "Operations" },
+  { label: "Medicines", path: "/medicines", roles: ["PHARMA_I", "PHARMA_II"], category: "Analytics & Catalog" },
+  { label: "Forecasting", path: "/forecasting", category: "Analytics & Catalog" },
+  { label: "Reports", path: "/reports", category: "Analytics & Catalog" },
   { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
   { label: "Suppliers", path: "/suppliers", roles: ["PHARMA_II"], category: "Administration" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"], category: "Administration" },
-  { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_II"], category: "Administration" },
   { label: "Activity Logs", path: "/activity-logs", category: "System" },
   { label: "Notifications", path: "/notifications", category: "System" },
 ];
 
-const navGroupOrder = ["Overview", "Operations", "Medicine & Planning", "Administration", "System"];
+const navGroupOrder = ["Overview", "Operations", "Analytics & Catalog", "Administration", "System"];
 
 const SidebarIcon = ({ label, isActive }) => {
   const IconComponent = navIcons[label];
@@ -85,6 +89,32 @@ const getInitials = (profile) => {
 
   return `${firstInitial}${lastInitial}`.toUpperCase();
 };
+
+function SidebarAvatar({ profile }) {
+  const [hasError, setHasError] = useState(false);
+  const avatarUrl = profile?.avatar_url;
+
+  useEffect(() => {
+    setHasError(false);
+  }, [avatarUrl]);
+
+  if (avatarUrl && !hasError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={`${profile?.first_name || ""} ${profile?.last_name || ""}`.trim()}
+        onError={() => setHasError(true)}
+        className="h-9 w-9 shrink-0 rounded-full object-cover shadow-xs group-hover:scale-105 transition-transform"
+      />
+    );
+  }
+
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6be9c2] text-xs font-black text-[#0d1117] shadow-xs group-hover:scale-105 transition-transform">
+      {getInitials(profile)}
+    </span>
+  );
+}
 
 const roleLabels = {
   PHARMA_II: "Pharmacist II",
@@ -274,21 +304,55 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
       </nav>
 
       <div
-        className={`shrink-0 border-t border-[#d8dadc] py-4 ${
+        className={`shrink-0 border-t border-[#d8dadc] py-3 ${
           isCollapsed ? "px-2" : "px-3"
         }`}
       >
-        <div className={`flex items-center rounded-xl ${isCollapsed ? "justify-center" : "gap-3"}`}>
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6be9c2] text-xs font-black text-[#0d1117]">
-            {getInitials(profile)}
-          </span>
-          <div className={`min-w-0 ${isCollapsed ? "sr-only" : ""}`}>
-            <p className="truncate text-sm font-black leading-4 text-[#0d1117]">{fullName}</p>
+        <Link
+          to="/profile-settings"
+          title={isCollapsed ? `My Profile (${fullName})` : undefined}
+          onMouseEnter={(e) => {
+            if (isCollapsed) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setHoveredItem({ label: `My Profile (${fullName})`, top: rect.top });
+            }
+          }}
+          onMouseLeave={() => {
+            if (isCollapsed) setHoveredItem(null);
+          }}
+          className={`group flex items-center rounded-xl transition duration-150 ${
+            isCollapsed ? "justify-center p-1.5" : "gap-3 p-2"
+          } ${
+            location.pathname === "/profile-settings"
+              ? "bg-[#e8fff7] text-[#007f5f] ring-1 ring-[#6be9c2]/50 shadow-xs"
+              : "hover:bg-[#eff4ff] text-[#0d1117]"
+          }`}
+        >
+          <SidebarAvatar profile={profile} />
+          <div className={`min-w-0 flex-1 ${isCollapsed ? "sr-only" : ""}`}>
+            <p className="truncate text-sm font-black leading-4 text-[#0d1117] group-hover:text-[#007f5f] transition-colors">{fullName}</p>
             <p className="truncate text-xs font-medium text-[#42474e]">
               {roleLabels[profile?.role] || "Barangay Health Worker"}
             </p>
           </div>
-        </div>
+          {!isCollapsed && (
+            <svg
+              className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+                location.pathname === "/profile-settings"
+                  ? "text-[#007f5f]"
+                  : "text-[#9ca3af] group-hover:translate-x-0.5 group-hover:text-[#007f5f]"
+              }`}
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          )}
+        </Link>
       </div>
 
       {isCollapsed && hoveredItem && (
@@ -310,7 +374,7 @@ function HamburgerIcon({ isCollapsed }) {
   return (
     <svg
       aria-hidden="true"
-      className="h-4.5 w-4.5 shrink-0 text-current transition-all duration-300 ease-out"
+      className="h-5 w-5 shrink-0 text-current transition-all duration-300 ease-out"
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
@@ -318,29 +382,38 @@ function HamburgerIcon({ isCollapsed }) {
       strokeWidth="2.2"
       viewBox="0 0 24 24"
     >
+      {/* 3 Horizontal Bars */}
+      {/* Top Bar: longer line */}
       <line
-        x1={isCollapsed ? "9" : "4"}
-        y1="6"
-        x2={isCollapsed ? "15" : "20"}
-        y2={isCollapsed ? "12" : "6"}
+        x1={isCollapsed ? "11.5" : "4"}
+        y1="6.5"
+        x2={isCollapsed ? "20" : "12.5"}
+        y2="6.5"
         className="transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600"
       />
+      {/* Middle Bar: shorter line to give breathing room to the chevron apex */}
       <line
-        x1="4"
+        x1={isCollapsed ? "14" : "4"}
         y1="12"
-        x2={isCollapsed ? "4" : "15"}
+        x2={isCollapsed ? "20" : "10"}
         y2="12"
-        className={`transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600 ${
-          isCollapsed ? "opacity-0 scale-x-0" : "opacity-100"
-        }`}
+        className="transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600"
       />
+      {/* Bottom Bar: longer line */}
       <line
-        x1={isCollapsed ? "9" : "4"}
-        y1="18"
-        x2={isCollapsed ? "15" : "20"}
-        y2={isCollapsed ? "12" : "18"}
+        x1={isCollapsed ? "11.5" : "4"}
+        y1="17.5"
+        x2={isCollapsed ? "20" : "12.5"}
+        y2="17.5"
+        className="transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600"
+      />
+
+      {/* Directional Chevron (> on left when collapsed to expand, < on right when expanded to minimize) */}
+      <path
+        d={isCollapsed ? "M 4 6.5 L 9 12 L 4 17.5" : "M 20 6.5 L 15 12 L 20 17.5"}
         className="transition-all duration-300 ease-out group-hover/btn:stroke-emerald-600"
       />
     </svg>
   );
 }
+

@@ -33,20 +33,26 @@ prds-desktop/
 │   ├── backend/               # Local data and offline synchronization engine
 │   │   ├── client/
 │   │   │   ├── dataClient.js  # Unified client bridging online Supabase & local cache
+│   │   │   ├── networkErrorUtils.js # Connectivity and network failure categorizer
 │   │   │   └── supabase.js    # Supabase JS client configuration
 │   │   ├── database/
-│   │   │   ├── dexieDb.js     # IndexedDB / SQLite schema
+│   │   │   ├── sqliteClient.js  # Native SQLite schema initialization & connection (prds.db)
 │   │   │   └── snapshotStore.js # Fast-boot snapshot persistence (STORAGE_KEYS)
 │   │   ├── services/          # Feature services wrapping RPCs and offline outbox
 │   │   │   ├── auth/          # Authentication & Profile management
+│   │   │   ├── activityLogService.js
 │   │   │   ├── dispensingService.js
 │   │   │   ├── inventoryData.js
+│   │   │   ├── notificationService.js
+│   │   │   ├── patientsService.js
 │   │   │   ├── requestsService.js
-│   │   │   └── transfersService.js
+│   │   │   ├── transfersService.js
+│   │   │   └── userManagementService.js
 │   │   └── sync/              # Offline-first background synchronization
 │   │       ├── networkStatus.js # Online/Offline network connectivity listener
 │   │       ├── outboxQueue.js   # FIFO queue for mutations created while offline
-│   │       └── syncManager.js   # Conflict resolution & Supabase sync orchestrator
+│   │       ├── syncManager.js   # Conflict resolution & Supabase sync orchestrator
+│   │       └── syncUtils.js     # Concurrency helpers, chunking, and error mappers
 │   ├── frontend/              # User Interface Layer (React 19)
 │   │   ├── components/        # Shared UI components
 │   │   │   ├── layout/        # DesktopTitlebar, AdminShell, AdminSidebar, AdminHeader

@@ -131,7 +131,12 @@ export const buildMedicineChartSeries = ({
   horizon = 6,
 } = {}) => {
   const n = historicalSeries.length;
+  const effectiveHorizon = Number(horizon) || 6;
   const result = [];
+
+  if (n === 0 && forecastSeries.length === 0) {
+    return [];
+  }
 
   if (n > 0) {
     historicalSeries.forEach((pt, i) => {
@@ -144,35 +149,30 @@ export const buildMedicineChartSeries = ({
         projected: isLast ? pt.value : null,
       });
     });
-  } else {
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const baseVal = intercept > 0 ? intercept : 300;
-    for (let i = 0; i < 6; i++) {
-      const isLast = i === 5;
-      const val = Math.max(0, Math.round(baseVal + slope * i));
+
+    const lastVal = result[result.length - 1]?.historical ?? result[result.length - 1]?.projected ?? 0;
+
+    for (let k = 1; k <= effectiveHorizon; k++) {
+      const explicitForecast = forecastSeries[k - 1]?.value;
+      const projectedVal = explicitForecast != null
+        ? explicitForecast
+        : Math.max(0, Math.round(lastVal + slope * k));
+
       result.push({
-        month: monthNames[i],
-        historical: val,
-        olsFit: val,
-        projected: isLast ? val : null,
+        month: `+${k}mo`,
+        historical: null,
+        olsFit: null,
+        projected: projectedVal,
       });
     }
-  }
-
-  const lastVal = result[result.length - 1]?.historical ?? result[result.length - 1]?.projected ?? 0;
-  const effectiveHorizon = Number(horizon) || 6;
-
-  for (let k = 1; k <= effectiveHorizon; k++) {
-    const explicitForecast = forecastSeries[k - 1]?.value;
-    const projectedVal = explicitForecast != null
-      ? explicitForecast
-      : Math.max(0, Math.round(lastVal + slope * k));
-
-    result.push({
-      month: `+${k}mo`,
-      historical: null,
-      olsFit: null,
-      projected: projectedVal,
+  } else if (forecastSeries.length > 0) {
+    forecastSeries.slice(0, effectiveHorizon).forEach((pt, k) => {
+      result.push({
+        month: formatMonthLabel(pt.key) || `+${k + 1}mo`,
+        historical: null,
+        olsFit: null,
+        projected: pt.value,
+      });
     });
   }
 
@@ -420,7 +420,7 @@ export const buildForecastAnalytics = ({
   const validR2Rows = trendRows.filter((row) => Number.isFinite(row.rSquared) && row.rSquared > 0);
   const avgRSquared = validR2Rows.length > 0
     ? roundMetric(validR2Rows.reduce((sum, r) => sum + r.rSquared, 0) / validR2Rows.length)
-    : 0.882;
+    : 0;
 
   return {
     avgRSquared,

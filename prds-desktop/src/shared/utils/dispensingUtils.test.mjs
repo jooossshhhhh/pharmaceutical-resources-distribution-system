@@ -21,6 +21,8 @@ import {
   getMonthRangeIso,
   getTransactionTotalQuantity,
   groupHistoryByTransaction,
+  getPatientMonthlyClaimsBreakdown,
+  getPatientDispensingStatus,
   matchesHistoryFilters,
   sortTransactions,
 } from "./dispensingUtils.js";
@@ -422,3 +424,221 @@ test("getDispensingStepBlocker gates each wizard step", () => {
   );
   assert.equal(getDispensingStepBlocker({ ...base, lineCount: 1, step: 3 }), "");
 });
+
+test("getPatientMonthlyClaimsBreakdown calculates multi-medicine balances correctly", () => {
+  const currentMonthDate = new Date().toISOString();
+  const rows = [
+    {
+      patient_id: "patient-x",
+      medicine_id: "med-a",
+      medicine: { generic_name: "Amoxicillin" },
+      needed_quantity: 30,
+      quantity: 30,
+      dispense_date: currentMonthDate,
+      prescribed_by: "Dr. Reyes",
+      dispensing_transaction_id: "txn-1",
+    },
+    {
+      patient_id: "patient-x",
+      medicine_id: "med-b",
+      medicine: { generic_name: "Paracetamol" },
+      needed_quantity: 20,
+      quantity: 15,
+      follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+      follow_up_date: "2026-09-30",
+      dispense_date: currentMonthDate,
+      prescribed_by: "Dr. Reyes",
+      dispensing_transaction_id: "txn-1",
+    },
+    {
+      patient_id: "patient-x",
+      medicine_id: "med-c",
+      medicine: { generic_name: "Losartan" },
+      needed_quantity: 30,
+      quantity: 10,
+      follow_up_action: FOLLOW_UP_ACTIONS.refer,
+      referred_facility: { id: "fac-2", facility_name: "Inarawan Health Center" },
+      dispense_date: currentMonthDate,
+      prescribed_by: "Dr. Reyes",
+      dispensing_transaction_id: "txn-1",
+    },
+  ];
+
+  const breakdown = getPatientMonthlyClaimsBreakdown(rows, "patient-x");
+  assert.equal(breakdown.length, 3);
+
+  const medA = breakdown.find((b) => b.medicine_id === "med-a");
+  assert.equal(medA.needed_quantity, 30);
+  assert.equal(medA.released_quantity, 30);
+  assert.equal(medA.remaining_quantity, 0);
+  assert.equal(medA.is_completed, true);
+
+  const medB = breakdown.find((b) => b.medicine_id === "med-b");
+  assert.equal(medB.needed_quantity, 20);
+  assert.equal(medB.released_quantity, 15);
+  assert.equal(medB.remaining_quantity, 5);
+  assert.equal(medB.is_completed, false);
+  assert.equal(medB.follow_up_action, FOLLOW_UP_ACTIONS.schedule);
+  assert.equal(medB.follow_up_date, "2026-09-30");
+
+  const medC = breakdown.find((b) => b.medicine_id === "med-c");
+  assert.equal(medC.needed_quantity, 30);
+  assert.equal(medC.released_quantity, 10);
+  assert.equal(medC.remaining_quantity, 20);
+  assert.equal(medC.is_completed, false);
+  assert.equal(medC.follow_up_action, FOLLOW_UP_ACTIONS.refer);
+  assert.equal(medC.referred_facility.facility_name, "Inarawan Health Center");
+});
+
+test("getPatientDispensingStatus returns simple, non-jargon status across all phases", () => {
+  // 1. Unclaimed
+  const unclaimed = getPatientDispensingStatus({ claimsBreakdown: [] });
+  assert.equal(unclaimed.code, "UNCLAIMED");
+  assert.equal(unclaimed.label, "Ready to claim");
+  assert.equal(unclaimed.isBlocked, false);
+
+  // 2. Partial scheduled in the future (today: 2026-09-23, scheduled: 2026-09-30)
+  const scheduledFuture = getPatientDispensingStatus({
+    claimsBreakdown: [
+      { medicine_id: "m1", is_completed: true, remaining_quantity: 0 },
+      {
+        medicine_id: "m2",
+        is_completed: false,
+        remaining_quantity: 5,
+        follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+        follow_up_date: "2026-09-30",
+      },
+    ],
+    today: "2026-09-23",
+  });
+  assert.equal(scheduledFuture.code, "PARTIAL_SCHEDULED");
+  assert.equal(scheduledFuture.label, "Scheduled for 2026-09-30");
+  assert.match(scheduledFuture.description, /7 days left/);
+  assert.equal(scheduledFuture.isFutureSchedule, true);
+
+  // 3. Partial scheduled on or after due date (today: 2026-09-30)
+  const scheduledDue = getPatientDispensingStatus({
+    claimsBreakdown: [
+      {
+        medicine_id: "m2",
+        is_completed: false,
+        remaining_quantity: 5,
+        follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+        follow_up_date: "2026-09-30",
+      },
+    ],
+    today: "2026-09-30",
+  });
+  assert.equal(scheduledDue.code, "PARTIAL_READY");
+  assert.equal(scheduledDue.label, "Ready for pickup");
+  assert.equal(scheduledDue.isFutureSchedule, false);
+
+  // 4. Partial referred to barangay
+  const referred = getPatientDispensingStatus({
+    claimsBreakdown: [
+      {
+        medicine_id: "m3",
+        is_completed: false,
+        remaining_quantity: 20,
+        follow_up_action: FOLLOW_UP_ACTIONS.refer,
+        referred_facility: { facility_name: "Inarawan Health Center" },
+      },
+    ],
+    today: "2026-09-23",
+  });
+  assert.equal(referred.code, "PARTIAL_REFERRED");
+  assert.match(referred.label, /Inarawan Health Center/);
+
+  // 5. Fully Completed
+  const completed = getPatientDispensingStatus({
+    claimsBreakdown: [
+      { medicine_id: "m1", is_completed: true, remaining_quantity: 0 },
+      { medicine_id: "m2", is_completed: true, remaining_quantity: 0 },
+    ],
+  });
+  assert.equal(completed.code, "COMPLETED");
+  assert.equal(completed.label, "Already received all medicines for this month");
+  assert.equal(completed.isBlocked, true);
+});
+
+test("getCartLineError caps quantity to remaining balance for active claims", () => {
+  const medicineOptions = [{ medicine_id: "med-1", total_quantity: 50 }];
+  const patientClaim = {
+    medicine_id: "med-1",
+    needed_quantity: 20,
+    released_quantity: 15,
+    remaining_quantity: 5,
+    is_completed: false,
+  };
+
+  // Valid release within balance (5 units)
+  assert.equal(
+    getCartLineError({
+      line: { medicine_id: "med-1", needed_quantity: 20, quantity: 5 },
+      medicineOptions,
+      patientClaim,
+    }),
+    ""
+  );
+
+  // Invalid: exceeds remaining balance (6 units)
+  assert.match(
+    getCartLineError({
+      line: { medicine_id: "med-1", needed_quantity: 20, quantity: 6 },
+      medicineOptions,
+      patientClaim,
+    }),
+    /remaining balance of 5 units/i
+  );
+
+  // Invalid: already completed medicine
+  assert.match(
+    getCartLineError({
+      line: { medicine_id: "med-1", needed_quantity: 20, quantity: 1 },
+      medicineOptions,
+      patientClaim: { ...patientClaim, is_completed: true, remaining_quantity: 0 },
+    }),
+    /already completed/i
+  );
+});
+
+test("groupHistoryByTransaction assigns SCHEDULED, REFERRED, and COMPLETED statuses", () => {
+  const rows = [
+    {
+      dispensing_transaction_id: "tx-sched",
+      medicine_id: "m1",
+      needed_quantity: 20,
+      quantity: 15,
+      follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+      follow_up_date: "2026-09-30",
+    },
+    {
+      dispensing_transaction_id: "tx-ref",
+      medicine_id: "m2",
+      needed_quantity: 30,
+      quantity: 10,
+      follow_up_action: FOLLOW_UP_ACTIONS.refer,
+    },
+    {
+      dispensing_transaction_id: "tx-done",
+      medicine_id: "m3",
+      needed_quantity: 10,
+      quantity: 10,
+    },
+  ];
+
+  const grouped = groupHistoryByTransaction(rows);
+  const schedTx = grouped.find((g) => g.transactionId === "tx-sched");
+  const refTx = grouped.find((g) => g.transactionId === "tx-ref");
+  const doneTx = grouped.find((g) => g.transactionId === "tx-done");
+
+  assert.equal(schedTx.status, "SCHEDULED");
+  assert.equal(refTx.status, "REFERRED");
+  assert.equal(doneTx.status, "COMPLETED");
+
+  assert.equal(matchesHistoryFilters({ status: "SCHEDULED", transaction: schedTx }), true);
+  assert.equal(matchesHistoryFilters({ status: "SCHEDULED", transaction: doneTx }), false);
+  assert.equal(matchesHistoryFilters({ status: "COMPLETED", transaction: doneTx }), true);
+  assert.equal(matchesHistoryFilters({ status: "REFERRED", transaction: refTx }), true);
+});
+

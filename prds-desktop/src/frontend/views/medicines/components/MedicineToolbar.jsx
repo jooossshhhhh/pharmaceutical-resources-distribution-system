@@ -1,11 +1,21 @@
-import { PlusIcon, SearchIcon, SortArrowIcon } from "./MedicineIcons";
+import {
+  ChevronIcon,
+  DownloadIcon,
+  PlusIcon,
+  SearchIcon,
+  SortArrowIcon,
+} from "./MedicineIcons";
 
 export default function MedicineToolbar({
+  categories = [],
   medicineSort,
   onAdd,
+  onCategoryChange,
+  onExport,
   onSearchChange,
   onSortChange,
   searchTerm,
+  selectedCategory = "",
   shownCount,
   totalCount,
 }) {
@@ -19,14 +29,27 @@ export default function MedicineToolbar({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-px hover:bg-neutral-800"
-        >
-          <PlusIcon />
-          Add Medicine
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {onExport && (
+            <button
+              type="button"
+              onClick={onExport}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-black text-neutral-700 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+            >
+              <DownloadIcon />
+              Export
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onAdd}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-px hover:bg-neutral-800"
+          >
+            <PlusIcon />
+            Add Medicine
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
@@ -44,15 +67,37 @@ export default function MedicineToolbar({
           />
         </label>
 
-        <button
-          type="button"
-          onClick={onSortChange}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-black text-neutral-700 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
-          aria-label={`Sort medicines ${medicineSort === "ASC" ? "descending" : "ascending"}`}
-        >
-          <SortArrowIcon direction={medicineSort} />
-          {medicineSort === "ASC" ? "A-Z" : "Z-A"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <label className="relative min-w-[12rem] shrink-0">
+            <span className="sr-only">Filter by category</span>
+            <select
+              aria-label="Filter by category"
+              value={selectedCategory}
+              onChange={(event) => onCategoryChange?.(event.target.value)}
+              className="h-10 w-full appearance-none rounded-lg border border-neutral-200 bg-white px-3 pr-9 text-sm font-bold text-neutral-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="">All Categories</option>
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+              <ChevronIcon />
+            </span>
+          </label>
+
+          <button
+            type="button"
+            onClick={onSortChange}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-black text-neutral-700 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+            aria-label={`Sort medicines ${medicineSort === "ASC" ? "descending" : "ascending"}`}
+          >
+            <SortArrowIcon direction={medicineSort} />
+            {medicineSort === "ASC" ? "A-Z" : "Z-A"}
+          </button>
+        </div>
       </div>
     </section>
   );

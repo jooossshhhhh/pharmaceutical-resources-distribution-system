@@ -2,18 +2,13 @@ import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import {
-  AlertCircleIcon,
-  ClockIcon,
   DownloadIcon,
   FacilityPicker,
   InventoryTable,
-  LayersIcon,
   MedicineOrderToggle,
   MetricCard,
   PlusIcon,
-  RequestIcon,
   SearchIcon,
-  TriangleIcon,
 } from "./inventoryComponents";
 import { formatNumber } from "@shared/utils/inventoryUtils";
 import { useInventoryData } from "@backend/services/inventoryData";
@@ -132,35 +127,26 @@ export default function ChoInventoryModule() {
           label="All Stock"
           value={formatNumber(summary.totalItems)}
           sub={totalItemsSub}
-          tone="emerald"
           onClick={() => toggleStockFilter("ALL")}
           active={stockFilter === "ALL"}
           compact
-        >
-          <LayersIcon />
-        </MetricCard>
+        />
         <MetricCard
           label="Critical Stock"
           value={formatNumber(summary.critical)}
           sub={criticalSub}
-          tone="red"
           onClick={() => toggleStockFilter("CRITICAL")}
           active={stockFilter === "CRITICAL"}
           compact
-        >
-          <AlertCircleIcon />
-        </MetricCard>
+        />
         <MetricCard
           label="Low Stock"
           value={formatNumber(summary.low)}
           sub="restock recommended"
-          tone="orange"
           onClick={() => toggleStockFilter("LOW")}
           active={stockFilter === "LOW"}
           compact
-        >
-          <TriangleIcon />
-        </MetricCard>
+        />
         <MetricCard
           label="Expiring Soon"
           value={formatNumber(summary.expiring)}
@@ -169,13 +155,10 @@ export default function ChoInventoryModule() {
               ? `${formatNumber(summary.expired)} already expired`
               : "within the next 30 days"
           }
-          tone="amber"
           onClick={() => toggleStockFilter("EXPIRING")}
           active={stockFilter === "EXPIRING"}
           compact
-        >
-          <ClockIcon />
-        </MetricCard>
+        />
         <MetricCard
           label="Needs Reorder"
           value={formatNumber(reorderCount)}
@@ -184,13 +167,10 @@ export default function ChoInventoryModule() {
               ? "below 30-day demand"
               : "all items have sufficient stock"
           }
-          tone="teal"
           onClick={() => toggleStockFilter("REORDER")}
           active={stockFilter === "REORDER"}
           compact
-        >
-          <RequestIcon />
-        </MetricCard>
+        />
       </div>
 
       <section className="mt-5 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/40">
@@ -228,7 +208,7 @@ export default function ChoInventoryModule() {
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-4 text-sm font-black text-neutral-700 shadow-sm hover:bg-neutral-50"
               >
                 <DownloadIcon />
-                Export CSV
+                Export
               </button>
               {canManage && viewingOwnFacility && (
                 <button

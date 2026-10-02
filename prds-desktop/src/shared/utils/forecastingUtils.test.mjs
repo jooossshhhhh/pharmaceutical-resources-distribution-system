@@ -6,6 +6,7 @@ import {
   buildCategoryForecastRows,
   buildForecastInterpretation,
   buildInventoryCoverageRows,
+  buildMedicineChartSeries,
   buildMonthlyConsumptionRows,
   calculateLinearRegression,
   getInventoryRisk,
@@ -149,4 +150,54 @@ test("builds plain-language forecast interpretation", () => {
     }).sentence,
     "There are not enough records yet to estimate next month clearly."
   );
+});
+
+test("buildMedicineChartSeries returns empty array when there is no historical or forecast series", () => {
+  const result = buildMedicineChartSeries({
+    historicalSeries: [],
+    forecastSeries: [],
+    slope: 0,
+    intercept: 0,
+    horizon: 6,
+  });
+
+  assert.deepEqual(result, []);
+});
+
+test("buildMedicineChartSeries plots real historical series and projects forward", () => {
+  const result = buildMedicineChartSeries({
+    historicalSeries: [
+      { key: "2026-01", value: 100 },
+      { key: "2026-02", value: 120 },
+    ],
+    forecastSeries: [],
+    slope: 20,
+    intercept: 100,
+    horizon: 3,
+  });
+
+  assert.equal(result.length, 5); // 2 historical + 3 projected
+  assert.equal(result[0].historical, 100);
+  assert.equal(result[1].historical, 120);
+  assert.equal(result[1].projected, 120); // Bridge point
+  assert.equal(result[2].month, "+1mo");
+  assert.equal(result[2].projected, 140);
+  assert.equal(result[3].month, "+2mo");
+  assert.equal(result[3].projected, 160);
+  assert.equal(result[4].month, "+3mo");
+  assert.equal(result[4].projected, 180);
+});
+
+test("buildForecastAnalytics returns 0 avgRSquared when there are no valid regression fits", () => {
+  const analytics = buildForecastAnalytics({
+    dispensingRows: [],
+    forecastRows: [],
+    inventoryRows: [
+      { medicine_id: "med-a", quantity: 60, threshold: 10, medicine: medicineA },
+    ],
+  });
+
+  assert.equal(analytics.avgRSquared, 0);
+  assert.equal(analytics.totalProjectedDemand, 0);
+  assert.equal(analytics.increasingCount, 0);
 });

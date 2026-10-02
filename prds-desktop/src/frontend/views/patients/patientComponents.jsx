@@ -655,14 +655,6 @@ export function PatientViewModal({
                 Add Record
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a36c] focus-visible:ring-offset-1"
-              aria-label="Close patient view"
-            >
-              <XIcon />
-            </button>
           </div>
         </div>
 
@@ -951,7 +943,7 @@ export function PatientViewModal({
                       <option value={PATIENT_MANUAL_RECORD_TYPES.barangayLog}>Barangay dispensing log</option>
                     </Select>
                     <p className="mt-1 text-[11px] font-medium text-[#6b7280]">
-                      Barangay logs deduct stock and count toward patient eligibility.
+                      Barangay logs deduct stock and count toward the patient's monthly medicine claim.
                     </p>
                   </Field>
 
@@ -1219,15 +1211,6 @@ export function PatientConfirmModal({
               <p className="mt-0.5 text-sm font-semibold text-[#42474e]">{patientName}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isSaving}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Close confirmation"
-          >
-            <XIcon />
-          </button>
         </div>
 
         <div className="space-y-4 px-5 py-4">
@@ -1345,14 +1328,6 @@ export function PatientFormModal({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
-            aria-label="Close modal"
-          >
-            <XIcon />
-          </button>
         </div>
 
         <div className="prds-modal-scrollbar max-h-[calc(86vh-140px)] overflow-y-auto p-5">
