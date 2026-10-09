@@ -5,20 +5,32 @@ import { useAuth } from "@frontend/context/useAuth";
 import { downloadExportFile } from "@frontend/services/downloadManager";
 import { supabase } from "../client/supabase";
 import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "../database/snapshotStore";
+import { getSqliteDb, isTauriEnvironment } from "../database/sqliteClient";
 import { isCurrentNetworkOnline } from "../sync/networkStatus";
 import { createOfflineInsertPayload, enqueueMutation } from "../sync/outboxQueue";
 import { computeAdc, computeReorderQty } from "@shared/utils/demandUtils";
 import {
   buildInventoryMedicineRows,
-  buildInventoryImportPayloads,
+  createEmptyPoItem,
+  emptyPoReceiptForm,
+  emptyReturnReceiptForm,
+  normalizePoNumber,
+  daysUntilExpiry,
   emptyInventoryForm,
+  findDuplicateLotsInBatch,
   formatDateTime,
   getExpiryStatus,
   getMedicineName,
   getStockStatus,
+  getTomorrowDateString,
+  isDisposedLot,
+  isLotExpired,
+  isLotNumberUsed,
+  isPoNumberUsed,
+  isReturnedLot,
+  isStrictlyFutureDate,
   normalizeLotNumber,
   pageSize,
-  parseInventoryCsv,
   sortInventoryRows,
 } from "@shared/utils/inventoryUtils";
 
@@ -57,7 +69,10 @@ export function useInventoryData({ isBhw = false }) {
     if (facilityParam) {
       return facilityParam;
     }
-    return readStored(`${STORAGE_PREFIX}${profile?.id}:facility`) || profile?.facility_id || "";
+    if (isBhw) {
+      return profile?.facility_id || "";
+    }
+    return readStored(`${STORAGE_PREFIX}${profile?.id}:facility`) || "ALL";
   });
   const [stockFilter, setStockFilter] = useState(() => {
     const stockParam = new URLSearchParams(location.search).get("stock");
@@ -65,6 +80,17 @@ export function useInventoryData({ isBhw = false }) {
       return STOCK_PARAM_MAP[stockParam];
     }
     return readStored(`${STORAGE_PREFIX}${profile?.id}:stock`) || "ALL";
+  });
+  const [inventoryTab, setInventoryTab] = useState(() => {
+    const tabParam = new URLSearchParams(location.search).get("tab");
+    if (tabParam && ["EXPIRED", "DISPENSABLE"].includes(tabParam.toUpperCase())) {
+      return tabParam.toUpperCase();
+    }
+    const stored = readStored(`${STORAGE_PREFIX}${profile?.id}:tab`);
+    if (stored && ["EXPIRED", "DISPENSABLE"].includes(stored.toUpperCase())) {
+      return stored.toUpperCase();
+    }
+    return "DISPENSABLE";
   });
   const [inventorySort, setInventorySort] = useState({ key: "medicine", direction: "ASC" });
   const [currentPage, setCurrentPage] = useState(1);
@@ -86,6 +112,8 @@ export function useInventoryData({ isBhw = false }) {
     "quantity",
     "threshold",
     "batch_number",
+    "po_number",
+    "unit_cost",
     "date_received",
     "expiration_date",
   ];
@@ -127,33 +155,87 @@ export function useInventoryData({ isBhw = false }) {
     }
   }, [profile?.id, stockFilter]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(`${STORAGE_PREFIX}${profile?.id}:tab`, inventoryTab);
+    } catch {
+      // Storage unavailable (e.g. private mode) — ignore.
+    }
+  }, [profile?.id, inventoryTab]);
+
   const viewingOwnFacility = facilityFilter === ownFacilityId;
 
   const scopeInventory = useMemo(() => {
-    if (isBhw || !facilityFilter) {
-      return inventory;
+    // Exclude stock returns (tracked in dedicated Stock Returns module)
+    const baseLots = inventory.filter(
+      (item) =>
+        item.intake_type !== "RETURN" &&
+        !(typeof item.po_number === "string" && item.po_number.startsWith("RET-")) &&
+        !isReturnedLot(item)
+    );
+
+    if (isBhw) {
+      return ownFacilityId
+        ? baseLots.filter((item) => item.facility_id === ownFacilityId)
+        : [];
     }
 
-    return inventory.filter((item) => item.facility_id === facilityFilter);
-  }, [inventory, facilityFilter, isBhw]);
+    // For CHO Pharmacist: Wide view across whole city of Naga health centers
+    // On Expired Stocks tab, show all quarantined expired stocks across facilities for condemnation tracking
+    if (inventoryTab !== "EXPIRED" && facilityFilter && facilityFilter !== "ALL") {
+      return baseLots.filter((item) => item.facility_id === facilityFilter);
+    }
 
-  const selectedFacility = useMemo(
-    () => facilities.find((facility) => facility.id === facilityFilter) || null,
-    [facilities, facilityFilter]
+    return baseLots;
+  }, [inventory, isBhw, ownFacilityId, facilityFilter, inventoryTab]);
+
+  const selectedFacility = useMemo(() => {
+    if (!facilityFilter || facilityFilter === "ALL") return null;
+    return facilities.find((facility) => facility.id === facilityFilter) || null;
+  }, [facilities, facilityFilter]);
+
+  // Partition scope inventory into dispensable and expired quarantined commercial lots
+  const dispensableLots = useMemo(() => {
+    return scopeInventory.filter((lot) => !isLotExpired(lot) && !isDisposedLot(lot));
+  }, [scopeInventory]);
+
+  const expiredLots = useMemo(() => {
+    return scopeInventory.filter(
+      (lot) => isLotExpired(lot) && Number(lot.quantity || 0) > 0 && !isDisposedLot(lot)
+    );
+  }, [scopeInventory]);
+
+  // Grouped medicine rows for dispensable stock
+  const groupedDispensableInventory = useMemo(
+    () => buildInventoryMedicineRows(dispensableLots),
+    [dispensableLots]
   );
 
-  const groupedInventory = useMemo(
-    () => buildInventoryMedicineRows(scopeInventory),
-    [scopeInventory]
+  // Grouped medicine rows for expired stock
+  const groupedExpiredInventory = useMemo(
+    () => buildInventoryMedicineRows(expiredLots),
+    [expiredLots]
   );
+
+  // Active grouped inventory based on selected tab
+  const groupedInventory = useMemo(() => {
+    if (inventoryTab === "EXPIRED") return groupedExpiredInventory;
+    return groupedDispensableInventory;
+  }, [inventoryTab, groupedExpiredInventory, groupedDispensableInventory]);
+
+  const dispensableItemCount = groupedDispensableInventory.length;
+  const expiredItemCount = groupedExpiredInventory.length;
+  const returnedItemCount = 0;
+  const returnedLots = [];
 
   const ownFacilityName =
     profile?.facility_name ||
     facilities.find((facility) => facility.id === ownFacilityId)?.facility_name ||
     "Your facility";
 
+  // Summary metrics for Dispensable Stock tab
   const summary = useMemo(() => {
-    return groupedInventory.reduce(
+    return groupedDispensableInventory.reduce(
       (counts, item) => {
         const status = getStockStatus(item).key;
         const expiryStatus = getExpiryStatus(item).key;
@@ -162,14 +244,42 @@ export function useInventoryData({ isBhw = false }) {
         counts.stockedOut += status === "CRITICAL" && Number(item.quantity) === 0 ? 1 : 0;
         counts.critical += status === "CRITICAL" ? 1 : 0;
         counts.low += status === "LOW" ? 1 : 0;
-        counts.expired += expiryStatus === "EXPIRED" ? 1 : 0;
-        counts.expiring += expiryStatus === "EXPIRED" || expiryStatus === "EXPIRING" ? 1 : 0;
+        counts.expired += 0;
+        counts.expiring += expiryStatus === "EXPIRING" ? 1 : 0;
 
         return counts;
       },
       { totalItems: 0, stockedOut: 0, critical: 0, low: 0, expired: 0, expiring: 0 }
     );
-  }, [groupedInventory]);
+  }, [groupedDispensableInventory]);
+
+  // Dedicated metrics for Expired Stocks tab
+  const expiredSummary = useMemo(() => {
+    const totalItems = groupedExpiredInventory.length;
+    let totalUnits = 0;
+    let totalLossValue = 0;
+
+    expiredLots.forEach((lot) => {
+      const qty = Number(lot.quantity || 0);
+      const unitCost = Number(lot.medicine?.unit_cost || 0);
+      totalUnits += qty;
+      totalLossValue += qty * unitCost;
+    });
+
+    return {
+      totalItems,
+      totalUnits,
+      totalLossValue,
+      status: "Pending Condemnation",
+    };
+  }, [groupedExpiredInventory, expiredLots]);
+
+  const returnsSummary = {
+    totalItems: 0,
+    totalUnits: 0,
+    totalBarangays: 0,
+    latestReturnDate: null,
+  };
 
   const facilityOptions = useMemo(() => {
     return [...facilities].sort((first, second) => {
@@ -185,7 +295,8 @@ export function useInventoryData({ isBhw = false }) {
   }, [facilities, ownFacilityId]);
 
   const consumptionByMedicine = useMemo(() => {
-    const scopeIds = isBhw || !facilityFilter ? null : new Set([facilityFilter]);
+    const targetFacilityId = isBhw ? ownFacilityId : (facilityFilter === "ALL" ? null : facilityFilter);
+    const scopeIds = targetFacilityId ? new Set([targetFacilityId]) : null;
     const rows = scopeIds
       ? dispensingSummary.filter((row) => scopeIds.has(row.facility_id))
       : dispensingSummary;
@@ -201,7 +312,7 @@ export function useInventoryData({ isBhw = false }) {
     });
 
     return map;
-  }, [dispensingSummary, facilityFilter, isBhw]);
+  }, [dispensingSummary, facilityFilter, isBhw, ownFacilityId]);
 
   const reorderQtyByItemId = useMemo(() => {
     const map = {};
@@ -265,27 +376,13 @@ export function useInventoryData({ isBhw = false }) {
 
   const totalPages = Math.max(1, Math.ceil(sortedInventory.length / pageSize));
 
-  const relatedStock = useMemo(() => {
-    if (!selectedItem) {
-      return [];
-    }
-
-    return buildInventoryMedicineRows(
-      inventory.filter(
-        (item) =>
-          item.medicine_id === selectedItem.medicine_id &&
-          item.facility_id !== selectedItem.facility_id
-      )
-    );
-  }, [inventory, selectedItem]);
-
   const hasActiveFilters = useMemo(() => {
     return (
       searchTerm.trim() !== "" ||
       stockFilter !== "ALL" ||
-      (!isBhw && facilityFilter !== ownFacilityId && facilityFilter !== "")
+      (!isBhw && inventoryTab !== "EXPIRED" && facilityFilter !== "ALL" && facilityFilter !== "")
     );
-  }, [searchTerm, stockFilter, facilityFilter, ownFacilityId, isBhw]);
+  }, [searchTerm, stockFilter, facilityFilter, isBhw, inventoryTab]);
 
   const loadInventory = useCallback(async (silent = false) => {
     const cachedInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
@@ -301,14 +398,8 @@ export function useInventoryData({ isBhw = false }) {
     }
 
     try {
-      const [
-        inventoryResult,
-        facilitiesResult,
-        medicinesResult,
-        suppliersResult,
-        dispensingResult,
-      ] = await Promise.all([
-        supabase
+      const fetchInventorySafely = async () => {
+        let result = await supabase
           .from("inventory")
           .select(`
             id,
@@ -318,14 +409,95 @@ export function useInventoryData({ isBhw = false }) {
             quantity,
             threshold,
             batch_number,
+            po_number,
+            unit_cost,
+            origin_facility_id,
+            intake_type,
+            return_reason,
+            status,
             date_received,
             expiration_date,
             updated_at,
-            facility:facilities(id, facility_name, facility_code),
+            facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code),
             medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost, categories),
             supplier:suppliers(id, supplier_name)
           `)
-          .order("updated_at", { ascending: false }),
+          .order("updated_at", { ascending: false });
+
+        if (
+          result.error &&
+          (result.error.code === "42703" ||
+            String(result.error.message || "").toLowerCase().includes("does not exist") ||
+            String(result.error.message || "").toLowerCase().includes("column"))
+        ) {
+          result = await supabase
+            .from("inventory")
+            .select(`
+              id,
+              facility_id,
+              medicine_id,
+              supplier_id,
+              quantity,
+              threshold,
+              batch_number,
+              date_received,
+              expiration_date,
+              updated_at,
+              facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code),
+              medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost, categories),
+              supplier:suppliers(id, supplier_name)
+            `)
+            .order("updated_at", { ascending: false });
+        }
+
+        if (result.data) {
+          let localLotMap = new Map();
+          let localBatchKeyMap = new Map();
+          if (isTauriEnvironment()) {
+            try {
+              const db = await getSqliteDb();
+              const localRows = await db.select(
+                "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status, disposed_at, disposal_method, disposed_by FROM inventory"
+              );
+              for (const r of localRows || []) {
+                if (r.id) localLotMap.set(r.id, r);
+                const bKey = `${r.facility_id || ""}:${r.medicine_id || ""}:${normalizeLotNumber(r.batch_number)}`;
+                localBatchKeyMap.set(bKey, r);
+              }
+            } catch (err) {
+              console.warn("Could not query local SQLite inventory:", err);
+            }
+          }
+
+          result.data = result.data.map((item) => {
+            const bKey = `${item.facility_id || ""}:${item.medicine_id || ""}:${normalizeLotNumber(item.batch_number)}`;
+            const local = localLotMap.get(item.id) || localBatchKeyMap.get(bKey);
+            return {
+              ...item,
+              po_number: item.po_number || local?.po_number || null,
+              unit_cost: item.unit_cost ?? local?.unit_cost ?? item.medicine?.unit_cost ?? 0,
+              origin_facility_id: item.origin_facility_id || local?.origin_facility_id || null,
+              intake_type: item.intake_type || local?.intake_type || "PROCUREMENT",
+              return_reason: item.return_reason || local?.return_reason || null,
+              status: item.status || local?.status || "ACTIVE",
+              disposed_at: item.disposed_at || local?.disposed_at || null,
+              disposal_method: item.disposal_method || local?.disposal_method || null,
+              disposed_by: item.disposed_by || local?.disposed_by || null,
+            };
+          });
+        }
+
+        return result;
+      };
+
+      const [
+        inventoryResult,
+        facilitiesResult,
+        medicinesResult,
+        suppliersResult,
+        dispensingResult,
+      ] = await Promise.all([
+        fetchInventorySafely(),
         supabase
           .from("facilities")
           .select("id, facility_name, facility_code, facility_type")
@@ -361,8 +533,15 @@ export function useInventoryData({ isBhw = false }) {
         return;
       }
 
-      const invData = inventoryResult.data || [];
       const facData = facilitiesResult.data || [];
+      const invData = (inventoryResult.data || []).map((item) => ({
+        ...item,
+        origin_facility:
+          item.origin_facility ||
+          (item.origin_facility_id
+            ? facData.find((facility) => facility.id === item.origin_facility_id) || null
+            : null),
+      }));
       const medData = medicinesResult.data || [];
       const supData = suppliersResult.data || [];
       const dispData = dispensingResult.data || [];
@@ -423,11 +602,18 @@ export function useInventoryData({ isBhw = false }) {
     };
   }, [loadInventory]);
 
-  const openCreateModal = () => {
+  const openCreateModal = (_defaultIntakeType = "PROCUREMENT", preselectedMedicineId = "") => {
     setSelectedItem(null);
+    const initialItem = createEmptyPoItem();
+    if (preselectedMedicineId) {
+      initialItem.medicine_id = preselectedMedicineId;
+    }
     const initialValues = {
-      ...emptyInventoryForm,
-      facility_id: ownFacilityId || "",
+      ...emptyPoReceiptForm,
+      intake_type: "PROCUREMENT",
+      facility_id: ownFacilityId || facilities[0]?.id || "",
+      date_received: new Date().toISOString().slice(0, 10),
+      items: [initialItem],
     };
     setFormValues(initialValues);
     formSnapshotRef.current = initialValues;
@@ -456,7 +642,7 @@ export function useInventoryData({ isBhw = false }) {
 
   const clearFilters = () => {
     setSearchTerm("");
-    setFacilityFilter(ownFacilityId || facilities[0]?.id || "");
+    setFacilityFilter(isBhw ? (ownFacilityId || "") : "ALL");
     setStockFilter("ALL");
     setCurrentPage(1);
   };
@@ -466,7 +652,65 @@ export function useInventoryData({ isBhw = false }) {
     setCurrentPage(1);
   };
 
+  const selectInventoryTab = (tab) => {
+    const validTab = tab === "EXPIRED" ? "EXPIRED" : "DISPENSABLE";
+    setInventoryTab(validTab);
+    setStockFilter("ALL");
+    setSearchTerm("");
+    setCurrentPage(1);
+  };
+
   const handleExportExcel = () => {
+    if (inventoryTab === "EXPIRED") {
+      const headers = [
+        "Medicine",
+        "Brand",
+        "Unit of Measurement",
+        "Lot Number",
+        "Facility",
+        "Supplier",
+        "Expired Quantity",
+        "Unit Cost (PHP)",
+        "Estimated Loss (PHP)",
+        "Date Expired",
+        "Days Expired",
+        "Disposal Status",
+        "Last Updated",
+      ];
+
+      const rows = sortedInventory.map((item) => {
+        const unitCost = Number(item.medicine?.unit_cost || 0);
+        const qty = Number(item.quantity || 0);
+        const loss = qty * unitCost;
+        const days = daysUntilExpiry(item.expiration_date);
+        const daysExpired = days !== null && days < 0 ? Math.abs(days) : 0;
+
+        return [
+          getMedicineName(item),
+          item.medicine?.brand_name || "",
+          item.medicine?.unit_of_measure || "",
+          (item.lots || [item]).map((lot) => normalizeLotNumber(lot.batch_number)).filter(Boolean).join(" | "),
+          item.facility?.facility_name || "",
+          (item.lots || [item]).map((lot) => lot.supplier?.supplier_name).filter(Boolean).join(" | "),
+          qty,
+          unitCost.toFixed(2),
+          loss.toFixed(2),
+          item.expiration_date ? new Date(item.expiration_date).toISOString().slice(0, 10) : "",
+          daysExpired,
+          "Pending Condemnation",
+          item.updated_at ? new Date(item.updated_at).toLocaleDateString("en-US") : "",
+        ];
+      });
+
+      downloadExportFile({
+        filename: `expired-stocks-condemnation-${new Date().toISOString().slice(0, 10)}`,
+        headers,
+        rows,
+        recordCount: rows.length,
+      });
+      return;
+    }
+
     const headers = [
       "Medicine",
       "Brand",
@@ -521,9 +765,14 @@ export function useInventoryData({ isBhw = false }) {
       facility_id: item.facility_id,
       medicine_id: item.medicine_id,
       supplier_id: item.supplier_id,
+      origin_facility_id: null,
+      intake_type: "PROCUREMENT",
+      return_reason: null,
       quantity: String(item.quantity ?? ""),
       threshold: String(item.threshold ?? ""),
       batch_number: item.batch_number || "",
+      po_number: item.po_number || "",
+      unit_cost: item.unit_cost !== null && item.unit_cost !== undefined ? String(item.unit_cost) : "",
       date_received: item.date_received || "",
       expiration_date: item.expiration_date || "",
     };
@@ -544,14 +793,143 @@ export function useInventoryData({ isBhw = false }) {
   };
 
   const handleFieldChange = (event) => {
-      const { name, value } = event.target;
+    const { name, value } = event.target;
     setFormValues((currentValues) => ({
       ...currentValues,
-      [name]: name === "batch_number" ? normalizeLotNumber(value) : value,
+      [name]:
+        name === "batch_number"
+          ? normalizeLotNumber(value)
+          : name === "po_number"
+            ? normalizePoNumber(value)
+            : value,
     }));
   };
 
+  const handlePoItemChange = (itemId, field, value) => {
+    setFormValues((currentValues) => {
+      const currentItems = currentValues.items || [];
+      const updatedItems = currentItems.map((item) => {
+        if (item.id !== itemId) return item;
+        let formattedValue = value;
+        if (field === "batch_number") {
+          formattedValue = normalizeLotNumber(value);
+        }
+        return {
+          ...item,
+          [field]: formattedValue,
+        };
+      });
+      return {
+        ...currentValues,
+        items: updatedItems,
+      };
+    });
+  };
+
+  const handleAddPoItem = () => {
+    setFormValues((currentValues) => {
+      const currentItems = currentValues.items || [];
+      return {
+        ...currentValues,
+        items: [...currentItems, createEmptyPoItem()],
+      };
+    });
+  };
+
+  const handleRemovePoItem = (itemId) => {
+    setFormValues((currentValues) => {
+      const currentItems = currentValues.items || [];
+      if (currentItems.length <= 1) {
+        return {
+          ...currentValues,
+          items: [createEmptyPoItem()],
+        };
+      }
+      return {
+        ...currentValues,
+        items: currentItems.filter((item) => item.id !== itemId),
+      };
+    });
+  };
+
   const validateForm = () => {
+    if (modalMode === "create") {
+      if (!formValues.facility_id) {
+        return "Inventory location could not be detected. Please reload the page and try again.";
+      }
+
+      if (!formValues.po_number?.trim()) {
+        return "Purchase Order (PO) number is required.";
+      }
+
+      if (isPoNumberUsed(formValues.po_number, inventory, null, formValues.facility_id)) {
+        return `Purchase Order (PO) number "${formValues.po_number}" is already used in existing inventory. PO numbers must be unique.`;
+      }
+
+      if (!formValues.supplier_id) {
+        return "Supplier is required for this Purchase Order.";
+      }
+
+      if (!formValues.date_received) {
+        return "Date received is required.";
+      }
+
+      const items = formValues.items || [];
+      if (items.length === 0) {
+        return "At least one medicine item is required.";
+      }
+
+      const seenLots = new Set();
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        const rowNum = i + 1;
+
+        if (!item.medicine_id) {
+          return `Line #${rowNum}: Please select a medicine.`;
+        }
+
+        const normLot = normalizeLotNumber(item.batch_number);
+        if (!normLot) {
+          return `Line #${rowNum}: Lot Number is required and must contain alphanumeric characters.`;
+        }
+
+        if (seenLots.has(normLot)) {
+          return `Line #${rowNum}: Duplicate Lot Number "${item.batch_number}" detected in this PO batch. Each medicine box must have a unique Lot Number.`;
+        }
+        seenLots.add(normLot);
+
+        if (isLotNumberUsed(item.batch_number, inventory, null, formValues.facility_id)) {
+          return `Line #${rowNum}: Lot Number "${item.batch_number}" is already used in existing inventory. Lot numbers must be unique.`;
+        }
+
+        if (item.quantity === "" || Number(item.quantity) <= 0) {
+          return `Line #${rowNum}: Quantity must be greater than zero.`;
+        }
+
+        if (item.threshold !== "" && Number(item.threshold) < 0) {
+          return `Line #${rowNum}: Minimum threshold cannot be negative.`;
+        }
+
+        if (item.unit_cost !== "" && Number(item.unit_cost) < 0) {
+          return `Line #${rowNum}: Unit cost cannot be negative.`;
+        }
+
+        if (!item.expiration_date) {
+          return `Line #${rowNum}: Expiration date is required.`;
+        }
+
+        if (!isStrictlyFutureDate(item.expiration_date)) {
+          return `Line #${rowNum}: Expiration date must be a future date (cannot be today or in the past).`;
+        }
+
+        if (new Date(item.expiration_date) <= new Date(formValues.date_received)) {
+          return `Line #${rowNum}: Expiration date must be later than date received.`;
+        }
+      }
+
+      return "";
+    }
+
     if (!formValues.facility_id) {
       return "Inventory location could not be detected. Please reload the page and try again.";
     }
@@ -564,6 +942,31 @@ export function useInventoryData({ isBhw = false }) {
       return "Lot Number must contain letters and numbers only.";
     }
 
+    const isEditing = Boolean(selectedItem?.id);
+    const isLotChanged =
+      isEditing &&
+      normalizeLotNumber(formValues.batch_number) !== normalizeLotNumber(selectedItem?.batch_number);
+
+    if (
+      (!isEditing || isLotChanged) &&
+      formValues.batch_number &&
+      isLotNumberUsed(formValues.batch_number, inventory, selectedItem?.id, formValues.facility_id)
+    ) {
+      return `Lot Number "${formValues.batch_number}" is already used in another inventory record.`;
+    }
+
+    const isPoChanged =
+      isEditing &&
+      normalizePoNumber(formValues.po_number) !== normalizePoNumber(selectedItem?.po_number);
+
+    if (
+      (!isEditing || isPoChanged) &&
+      formValues.po_number &&
+      isPoNumberUsed(formValues.po_number, inventory, selectedItem?.id, formValues.facility_id)
+    ) {
+      return `Purchase Order (PO) number "${formValues.po_number}" is already used in another inventory record.`;
+    }
+
     if (Number(formValues.quantity) < 0 || formValues.quantity === "") {
       return "Quantity must be zero or higher.";
     }
@@ -572,8 +975,16 @@ export function useInventoryData({ isBhw = false }) {
       return "Threshold must be zero or higher.";
     }
 
+    if (formValues.unit_cost !== "" && Number(formValues.unit_cost) < 0) {
+      return "Unit cost cannot be negative.";
+    }
+
     if (!formValues.date_received || !formValues.expiration_date) {
       return "Date received and expiration date are required.";
+    }
+
+    if (!isStrictlyFutureDate(formValues.expiration_date)) {
+      return "Expiration date must be a future date (cannot be today or in the past).";
     }
 
     if (new Date(formValues.expiration_date) <= new Date(formValues.date_received)) {
@@ -584,7 +995,7 @@ export function useInventoryData({ isBhw = false }) {
   };
 
   const handleSaveInventory = async (event) => {
-    event.preventDefault();
+    event?.preventDefault();
 
     const validationError = validateForm();
     if (validationError) {
@@ -603,6 +1014,230 @@ export function useInventoryData({ isBhw = false }) {
     setIsSaving(true);
     setInventoryError("");
 
+    if (!isEditing) {
+      // Create mode: Multi-item PO batch
+      const generatedPoNumber = normalizePoNumber(formValues.po_number);
+
+      const recordsToInsert = (formValues.items || []).map((item) => {
+        const id = item.id || crypto.randomUUID();
+        return {
+          id,
+          facility_id: formValues.facility_id,
+          supplier_id: formValues.supplier_id,
+          origin_facility_id: null,
+          intake_type: "PROCUREMENT",
+          return_reason: null,
+          status: "ACTIVE",
+          po_number: generatedPoNumber,
+          date_received: formValues.date_received,
+          medicine_id: item.medicine_id,
+          batch_number: normalizeLotNumber(item.batch_number),
+          quantity: Number(item.quantity),
+          threshold: item.threshold !== "" ? Number(item.threshold) : 100,
+          unit_cost: item.unit_cost !== "" && item.unit_cost !== null ? Number(item.unit_cost) : 0,
+          expiration_date: item.expiration_date,
+          updated_at: new Date().toISOString(),
+        };
+      });
+
+      const isOnline = isCurrentNetworkOnline();
+
+      if (!isOnline) {
+        if (isTauriEnvironment()) {
+          try {
+            const db = await getSqliteDb();
+            for (const rec of recordsToInsert) {
+              await db.execute(
+                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                [
+                  rec.id,
+                  rec.facility_id,
+                  rec.medicine_id,
+                  rec.supplier_id,
+                  rec.quantity,
+                  rec.threshold,
+                  rec.batch_number,
+                  rec.po_number,
+                  rec.unit_cost,
+                  rec.date_received,
+                  rec.expiration_date,
+                  rec.origin_facility_id,
+                  rec.intake_type,
+                  rec.return_reason,
+                  rec.status,
+                  rec.updated_at,
+                ]
+              );
+            }
+          } catch (dbErr) {
+            console.warn("Failed to write to local SQLite on offline save inventory:", dbErr);
+          }
+        }
+
+        const offlineRecords = [];
+        for (const payload of recordsToInsert) {
+          const { origin_facility_id, intake_type, return_reason, status, po_number, unit_cost, ...standardPayload } = payload;
+          const insertPayload = createOfflineInsertPayload({ id: payload.id, ...standardPayload });
+          const newRecord = {
+            ...payload,
+            id: insertPayload.id,
+            facility: facilities.find((f) => f.id === payload.facility_id),
+            origin_facility: facilities.find((f) => f.id === payload.origin_facility_id),
+            medicine: medicines.find((m) => m.id === payload.medicine_id),
+            supplier: suppliers.find((s) => s.id === payload.supplier_id),
+          };
+          await enqueueMutation({
+            mutationType: "INSERT",
+            target: "inventory",
+            payload: insertPayload,
+          });
+          offlineRecords.push(newRecord);
+        }
+
+        setInventory((prev) => {
+          const next = [...offlineRecords, ...prev];
+          saveSnapshot(STORAGE_KEYS.INVENTORY, next);
+          return next;
+        });
+
+        setIsSaving(false);
+        closeModal();
+        return;
+      }
+
+      try {
+        if (isTauriEnvironment()) {
+          try {
+            const db = await getSqliteDb();
+            for (const rec of recordsToInsert) {
+              await db.execute(
+                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                [
+                  rec.id,
+                  rec.facility_id,
+                  rec.medicine_id,
+                  rec.supplier_id,
+                  rec.quantity,
+                  rec.threshold,
+                  rec.batch_number,
+                  rec.po_number,
+                  rec.unit_cost,
+                  rec.date_received,
+                  rec.expiration_date,
+                  rec.origin_facility_id,
+                  rec.intake_type,
+                  rec.return_reason,
+                  rec.status,
+                  rec.updated_at,
+                ]
+              );
+            }
+          } catch (dbErr) {
+            console.warn("Failed to write to local SQLite on save inventory:", dbErr);
+          }
+        }
+
+        let insertRes = await supabase.from("inventory").insert(recordsToInsert);
+
+        if (insertRes.error) {
+          if (
+            insertRes.error.code === "42703" ||
+            String(insertRes.error.message || "").toLowerCase().includes("does not exist") ||
+            String(insertRes.error.message || "").toLowerCase().includes("column")
+          ) {
+            const fallbackRecords = recordsToInsert.map((rec) => {
+              const { origin_facility_id, intake_type, return_reason, status, po_number, unit_cost, ...rest } = rec;
+              return { id: rec.id, ...rest };
+            });
+            insertRes = await supabase.from("inventory").insert(fallbackRecords);
+          }
+        }
+
+        if (insertRes.error) {
+          throw insertRes.error;
+        }
+
+        setIsSaving(false);
+        closeModal();
+        await loadInventory();
+      } catch (error) {
+        const isNetworkErr =
+          !isCurrentNetworkOnline() ||
+          error.message?.includes("Failed to fetch") ||
+          error.message?.includes("NetworkError");
+
+        if (isNetworkErr) {
+          if (isTauriEnvironment()) {
+            try {
+              const db = await getSqliteDb();
+              for (const rec of recordsToInsert) {
+                await db.execute(
+                  `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                  [
+                    rec.id || crypto.randomUUID(),
+                    rec.facility_id,
+                    rec.medicine_id,
+                    rec.supplier_id,
+                    rec.quantity,
+                    rec.threshold,
+                    rec.batch_number,
+                    rec.po_number,
+                    rec.unit_cost,
+                    rec.date_received,
+                    rec.expiration_date,
+                    rec.origin_facility_id,
+                    rec.intake_type,
+                    rec.return_reason,
+                    rec.status,
+                    rec.updated_at,
+                  ]
+                );
+              }
+            } catch (dbErr) {
+              console.warn("Failed to write to local SQLite on offline save inventory:", dbErr);
+            }
+          }
+
+          const offlineRecords = [];
+          for (const payload of recordsToInsert) {
+            const { origin_facility_id, intake_type, return_reason, status, po_number, unit_cost, ...standardPayload } = payload;
+            const insertPayload = createOfflineInsertPayload(standardPayload);
+            const newRecord = {
+              ...payload,
+              id: insertPayload.id,
+              facility: facilities.find((f) => f.id === payload.facility_id),
+              origin_facility: facilities.find((f) => f.id === payload.origin_facility_id),
+              medicine: medicines.find((m) => m.id === payload.medicine_id),
+              supplier: suppliers.find((s) => s.id === payload.supplier_id),
+            };
+            await enqueueMutation({
+              mutationType: "INSERT",
+              target: "inventory",
+              payload: insertPayload,
+            });
+            offlineRecords.push(newRecord);
+          }
+
+          setInventory((prev) => {
+            const next = [...offlineRecords, ...prev];
+            saveSnapshot(STORAGE_KEYS.INVENTORY, next);
+            return next;
+          });
+
+          setIsSaving(false);
+          closeModal();
+        } else {
+          setInventoryError(error.message || "Failed to record inventory batch.");
+          setIsSaving(false);
+        }
+      }
+      return;
+    }
+
+    // Edit mode: single lot update
     const payload = {
       facility_id: formValues.facility_id,
       medicine_id: formValues.medicine_id,
@@ -610,6 +1245,8 @@ export function useInventoryData({ isBhw = false }) {
       quantity: Number(formValues.quantity),
       threshold: Number(formValues.threshold),
       batch_number: normalizeLotNumber(formValues.batch_number),
+      po_number: normalizePoNumber(formValues.po_number) || null,
+      unit_cost: formValues.unit_cost !== "" && formValues.unit_cost !== null ? Number(formValues.unit_cost) : null,
       date_received: formValues.date_received,
       expiration_date: formValues.expiration_date,
       updated_at: new Date().toISOString(),
@@ -618,7 +1255,115 @@ export function useInventoryData({ isBhw = false }) {
     const isOnline = isCurrentNetworkOnline();
 
     if (!isOnline) {
-      if (isEditing) {
+      await enqueueMutation({
+        mutationType: "RPC",
+        target: "update_inventory_batch",
+        payload: {
+          p_batch_number: payload.batch_number,
+          p_date_received: payload.date_received,
+          p_expiration_date: payload.expiration_date,
+          p_inventory_id: selectedItem.id,
+          p_quantity: payload.quantity,
+          p_supplier_id: payload.supplier_id,
+          p_threshold: payload.threshold,
+        },
+      });
+      if (isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          await db.execute(
+            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, supplier_id = $5, threshold = $6, po_number = $7, unit_cost = $8, origin_facility_id = $9, intake_type = $10, return_reason = $11, updated_at = $12 WHERE id = $13`,
+            [
+              payload.batch_number,
+              payload.date_received,
+              payload.expiration_date,
+              payload.quantity,
+              payload.supplier_id,
+              payload.threshold,
+              payload.po_number,
+              payload.unit_cost,
+              null,
+              "PROCUREMENT",
+              null,
+              payload.updated_at,
+              selectedItem.id,
+            ]
+          );
+        } catch (dbErr) {
+          console.warn("Failed to update local SQLite on batch edit:", dbErr);
+        }
+      }
+      setInventory((prev) => {
+        const next = prev.map((item) =>
+          item.id === selectedItem.id
+            ? {
+                ...item,
+                ...payload,
+                origin_facility_id: null,
+                intake_type: "PROCUREMENT",
+                return_reason: null,
+              }
+            : item
+        );
+        saveSnapshot(STORAGE_KEYS.INVENTORY, next);
+        return next;
+      });
+      setIsSaving(false);
+      closeModal();
+      return;
+    }
+
+    try {
+      const rpcResult = await supabase.rpc("update_inventory_batch", {
+        p_batch_number: payload.batch_number,
+        p_date_received: payload.date_received,
+        p_expiration_date: payload.expiration_date,
+        p_inventory_id: selectedItem.id,
+        p_quantity: payload.quantity,
+        p_supplier_id: payload.supplier_id,
+        p_threshold: payload.threshold,
+      });
+
+      if (rpcResult.error) {
+        throw rpcResult.error;
+      }
+
+      if (isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          await db.execute(
+            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, supplier_id = $5, threshold = $6, po_number = $7, unit_cost = $8, origin_facility_id = $9, intake_type = $10, return_reason = $11, updated_at = $12 WHERE id = $13`,
+            [
+              payload.batch_number,
+              payload.date_received,
+              payload.expiration_date,
+              payload.quantity,
+              payload.supplier_id,
+              payload.threshold,
+              payload.po_number,
+              payload.unit_cost,
+              null,
+              "PROCUREMENT",
+              null,
+              payload.updated_at,
+              selectedItem.id,
+            ]
+          );
+        } catch (dbErr) {
+          console.warn("Failed to update local SQLite on batch edit:", dbErr);
+        }
+      }
+
+      setIsSaving(false);
+      closeModal();
+      await loadInventory();
+    } catch (error) {
+      const isNetworkErr =
+        !isCurrentNetworkOnline() ||
+        error.message?.includes("Failed to fetch") ||
+        error.message?.includes("NetworkError");
+
+      if (isNetworkErr) {
         await enqueueMutation({
           mutationType: "RPC",
           target: "update_inventory_batch",
@@ -639,119 +1384,118 @@ export function useInventoryData({ isBhw = false }) {
           saveSnapshot(STORAGE_KEYS.INVENTORY, next);
           return next;
         });
-      } else {
-        const insertPayload = createOfflineInsertPayload(payload);
-        const newRecord = {
-          ...insertPayload,
-          facility: facilities.find((f) => f.id === payload.facility_id),
-          medicine: medicines.find((m) => m.id === payload.medicine_id),
-          supplier: suppliers.find((s) => s.id === payload.supplier_id),
-        };
-        await enqueueMutation({
-          mutationType: "INSERT",
-          target: "inventory",
-          payload: insertPayload,
-        });
-        setInventory((prev) => {
-          const next = [newRecord, ...prev];
-          saveSnapshot(STORAGE_KEYS.INVENTORY, next);
-          return next;
-        });
-      }
-      setIsSaving(false);
-      closeModal();
-      return;
-    }
-
-    try {
-      const { error } = isEditing
-        ? await supabase.rpc("update_inventory_batch", {
-            p_batch_number: payload.batch_number,
-            p_date_received: payload.date_received,
-            p_expiration_date: payload.expiration_date,
-            p_inventory_id: selectedItem.id,
-            p_quantity: payload.quantity,
-            p_supplier_id: payload.supplier_id,
-            p_threshold: payload.threshold,
-          })
-        : await supabase.from("inventory").insert(payload);
-
-      if (error) {
-        throw error;
-      }
-
-      setIsSaving(false);
-      closeModal();
-      await loadInventory();
-    } catch (error) {
-      const isNetworkErr =
-        !isCurrentNetworkOnline() ||
-        error.message?.includes("Failed to fetch") ||
-        error.message?.includes("NetworkError");
-
-      if (isNetworkErr) {
-        if (isEditing) {
-          await enqueueMutation({
-            mutationType: "RPC",
-            target: "update_inventory_batch",
-            payload: {
-              p_batch_number: payload.batch_number,
-              p_date_received: payload.date_received,
-              p_expiration_date: payload.expiration_date,
-              p_inventory_id: selectedItem.id,
-              p_quantity: payload.quantity,
-              p_supplier_id: payload.supplier_id,
-              p_threshold: payload.threshold,
-            },
-          });
-          setInventory((prev) => {
-            const next = prev.map((item) =>
-              item.id === selectedItem.id ? { ...item, ...payload } : item
-            );
-            saveSnapshot(STORAGE_KEYS.INVENTORY, next);
-            return next;
-          });
-        } else {
-          const insertPayload = createOfflineInsertPayload(payload);
-          const newRecord = {
-            ...insertPayload,
-            facility: facilities.find((f) => f.id === payload.facility_id),
-            medicine: medicines.find((m) => m.id === payload.medicine_id),
-            supplier: suppliers.find((s) => s.id === payload.supplier_id),
-          };
-          await enqueueMutation({
-            mutationType: "INSERT",
-            target: "inventory",
-            payload: insertPayload,
-          });
-          setInventory((prev) => {
-            const next = [newRecord, ...prev];
-            saveSnapshot(STORAGE_KEYS.INVENTORY, next);
-            return next;
-          });
-        }
         setIsSaving(false);
         closeModal();
       } else {
-        setInventoryError(error.message);
+        setInventoryError(error.message || "Failed to update inventory batch.");
         setIsSaving(false);
       }
     }
   };
 
-  const handleDeleteItem = async (item) => {
+  const handleDisposeStock = async (lot, { method, remarks } = {}) => {
+    if (!lot?.id) return false;
     setIsSaving(true);
     setInventoryError("");
 
+    const disposalMethod = method || "LGU City Health Condemnation Protocol";
+    const nowIso = new Date().toISOString();
+    const updatedLot = {
+      ...lot,
+      status: "DISPOSED",
+      quantity: 0,
+      disposed_at: nowIso,
+      disposal_method: disposalMethod,
+      disposed_by: profile?.id,
+      updated_at: nowIso,
+    };
+
     const isOnline = isCurrentNetworkOnline();
+
     if (!isOnline) {
       await enqueueMutation({
-        mutationType: "DELETE",
+        mutationType: "UPDATE",
         target: "inventory",
-        payload: { id: item.id },
+        payload: {
+          id: lot.id,
+          quantity: 0,
+          updated_at: nowIso,
+        },
       });
+
+      if (isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          await db.execute(
+            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = $1, disposal_method = $2, disposed_by = $3, updated_at = $4 WHERE id = $5`,
+            [nowIso, disposalMethod, profile?.id, nowIso, lot.id]
+          );
+        } catch (dbErr) {
+          console.warn("Failed to update local SQLite on stock disposal:", dbErr);
+        }
+      }
+
       setInventory((prev) => {
-        const next = prev.filter((i) => i.id !== item.id);
+        const next = prev.map((item) => (item.id === lot.id ? updatedLot : item));
+        saveSnapshot(STORAGE_KEYS.INVENTORY, next);
+        return next;
+      });
+
+      setIsSaving(false);
+      closeModal();
+      return true;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("inventory")
+        .update({
+          quantity: 0,
+          updated_at: nowIso,
+        })
+        .eq("id", lot.id);
+
+      if (error) {
+        throw error;
+      }
+
+      try {
+        await supabase.from("activity_logs").insert({
+          user_id: profile?.id,
+          action: "Stock Disposed",
+          module: "Inventory",
+          details: `Disposed ${lot.quantity || 0} units of ${getMedicineName(lot)} (Lot #${lot.batch_number || "N/A"}) due to expiration. Method: ${disposalMethod}${remarks ? ` (${remarks})` : ""}`,
+        });
+      } catch (logErr) {
+        console.warn("Disposal activity log write skipped:", logErr);
+      }
+
+      if (isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          await db.execute(
+            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = $1, disposal_method = $2, disposed_by = $3, updated_at = $4 WHERE id = $5`,
+            [nowIso, disposalMethod, profile?.id, nowIso, lot.id]
+          );
+        } catch (dbErr) {
+          console.warn("Failed to update local SQLite on stock disposal:", dbErr);
+        }
+      }
+
+      setInventory((prev) => {
+        const next = prev.map((item) => (item.id === lot.id ? updatedLot : item));
+        saveSnapshot(STORAGE_KEYS.INVENTORY, next);
+        return next;
+      });
+
+      setIsSaving(false);
+      closeModal();
+      await loadInventory();
+      return true;
+    } catch (err) {
+      console.error("Disposal error:", err);
+      setInventory((prev) => {
+        const next = prev.map((item) => (item.id === lot.id ? updatedLot : item));
         saveSnapshot(STORAGE_KEYS.INVENTORY, next);
         return next;
       });
@@ -759,141 +1503,6 @@ export function useInventoryData({ isBhw = false }) {
       closeModal();
       return true;
     }
-
-    try {
-      const { error } = await supabase.from("inventory").delete().eq("id", item.id);
-
-      if (error) {
-        throw error;
-      }
-
-      setIsSaving(false);
-      closeModal();
-      await loadInventory();
-      return true;
-    } catch (error) {
-      const isNetworkErr =
-        !isCurrentNetworkOnline() ||
-        error.message?.includes("Failed to fetch") ||
-        error.message?.includes("NetworkError");
-
-      if (isNetworkErr) {
-        await enqueueMutation({
-          mutationType: "DELETE",
-          target: "inventory",
-          payload: { id: item.id },
-        });
-        setInventory((prev) => {
-          const next = prev.filter((i) => i.id !== item.id);
-          saveSnapshot(STORAGE_KEYS.INVENTORY, next);
-          return next;
-        });
-        setIsSaving(false);
-        closeModal();
-        return true;
-      }
-      setInventoryError(error.message);
-      setIsSaving(false);
-      return false;
-    }
-  };
-
-  const fetchStockHistory = useCallback(async (item) => {
-    if (!isCurrentNetworkOnline()) {
-      const cachedLogs = getSnapshot(STORAGE_KEYS.ACTIVITY_LOGS, []);
-      return cachedLogs.filter(
-        (log) =>
-          log.module === "Inventory" &&
-          log.details?.includes(`(${item.batch_number})`)
-      );
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("activity_logs")
-        .select(`
-          id,
-          action,
-          details,
-          created_at,
-          user:profiles(id, first_name, last_name, role)
-        `)
-        .eq("module", "Inventory")
-        .ilike("details", `%(${item.batch_number})%`)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (error) {
-        const cachedLogs = getSnapshot(STORAGE_KEYS.ACTIVITY_LOGS, []);
-        return cachedLogs.filter(
-          (log) =>
-            log.module === "Inventory" &&
-            log.details?.includes(`(${item.batch_number})`)
-        );
-      }
-
-      return data || [];
-    } catch {
-      const cachedLogs = getSnapshot(STORAGE_KEYS.ACTIVITY_LOGS, []);
-      return cachedLogs.filter(
-        (log) =>
-          log.module === "Inventory" &&
-          log.details?.includes(`(${item.batch_number})`)
-      );
-    }
-  }, []);
-
-  const handleImportCsv = async (file) => {
-    let text;
-    try {
-      text = await file.text();
-    } catch {
-      return {
-        imported: 0,
-        failed: 1,
-        errors: [{ row: 0, message: "Could not read the selected file." }],
-        cancelled: true,
-      };
-    }
-
-    const { rows, errors: parseErrors } = parseInventoryCsv(text);
-    const { payloads, errors: buildErrors } = buildInventoryImportPayloads(rows, {
-      medicines,
-      suppliers,
-      facilityId: facilityFilter || ownFacilityId,
-    });
-
-    const allErrors = [...parseErrors, ...buildErrors];
-
-    if (payloads.length === 0) {
-      return { imported: 0, failed: allErrors.length, errors: allErrors, cancelled: true };
-    }
-
-    setIsSaving(true);
-    setInventoryError("");
-
-    const chunkSize = 50;
-    let imported = 0;
-    const failed = [...allErrors];
-
-    for (let index = 0; index < payloads.length; index += chunkSize) {
-      const chunk = payloads.slice(index, index + chunkSize);
-      const { error } = await supabase.from("inventory").insert(chunk);
-
-      if (error) {
-        for (let rowIndex = index; rowIndex < index + chunk.length; rowIndex += 1) {
-          failed.push({ row: rowIndex + 2, message: error.message });
-        }
-      } else {
-        imported += chunk.length;
-      }
-    }
-
-
-    setIsSaving(false);
-    await loadInventory();
-
-    return { imported, failed: failed.length, errors: failed };
   };
 
   return {
@@ -911,7 +1520,15 @@ export function useInventoryData({ isBhw = false }) {
     selectedFacility,
     viewingOwnFacility,
     scopeInventory,
+    inventoryTab,
+    selectInventoryTab,
+    dispensableItemCount,
+    expiredItemCount,
+    returnedItemCount,
+    returnedLots,
     summary,
+    expiredSummary,
+    returnsSummary,
     reorderQtyByItemId,
     searchTerm,
     setSearchTerm,
@@ -930,7 +1547,6 @@ export function useInventoryData({ isBhw = false }) {
     sortedInventory,
     paginatedInventory,
     totalPages,
-    relatedStock,
     hasActiveFilters,
     openCreateModal,
     handleSort,
@@ -939,13 +1555,13 @@ export function useInventoryData({ isBhw = false }) {
     clearFilters,
     toggleStockFilter,
     handleExportExcel,
-    handleExportCsv: handleExportExcel,
     openItemModal,
     closeModal,
     handleFieldChange,
+    handlePoItemChange,
+    handleAddPoItem,
+    handleRemovePoItem,
     handleSaveInventory,
-    handleDeleteItem,
-    fetchStockHistory,
-    handleImportCsv,
+    handleDisposeStock,
   };
 }

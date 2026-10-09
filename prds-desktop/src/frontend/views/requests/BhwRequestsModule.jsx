@@ -920,7 +920,7 @@ function RequestTrackingModal({ isReceiving, onClose, onConfirmReceipt, request,
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-5 py-4">
           <p className="text-xs font-semibold text-neutral-500">
             {request.status === "COMPLETED"
-              ? "Request completed and received."
+              ? "Request released by CHO and received into facility inventory."
               : request.status === "APPROVED"
                 ? awaitingReceipt
                   ? "Confirm receipt of this request?"
@@ -1251,7 +1251,7 @@ function ChoAvailabilitySummary({ error, isLoading, medicines, onRetry }) {
         <div>
           <SectionTitle icon={<BoxIcon />} title="CHO Stock Availability" />
           <p className="mt-1 text-xs font-semibold leading-5 text-neutral-500">
-            Live requestable stock from the Central Health Office.
+            Live requestable stock from the City Health Office.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-right">

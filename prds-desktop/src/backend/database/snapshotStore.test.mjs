@@ -267,7 +267,7 @@ test("terminal passcode registry indexes Gmail from user metadata and OAuth iden
       first_name: "Josh",
       last_name: "Laroa",
       role: "PHARMA_II",
-      facility_name: "Central Health Office - City of Naga",
+      facility_name: "City Health Office - City of Naga",
       email: "joshlaroa27@gmail.com",
       phone_number: "09189876543",
       status: "ACTIVE",
@@ -290,7 +290,7 @@ test("terminal passcode registry indexes Gmail from user metadata and OAuth iden
     assert.equal(byGmail.profile?.first_name, "Josh");
     assert.equal(byGmail.fullName, "Josh Laroa");
     assert.equal(byGmail.role, "PHARMA_II");
-    assert.equal(byGmail.facilityName, "Central Health Office - City of Naga");
+    assert.equal(byGmail.facilityName, "City Health Office - City of Naga");
 
     // Lookup using uppercase/whitespace Gmail address
     const byGmailMessy = getTerminalPasscodeAccount("  JoshLaroa27@Gmail.com  ");

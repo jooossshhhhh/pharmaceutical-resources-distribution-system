@@ -15,6 +15,7 @@ import {
   formatPatientHistoryDateFilterLabel,
   formatPatientName,
   formatPatientRegisteredAt,
+  formatPatientRegisteredBy,
   getPatientSortLabel,
   isArchivedPatient,
   isValidPatientName,
@@ -540,7 +541,7 @@ test("validateManualPatientRecord checks required manual history fields", () => 
 
 test("buildPatientDispensingFacilityOptions only includes current and patient facilities", () => {
   const facilities = [
-    { id: "cho", facility_name: "Central Health Office" },
+    { id: "cho", facility_name: "City Health Office" },
     { id: "inayagan", facility_name: "Inayagan Barangay Health Center" },
     { id: "other", facility_name: "Other Barangay Health Center" },
   ];
@@ -597,4 +598,78 @@ test("sanitizePatientName removes HTML tags, angle brackets, and normalizes whit
   assert.equal(sanitizePatientName("Dela-Cruz<img src=x onerror=alert(1)>"), "Dela-Cruz");
   assert.equal(sanitizePatientName("<>D'Angelo<>"), "D'Angelo");
 });
+
+test("formatPatientRegisteredBy stamps name and role accurately", () => {
+  // Pharmacist II
+  assert.equal(
+    formatPatientRegisteredBy({
+      first_name: "Juan",
+      last_name: "Dela Cruz",
+      role: "PHARMA_II",
+    }),
+    "Juan Dela Cruz (Pharmacist II)"
+  );
+
+  // Pharmacist I
+  assert.equal(
+    formatPatientRegisteredBy({
+      first_name: "Maria",
+      last_name: "Santos",
+      role: "PHARMA_I",
+    }),
+    "Maria Santos (Pharmacist I)"
+  );
+
+  // Barangay Health Worker
+  assert.equal(
+    formatPatientRegisteredBy({
+      first_name: "Ana",
+      last_name: "Reyes",
+      role: "BHW",
+    }),
+    "Ana Reyes (Barangay Health Worker)"
+  );
+
+  // Without role
+  assert.equal(
+    formatPatientRegisteredBy({
+      first_name: "Pedro",
+      last_name: "Penduko",
+    }),
+    "Pedro Penduko"
+  );
+
+  // String value
+  assert.equal(formatPatientRegisteredBy("Dr. Jose Rizal"), "Dr. Jose Rizal");
+
+  // Fallback resolution via createdBy and fallbackUsers list
+  const fallbackUsers = [
+    { id: "u-101", first_name: "Clara", last_name: "Santos", role: "PHARMA_II" },
+  ];
+  assert.equal(
+    formatPatientRegisteredBy(null, "u-101", fallbackUsers),
+    "Clara Santos (Pharmacist II)"
+  );
+
+  // Missing author
+  assert.equal(formatPatientRegisteredBy(null, null), "—");
+  assert.equal(formatPatientRegisteredBy({}, null), "—");
+});
+
+test("buildPatientsCsv includes Registered By in header and row", () => {
+  const patientWithRegistrar = {
+    ...samplePatient,
+    registered_by: {
+      first_name: "Juan",
+      last_name: "Dela Cruz",
+      role: "PHARMA_II",
+    },
+  };
+  const csv = buildPatientsCsv({ patients: [patientWithRegistrar] });
+  const lines = csv.split("\n");
+
+  assert.equal(lines[0].includes("Registered By"), true);
+  assert.match(lines[1], /Juan Dela Cruz \(Pharmacist II\)/);
+});
+
 

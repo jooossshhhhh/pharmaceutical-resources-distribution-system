@@ -10,15 +10,28 @@ import ReportCalendarWidget from "./components/ReportCalendarWidget";
 import TopMedicinesChart from "./components/TopMedicinesChart";
 import FacilityDistributionChart from "./components/FacilityDistributionChart";
 import DailyTrendChart from "./components/DailyTrendChart";
+import ReportScopeToggle from "./components/ReportScopeToggle";
+import MonthYearSelector from "./components/MonthYearSelector";
+import MonthlyReconciliationKpis from "./components/MonthlyReconciliationKpis";
+import AreaProgramsAllocationPanel from "./components/AreaProgramsAllocationPanel";
+import MonthlyInventoryLedgerTable from "./components/MonthlyInventoryLedgerTable";
+import MonthlyDispensingDistributionChart from "./components/MonthlyDispensingDistributionChart";
+import DailyHourlyFlowChart from "./components/DailyHourlyFlowChart";
+import DailyDispensingLogTable from "./components/DailyDispensingLogTable";
 import {
   calculateReportKpis,
   aggregateTopMedicines,
   aggregateFacilityDistribution,
   aggregateDailyDispensingTrend,
+  aggregateMonthlyDispensingDistribution,
+  aggregateHourlyDispensingFlow,
+  getDailyDispensingTransactions,
+  formatReportDate,
 } from "@shared/utils/reportUtils";
 import {
   exportDailyRisExcel,
   exportMonthlyInventoryExcel,
+  processMonthlyInventoryData,
 } from "@shared/utils/reportExportUtils";
 
 const enrichInventoryRows = (rawInventory = [], medicinesList = []) => {
@@ -85,7 +98,28 @@ export default function ChoReportModule() {
       }),
     }));
   });
-  const [otherProgramsRows, setOtherProgramsRows] = useState(() => getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []));
+  const [otherProgramsRows, setOtherProgramsRows] = useState(() => {
+    const raw = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
+    const meds = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+    const medsMap = new Map(meds.map((m) => [String(m.id), m]));
+    return raw.map((prog) => ({
+      ...prog,
+      medicines: (prog.medicines || []).map((pm) => {
+        const medId = String(pm.medicine_id || pm.medicine?.id || "");
+        const catMed = medsMap.get(medId) || {};
+        const unitCost = Number(pm.medicine?.unit_cost ?? catMed.unit_cost ?? pm.unit_cost ?? 0);
+        return {
+          ...pm,
+          unit_cost: unitCost,
+          medicine: {
+            ...catMed,
+            ...(pm.medicine || {}),
+            unit_cost: unitCost,
+          },
+        };
+      }),
+    }));
+  });
   const [inventoryRows, setInventoryRows] = useState(() => {
     const rawInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
     const meds = getSnapshot(STORAGE_KEYS.MEDICINES, []);
@@ -93,6 +127,12 @@ export default function ChoReportModule() {
   });
   const [selectedFacilityId, setSelectedFacilityId] = useState("ALL");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [reportScope, setReportScope] = useState("daily"); // 'daily' | 'monthly'
+  const [selectedPeriod, setSelectedPeriod] = useState(() => ({
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  }));
+  const [selectedProgramFilter, setSelectedProgramFilter] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -189,11 +229,28 @@ export default function ChoReportModule() {
                 id, facility_id, program_name, program_date, description, status, completed_at, cancelled_at,
                 medicines:program_medicines(
                   id, medicine_id, quantity_used,
-                  medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure)
+                  medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost)
                 )
               `);
               if (progData && isMounted) {
-                setOtherProgramsRows(progData);
+                const enriched = progData.map((prog) => ({
+                  ...prog,
+                  medicines: (prog.medicines || []).map((pm) => {
+                    const medId = String(pm.medicine_id || pm.medicine?.id || "");
+                    const catMed = medicinesMap.get(medId) || {};
+                    const unitCost = Number(pm.medicine?.unit_cost ?? catMed.unit_cost ?? pm.unit_cost ?? 0);
+                    return {
+                      ...pm,
+                      unit_cost: unitCost,
+                      medicine: {
+                        ...catMed,
+                        ...(pm.medicine || {}),
+                        unit_cost: unitCost,
+                      },
+                    };
+                  }),
+                }));
+                setOtherProgramsRows(enriched);
               }
             } catch {
               // fallback remains active
@@ -230,11 +287,14 @@ export default function ChoReportModule() {
   }, [facilities, selectedFacilityId]);
 
   const headerFacilityName = useMemo(() => {
+    if (reportScope === "monthly") {
+      return "Vicente Mendiola Center for Health (City Health Office)";
+    }
     if (selectedFacility) {
       return selectedFacility.facility_name;
     }
     return "Vicente Mendiola Center for Health (City Health Office)";
-  }, [selectedFacility]);
+  }, [selectedFacility, reportScope]);
 
   const filteredDispensing = useMemo(() => {
     if (selectedFacilityId === "ALL") return dispensingRows;
@@ -303,6 +363,101 @@ export default function ChoReportModule() {
     return new Intl.DateTimeFormat("en-US", { month: "long" }).format(selectedDate);
   }, [selectedDate]);
 
+  const formattedSelectedDate = useMemo(() => {
+    return formatReportDate(selectedDate);
+  }, [selectedDate]);
+
+  const hourlyFlow = useMemo(() => {
+    return aggregateHourlyDispensingFlow({
+      dispensingRows: filteredDispensing,
+      requestRows: filteredRequests,
+      selectedDate,
+    });
+  }, [filteredDispensing, filteredRequests, selectedDate]);
+
+  const dailyTransactions = useMemo(() => {
+    return getDailyDispensingTransactions({
+      dispensingRows: filteredDispensing,
+      requestRows: filteredRequests,
+      selectedDate,
+    });
+  }, [filteredDispensing, filteredRequests, selectedDate]);
+
+  // For Monthly Inventory Reconciliation, the statutory ledger represents the
+  // City Health Office (CHO) central warehouse stock (Sole Source of Truth).
+  // If choFacility is identified, scope to CHO warehouse rows; otherwise fallback to filteredInventory.
+  const monthlyInventory = useMemo(() => {
+    if (choFacility) {
+      const choId = String(choFacility.id);
+      const choRows = inventoryRows.filter((r) => String(r.facility_id || r.facility?.id || "") === choId);
+      if (choRows.length > 0) return choRows;
+    }
+    return filteredInventory;
+  }, [inventoryRows, choFacility, filteredInventory]);
+
+  // Monthly Inventory Reconciliation Calculation
+  const monthlyData = useMemo(() => {
+    const res = processMonthlyInventoryData({
+      inventoryRows: monthlyInventory,
+      dispensingRows: filteredDispensing,
+      requestRows: filteredRequests,
+      otherProgramsRows,
+      year: selectedPeriod.year,
+      month: selectedPeriod.month,
+    });
+
+    const targetMonthPrefix = `${selectedPeriod.year}-${String(selectedPeriod.month).padStart(2, "0")}`;
+    const activeProgs = (otherProgramsRows || []).filter((p) => {
+      if (p.status === "CANCELLED") return false;
+      const pDate = p.program_date || p.completed_at || p.created_at || "";
+      return String(pDate).startsWith(targetMonthPrefix);
+    });
+
+    let totalBegQty = 0;
+    let totalAddQty = 0;
+    let totalIssuedQty = 0;
+    let totalProgQty = 0;
+    let totalExpiredQty = 0;
+    let totalRemQty = 0;
+
+    res.items.forEach((item) => {
+      totalBegQty += item.beginningQty || 0;
+      totalAddQty += item.additionalQty || 0;
+      totalIssuedQty += item.issuedQty || 0;
+      totalProgQty += item.programQty || 0;
+      totalExpiredQty += item.expiredQty || 0;
+      totalRemQty += item.remainingQty || 0;
+    });
+
+    return {
+      items: res.items,
+      totals: {
+        ...res.totals,
+        totalBegQty,
+        totalAddQty,
+        totalIssuedQty,
+        totalProgQty,
+        totalExpiredQty,
+        totalRemQty,
+      },
+      activeProgramCount: activeProgs.length,
+    };
+  }, [filteredInventory, filteredDispensing, filteredRequests, otherProgramsRows, selectedPeriod]);
+
+  // Monthly Dispensing Distribution across the 3 workflows:
+  // 1. Medicine Requests (Barangay Health Stations)
+  // 2. Walk-in in the CHO (Direct Patient Dispensing)
+  // 3. Other Programs (Special Area Allocations & Health Missions)
+  const monthlyDistribution = useMemo(() => {
+    return aggregateMonthlyDispensingDistribution({
+      dispensingRows: filteredDispensing,
+      requestRows: filteredRequests,
+      otherProgramsRows,
+      year: selectedPeriod.year,
+      month: selectedPeriod.month,
+    });
+  }, [filteredDispensing, filteredRequests, otherProgramsRows, selectedPeriod]);
+
   // Export handlers
   const handleExportRis = async () => {
     setIsExporting(true);
@@ -323,12 +478,12 @@ export default function ChoReportModule() {
     setIsExporting(true);
     try {
       await exportMonthlyInventoryExcel({
-        inventoryRows: filteredInventory,
+        inventoryRows: monthlyInventory,
         dispensingRows: filteredDispensing,
         requestRows: filteredRequests,
         otherProgramsRows,
-        year: selectedDate.getFullYear(),
-        month: selectedDate.getMonth() + 1,
+        year: selectedPeriod.year,
+        month: selectedPeriod.month,
         facilityName: headerFacilityName,
         pharmacistName: profile?.full_name || "ROSEMIE ANN GETUTUA",
         choDoctorName: "DR. CAMILLE F. PENALOSA",
@@ -359,35 +514,106 @@ export default function ChoReportModule() {
         selectedFacilityId={selectedFacilityId}
         onSelectFacility={setSelectedFacilityId}
         selectedDate={selectedDate}
+        reportScope={reportScope}
+        selectedPeriod={selectedPeriod}
         facilityName={headerFacilityName}
         onExportRis={handleExportRis}
         onExportInventory={handleExportInventory}
         isExporting={isExporting}
       />
 
-      {/* Top Row: 4 KPI Cards + Clean Minimalist Calendar */}
-      <div className="flex flex-col lg:flex-row gap-3.5 items-stretch">
-        <ReportSummaryCards kpis={kpis} />
-        <ReportCalendarWidget
-          selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
+      {/* Scope Navigation Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <ReportScopeToggle
+          scope={reportScope}
+          onScopeChange={(newScope) => {
+            setReportScope(newScope);
+            setSelectedProgramFilter(null);
+          }}
         />
       </div>
 
-      {/* Middle Row: Top Medicines Bar Chart + Facility Distribution Donut */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
-        <div className="lg:col-span-7">
-          <TopMedicinesChart data={topMedicines} />
-        </div>
-        <div className="lg:col-span-5">
-          <FacilityDistributionChart data={facilityDistribution} />
-        </div>
-      </div>
+      {reportScope === "daily" ? (
+        <>
+          {/* Daily Mode: 4 KPI Cards + Clean Minimalist Calendar */}
+          <div className="flex flex-col lg:flex-row gap-3.5 items-stretch">
+            <ReportSummaryCards kpis={kpis} />
+            <ReportCalendarWidget
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+          </div>
 
-      {/* Bottom Row: Daily Dispensing Trend across the month */}
-      <div>
-        <DailyTrendChart data={dailyTrend} monthName={monthName} />
-      </div>
+          {/* Analytics Row: Hourly Dispensing Rush Hours + Facility Allocations */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
+            <div className="lg:col-span-7">
+              <DailyHourlyFlowChart
+                flowData={hourlyFlow}
+                formattedDate={formattedSelectedDate}
+              />
+            </div>
+            <div className="lg:col-span-5">
+              <FacilityDistributionChart data={facilityDistribution} />
+            </div>
+          </div>
+
+          {/* Top 5 Medicines Dispensed Today */}
+          <div>
+            <TopMedicinesChart data={topMedicines} />
+          </div>
+
+          {/* Today's Dispensing & Issuance Transaction Log Table */}
+          <div>
+            <DailyDispensingLogTable
+              transactions={dailyTransactions}
+              formattedDate={formattedSelectedDate}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Monthly Mode: Month/Year Period Controller */}
+          <MonthYearSelector
+            year={selectedPeriod.year}
+            month={selectedPeriod.month}
+            onChangePeriod={setSelectedPeriod}
+          />
+
+          {/* 6-Stage Inventory Reconciliation KPIs */}
+          <MonthlyReconciliationKpis monthlyData={monthlyData} />
+
+          {/* Monthly Dispensing Distribution Chart (3 Workflows: Medicine Requests, Walk-in in the CHO, Other Programs) */}
+          <MonthlyDispensingDistributionChart
+            data={monthlyDistribution}
+            monthName={new Intl.DateTimeFormat("en-US", { month: "long" }).format(
+              new Date(selectedPeriod.year, selectedPeriod.month - 1, 1)
+            )}
+            year={selectedPeriod.year}
+          />
+
+          {/* Area / Health Programs Allocation Panel */}
+          <AreaProgramsAllocationPanel
+            otherPrograms={otherProgramsRows}
+            year={selectedPeriod.year}
+            month={selectedPeriod.month}
+            selectedProgramFilter={selectedProgramFilter}
+            onSelectProgramFilter={setSelectedProgramFilter}
+            medicines={getSnapshot(STORAGE_KEYS.MEDICINES, [])}
+          />
+
+          {/* Interactive On-Screen Monthly Inventory Ledger Table */}
+          <MonthlyInventoryLedgerTable
+            items={monthlyData.items}
+            totals={monthlyData.totals}
+            selectedProgramFilter={selectedProgramFilter}
+            onClearProgramFilter={() => setSelectedProgramFilter(null)}
+            onExportExcel={handleExportInventory}
+            isExporting={isExporting}
+            year={selectedPeriod.year}
+            month={selectedPeriod.month}
+          />
+        </>
+      )}
     </div>
   );
 }

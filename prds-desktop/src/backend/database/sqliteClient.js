@@ -133,8 +133,17 @@ async function initializeSqliteSchema() {
       quantity INTEGER DEFAULT 0,
       threshold INTEGER DEFAULT 0,
       batch_number TEXT,
+      po_number TEXT,
+      unit_cost REAL,
       date_received TEXT,
       expiration_date TEXT,
+      origin_facility_id TEXT,
+      intake_type TEXT DEFAULT 'PROCUREMENT',
+      return_reason TEXT,
+      status TEXT DEFAULT 'ACTIVE',
+      disposed_at DATETIME,
+      disposal_method TEXT,
+      disposed_by TEXT,
       data_json TEXT,
       updated_at DATETIME
     );`,
@@ -178,6 +187,50 @@ async function initializeSqliteSchema() {
       data_json TEXT,
       updated_at DATETIME,
       is_synced INTEGER DEFAULT 1
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS stock_returns (
+      id TEXT PRIMARY KEY,
+      lot_no TEXT,
+      medicine_id TEXT,
+      medicine_name TEXT,
+      brand_name TEXT,
+      quantity INTEGER,
+      unit_cost REAL,
+      expiration_date TEXT,
+      reason TEXT,
+      facility_id TEXT,
+      submitted_by_id TEXT,
+      verified_by_id TEXT,
+      submitted_at DATETIME,
+      verified_at DATETIME,
+      return_slip_no TEXT UNIQUE,
+      source_facility_id TEXT,
+      destination_facility_id TEXT,
+      returned_by_name TEXT,
+      returned_by_id TEXT,
+      received_by_id TEXT,
+      return_date TEXT,
+      return_reason TEXT,
+      status TEXT DEFAULT 'PENDING',
+      remarks TEXT,
+      data_json TEXT,
+      created_at DATETIME,
+      updated_at DATETIME,
+      is_synced INTEGER DEFAULT 1
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS stock_return_items (
+      id TEXT PRIMARY KEY,
+      return_id TEXT,
+      medicine_id TEXT,
+      batch_number TEXT,
+      quantity INTEGER,
+      expiration_date TEXT,
+      unit_cost REAL,
+      target_inventory_id TEXT,
+      data_json TEXT,
+      created_at DATETIME
     );`,
 
     `CREATE TABLE IF NOT EXISTS monthly_dispensing_summary (
@@ -267,6 +320,9 @@ async function initializeSqliteSchema() {
     `CREATE INDEX IF NOT EXISTS idx_patients_facility ON patients(facility_id);`,
     `CREATE INDEX IF NOT EXISTS idx_dispensing_facility ON dispensing_records(facility_id);`,
     `CREATE INDEX IF NOT EXISTS idx_dispensing_patient ON dispensing_records(patient_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_stock_return_items_return ON stock_return_items(return_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_stock_return_items_medicine ON stock_return_items(medicine_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_stock_return_items_batch ON stock_return_items(batch_number);`,
     `CREATE INDEX IF NOT EXISTS idx_requests_facility ON requests(facility_id);`,
     `CREATE INDEX IF NOT EXISTS idx_transfers_source ON transfers(source_facility_id);`,
     `CREATE INDEX IF NOT EXISTS idx_transfers_target ON transfers(target_facility_id);`,
@@ -278,6 +334,92 @@ async function initializeSqliteSchema() {
 
   for (const query of queries) {
     await db.execute(query);
+  }
+
+  const stockReturnColumns = await db.select("PRAGMA table_info(stock_returns)");
+  const stockReturnColumnNames = new Set(stockReturnColumns.map((column) => column.name));
+  const ensureStockReturnColumn = async (name, definition) => {
+    if (!stockReturnColumnNames.has(name)) {
+      await db.execute(`ALTER TABLE stock_returns ADD COLUMN ${name} ${definition}`);
+      stockReturnColumnNames.add(name);
+    }
+  };
+  await ensureStockReturnColumn("lot_no", "TEXT");
+  await ensureStockReturnColumn("medicine_id", "TEXT");
+  await ensureStockReturnColumn("medicine_name", "TEXT");
+  await ensureStockReturnColumn("brand_name", "TEXT");
+  await ensureStockReturnColumn("quantity", "INTEGER");
+  await ensureStockReturnColumn("unit_cost", "REAL");
+  await ensureStockReturnColumn("expiration_date", "TEXT");
+  await ensureStockReturnColumn("reason", "TEXT");
+  await ensureStockReturnColumn("facility_id", "TEXT");
+  await ensureStockReturnColumn("submitted_by_id", "TEXT");
+  await ensureStockReturnColumn("verified_by_id", "TEXT");
+  await ensureStockReturnColumn("submitted_at", "DATETIME");
+  await ensureStockReturnColumn("verified_at", "DATETIME");
+
+  // Create stock_returns indices after columns are guaranteed to exist
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_stock_returns_facility ON stock_returns(facility_id);");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_stock_returns_medicine ON stock_returns(medicine_id);");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_stock_returns_lot ON stock_returns(lot_no);");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_stock_returns_status ON stock_returns(status);");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_stock_returns_source ON stock_returns(source_facility_id);");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_stock_returns_date ON stock_returns(submitted_at);");
+
+  // Automatic backfill: populate finalized stock_returns rows from legacy inventory return rows
+  try {
+    const existingReturns = await db.select(
+      "SELECT id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, return_reason, updated_at FROM inventory WHERE intake_type = 'RETURN' OR (po_number LIKE 'RET-%' AND origin_facility_id IS NOT NULL)"
+    );
+    if (Array.isArray(existingReturns) && existingReturns.length > 0) {
+      for (const ret of existingReturns) {
+        const returnId = `ret_${ret.id}`;
+        await db.execute(
+          `INSERT OR IGNORE INTO stock_returns (
+            id, lot_no, medicine_id, quantity, unit_cost, expiration_date, reason, facility_id, status, submitted_at, created_at, updated_at, is_synced,
+            return_slip_no, source_facility_id, destination_facility_id, return_date, return_reason
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+          [
+            returnId,
+            ret.batch_number,
+            ret.medicine_id,
+            ret.quantity,
+            ret.unit_cost || null,
+            ret.expiration_date,
+            ret.return_reason || "PROGRAM_ENDED",
+            ret.origin_facility_id || ret.facility_id,
+            ret.updated_at || new Date().toISOString(),
+            ret.updated_at || new Date().toISOString(),
+            ret.updated_at || new Date().toISOString(),
+            ret.po_number || `RET-${ret.id.slice(0, 8)}`,
+            ret.origin_facility_id || ret.facility_id,
+            ret.facility_id,
+            ret.date_received || new Date().toISOString().slice(0, 10),
+            ret.return_reason || "PROGRAM_ENDED"
+          ]
+        );
+
+        const itemId = `ret_item_${ret.id}`;
+        await db.execute(
+          `INSERT OR IGNORE INTO stock_return_items (
+            id, return_id, medicine_id, batch_number, quantity, expiration_date, unit_cost, target_inventory_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            itemId,
+            returnId,
+            ret.medicine_id,
+            ret.batch_number,
+            ret.quantity,
+            ret.expiration_date,
+            ret.unit_cost || null,
+            ret.id,
+            ret.updated_at || new Date().toISOString()
+          ]
+        );
+      }
+    }
+  } catch (backfillErr) {
+    console.warn("[sqliteClient] Stock returns backfill skipped:", backfillErr);
   }
 
   const metadataColumns = await db.select("PRAGMA table_info(sync_metadata)");
@@ -295,6 +437,35 @@ async function initializeSqliteSchema() {
   const medicineColumns = await db.select("PRAGMA table_info(medicines)");
   if (!medicineColumns.some((column) => column.name === "categories_json")) {
     await db.execute("ALTER TABLE medicines ADD COLUMN categories_json TEXT");
+  }
+
+  const inventoryColumns = await db.select("PRAGMA table_info(inventory)");
+  if (!inventoryColumns.some((column) => column.name === "po_number")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN po_number TEXT");
+  }
+  if (!inventoryColumns.some((column) => column.name === "unit_cost")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN unit_cost REAL");
+  }
+  if (!inventoryColumns.some((column) => column.name === "origin_facility_id")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN origin_facility_id TEXT");
+  }
+  if (!inventoryColumns.some((column) => column.name === "intake_type")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN intake_type TEXT DEFAULT 'PROCUREMENT'");
+  }
+  if (!inventoryColumns.some((column) => column.name === "return_reason")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN return_reason TEXT");
+  }
+  if (!inventoryColumns.some((column) => column.name === "status")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN status TEXT DEFAULT 'ACTIVE'");
+  }
+  if (!inventoryColumns.some((column) => column.name === "disposed_at")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN disposed_at DATETIME");
+  }
+  if (!inventoryColumns.some((column) => column.name === "disposal_method")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN disposal_method TEXT");
+  }
+  if (!inventoryColumns.some((column) => column.name === "disposed_by")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN disposed_by TEXT");
   }
 
   const catalogVersion = await db.select(
@@ -329,6 +500,8 @@ async function initializeSqliteSchema() {
       "dispensing_records",
       "requests",
       "transfers",
+      "stock_returns",
+      "stock_return_items",
       "monthly_dispensing_summary",
       "other_programs",
       "forecasting",

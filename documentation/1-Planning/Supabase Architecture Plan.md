@@ -1,279 +1,100 @@
-**Supabase Architecture Plan**
+# Supabase Architecture Plan
 
-Pharmaceutical Resources Distribution System
+> **System:** Pharmaceutical Resources Distribution System (PRDS)  
+> **Jurisdiction:** City Health Office (CHO) of Naga, Cebu & 28 Barangay Health Stations  
+> **Backend Infrastructure:** Supabase (PostgreSQL 15, GoTrue Auth, PostgREST, Realtime)  
 
-- **Authentication Layer**
+---
 
-**Purpose:**
+## 1. Authentication & Identity Layer
 
-Handles user authentication, login, password management, and account sessions.
+The authentication layer manages user credentials, account lifecycle, session validation, and role-based access.
 
-- **Supabase Features Used**
+### Core Features Used:
+* **Supabase GoTrue:** User credential management and PKCE token issuance.
+* **Email Verification & Password Reset:** Account security and password recovery flows.
+* **Phone OTP (Twilio Verify):** SMS verification for mobile logins (+63 Philippines).
+* **Session Management:** Secure JWT token issuance with 1-hour access token rotation.
 
-| **Feature**        | **Purpose**                |
-| ------------------ | -------------------------- |
-| Supabase Auth      | User Authentication        |
-| Email Verification | Verify user email          |
-| Password Reset     | Recover Accounts           |
-| Session Management | Secure user login sessions |
+### Architecture (`auth.users` vs `public.profiles`):
+* `auth.users`: Managed by GoTrue; securely stores hashed passwords, emails, phones, and auth metadata.
+* `public.profiles`: Managed by PRDS; stores domain user profiles (first name, last name, assigned facility, role, account status) keyed to `auth.users.id` via foreign key UUID.
 
-- **Architecture**
+### User Registration & Approval Workflow:
+1. **Registration:** User submits registration form → Account created with `status = 'PENDING'`.
+2. **Review:** Chief Pharmacist (`PHARMA_II`) reviews pending applications in the User Management Workbench.
+3. **Approval:** `PHARMA_II` verifies credentials, sets role/facility, and updates `status = 'ACTIVE'`.
+4. **Access Granted:** User gains access to their authorized module routes.
 
-auth.users
+| Role | Can Self-Register | Can Approve New Accounts |
+| :--- | :---: | :---: |
+| **BHW** | Yes | No |
+| **PHARMA_I** | Yes | No |
+| **PHARMA_II** | Yes | Yes |
 
-profiles
+---
 
-**Notes:**
+## 2. Master Data Layer
 
-- **auth.users** manages login credentials.
-- profiles stores application-specific information.
-- Profiles are linked to auth.users through the same UUID.
+Stores foundational reference data that changes infrequently:
 
-- **User Registration and Approval Workflow**
+| Master Table | Scope & Purpose | Example Entities |
+| :--- | :--- | :--- |
+| **`facilities`** | Reference table for healthcare facilities | City Health Office (VMCH), Tinaan Health Center, East Poblacion Health Center. |
+| **`medicines`** | Master drug catalog and specifications | Generic Name, Brand Name, Unit of Measure (Tablet/Bottle), Dosage, Safety Thresholds. |
+| **`suppliers`** | Pharmaceutical distributors & traceability | Approved LGU drug suppliers, contact numbers, distributor addresses. |
+| **`patients`** | Citizen demographic records | Full name, date of birth, PhilHealth ID, assigned barangay station. |
+| **`other_programs`** | Targeted municipal health campaigns | Medical Missions, Operation Tuli, Anti-Rabies, School Deworming. |
 
-- **Registration Flow**
+---
 
-User Registration
+## 3. Transaction Layer
 
-Status = Pending
+Captures day-to-day operational events across the supply chain:
 
-Reviewed by Pharma II
+| Table | Purpose |
+| :--- | :--- |
+| **`inventory`** | Batch-level medicine stock on hand (lot number, expiration date, quantity, location). |
+| **`medicine_requests`** | Downstream replenishment orders submitted by Barangay Health Stations. |
+| **`medicine_request_items`**| Line-item medicines and requested quantities. |
+| **`stock_transfers`** | Inter-facility inventory redistribution (excess or near-expiry balancing). |
+| **`stock_transfer_items`** | Line-item batches allocated to stock transfers. |
+| **`medicine_dispensing`** | Point-of-sale medicine disbursements to patients with FEFO batch deduction. |
+| **`patient_medicine_records`**| Patient clinical dispensation history and dosage records. |
+| **`program_medicines`** | Batches allocated to special outreach public health programs. |
 
-Status = Active
+---
 
-User Gains Access
+## 4. Dispensing Channels & Verification Rules
 
-- **User Status**
+PRDS supports three distinct pharmaceutical dispensing channels:
+1. **Walk-In Patients:** Directly dispensed to citizens at the CHO clinic counter or barangay station.
+2. **Facility Replenishments:** Requisitions approved by CHO and transferred to barangays.
+3. **Special Programs:** Bulk allocations for municipal health drives.
 
-| **Status**  | **Description**                    |
-| ----------- | ---------------------------------- |
-| PENDING     | Waiting for Pharma II approval     |
-| ACTIVE      | Approved and can access the system |
-| DEACTIVATED | Account disabled                   |
+### Patient Eligibility & Double-Dispensing Prevention:
+Before confirming patient dispensing, the system checks whether the patient has already claimed free medicines within restricted clinical cooldown windows (e.g. within the last 14–30 days for maintenance medications).
 
-- **Approval Authority**
+---
 
-| **Role**  | **Can Register** | **Can Approve Users** |
-| --------- | ---------------- | --------------------- |
-| BHW       | Yes              | No                    |
-| Pharma I  | Yes              | No                    |
-| Pharma II | Yes              | Yes                   |
+## 5. Security Layer: Row Level Security (RLS)
 
-- **Mater Data Layer**
+PostgreSQL Row Level Security ensures tenant isolation and role governance at the database engine level:
 
-Purpose:
+| User Role | Permitted Database Access | Prohibited Operations |
+| :--- | :--- | :--- |
+| **`BHW`** | • Own station inventory<br/>• Own station requests & transfers<br/>• Dispensing to station patients<br/>• Own station reports & forecasts | • Cannot view other station inventory details<br/>• Cannot manage users or approve registrations<br/>• Cannot modify master medicine catalog |
+| **`PHARMA_I`** | • Central warehouse inventory<br/>• City-wide inventory monitoring<br/>• Request review & FEFO allocation<br/>• Dispensing at CHO pharmacy | • Cannot approve user registrations<br/>• Cannot modify system-wide security settings |
+| **`PHARMA_II`** | • Full system access across all 28 facilities<br/>• User management & account approval<br/>• Supplier contracts & catalog governance<br/>• Audit log inspection & statutory report sign-off | None (System Administrator & Chief Pharmacist). |
 
-Stores information that rarely changes.
+---
 
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>Facilities</strong></p></th><th><p><strong>Medicines</strong></p></th><th><p><strong>Supplier</strong></p></th><th><p><strong>Patients</strong></p></th><th><p><strong>Other Program</strong></p></th></tr><tr><td><ul><li>CHO</li><li>Tinaan Health Center</li><li>Easth Poblacion Health Center</li></ul><p><strong>Purpose:</strong></p><p>Reference Table</p></td><td><ul><li>Paracetamol</li><li>Amoxicillin</li><li>Mefenamic Acid</li></ul><p><strong>Purpose:</strong></p><p>Medicine catalog</p></td><td><ul><li>ABC Pharma</li><li>XYZ Medical</li></ul><p>Purpose:</p><p>Traceability</p></td><td><p><strong>Purpose:</strong></p><p>Citizen records</p></td><td><p><strong>Purpose:</strong></p><p>Medical missions and special programs</p></td></tr></tbody></table></div>
+## 6. Realtime Publications & Database Automations
 
-- **Transaction Layer**
+### Realtime Channels:
+* **`inventory-changes`**: Broadcasts batch quantity changes to active dashboards.
+* **`notifications-channel`**: Pushes real-time alerts for low stock, expiring batches, and requisition approvals.
 
-Purpose:
-
-Stores day-to-day operational records.
-
-
-| **Table**                | **Purpose**                    |
-| ------------------------ | ------------------------------ |
-| Inventory                | Current medicine stock         |
-| Medicine Requests        | Requests from facilities       |
-| Medicine Request Items   | Requested medicines            |
-| Stock Transfers          | Movement of medicines          |
-| Stock Transfer Items     | Transferred medicine           |
-| Medicine Dispensing      | Medicine issuance transactions |
-| Patient Medicine Records | Patient medicine history       |
-| Program Medicines        | Medicines used in programs     |
-
-- **Inventory Design**
-
-**Inventory Represents**
-
-- Facility
-- Medicine
-- Supplier
-- Batch
-- Expiration Date
-
-**Purpose**
-
-Tracks:
-
-- Stock Quantity
-- Batch Number
-- Expiration Monitoring
-- Supplier Traceability
-- Forecasting Data
-- Transfer Monitoring
-
-- **Dispensing Channels**
-
-The system supports three dispensing channels
-
-| **Channel**       | **Description**                        |
-| ----------------- | -------------------------------------- |
-| Walk-In Patients  | Medicines directly issued to patients  |
-| Facility Requests | Medicines requested by health centers  |
-| Other Programs    | Medical missions and outreach programs |
-
-- **Patient Eligibility Monitoring**
-
-**Purpose:**
-
-Prevents multiple free medicine claims within the same month.
-
-- **Validation Rule**
-
-Before Dispensing:
-
-**Check:**  
-Has the patient already received free medicine during the current month?
-
-**Related Tables:**
-
-Table:
-
-- Patient
-- Medicine Dispensing
-- Patient Medicine Record
-
-- **System Services Layer**
-
-**Notifications**
-
-**Purposes:**
-
-Provides system alerts.
-
-**Example:**
-
-Notification:
-
-- Request Approved
-- Transfer Approved
-- Transfer Received
-
-**Activity Logs**
-
-**Purpose:**
-
-Tracks user actions.
-
-**Structure**
-
-| **Field** | **Purpose**          |
-| --------- | -------------------- |
-| Action    | What happened        |
-| Module    | Where it happened    |
-| Details   | Specific description |
-
-**Example**
-
-| **Field** | **Value**                 |
-| --------- | ------------------------- |
-| Action    | APPROVE_REQUEST           |
-| Module    | Medicine Requests         |
-| Details   | Approved Request #REQ-001 |
-
-- **Forecasting Layer**
-
-**Purpose**
-
-Predict future medicine demand.
-
-**Forecasting Sources**
-
-Forecast calculations should use:
-
-**Date Source**
-
-- Medicine Dispensing
-- Patient Medicine Records
-- Program Medicine Usage
-
-**Note:**
-
-Forecasts should not rely solely on Inventory records.
-
-Inventory reflects remaining stock, not actual consumption.
-
-- **Security Layer (Row Level Security)**
-
-Purpose
-
-Restrict data access according to user roles.
-
-<div class="joplin-table-wrapper"><table><tbody><tr><th><p><strong>Facility</strong></p></th><th><p><strong>Can Access</strong></p><p><strong>(Permission)</strong></p></th><th><p><strong>Cannot Access (Restrictions)</strong></p></th></tr><tr><td><p><strong>BHW</strong></p></td><td><ul><li>Own Facility Inventory</li><li>Own Facility Requests</li><li>Own Facility Transfers</li><li>Dispense Medicines</li><li>Own Reports</li><li>Own Forecast</li></ul></td><td><ul><li>Other Facility Inventory Details</li><li>User Management</li><li>Approval Functions</li></ul></td></tr><tr><td><p><strong>Pharma I</strong></p></td><td><ul><li>CHO Inventory</li><li>All Barangay Inventories</li><li>Medicine Requests</li><li>Stock Transfers</li><li>Reports</li><li>Forecast all facilities</li><li>Dispense Medicines</li></ul></td><td><ul><li>User Management</li></ul></td></tr><tr><td><p><strong>Pharma II</strong></p></td><td><ul><li>All facilities</li><li>User Management</li><li>All transactions</li><li>Forecast reports</li><li>System Administration</li><li>Approve User Registrations</li><li>Full system access (for cho)</li></ul></td><td></td></tr></tbody></table></div>
-
-- **Recommended PostgreSQL Functions**
-
-These are business rules that belong in the database.
-
-| **Function**           | **Purpose**                       |
-| ---------------------- | --------------------------------- |
-| can_receive_medicine() | Check monthly patient eligibility |
-| approve_request()      | Approve medicine requests         |
-| complete_transfer()    | Process stock transfers           |
-| generate_forecast()    | Generate forecasting data         |
-
-- **Recommended Triggers**
-
-| **Trigger**              | **Purpose**                        |
-| ------------------------ | ---------------------------------- |
-| Inventory Update Trigger | Deduct inventory after dispensing  |
-| Activity Log Trigger     | Automatically create logs          |
-| Notification Trigger     | Automatically create notifications |
-
-- **Scheduled Jobs**
-- **Low Stock Monitoring**
-
-**Schedule:**
-
-Daily
-
-**Purpose**
-
-**Check:**
-
-Quantity <= Threshold
-
-**Create:**
-
-Low Stock Notification
-
-- **Forecasting Generation**
-
-**Schedule**
-
-Monthly
-
-**Purpose**
-
-Generate forecasting records automatically.
-
-- **Recommended Database Views**
-
-| **View**                   | **Purpose**                    |
-| -------------------------- | ------------------------------ |
-| Inventory Overview         | Combined inventory information |
-| Expiring Medicines         | Medicines nearing expiration   |
-| Low Stock Medicines        | Medicines below threshold      |
-| Monthly Dispensing Summary | Monthly usage statistics       |
-| Facility Stock Summary     | Dashboard summary per facility |
-
-- **Realtime Features**
-
-**Live Inventory Updates**
-
-Automatically updates inventory dashboards when stock changes.
-
-**Live Notifications**
-
-Automatically delivers:
-
-- Request approvals
-- Transfer approvals
-- Low stock alerts
-- Transfer receipts
-
-without requiring page refresh.
+### Key Database Automations:
+* **Automated FEFO Lot Selection:** Stored procedures allocate batches with the soonest expiration dates first.
+* **Activity Audit Triggers:** Automatically inserts immutable audit entries on stock adjustments, status transitions, and user deactivations.

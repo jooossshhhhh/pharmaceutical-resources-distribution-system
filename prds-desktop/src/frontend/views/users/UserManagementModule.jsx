@@ -32,6 +32,7 @@ export default function UserManagementModule() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [roleFilter, setRoleFilter] = useState("ALL");
+  const [facilityFilter, setFacilityFilter] = useState("ALL");
   const [isLoading, setIsLoading] = useState(() => getSnapshot(STORAGE_KEYS.USERS, []).length === 0);
   const [isSaving, setIsSaving] = useState(false);
   const [userError, setUserError] = useState("");
@@ -48,13 +49,30 @@ export default function UserManagementModule() {
     return buildUserSummary(visibleUsers);
   }, [visibleUsers]);
 
+  const hasActiveFilters = useMemo(() => {
+    return (
+      searchTerm.trim() !== "" ||
+      statusFilter !== "ALL" ||
+      roleFilter !== "ALL" ||
+      facilityFilter !== "ALL"
+    );
+  }, [facilityFilter, roleFilter, searchTerm, statusFilter]);
+
+  const handleResetFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("ALL");
+    setRoleFilter("ALL");
+    setFacilityFilter("ALL");
+  };
+
   const filteredUsers = useMemo(() => {
     return filterUsers(visibleUsers, {
+      facilityFilter,
       roleFilter,
       searchTerm,
       statusFilter,
     });
-  }, [roleFilter, searchTerm, statusFilter, visibleUsers]);
+  }, [facilityFilter, roleFilter, searchTerm, statusFilter, visibleUsers]);
 
   const {
     currentPage,
@@ -178,6 +196,10 @@ export default function UserManagementModule() {
     loadUsers();
   };
 
+  const handleQuickApprove = (user) => {
+    updateUser(user, { status: "ACTIVE" });
+  };
+
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
       <div className="space-y-4">
@@ -194,6 +216,11 @@ export default function UserManagementModule() {
         />
 
         <UserManagementToolbar
+          facilities={facilities}
+          facilityFilter={facilityFilter}
+          hasActiveFilters={hasActiveFilters}
+          onFacilityFilterChange={setFacilityFilter}
+          onResetFilters={handleResetFilters}
           onRoleFilterChange={setRoleFilter}
           onSearchChange={setSearchTerm}
           roleFilter={roleFilter}
@@ -203,8 +230,9 @@ export default function UserManagementModule() {
         <AccountsView
           currentPage={currentPage}
           isLoading={isLoading}
-          onSelectUser={openUserModal}
           onPageChange={setCurrentPage}
+          onQuickApprove={handleQuickApprove}
+          onSelectUser={openUserModal}
           pageSize={pageSize}
           totalCount={totalCount}
           totalPages={totalPages}

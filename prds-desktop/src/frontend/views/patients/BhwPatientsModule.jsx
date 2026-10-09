@@ -4,6 +4,8 @@ import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import { supabase } from "@backend/client/supabase";
+import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { isCurrentNetworkOnline } from "@backend/sync/networkStatus";
 import { getPatients } from "@backend/services/patientsService";
 import PatientRegistry from "./PatientRegistry";
 
@@ -49,18 +51,33 @@ export default function BhwPatientsModule() {
       return;
     }
 
-    const { data, error: facilityError } = await supabase
-      .from("facilities")
-      .select("id, facility_name, facility_code, facility_type, address, status")
-      .eq("id", profileFacilityId)
-      .single();
-
-    if (facilityError) {
-      setError(facilityError.message);
+    if (!isCurrentNetworkOnline()) {
+      const cached = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+      const matched = cached.find((f) => f.id === profileFacilityId);
+      setOwnFacility(matched ? [matched] : []);
       return;
     }
 
-    setOwnFacility(data ? [data] : []);
+    try {
+      const { data, error: facilityError } = await supabase
+        .from("facilities")
+        .select("id, facility_name, facility_code, facility_type, address, status")
+        .eq("id", profileFacilityId)
+        .single();
+
+      if (facilityError) {
+        const cached = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+        const matched = cached.find((f) => f.id === profileFacilityId);
+        setOwnFacility(matched ? [matched] : []);
+        return;
+      }
+
+      setOwnFacility(data ? [data] : []);
+    } catch {
+      const cached = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+      const matched = cached.find((f) => f.id === profileFacilityId);
+      setOwnFacility(matched ? [matched] : []);
+    }
   }, [profileFacilityId]);
 
   useEffect(() => {
@@ -91,6 +108,7 @@ export default function BhwPatientsModule() {
           isCho={false}
           loadPatients={loadPatients}
           patients={patients}
+          profile={profile}
         />
       )}
     </AdminShell>

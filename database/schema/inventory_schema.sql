@@ -61,6 +61,10 @@ create table inventory (
         check (threshold >= 0),
 
     batch_number text not null,
+ 
+    po_number text,
+
+    unit_cost numeric(10,2),
 
     date_received date not null,
 

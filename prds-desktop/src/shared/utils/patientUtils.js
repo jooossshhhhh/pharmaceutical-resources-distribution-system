@@ -71,11 +71,29 @@ export const formatPatientDateOfBirth = (dateOfBirth) => {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(`${dateOfBirth}T00:00:00`));
+  try {
+    const rawStr = String(dateOfBirth).trim();
+    const cleanDateStr = rawStr.includes("T") ? rawStr.split("T")[0] : rawStr.split(" ")[0];
+    const parsedDate = new Date(`${cleanDateStr}T00:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) {
+      const fallbackDate = new Date(rawStr);
+      if (Number.isNaN(fallbackDate.getTime())) {
+        return rawStr;
+      }
+      return new Intl.DateTimeFormat("en-PH", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(fallbackDate);
+    }
+    return new Intl.DateTimeFormat("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(parsedDate);
+  } catch {
+    return String(dateOfBirth);
+  }
 };
 
 export const formatPatientRegisteredAt = (createdAt) => {
@@ -83,11 +101,49 @@ export const formatPatientRegisteredAt = (createdAt) => {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(createdAt));
+  try {
+    const d = new Date(createdAt);
+    if (Number.isNaN(d.getTime())) {
+      return String(createdAt);
+    }
+    return new Intl.DateTimeFormat("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return String(createdAt);
+  }
+};
+
+export const formatPatientRegisteredBy = (registeredBy, createdBy, fallbackUsers = []) => {
+  if (typeof registeredBy === "string" && registeredBy.trim()) {
+    return registeredBy.trim();
+  }
+
+  let profile = registeredBy;
+
+  if ((!profile || !profile.first_name) && createdBy && Array.isArray(fallbackUsers)) {
+    profile = fallbackUsers.find((u) => u?.id === createdBy) || null;
+  }
+
+  if (!profile) {
+    return "—";
+  }
+
+  const fullName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim();
+  if (!fullName) {
+    return "—";
+  }
+
+  const roleLabels = {
+    PHARMA_I: "Pharmacist I",
+    PHARMA_II: "Pharmacist II",
+    BHW: "Barangay Health Worker",
+  };
+  const roleText = roleLabels[profile.role] || (profile.role ? String(profile.role) : "");
+
+  return roleText ? `${fullName} (${roleText})` : fullName;
 };
 
 export const formatPatientArchivedAt = (archivedAt) => {
@@ -252,6 +308,7 @@ export const buildPatientsCsv = ({ archiveMode = PATIENT_ARCHIVE_MODES.active, p
     "Address",
     "Facility",
     "Registered",
+    "Registered By",
   ];
   const includeArchiveFields = archiveMode === PATIENT_ARCHIVE_MODES.archived;
 
@@ -275,6 +332,7 @@ export const buildPatientsCsv = ({ archiveMode = PATIENT_ARCHIVE_MODES.active, p
       patient.address || "",
       patient.facility?.facility_name || "",
       formatPatientRegisteredAt(patient.created_at),
+      formatPatientRegisteredBy(patient.registered_by, patient.created_by),
     ];
 
     if (includeArchiveFields) {

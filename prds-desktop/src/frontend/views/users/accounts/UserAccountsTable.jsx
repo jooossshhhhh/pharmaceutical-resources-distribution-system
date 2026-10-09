@@ -1,5 +1,4 @@
 import {
-  formatDate,
   formatFacilityLabel,
   getDisplayEmail,
   getDisplayPhone,
@@ -15,6 +14,7 @@ export default function UserAccountsTable({
   currentPage,
   isLoading,
   onPageChange,
+  onQuickApprove,
   onSelectUser,
   pageSize,
   totalCount,
@@ -34,7 +34,7 @@ export default function UserAccountsTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full text-left text-sm">
           <thead className="bg-neutral-50 text-xs font-black uppercase tracking-[0.14em] text-neutral-500">
             <tr>
               <th className="px-4 py-3">User</th>
@@ -42,7 +42,7 @@ export default function UserAccountsTable({
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Facility</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Registered</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -73,34 +73,56 @@ export default function UserAccountsTable({
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#6be9c2]/40 text-xs font-black text-[#0d1117]">
                         {getInitials(user)}
                       </span>
-                      <div className="min-w-0">
-                        <p className="truncate font-black text-black">{getFullName(user)}</p>
-                        <p className="text-xs font-semibold text-neutral-500">ID: {user.id.slice(0, 8)}</p>
-                      </div>
+                      <p className="truncate font-black text-black">{getFullName(user)}</p>
                     </div>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="grid gap-1">
-                      <p className="min-h-4 break-all text-sm font-semibold text-neutral-800">
+                    <div className="grid gap-0.5">
+                      <p className="truncate text-sm font-semibold text-neutral-800" title={getDisplayEmail(user)}>
                         {getDisplayEmail(user) || "No email linked"}
                       </p>
-                      <p className="min-h-4 text-xs font-semibold text-neutral-500">
-                        {getDisplayPhone(user) || "No phone linked"}
-                      </p>
+                      {getDisplayPhone(user) ? (
+                        <p className="text-xs font-semibold text-neutral-500">
+                          {getDisplayPhone(user)}
+                        </p>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-4 py-4">
                     <RoleBadge>{getRoleLabel(user.role)}</RoleBadge>
                   </td>
                   <td className="px-4 py-4">
-                    <p className="max-w-[220px] truncate font-semibold text-neutral-700">
+                    <p className="max-w-[240px] truncate font-semibold text-neutral-700" title={formatFacilityLabel(user.facility)}>
                       {formatFacilityLabel(user.facility)}
                     </p>
                   </td>
                   <td className="px-4 py-4">
                     <UserStatusBadge status={user.status} />
                   </td>
-                  <td className="px-4 py-4 font-medium text-neutral-500">{formatDate(user.created_at)}</td>
+                  <td className="px-4 py-4 text-right">
+                    <div
+                      className="flex items-center justify-end gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {user.status === "PENDING" && (
+                        <button
+                          type="button"
+                          onClick={() => onQuickApprove?.(user)}
+                          className="inline-flex items-center rounded-lg bg-[#00a36c] px-3 py-1.5 text-xs font-black text-white shadow-xs transition hover:bg-[#008f5d] cursor-pointer"
+                          title="Approve user account immediately"
+                        >
+                          Approve
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onSelectUser(user)}
+                        className="inline-flex items-center rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-bold text-neutral-700 transition hover:bg-neutral-50 hover:text-black cursor-pointer"
+                      >
+                        Manage
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             )}
@@ -128,22 +150,16 @@ function TableSkeleton() {
       <td className="px-4 py-4">
         <div className="flex items-center gap-3">
           <span className="h-10 w-10 animate-pulse rounded-full bg-neutral-100" />
-          <div className="grid gap-2">
-            <span className="h-3 w-32 animate-pulse rounded bg-neutral-100" />
-            <span className="h-3 w-20 animate-pulse rounded bg-neutral-100" />
-          </div>
+          <span className="h-3 w-32 animate-pulse rounded bg-neutral-100" />
         </div>
       </td>
       <td className="px-4 py-4">
-        <div className="grid gap-2">
-          <span className="h-3 w-44 animate-pulse rounded bg-neutral-100" />
-          <span className="h-3 w-28 animate-pulse rounded bg-neutral-100" />
-        </div>
+        <span className="h-3 w-40 animate-pulse rounded bg-neutral-100" />
       </td>
       <td className="px-4 py-4"><span className="block h-6 w-24 animate-pulse rounded-full bg-neutral-100" /></td>
       <td className="px-4 py-4"><span className="block h-3 w-36 animate-pulse rounded bg-neutral-100" /></td>
       <td className="px-4 py-4"><span className="block h-6 w-20 animate-pulse rounded-full bg-neutral-100" /></td>
-      <td className="px-4 py-4"><span className="block h-3 w-24 animate-pulse rounded bg-neutral-100" /></td>
+      <td className="px-4 py-4"><span className="ml-auto block h-8 w-24 animate-pulse rounded bg-neutral-100" /></td>
     </tr>
   ));
 }

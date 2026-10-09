@@ -1,7 +1,44 @@
 import { supabase } from "../client/supabase";
-import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "../database/snapshotStore";
+import { saveSnapshot, getSnapshot, getCachedUserSession, STORAGE_KEYS } from "../database/snapshotStore";
 import { isCurrentNetworkOnline } from "../sync/networkStatus";
 import { createOfflineInsertPayload, enqueueMutation } from "../sync/outboxQueue";
+
+export const hydratePatientRegisteredBy = (patientsList = []) => {
+  const users = getSnapshot(STORAGE_KEYS.USERS, []);
+  const { profile: sessionProfile } = getCachedUserSession();
+  const userMap = new Map();
+
+  if (Array.isArray(users)) {
+    users.forEach((u) => {
+      if (u?.id) {
+        userMap.set(u.id, u);
+      }
+    });
+  }
+  if (sessionProfile?.id) {
+    userMap.set(sessionProfile.id, sessionProfile);
+  }
+
+  return (patientsList || []).map((patient) => {
+    if (!patient) return patient;
+    if (patient.registered_by && (patient.registered_by.first_name || typeof patient.registered_by === "string")) {
+      return patient;
+    }
+    if (patient.created_by && userMap.has(patient.created_by)) {
+      const author = userMap.get(patient.created_by);
+      return {
+        ...patient,
+        registered_by: {
+          id: author.id,
+          first_name: author.first_name,
+          last_name: author.last_name,
+          role: author.role,
+        },
+      };
+    }
+    return patient;
+  });
+};
 
 const PATIENT_SELECT = `
   id,
@@ -39,7 +76,8 @@ const PATIENT_SELECT = `
 export const getPatients = async ({ archiveMode = "active", facilityId } = {}) => {
   if (!isCurrentNetworkOnline()) {
     const cached = getSnapshot(STORAGE_KEYS.PATIENTS, []);
-    return facilityId ? cached.filter((p) => p.facility_id === facilityId) : cached;
+    const filtered = facilityId ? cached.filter((p) => p.facility_id === facilityId) : cached;
+    return hydratePatientRegisteredBy(filtered);
   }
 
   try {
@@ -61,15 +99,18 @@ export const getPatients = async ({ archiveMode = "active", facilityId } = {}) =
       throw new Error(error.message);
     }
 
-    if (data && (!facilityId || facilityId.length === 0)) {
-      saveSnapshot(STORAGE_KEYS.PATIENTS, data);
+    const hydrated = hydratePatientRegisteredBy(data || []);
+
+    if (hydrated && (!facilityId || facilityId.length === 0)) {
+      saveSnapshot(STORAGE_KEYS.PATIENTS, hydrated);
     }
 
-    return data || [];
+    return hydrated;
   } catch (err) {
     console.warn("getPatients online error, using snapshot:", err);
     const cached = getSnapshot(STORAGE_KEYS.PATIENTS, []);
-    return facilityId ? cached.filter((p) => p.facility_id === facilityId) : cached;
+    const filtered = facilityId ? cached.filter((p) => p.facility_id === facilityId) : cached;
+    return hydratePatientRegisteredBy(filtered);
   }
 };
 
@@ -100,21 +141,44 @@ export const getHealthCenterFacilities = async () => {
 
 export const createPatient = async (payload) => {
   const isOnline = isCurrentNetworkOnline();
+  const { user: sessionUser, profile: sessionProfile } = getCachedUserSession();
+  const creatorId = payload.created_by || sessionProfile?.id || sessionUser?.id || null;
+
+  const insertPayload = {
+    ...payload,
+    ...(creatorId ? { created_by: creatorId } : {}),
+  };
+
+  const users = getSnapshot(STORAGE_KEYS.USERS, []);
+  const creatorProfile =
+    (sessionProfile && sessionProfile.id === creatorId ? sessionProfile : null) ||
+    (Array.isArray(users) ? users.find((u) => u?.id === creatorId) : null) ||
+    null;
+
+  const registeredByObj = creatorProfile
+    ? {
+        id: creatorProfile.id,
+        first_name: creatorProfile.first_name,
+        last_name: creatorProfile.last_name,
+        role: creatorProfile.role,
+      }
+    : null;
 
   if (!isOnline) {
-    const insertPayload = createOfflineInsertPayload(payload);
+    const offlinePayload = createOfflineInsertPayload(insertPayload);
     const facilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
-    const patientFacility = facilities.find((f) => f.id === insertPayload.facility_id);
+    const patientFacility = facilities.find((f) => f.id === offlinePayload.facility_id);
     const newRecord = {
-      ...insertPayload,
+      ...offlinePayload,
       facility: patientFacility || null,
+      registered_by: registeredByObj,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     await enqueueMutation({
       mutationType: "INSERT",
       target: "patients",
-      payload: insertPayload,
+      payload: offlinePayload,
     });
     const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
     saveSnapshot(STORAGE_KEYS.PATIENTS, [newRecord, ...current]);
@@ -124,7 +188,7 @@ export const createPatient = async (payload) => {
   try {
     const { data, error } = await supabase
       .from("patients")
-      .insert(payload)
+      .insert(insertPayload)
       .select(PATIENT_SELECT)
       .single();
 
@@ -133,6 +197,9 @@ export const createPatient = async (payload) => {
     }
 
     if (data) {
+      if (!data.registered_by && registeredByObj) {
+        data.registered_by = registeredByObj;
+      }
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       saveSnapshot(STORAGE_KEYS.PATIENTS, [data, ...current]);
     }
@@ -145,19 +212,20 @@ export const createPatient = async (payload) => {
       err.message?.includes("NetworkError");
 
     if (isNetworkErr) {
-      const insertPayload = createOfflineInsertPayload(payload);
+      const offlinePayload = createOfflineInsertPayload(insertPayload);
       const facilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
-      const patientFacility = facilities.find((f) => f.id === insertPayload.facility_id);
+      const patientFacility = facilities.find((f) => f.id === offlinePayload.facility_id);
       const newRecord = {
-        ...insertPayload,
+        ...offlinePayload,
         facility: patientFacility || null,
+        registered_by: registeredByObj,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
       await enqueueMutation({
         mutationType: "INSERT",
         target: "patients",
-        payload: insertPayload,
+        payload: offlinePayload,
       });
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       saveSnapshot(STORAGE_KEYS.PATIENTS, [newRecord, ...current]);
@@ -239,9 +307,13 @@ export const updatePatient = async (patientId, payload) => {
 };
 
 export const archivePatient = async (patientId, { reason = "" } = {}) => {
+  const { user: sessionUser, profile: sessionProfile } = getCachedUserSession();
+  const archiverId = sessionProfile?.id || sessionUser?.id || null;
+
   const archivePayload = {
     archive_reason: reason?.trim() || null,
     archived_at: new Date().toISOString(),
+    archived_by: archiverId,
     updated_at: new Date().toISOString(),
   };
 

@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Boxes,
   ClipboardList,
-  ArrowRightLeft,
   PackageCheck,
   UserRound,
   Pill,
@@ -16,6 +15,7 @@ import {
   History,
   Bell,
   FileSpreadsheet,
+  RotateCcw,
 } from "lucide-react";
 
 import prdsLogo from "@frontend/assets/prds-logo-main.svg";
@@ -24,10 +24,9 @@ import { getAllowedNavItems } from "@shared/utils/userManagementUtils";
 const navIcons = {
   Dashboard: LayoutDashboard,
   Inventory: Boxes,
+  "Stock Returns": RotateCcw,
   Requests: ClipboardList,
   Request: ClipboardList,
-  Transfer: ArrowRightLeft,
-  Transfers: ArrowRightLeft,
   Dispensing: PackageCheck,
   Reports: FileSpreadsheet,
   Patients: UserRound,
@@ -45,8 +44,8 @@ const navIcons = {
 const navItems = [
   { label: "Dashboard", path: "/dashboard", category: "Overview" },
   { label: "Inventory", path: "/inventory", category: "Operations" },
+  { label: "Stock Returns", path: "/stock-returns", category: "Operations" },
   { label: "Requests", path: "/requests", category: "Operations" },
-  { label: "Transfers", path: "/transfers", category: "Operations" },
   { label: "Dispensing", path: "/dispensing", category: "Operations" },
   { label: "Patients", path: "/patients", category: "Operations" },
   { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_II"], category: "Operations" },
@@ -95,7 +94,13 @@ function SidebarAvatar({ profile }) {
   const avatarUrl = profile?.avatar_url;
 
   useEffect(() => {
-    setHasError(false);
+    let isActive = true;
+    void Promise.resolve().then(() => {
+      if (isActive) setHasError(false);
+    });
+    return () => {
+      isActive = false;
+    };
   }, [avatarUrl]);
 
   if (avatarUrl && !hasError) {
@@ -139,7 +144,13 @@ export default function AdminSidebar({ profile, isCollapsed, onToggleCollapsed }
   const [hoveredItem, setHoveredItem] = useState(null);
 
   useEffect(() => {
-    setHoveredItem(null);
+    let isActive = true;
+    void Promise.resolve().then(() => {
+      if (isActive) setHoveredItem(null);
+    });
+    return () => {
+      isActive = false;
+    };
   }, [isCollapsed]);
 
   const fullName = `${profile?.first_name || "Pharma"} ${

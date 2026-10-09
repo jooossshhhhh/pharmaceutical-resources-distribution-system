@@ -86,6 +86,15 @@ export const getNotificationCategory = (notification) => {
     return "transfers";
   }
 
+  if (
+    notification.category === "facility" ||
+    searchableText.includes("facility") ||
+    searchableText.includes("station") ||
+    searchableText.includes("health center")
+  ) {
+    return "facility";
+  }
+
   return "system";
 };
 
@@ -158,7 +167,10 @@ export const matchesNotificationFilters = (
     return false;
   }
 
-  if (category === "facility" && !isFacilityNotification(notification)) {
+  if (
+    category === "facility" &&
+    !(isFacilityNotification(notification) || getNotificationCategory(notification) === "facility")
+  ) {
     return false;
   }
 

@@ -256,7 +256,7 @@ export const isChoFacility = (facility) => {
     code === "CHO-NAGA" ||
     code === "CHO" ||
     type === "MAIN_HEALTH_CENTER" ||
-    name.includes("central health office") ||
-    name.includes("city health office")
+    name.includes("city health office") ||
+    name.includes("central health office")
   );
 };

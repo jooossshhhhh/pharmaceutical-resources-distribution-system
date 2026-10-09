@@ -343,3 +343,33 @@ test("enriches released request logs with actual released quantities from fulfil
   assert.equal(enriched.items[1].requested_quantity, 31);
 });
 
+test("enriches stock transfer logs with #TR- prefix", () => {
+  const transferLog = {
+    id: "log-4",
+    action: "Transfer Approved",
+    module: "Stock Transfer",
+    details: "Approved stock transfer b1234567-0a64-4f2d-8380-d3bca3e7f5fe to Tinaan",
+    user: { first_name: "Josh", last_name: "Laroa" },
+  };
+
+  const enriched = enrichActivityDetails(transferLog);
+  assert.equal(enriched.text.includes("#TR-B1234567"), true);
+});
+
+test("dispensing log for patient does not mistakenly extract patient as facility", () => {
+  const dispensingLog = {
+    id: "log-5",
+    action: "Medicine Released",
+    module: "Dispensing",
+    details: "Released walk-in dispensing transaction A3D6D8EC for patient Josh Sinugbuhan (PRD-0001).",
+    user: {
+      first_name: "Josh",
+      last_name: "Laroa",
+      facility: { facility_name: "City Health Office - City of Naga" },
+    },
+  };
+
+  const enriched = enrichActivityDetails(dispensingLog);
+  assert.equal(enriched.facilityName, null);
+});
+

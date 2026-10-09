@@ -176,7 +176,7 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
                   )}
                 </div>
                 {syncState.status === "ERROR" && (
-                  <p className="mt-0.5 text-[11px] font-medium text-amber-700 leading-tight max-w-sm truncate" title={syncState.error || ""}>
+                  <p className="mt-0.5 text-[11px] font-medium text-amber-700 leading-snug max-w-lg break-words" title={syncState.error || ""}>
                     {getFriendlySyncErrorMessage(syncState.error, pendingItems.length)}
                   </p>
                 )}

@@ -6,6 +6,8 @@ import {
   buildDailyRisBuffer,
   buildMonthlyInventoryWorkbook,
   buildMonthlyInventoryBuffer,
+  processMonthlyInventoryData,
+  consolidateInventoryRows,
 } from "./reportExportUtils.js";
 
 test("buildDailyRisWorkbook creates valid 2-sheet workbook with records", () => {
@@ -68,6 +70,29 @@ test("buildDailyRisWorkbook creates valid 2-sheet workbook with records", () => 
   assert.equal(bhwSheet["I8"]?.v, "BARANGAY COLON HEALTH CENTER");
 });
 
+test("buildDailyRisWorkbook dynamically headers Sheet 1 when facilityName is provided for BHW", () => {
+  const selectedDate = new Date(2026, 8, 25);
+  const dispensingRows = [
+    {
+      dispense_date: "2026-09-25",
+      quantity: 15,
+      medicine: { generic_name: "Amoxicillin", dosage: "500mg", brand_name: "Amoxil", unit_of_measure: "Capsule" },
+    },
+  ];
+
+  const wb = buildDailyRisWorkbook({
+    dispensingRows,
+    requestRows: [],
+    selectedDate,
+    facilityName: "Barangay Inoburan Health Center",
+  });
+
+  const choSheet = wb.Sheets["CHO"];
+  assert.equal(choSheet["D1"]?.v, "BARANGAY INOBURAN HEALTH CENTER");
+  assert.equal(choSheet["D2"]?.v, "REQUEST ISSUANCE SLIP - BARANGAY INOBURAN HEALTH CENTER");
+  assert.equal(choSheet["I8"]?.v, "BARANGAY INOBURAN HEALTH CENTER DISPENSING");
+});
+
 test("buildDailyRisWorkbook exports blank template when no data exists for the day", () => {
   const selectedDate = new Date(2026, 8, 26);
   // Empty data for the day
@@ -103,7 +128,7 @@ test("buildMonthlyInventoryWorkbook creates valid physical count inventory form"
     {
       quantity: 52,
       batch_number: "ZMN073",
-      expiration_date: "2026-05-15",
+      expiration_date: "2026-12-31",
       medicine: { generic_name: "Dicycloverine", dosage: "10mg/5mL", brand_name: "Myrentyl", unit_of_measure: "Bottle", unit_cost: 35.0 },
     },
   ];
@@ -126,7 +151,7 @@ test("buildMonthlyInventoryWorkbook creates valid physical count inventory form"
   assert.equal(sheet["E7"]?.v, "BOTTLE"); // UNIT
   assert.equal(sheet["F7"]?.v, "MYRENTYL"); // BRAND
   assert.equal(sheet["G7"]?.v, "ZMN073"); // LOT NO
-  assert.equal(sheet["H7"]?.v, "2026-05-15"); // EXPIRY DATE
+  assert.equal(sheet["H7"]?.v, "2026-12-31"); // EXPIRY DATE
   assert.equal(sheet["I7"]?.v, 52); // Beginning balance quantity
   assert.equal(sheet["J7"]?.v, 35); // Unit cost
   assert.equal(sheet["K7"]?.f, "I7*J7"); // Formula
@@ -240,9 +265,10 @@ test("buildMonthlyInventoryBuffer generates a valid XLSX buffer with official te
 
   const sheet = parsedWb.Sheets[parsedWb.SheetNames[0]];
   assert.ok(sheet["C3"]?.v.includes("REPORT ON PHYSICAL COUNT OF INVENTORIES"));
-  assert.equal(sheet["C5"]?.v, "MONTH : OCTOBER 31, 2026");
+  const todayDay = new Date().getDate();
+  assert.equal(sheet["C5"]?.v, `MONTH : OCTOBER ${todayDay}, 2026`);
   assert.ok(sheet["I5"]?.v.includes("SEPTEMBER 30, 2026"));
-  assert.ok(sheet["AG5"]?.v.includes("OCTOBER 31, 2026"));
+  assert.ok(sheet["AG5"]?.v.includes(`OCTOBER ${todayDay}, 2026`));
 
   assert.equal(sheet["C7"]?.v, 1);
   assert.equal(sheet["D7"]?.v, "Amoxicillin 500mg");
@@ -411,5 +437,305 @@ test("buildDailyRisBuffer generates blank rows preserving cell styling when no d
   assert.equal(s2["D7"]?.v, "ITEM NO");
   assert.equal(s2["E7"]?.v, "ITEM DESCRIPTION");
 });
+
+test("processMonthlyInventoryData reconciles 6-stage flow and area programs accurately for the UI", () => {
+  const inventoryRows = [
+    {
+      quantity: 100,
+      batch_number: "LOT-RABIES-01",
+      expiration_date: "2027-05-30",
+      medicine: {
+        id: "med-rabies",
+        generic_name: "Rabies Vaccine",
+        dosage: "2.5 IU",
+        brand_name: "Verorab",
+        unit_of_measure: "Vial",
+        unit_cost: 400.0,
+      },
+    },
+    {
+      quantity: 50,
+      batch_number: "LOT-AMOX-02",
+      expiration_date: "2026-10-31",
+      medicine: {
+        id: "med-amox",
+        generic_name: "Amoxicillin",
+        dosage: "500mg",
+        brand_name: "Amoxil",
+        unit_of_measure: "Capsule",
+        unit_cost: 5.0,
+      },
+    },
+  ];
+
+  const dispensingRows = [
+    {
+      medicine_id: "med-rabies",
+      batch_number: "LOT-RABIES-01",
+      quantity: 15,
+      dispense_date: "2026-10-05T09:00:00Z",
+    },
+  ];
+
+  const requestRows = [
+    {
+      status: "COMPLETED",
+      approved_at: "2026-10-12T14:00:00Z",
+      items: [
+        {
+          medicine_id: "med-rabies",
+          batch_number: "LOT-RABIES-01",
+          quantity: 10,
+        },
+      ],
+    },
+  ];
+
+  const otherProgramsRows = [
+    {
+      status: "COMPLETED",
+      program_name: "City Anti-Rabies Campaign",
+      program_date: "2026-10-18T10:00:00Z",
+      medicines: [
+        {
+          medicine_id: "med-rabies",
+          quantity_used: 25,
+        },
+      ],
+    },
+  ];
+
+  const { items, totals } = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows,
+    requestRows,
+    otherProgramsRows,
+    year: 2026,
+    month: 10,
+  });
+
+  assert.equal(items.length, 2);
+
+  // Rabies batch item checks:
+  const rabiesItem = items.find((i) => i.lotNo === "LOT-RABIES-01");
+  assert.ok(rabiesItem);
+  assert.equal(rabiesItem.issuedQty, 25); // 15 walk-in + 10 request
+  assert.equal(rabiesItem.issuedTotal, 25 * 400);
+  assert.equal(rabiesItem.programQty, 25);
+  assert.equal(rabiesItem.programTotal, 25 * 400);
+  assert.equal(rabiesItem.programName, "CITY ANTI-RABIES CAMPAIGN");
+  assert.equal(rabiesItem.remainingQty, 100);
+  assert.equal(rabiesItem.remainingTotal, 100 * 400);
+  // Reconciled Beginning = 100 (remaining) + 25 (issued) + 25 (program) = 150
+  assert.equal(rabiesItem.beginningQty, 150);
+  assert.equal(rabiesItem.begTotal, 150 * 400);
+
+  // Totals verification
+  assert.equal(totals.totalIssuedVal, 25 * 400);
+  assert.equal(totals.totalProgVal, 25 * 400);
+  assert.equal(totals.totalRemVal, (100 * 400) + (50 * 5));
+  assert.equal(totals.totalBegVal, (150 * 400) + (50 * 5));
+});
+
+test("processMonthlyInventoryData identifies expired batches by expiration_date, routes to expiredQty, and clears remainingQty", () => {
+  const inventoryRows = [
+    {
+      medicine_id: "med-expired",
+      batch_number: "LOT-EXP-2026-01",
+      quantity: 80,
+      expiration_date: "2026-05-15", // Expired prior to October 2026
+      date_received: "2026-01-10",
+      medicine: {
+        id: "med-expired",
+        generic_name: "Amoxicillin",
+        dosage: "500mg",
+        brand_name: "Amoxil",
+        unit_of_measure: "CAPSULE",
+        unit_cost: 8.5,
+      },
+    },
+    {
+      medicine_id: "med-active",
+      batch_number: "LOT-ACT-2027-01",
+      quantity: 120,
+      expiration_date: "2027-12-31", // Valid future date
+      date_received: "2026-02-15",
+      medicine: {
+        id: "med-active",
+        generic_name: "Paracetamol",
+        dosage: "500mg",
+        brand_name: "Biogesic",
+        unit_of_measure: "TABLET",
+        unit_cost: 3.0,
+      },
+    },
+  ];
+
+  const { items, totals } = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows: [],
+    requestRows: [],
+    otherProgramsRows: [],
+    year: 2026,
+    month: 10,
+  });
+
+  assert.equal(items.length, 2);
+
+  const expItem = items.find((i) => i.lotNo === "LOT-EXP-2026-01");
+  assert.ok(expItem);
+  assert.equal(expItem.expiredQty, 80);
+  assert.equal(expItem.expiredTotal, 80 * 8.5);
+  assert.equal(expItem.remainingQty, 0);
+  assert.equal(expItem.remainingTotal, 0);
+  assert.equal(expItem.beginningQty, 80); // Reconciled: 0 + 0 + 0 + 80 - 0 = 80
+  assert.equal(expItem.begTotal, 80 * 8.5);
+
+  const activeItem = items.find((i) => i.lotNo === "LOT-ACT-2027-01");
+  assert.ok(activeItem);
+  assert.equal(activeItem.expiredQty, 0);
+  assert.equal(activeItem.expiredTotal, 0);
+  assert.equal(activeItem.remainingQty, 120);
+  assert.equal(activeItem.remainingTotal, 120 * 3.0);
+  assert.equal(activeItem.beginningQty, 120);
+
+  // Totals verification
+  assert.equal(totals.totalExpiredVal, 80 * 8.5);
+  assert.equal(totals.totalRemVal, 120 * 3.0);
+  assert.equal(totals.totalBegVal, (80 * 8.5) + (120 * 3.0));
+});
+
+test("processMonthlyInventoryData consolidates duplicate inventory entries of the same batch into a single row", () => {
+  // Simulates fragmented entries like the ones from the user's report (10 rows across facilities/deliveries)
+  const inventoryRows = [
+    // 3 entries for Acetylcysteine 200mg (Lot 4324FA4) -> 110 + 20 + 39 = 169
+    {
+      medicine_id: "med-acetyl-200",
+      batch_number: "4324FA4",
+      quantity: 110,
+      expiration_date: "2026-12-31",
+      medicine: { id: "med-acetyl-200", generic_name: "Acetylcysteine", dosage: "200 mg", unit_of_measure: "TABLET", unit_cost: 11 },
+    },
+    {
+      medicine_id: "med-acetyl-200",
+      batch_number: "4324FA4",
+      quantity: 20,
+      expiration_date: "2026-12-31",
+      medicine: { id: "med-acetyl-200", generic_name: "Acetylcysteine", dosage: "200 mg", unit_of_measure: "TABLET", unit_cost: 11 },
+    },
+    {
+      medicine_id: "med-acetyl-200",
+      batch_number: "4324FA4",
+      quantity: 39,
+      expiration_date: "2026-12-31",
+      medicine: { id: "med-acetyl-200", generic_name: "Acetylcysteine", dosage: "200 mg", unit_of_measure: "TABLET", unit_cost: 11 },
+    },
+
+    // 2 entries for Irbesartan 150mg (Lot FDCVA232) -> 143 + 67 = 210
+    {
+      medicine_id: "med-irbesartan-150",
+      batch_number: "FDCVA232",
+      quantity: 143,
+      expiration_date: "2026-12-23",
+      medicine: { id: "med-irbesartan-150", generic_name: "Irbesartan", dosage: "150 mg", unit_of_measure: "TABLET", unit_cost: 6 },
+    },
+    {
+      medicine_id: "med-irbesartan-150",
+      batch_number: "FDCVA232",
+      quantity: 67,
+      expiration_date: "2026-12-23",
+      medicine: { id: "med-irbesartan-150", generic_name: "Irbesartan", dosage: "150 mg", unit_of_measure: "TABLET", unit_cost: 6 },
+    },
+
+    // 3 entries for Amoxicillin Trihydrate 500mg (Lot 445FG2A, Expired 2026-09-30) -> 21 + 200 + 259 = 480
+    {
+      medicine_id: "med-amox-500",
+      batch_number: "445FG2A",
+      quantity: 21,
+      expiration_date: "2026-09-30",
+      medicine: { id: "med-amox-500", generic_name: "Amoxicillin Trihydrate", dosage: "500 mg", unit_of_measure: "CAPSULE", unit_cost: 4 },
+    },
+    {
+      medicine_id: "med-amox-500",
+      batch_number: "445FG2A",
+      quantity: 200,
+      expiration_date: "2026-09-30",
+      medicine: { id: "med-amox-500", generic_name: "Amoxicillin Trihydrate", dosage: "500 mg", unit_of_measure: "CAPSULE", unit_cost: 4 },
+    },
+    {
+      medicine_id: "med-amox-500",
+      batch_number: "445FG2A",
+      quantity: 259,
+      expiration_date: "2026-09-30",
+      medicine: { id: "med-amox-500", generic_name: "Amoxicillin Trihydrate", dosage: "500 mg", unit_of_measure: "CAPSULE", unit_cost: 4 },
+    },
+
+    // 1 entry for Acetylcysteine 600mg (Lot F3FFG54) -> 500
+    {
+      medicine_id: "med-acetyl-600",
+      batch_number: "F3FFG54",
+      quantity: 500,
+      expiration_date: "2026-10-31",
+      medicine: { id: "med-acetyl-600", generic_name: "Acetylcysteine", dosage: "600 mg", unit_of_measure: "SACHET", unit_cost: 24 },
+    },
+
+    // 1 entry for Amoxicillin Trihydrate 500mg (Lot FE3242G5) -> 500
+    {
+      medicine_id: "med-amox-500",
+      batch_number: "FE3242G5",
+      quantity: 500,
+      expiration_date: "2026-10-03",
+      medicine: { id: "med-amox-500", generic_name: "Amoxicillin Trihydrate", dosage: "500 mg", unit_of_measure: "CAPSULE", unit_cost: 4 },
+    },
+  ];
+
+  // Consolidate directly test
+  const consolidated = consolidateInventoryRows(inventoryRows);
+  assert.equal(consolidated.length, 5, "10 fragmented rows must consolidate down to 5 distinct batches");
+
+  // Reconciled monthly process test
+  const { items, totals } = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows: [],
+    requestRows: [],
+    otherProgramsRows: [],
+    year: 2026,
+    month: 10,
+  });
+
+  assert.equal(items.length, 5, "Should have exactly 5 rows in monthly report items");
+
+  // Check Acetylcysteine 200mg batch (4324FA4)
+  const acetyl200 = items.find((i) => i.lotNo === "4324FA4");
+  assert.ok(acetyl200);
+  assert.equal(acetyl200.remainingQty, 169);
+  assert.equal(acetyl200.beginningQty, 169);
+  assert.equal(acetyl200.unitCost, 11);
+  assert.equal(acetyl200.remainingTotal, 169 * 11);
+
+  // Check Irbesartan 150mg batch (FDCVA232)
+  const irbesartan = items.find((i) => i.lotNo === "FDCVA232");
+  assert.ok(irbesartan);
+  assert.equal(irbesartan.remainingQty, 210);
+  assert.equal(irbesartan.beginningQty, 210);
+  assert.equal(irbesartan.unitCost, 6);
+  assert.equal(irbesartan.remainingTotal, 210 * 6);
+
+  // Check Amoxicillin 500mg expired batch (445FG2A)
+  const amoxExpired = items.find((i) => i.lotNo === "445FG2A");
+  assert.ok(amoxExpired);
+  assert.equal(amoxExpired.expiredQty, 480);
+  assert.equal(amoxExpired.remainingQty, 0);
+  assert.equal(amoxExpired.beginningQty, 480);
+  assert.equal(amoxExpired.unitCost, 4);
+  assert.equal(amoxExpired.expiredTotal, 480 * 4);
+
+  // Verify total beginning stock valuation equals all 5 consolidated batches combined
+  const expectedTotalBeg = (169 * 11) + (210 * 6) + (480 * 4) + (500 * 24) + (500 * 4);
+  assert.equal(totals.totalBegVal, expectedTotalBeg);
+});
+
+
+
 
 

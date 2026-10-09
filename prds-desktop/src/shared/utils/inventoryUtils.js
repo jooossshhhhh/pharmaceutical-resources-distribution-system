@@ -7,6 +7,162 @@ export const emptyInventoryForm = {
   batch_number: "",
   date_received: "",
   expiration_date: "",
+  po_number: "",
+  unit_cost: "",
+  intake_type: "PO", // "PO" | "RETURN"
+  origin_facility_id: "",
+  return_reason: "",
+  status: "ACTIVE",
+};
+
+export const createEmptyPoItem = (
+  id = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+) => ({
+  id,
+  medicine_id: "",
+  batch_number: "",
+  quantity: "",
+  unit_cost: "",
+  threshold: "100",
+  expiration_date: "",
+});
+
+export const RETURN_REASON_OPTIONS = [
+  { value: "EXCESS", label: "Excess / Overstocked" },
+  { value: "NEAR_EXPIRY", label: "Near-Expiry Consolidation" },
+  { value: "PROGRAM_ENDED", label: "Program Terminated / Surrendered" },
+  { value: "REALLOCATION", label: "Facility Re-allocation" },
+  { value: "OTHER", label: "Other / Routine Return" },
+];
+
+export const DISPOSAL_METHODS = [
+  { value: "HAZARDOUS_INCINERATION", label: "Medical Waste Neutralization / Incineration" },
+  { value: "LGU_CONDEMNATION", label: "LGU City Health Condemnation Protocol" },
+  { value: "DOH_RETURN", label: "Returned to DOH Regional Center for Destruction" },
+  { value: "CRUSHING_BURIAL", label: "Chemical Denaturing & Controlled Disposal" },
+];
+
+export const emptyPoReceiptForm = {
+  facility_id: "",
+  po_number: "",
+  supplier_id: "",
+  intake_type: "PO",
+  origin_facility_id: "",
+  return_reason: "",
+  date_received: new Date().toISOString().slice(0, 10),
+  items: [createEmptyPoItem("item-1")],
+};
+
+export const emptyReturnReceiptForm = {
+  facility_id: "",
+  po_number: "",
+  supplier_id: "",
+  intake_type: "RETURN",
+  origin_facility_id: "",
+  return_reason: "EXCESS",
+  date_received: new Date().toISOString().slice(0, 10),
+  items: [createEmptyPoItem("item-1")],
+};
+
+export const normalizePoNumber = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/[^\w\s-]/gi, "");
+
+export const calculatePoTotals = (items = []) => {
+  return items.reduce(
+    (acc, item) => {
+      const qty = Number(item.quantity) || 0;
+      const cost = Number(item.unit_cost) || 0;
+      acc.totalQuantity += qty;
+      acc.totalAmount += qty * cost;
+      if (item.medicine_id && qty > 0) {
+        acc.validItemCount += 1;
+      }
+      return acc;
+    },
+    { totalQuantity: 0, totalAmount: 0, validItemCount: 0 }
+  );
+};
+
+export const isStrictlyFutureDate = (dateString, referenceDate = new Date()) => {
+  if (!dateString) return false;
+  const targetStr = String(dateString).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetStr)) {
+    return false;
+  }
+
+  const ref = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+  if (Number.isNaN(ref.getTime())) return false;
+
+  const year = ref.getFullYear();
+  const month = String(ref.getMonth() + 1).padStart(2, "0");
+  const day = String(ref.getDate()).padStart(2, "0");
+  const refStr = `${year}-${month}-${day}`;
+
+  return targetStr > refStr;
+};
+
+export const getTomorrowDateString = (referenceDate = new Date()) => {
+  const ref = referenceDate instanceof Date ? new Date(referenceDate.getTime()) : new Date(referenceDate);
+  ref.setDate(ref.getDate() + 1);
+  const year = ref.getFullYear();
+  const month = String(ref.getMonth() + 1).padStart(2, "0");
+  const day = String(ref.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+export const isPoNumberUsed = (poNumber, existingInventory = [], excludeId = null, facilityId = null) => {
+  const normalized = normalizePoNumber(poNumber).toUpperCase();
+  if (!normalized) return false;
+
+  return existingInventory.some((item) => {
+    if (excludeId && String(item?.id) === String(excludeId)) {
+      return false;
+    }
+    if (facilityId && item?.facility_id && String(item.facility_id) !== String(facilityId)) {
+      return false;
+    }
+    const itemPo = normalizePoNumber(item?.po_number).toUpperCase();
+    return itemPo === normalized;
+  });
+};
+
+export const isLotNumberUsed = (lotNumber, existingInventory = [], excludeId = null, facilityId = null) => {
+  const normalized = normalizeLotNumber(lotNumber);
+  if (!normalized) return false;
+
+  return existingInventory.some((item) => {
+    if (excludeId && String(item?.id) === String(excludeId)) {
+      return false;
+    }
+    if (facilityId && item?.facility_id && String(item.facility_id) !== String(facilityId)) {
+      return false;
+    }
+    const itemLot = normalizeLotNumber(item?.batch_number);
+    return itemLot === normalized;
+  });
+};
+
+export const findDuplicateLotsInBatch = (items = []) => {
+  const seen = new Map();
+  const duplicateIndices = new Set();
+
+  items.forEach((item, index) => {
+    const lot = normalizeLotNumber(item?.batch_number);
+    if (lot) {
+      if (seen.has(lot)) {
+        duplicateIndices.add(index);
+        duplicateIndices.add(seen.get(lot));
+      } else {
+        seen.set(lot, index);
+      }
+    }
+  });
+
+  return duplicateIndices;
 };
 
 export const pageSize = 10;
@@ -213,8 +369,68 @@ export const formatCurrency = (value) => {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
-    maximumFractionDigits: 1,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(Number(value || 0));
+};
+
+export const amountToWords = (amount) => {
+  const num = Math.round((Number(amount) || 0) * 100) / 100;
+  if (num <= 0) return "Zero Pesos Only";
+
+  const units = [
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+    "Seventeen", "Eighteen", "Nineteen",
+  ];
+  const tens = [
+    "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+  ];
+
+  function convertHundreds(n) {
+    let str = "";
+    if (n >= 100) {
+      str += units[Math.floor(n / 100)] + " Hundred ";
+      n %= 100;
+    }
+    if (n >= 20) {
+      str += tens[Math.floor(n / 10)] + (n % 10 !== 0 ? "-" + units[n % 10] : "") + " ";
+    } else if (n > 0) {
+      str += units[n] + " ";
+    }
+    return str.trim();
+  }
+
+  const integerPart = Math.floor(num);
+  const cents = Math.round((num - integerPart) * 100);
+
+  let words = "";
+  let rem = integerPart;
+
+  if (rem >= 1000000000) {
+    const b = Math.floor(rem / 1000000000);
+    words += convertHundreds(b) + " Billion ";
+    rem %= 1000000000;
+  }
+  if (rem >= 1000000) {
+    const m = Math.floor(rem / 1000000);
+    words += convertHundreds(m) + " Million ";
+    rem %= 1000000;
+  }
+  if (rem >= 1000) {
+    const t = Math.floor(rem / 1000);
+    words += convertHundreds(t) + " Thousand ";
+    rem %= 1000;
+  }
+  if (rem > 0) {
+    words += convertHundreds(rem) + " ";
+  }
+
+  words = words.trim() + " Pesos";
+  if (cents > 0) {
+    words += ` and ${cents}/100`;
+  }
+  return words + " Only";
 };
 
 export const formatNumber = (value) => {
@@ -274,12 +490,14 @@ const maxDate = (items, key) => {
 export const buildInventoryMedicineRows = (items = []) => {
   const groups = new Map();
 
-  items.forEach((item) => {
-    const key = `${item.facility_id || "no-facility"}:${item.medicine_id || "no-medicine"}`;
-    const group = groups.get(key) || [];
-    group.push(item);
-    groups.set(key, group);
-  });
+  items
+    .filter((item) => !isDisposedLot(item))
+    .forEach((item) => {
+      const key = `${item.facility_id || "no-facility"}:${item.medicine_id || "no-medicine"}`;
+      const group = groups.get(key) || [];
+      group.push(item);
+      groups.set(key, group);
+    });
 
   return Array.from(groups.entries()).map(([key, lots]) => {
     const sortedLots = [...lots].sort((first, second) => {
@@ -375,3 +593,84 @@ export const getExpiryStatus = (item) => {
     days,
   };
 };
+
+export const isLotExpired = (lot) => {
+  if (!lot?.expiration_date) {
+    return false;
+  }
+  return getExpiryStatus(lot).key === "EXPIRED";
+};
+
+export const getExpiredDays = (dateString) => {
+  const days = daysUntilExpiry(dateString);
+  if (days === null || days >= 0) {
+    return 0;
+  }
+  return Math.abs(days);
+};
+
+export const getLotStatus = (lot) => {
+  const quantity = Number(lot?.quantity || 0);
+
+  if (quantity === 0) {
+    return {
+      key: "DEPLETED",
+      label: "Depleted",
+      badgeClass: "bg-neutral-100 text-neutral-600 border border-neutral-200",
+    };
+  }
+
+  const expiry = getExpiryStatus(lot);
+
+  if (expiry.key === "EXPIRED") {
+    return {
+      key: "EXPIRED",
+      label: "Expired",
+      badgeClass: "bg-red-100 text-red-700",
+    };
+  }
+
+  if (expiry.days !== null && expiry.days <= 0) {
+    return {
+      key: "EXPIRES_TODAY",
+      label: "Expires Today",
+      badgeClass: "bg-red-100 text-red-700 border border-red-200",
+    };
+  }
+
+  if (expiry.key === "EXPIRING") {
+    return {
+      key: "EXPIRING",
+      label: "Expiring Soon",
+      badgeClass: "bg-amber-100 text-amber-700",
+    };
+  }
+
+  return {
+    key: "ACTIVE",
+    label: "Active",
+    badgeClass: "bg-emerald-100 text-emerald-700",
+  };
+};
+
+export const isReturnedLot = (lot) => {
+  if (!lot) return false;
+  return (
+    lot.intake_type === "RETURN" ||
+    Boolean(lot.origin_facility_id) ||
+    Boolean(lot.origin_facility) ||
+    (typeof lot.po_number === "string" && lot.po_number.startsWith("RET-"))
+  );
+};
+
+export const getReturnReasonLabel = (reason) => {
+  if (!reason) return "Routine Return";
+  const found = RETURN_REASON_OPTIONS.find((opt) => opt.value === reason);
+  return found ? found.label : reason;
+};
+
+export const isDisposedLot = (lot) => {
+  if (!lot) return false;
+  return lot.status === "DISPOSED" || Boolean(lot.disposed_at);
+};
+

@@ -183,6 +183,13 @@ export const enrichActivityDetails = (
       } else {
         text = text.replace(uuidMatches[0], requestNumber);
       }
+    } else if (
+      log.module === "Stock Transfer" ||
+      log.module === "Transfer" ||
+      (log.action && log.action.toLowerCase().includes("transfer"))
+    ) {
+      const transferNumber = `#TR-${rawUuid.slice(0, 8).toUpperCase()}`;
+      text = text.replace(uuidMatches[0], transferNumber);
     } else if (log.module === "Patients" || log.module === "Dispensing") {
       const matchingPatient = patients.find((p) => p.id && p.id.toLowerCase() === rawUuid);
       if (matchingPatient) {
@@ -198,11 +205,36 @@ export const enrichActivityDetails = (
     }
   }
 
-  // 3. Fallback extraction of facility name if "for <facility_name>" is in the text
+  // 3. Fallback extraction of destination facility name ONLY for requests, transfers, or facility modules
   if (!facilityName) {
-    const forMatch = text.match(/ for ([^.(]+)/i);
-    if (forMatch && forMatch[1]) {
-      facilityName = forMatch[1].trim();
+    const isTransferOrRequest =
+      log.module === "Medicine Request" ||
+      log.module === "Stock Transfer" ||
+      log.module === "Transfer" ||
+      log.module === "Facility" ||
+      (log.action &&
+        (log.action.toLowerCase().includes("request") ||
+          log.action.toLowerCase().includes("transfer")));
+
+    if (isTransferOrRequest) {
+      const matchedFacility = facilities.find(
+        (f) => f.facility_name && text.toLowerCase().includes(f.facility_name.toLowerCase())
+      );
+      if (matchedFacility) {
+        facilityName = matchedFacility.facility_name;
+      } else {
+        const forMatch = text.match(/ for ([^.(]+)/i);
+        if (
+          forMatch &&
+          forMatch[1] &&
+          !forMatch[1].toLowerCase().startsWith("patient") &&
+          !forMatch[1].toLowerCase().startsWith("user") &&
+          !forMatch[1].toLowerCase().startsWith("item") &&
+          !forMatch[1].toLowerCase().startsWith("batch")
+        ) {
+          facilityName = forMatch[1].trim();
+        }
+      }
     }
   }
 

@@ -1,25 +1,33 @@
 import ModalShell from "../../../components/ModalShell";
 import { InventoryLotTable } from "../inventoryComponents";
-import { formatDate, formatNumber, getMedicineName } from "@shared/utils/inventoryUtils";
+import {
+  formatDate,
+  formatNumber,
+  getMedicineName,
+  isLotExpired,
+} from "@shared/utils/inventoryUtils";
 import { formatMedicineCategories } from "@shared/utils/medicineUtils";
 
 export function BhwStockModal({ mode, selectedItem, error, onClose }) {
   const lots = selectedItem?.lots?.length ? selectedItem.lots : selectedItem ? [selectedItem] : [];
+  const isExpired = isLotExpired(selectedItem);
 
   return (
     <ModalShell
       labelledBy="bhw-inventory-modal-title"
       onClose={onClose}
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
-      panelClassName="max-w-3xl"
+      panelClassName="max-w-4xl"
     >
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="border-b border-neutral-100 px-6 py-5">
           <h3 id="bhw-inventory-modal-title" className="text-xl font-black text-black">
-            Stock Details
+            {isExpired ? "Expired Stock Details" : "Stock Details"}
           </h3>
           <p className="text-sm font-medium text-neutral-500">
-            {selectedItem ? getMedicineName(selectedItem) : "Review stock details by lot number."}
+            {selectedItem
+              ? `${getMedicineName(selectedItem)}${isExpired ? " (Quarantined Expired Stock)" : ""}`
+              : "Review stock details by lot number."}
           </p>
         </div>
 
@@ -33,16 +41,30 @@ export function BhwStockModal({ mode, selectedItem, error, onClose }) {
           {mode === "view" && selectedItem && (
             <>
               <section className="rounded-xl border border-neutral-100 bg-white px-4 py-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
-                  Medicine Stock
+                <p
+                  className={`text-[11px] font-black uppercase tracking-[0.14em] ${
+                    isExpired ? "text-red-700" : "text-emerald-700"
+                  }`}
+                >
+                  {isExpired ? "Quarantined Expired Stock" : "Medicine Stock"}
                 </p>
                 <p className="mt-1 text-lg font-black text-[#0d1117]">
                   {getMedicineName(selectedItem)}
                 </p>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <Detail label="Total Stock" value={formatNumber(selectedItem.quantity)} />
-                  <Detail label="Nearest Expiration" value={formatDate(selectedItem.expiration_date)} />
-                  <Detail label="Facility" value={selectedItem.facility?.facility_name || "-"} />
+                  <Detail
+                    label={isExpired ? "Expired Stock" : "Total Stock"}
+                    value={formatNumber(selectedItem.quantity)}
+                  />
+                  <Detail
+                    label={isExpired ? "Date Expired" : "Nearest Expiration"}
+                    value={formatDate(selectedItem.expiration_date)}
+                  />
+                  <Detail
+                    label={isExpired ? "Disposal Status" : "Facility"}
+                    value={isExpired ? "Pending Condemnation" : (selectedItem.facility?.facility_name || "-")}
+                    highlight={isExpired}
+                  />
                   <Detail
                     label="Category"
                     value={formatMedicineCategories(selectedItem.medicine?.categories) || "General"}
@@ -51,7 +73,7 @@ export function BhwStockModal({ mode, selectedItem, error, onClose }) {
               </section>
 
               <div className="mt-5">
-                <InventoryLotTable lots={lots} />
+                <InventoryLotTable lots={lots} showSegregation={false} />
               </div>
             </>
           )}
@@ -71,13 +93,23 @@ export function BhwStockModal({ mode, selectedItem, error, onClose }) {
   );
 }
 
-function Detail({ label, value }) {
+function Detail({ label, value, highlight = false }) {
   return (
-    <div className="rounded-lg bg-[#f7f6f3] px-3 py-2.5">
+    <div
+      className={`rounded-lg px-3 py-2.5 ${
+        highlight ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-[#f7f6f3]"
+      }`}
+    >
       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
         {label}
       </p>
-      <p className="mt-1 text-sm font-black text-[#0d1117]">{value || "-"}</p>
+      <p
+        className={`mt-1 text-sm font-black ${
+          highlight ? "text-red-700" : "text-[#0d1117]"
+        }`}
+      >
+        {value || "-"}
+      </p>
     </div>
   );
 }

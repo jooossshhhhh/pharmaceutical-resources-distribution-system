@@ -10,6 +10,9 @@ import {
   formatItemDescription,
   toDateKey,
   extractCompletedRequestItems,
+  aggregateMonthlyDispensingDistribution,
+  aggregateHourlyDispensingFlow,
+  getDailyDispensingTransactions,
 } from "./reportUtils.js";
 
 test("formatPeso correctly formats PHP currency", () => {
@@ -305,4 +308,210 @@ test("calculateReportKpis accurately calculates remaining stock valuation when u
   assert.equal(emptyKpis.stockHealth.totalItems, 0);
 });
 
+test("aggregateMonthlyDispensingDistribution accurately tallies 3 workflows and calculates percentages", () => {
+  const dispensingRows = [
+    {
+      id: "d1",
+      quantity: 100,
+      dispense_date: "2026-10-05T08:30:00Z",
+      medicine: { generic_name: "Amoxicillin", unit_cost: 5.0 },
+    },
+    {
+      id: "d2_september",
+      quantity: 50,
+      dispense_date: "2026-09-25T08:30:00Z",
+      medicine: { generic_name: "Amoxicillin", unit_cost: 5.0 },
+    },
+  ];
 
+  const requestRows = [
+    {
+      id: "req1",
+      status: "COMPLETED",
+      approved_at: "2026-10-12T10:00:00Z",
+      items: [
+        {
+          quantity: 200,
+          medicine: { generic_name: "Paracetamol", unit_cost: 2.0 },
+        },
+      ],
+    },
+    {
+      id: "req2_pending",
+      status: "PENDING",
+      approved_at: "2026-10-12T10:00:00Z",
+      items: [{ quantity: 999, medicine: { unit_cost: 2.0 } }],
+    },
+  ];
+
+  const otherProgramsRows = [
+    {
+      id: "prog1",
+      status: "ACTIVE",
+      program_date: "2026-10-18T09:00:00Z",
+      medicines: [
+        {
+          quantity_used: 100,
+          unit_cost: 10.0,
+        },
+      ],
+    },
+    {
+      id: "prog2_cancelled",
+      status: "CANCELLED",
+      program_date: "2026-10-18T09:00:00Z",
+      medicines: [{ quantity_used: 500, unit_cost: 10.0 }],
+    },
+  ];
+
+  const result = aggregateMonthlyDispensingDistribution({
+    dispensingRows,
+    requestRows,
+    otherProgramsRows,
+    year: 2026,
+    month: 10,
+  });
+
+  // Total: 100 (walk-in) + 200 (requests) + 100 (programs) = 400
+  assert.equal(result.totalUnits, 400);
+  // Total Cost: 100*5 (500) + 200*2 (400) + 100*10 (1000) = 1900
+  assert.equal(result.totalCost, 1900);
+
+  const reqChannel = result.channels.find((c) => c.id === "requests");
+  assert.equal(reqChannel.units, 200);
+  assert.equal(reqChannel.percentage, 50.0); // 200 / 400 = 50%
+
+  const walkInChannel = result.channels.find((c) => c.id === "walk_in");
+  assert.equal(walkInChannel.name, "Walk-in");
+  assert.equal(walkInChannel.description, "CHO Pharmacy Dispensing");
+  assert.equal(walkInChannel.units, 100);
+  assert.equal(walkInChannel.percentage, 25.0); // 100 / 400 = 25%
+
+  const progChannel = result.channels.find((c) => c.id === "other_programs");
+  assert.equal(progChannel.units, 100);
+  assert.equal(progChannel.percentage, 25.0); // 100 / 400 = 25%
+});
+
+test("aggregateHourlyDispensingFlow aggregates dispensing volume by hour and pinpoints peak rush hour", () => {
+  const selectedDate = new Date(2026, 9, 5); // 2026-10-05
+
+  const dispensingRows = [
+    {
+      id: "d1",
+      quantity: 30,
+      dispense_date: "2026-10-05T09:15:00",
+      medicine: { unit_cost: 10 },
+    },
+    {
+      id: "d2",
+      quantity: 45,
+      dispense_date: "2026-10-05T09:45:00",
+      medicine: { unit_cost: 10 },
+    },
+    {
+      id: "d3",
+      quantity: 20,
+      dispense_date: "2026-10-05T14:10:00",
+      medicine: { unit_cost: 5 },
+    },
+  ];
+
+  const requestRows = [
+    {
+      id: "req1",
+      status: "COMPLETED",
+      approved_at: "2026-10-05T10:30:00",
+      items: [{ quantity: 100, medicine: { unit_cost: 4 } }],
+    },
+  ];
+
+  const flow = aggregateHourlyDispensingFlow({
+    dispensingRows,
+    requestRows,
+    selectedDate,
+  });
+
+  // Total units: (30 + 45) + 100 + 20 = 195
+  assert.equal(flow.totalUnits, 195);
+  // Total cost: 75*10 (750) + 100*4 (400) + 20*5 (100) = 1250
+  assert.equal(flow.totalCost, 1250);
+
+  // 9 AM should have 75 units (30 + 45)
+  const nineAm = flow.hours.find((h) => h.hour === 9);
+  assert.equal(nineAm.units, 75);
+  assert.equal(nineAm.walkInUnits, 75);
+
+  // 10 AM should have 100 units from BHW completed request
+  const tenAm = flow.hours.find((h) => h.hour === 10);
+  assert.equal(tenAm.units, 100);
+  assert.equal(tenAm.bhwUnits, 100);
+
+  // 2 PM (14:00) should have 20 units
+  const twoPm = flow.hours.find((h) => h.hour === 14);
+  assert.equal(twoPm.units, 20);
+
+  // Peak hour should be 10 AM (100 units)
+  assert.equal(flow.peakHour.hour, 10);
+  assert.equal(flow.peakHour.units, 100);
+});
+
+test("getDailyDispensingTransactions extracts sorted table rows for selected date", () => {
+  const selectedDate = new Date(2026, 9, 5); // 2026-10-05
+
+  const dispensingRows = [
+    {
+      id: "d1",
+      quantity: 20,
+      dispense_date: "2026-10-05T09:15:00",
+      patient: { first_name: "Maria", last_name: "Santos", patient_code: "NAGA-101" },
+      medicine: { generic_name: "Amoxicillin", dosage: "500 mg", unit_cost: 5 },
+      prescribed_by: "Dr. Reyes",
+    },
+    {
+      id: "d2_other_day",
+      quantity: 50,
+      dispense_date: "2026-10-06T09:15:00",
+      patient: { first_name: "Pedro", last_name: "Cruz" },
+      medicine: { generic_name: "Losartan", dosage: "50 mg" },
+    },
+  ];
+
+  const requestRows = [
+    {
+      id: "req1",
+      status: "COMPLETED",
+      approved_at: "2026-10-05T11:00:00",
+      facility: { facility_name: "Barangay Colon" },
+      request_number: "RIS-002",
+      items: [
+        {
+          id: "it1",
+          quantity: 200,
+          generic_name: "Paracetamol",
+          dosage: "500 mg",
+          unit_cost: 2,
+        },
+      ],
+    },
+  ];
+
+  const list = getDailyDispensingTransactions({
+    dispensingRows,
+    requestRows,
+    selectedDate,
+  });
+
+  // Only 2 items belong to 2026-10-05
+  assert.equal(list.length, 2);
+
+  // Sorted newest first: 11:00 AM (BHW) comes before 09:15 AM (Walk-in)
+  assert.equal(list[0].channel, "Barangay Request");
+  assert.equal(list[0].recipient, "BARANGAY COLON");
+  assert.equal(list[0].quantity, 200);
+
+  assert.equal(list[1].channel, "Walk-in");
+  assert.equal(list[1].recipient, "Maria Santos");
+  assert.equal(list[1].medicineName, "Amoxicillin 500 mg");
+  assert.equal(list[1].quantity, 20);
+  assert.equal(list[1].prescribedBy, "Dr. Reyes");
+});

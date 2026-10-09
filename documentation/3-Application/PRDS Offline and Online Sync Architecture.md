@@ -60,6 +60,42 @@ flowchart TD
     SB_DB -->|"2. Fetch fresh snapshots"| SYNC
 ```
 
+### 1.1 Desktop Shell Framework (Tauri v2 Architecture)
+
+Barangay Health Stations (BHS) in the City of Naga operate on government-issued, budget-grade computers often limited to 4 GB – 8 GB RAM. Electron-based shells consume 150–250 MB baseline RAM, causing severe sluggishness on legacy hardware. Tauri v2 was selected as the desktop runtime for the following architectural reasons:
+
+| Evaluation Metric | Tauri v2 (`prds-desktop`) | Electron Framework | Progressive Web App (PWA) |
+| :--- | :--- | :--- | :--- |
+| **Idle Memory Footprint** | **~35 – 45 MB RAM** (Extremely lightweight) | ~150 – 250 MB RAM | Shared with browser |
+| **Windows Installer Size** | **~10 – 14 MB** | ~85 – 120 MB | ~0 MB (Web cached) |
+| **UI Web Engine** | **Microsoft Edge WebView2** (Evergreen Chromium) | Bundled Chromium | Host browser engine |
+| **Local Relational DB** | **Native SQLite** (`@tauri-apps/plugin-sql`) | `better-sqlite3` | IndexedDB only |
+| **Security Sandbox** | **Strict Capability-Based Permissions** | Broad Node.js access | Browser sandbox |
+| **Hardware Suitability** | **Optimal for Barangay Health Station PCs** | Requires modern PCs | Requires browser launch |
+
+### 1.2 Data and Mutation Lifecycle
+
+```mermaid
+flowchart TD
+    START[Launch Desktop App] --> INIT[Initialize SQLite prds.db]
+    INIT --> AUTH{Valid Cached Session?}
+    AUTH -- No --> LOGIN[Display Login / OTP View]
+    AUTH -- Yes --> CACHE[Mount UI Instantly with Local Snapshots]
+    CACHE --> ONLINE{Supabase Endpoint Reachable?}
+    ONLINE -- No --> OFFLINE[Continue Offline Operations]
+    OFFLINE --> MUTATE{Action Supported Offline?}
+    MUTATE -- No --> BLOCK[Feature Requires Live Connection]
+    MUTATE -- Yes --> QUEUE[Enqueue Mutation in SQLite & LocalStorage]
+    QUEUE --> OFFLINE
+    ONLINE -- Yes --> SYNC[Trigger Sync Manager]
+    SYNC --> REPLAY[Replay Pending Mutations FIFO]
+    REPLAY --> REFRESH[Download Fresh 14 Cloud Datasets]
+    REFRESH --> PERSIST[Upsert to prds.db & Snapshot Store]
+    PERSIST --> DONE[Publish Green Sync Badge]
+    QUEUE -->|Network Restored| SYNC
+```
+
+
 ---
 
 ## 2. Exact Local Storage Locations on Disk (Windows)
@@ -276,6 +312,18 @@ sequenceDiagram
     Sync->>Sync: Set status = 'SUCCESS', update lastSyncTime
     Sync-->>UI: Broadcast sync status update
 ```
+
+### 6.1 Conflict Resolution Policies & The Clinical Primacy Axiom
+
+When offline field transactions are replayed to Supabase, PRDS enforces domain-specific conflict resolution rules:
+
+| Healthcare Domain | Operation | Conflict Resolution Strategy |
+| :--- | :--- | :--- |
+| **Dispensing Transactions** | Walk-in Patient Dispensing | **Append-Only (Clinical Primacy Axiom):** A physical medicine delivery to a citizen can *never* be cancelled or rejected by the server because physical pills have already left the health worker's hands. If the batch was concurrently depleted on the cloud, the transaction is committed, stock is set to zero, and an audit record is created in `stock_deficit_audits` for Chief Pharmacist review. |
+| **Patient Registration** | New Patient Profiling | **Unique Identification & Matching:** Deduped by `patient_code` sequence. If created concurrently on another machine, records are matched on full name and date of birth to prevent duplicate clinical profiles. |
+| **Medicine Requisitions** | BHW Restock Request | **Append-Only:** Requests enter `PENDING` status on the central queue for operational pharmacist FEFO batch allocation. |
+| **Inter-Facility Transfers** | Transfer Confirmation | **State Machine Validation:** If a transfer was cancelled by CHO while BHW was offline, the status update is blocked and a notification alert is surfaced to both facilities. |
+| **Inventory Batches** | Manual Stock Adjustments | **Server-Authoritative Check:** Server validates current quantities and logs discrepancy reasons with mandatory audit stamps (`adjusted_by`, `reason_code`). |
 
 ---
 

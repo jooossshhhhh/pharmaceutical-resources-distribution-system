@@ -45,6 +45,9 @@ export default defineConfig({
             if (id.includes("@supabase")) {
               return "vendor-supabase";
             }
+            if (id.includes("xlsx")) {
+              return "vendor-xlsx";
+            }
             if (id.includes("react-router-dom") || id.includes("react") || id.includes("react-dom")) {
               return "vendor-react";
             }

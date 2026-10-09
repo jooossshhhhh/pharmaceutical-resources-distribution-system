@@ -50,12 +50,37 @@ export default function ManageAccountModal({
           </div>
         </div>
 
-        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#f8f9ff] p-5">
+        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-neutral-50/60 p-5">
           {error ? (
             <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
               {error}
             </p>
           ) : null}
+
+          {/* Quick Approval Action for Pending Users */}
+          {user.status === "PENDING" && (
+            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-[#007f5f]">Pending Registration</p>
+                <p className="mt-0.5 text-sm font-semibold text-neutral-800">
+                  This user has registered and is awaiting administrator verification.
+                </p>
+              </div>
+              {formValues.status !== "ACTIVE" ? (
+                <button
+                  type="button"
+                  onClick={() => onChange({ target: { name: "status", value: "ACTIVE" } })}
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#00a36c] px-4 py-2 text-xs font-black text-white shadow-xs transition hover:bg-[#008f5d] cursor-pointer"
+                >
+                  Approve Account
+                </button>
+              ) : (
+                <span className="inline-flex shrink-0 items-center rounded-md bg-emerald-200/70 px-3 py-1 text-xs font-black text-[#007f5f]">
+                  Marked as Active
+                </span>
+              )}
+            </div>
+          )}
 
           <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
@@ -69,6 +94,8 @@ export default function ManageAccountModal({
               <ReadOnlyField label="Last Name" value={user.last_name} />
               <ReadOnlyField label="Email" value={getDisplayEmail(user)} emptyLabel="No email linked" />
               <ReadOnlyField label="Phone" value={getDisplayPhone(user)} emptyLabel="No phone linked" />
+              <ReadOnlyField label="User ID" value={user.id} />
+              <ReadOnlyField label="Registered At" value={formatDate(user.created_at)} />
               <ReadOnlyField label="Approved At" value={formatDate(user.approved_at)} />
               <ReadOnlyField label="Last Updated" value={formatDate(user.updated_at)} />
             </div>
@@ -97,6 +124,20 @@ export default function ManageAccountModal({
                 </select>
               </label>
             </div>
+
+            {formValues.role === "BHW" && !formValues.facility_id && (
+              <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <span className="font-black text-amber-700">Notice:</span>
+                <span>Barangay Health Workers require an assigned health station to access local inventory and submit medicine requests.</span>
+              </div>
+            )}
+
+            {formValues.status === "DEACTIVATED" && user.status === "ACTIVE" && (
+              <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                <span className="font-black text-red-700">Warning:</span>
+                <span>Deactivating this user will revoke their access to PRDS immediately.</span>
+              </div>
+            )}
           </section>
         </div>
 
@@ -104,7 +145,7 @@ export default function ManageAccountModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-neutral-100 px-6 text-sm font-bold text-neutral-700 transition hover:bg-neutral-200"
+            className="h-10 rounded-lg bg-neutral-100 px-6 text-sm font-bold text-neutral-700 transition hover:bg-neutral-200 cursor-pointer"
           >
             Cancel
           </button>
@@ -112,7 +153,7 @@ export default function ManageAccountModal({
             type="button"
             onClick={onSave}
             disabled={isSaving}
-            className="h-10 rounded-lg bg-black px-6 text-sm font-black text-white shadow-sm transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            className="h-10 rounded-lg bg-[#00a36c] px-6 text-sm font-black text-white shadow-xs transition hover:bg-[#008f5d] disabled:cursor-not-allowed disabled:bg-neutral-300 cursor-pointer"
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </button>

@@ -1,7 +1,7 @@
 # PRDS System Architecture
 
 > **Pharmaceutical Resources Distribution System (PRDS)** — City Health Office (CHO) of Naga, Cebu.  
-> Cross-platform supply chain, pharmacy inventory, medicine dispensing, and forecasting system connecting the Central Health Office with 28 Barangay Health Stations (BHS).
+> Cross-platform supply chain, pharmacy inventory, medicine dispensing, and forecasting system connecting the City Health Office with 28 Barangay Health Stations (BHS).
 
 ---
 

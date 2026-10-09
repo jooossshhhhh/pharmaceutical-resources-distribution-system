@@ -435,13 +435,56 @@ Enforce One Free Medicine Claim Per Month per patient (previously listed as Futu
 Verification:  
 All RPC paths smoke-tested live against Supabase (double-claim rejection, void-and-re-dispense cycle, multi-batch FEFO split, cross-facility BHW rejection).
 
+**PHASE 17 - TERMINAL PASSCODE & MULTI-ACCOUNT AUTH**
+
+Activities Completed:
+- Schema extensions to `profiles` and `auth.users`:
+  - `passcode_hash` (text), `passcode_updated_at` (timestamptz), `has_passcode` (boolean)
+- Security Definer RPC:
+  - `set_own_passcode_status(p_has_passcode, p_passcode_hash, p_passcode_updated_at)` for authenticated self-service passcode updates.
+- Fast multi-account workstation switching supporting offline passcode validation with local PBKDF2/SHA-256 hash checks.
+
+**PHASE 18 - DOH/DPRI MEDICINE PRICING MAPPING**
+
+Activities Completed:
+- Standardized unit costs and retail prices populated across all 86 formulary medicines in Naga CHO catalog (`20261001120000_populate_philippine_medicine_prices.sql`).
+- Linked to physical inventory batches for monetary valuation in inventory ledgers and physical count reports.
+
+**PHASE 19 - INCREMENTAL DELTA SYNC & CLINICAL CONFLICT RESOLUTION**
+
+Activities Completed:
+- Server-side `sync_tombstones` table capturing soft/hard deletes across all tables for incremental local deletion replication.
+- Server-side `stock_deficit_audits` table enforcing the Clinical Primacy Axiom (offline physical dispensing cannot be rejected by cloud inventory shortages).
+- Security Definer RPCs:
+  - `record_stock_deficit_audit(...)` - logs non-blocking discrepancies when inventory drops below zero.
+  - `reconcile_stock_deficit(p_audit_id, p_resolution_action, p_adjustment_quantity, p_notes)` - Pharma II reconciliation action.
+
+**PHASE 20 - COMMERCIAL INVENTORY VS STOCK RETURNS SEGREGATION**
+
+Activities Completed:
+- Clean architectural decoupling of commercial inventory procurement from field stock returns.
+- `inventory` table:
+  - Added `po_number` (varchar 100) and `unit_cost` (numeric 12,2) for commercial Supplier -> CHO intake (`20261008070000_inventory_po_number_and_unit_cost.sql`).
+  - Purged return batches from `inventory` (`20261009120000_purge_returns_from_inventory.sql`).
+- Dedicated `stock_returns` and `stock_return_items` tables (`20261009110000_stock_returns_schema.sql`):
+  - Tracks return slips, source/destination facility relations, returned-by details, return reasons, items, and verification custody status.
+  - Full RLS protection for `PHARMA_I`, `PHARMA_II`, and `BHW` roles.
+- Cleanup: Dropped deprecated `stock_transfers` and `stock_transfer_items` tables (`20261009100000_cleanup_drop_transfers.sql`).
+
+**PHASE 21 - TAURI EMBEDDED SQLITE REPLICATION & OUTBOX ENGINE**
+
+Activities Completed:
+- Embedded SQLite replication schema in `%APPDATA%/com.prds.naga/prds.db` supporting WAL mode.
+- Local `sync_metadata` table tracking incremental watermarks and offline passcode sessions.
+- Transactional `outbox_queue` enabling resilient optimistic mutations with exponential backoff and idempotency keys.
+
 **PROJECT STATUS**
 
 Database Development Status:  
-COMPLETED (through Phase 16)
+COMPLETED (through Phase 21)
 
 Total Tables:  
-17
+21
 
 Total Enums:  
 7
@@ -450,16 +493,16 @@ Total Views:
 4
 
 Total Helper Functions:  
-5
+6
 
 Business Logic RPCs:  
-3
+7
 
 Realtime Tables:  
 4
 
 RLS-Protected Tables:  
-17
+21
 
 Database Architecture Completion:  
 100%

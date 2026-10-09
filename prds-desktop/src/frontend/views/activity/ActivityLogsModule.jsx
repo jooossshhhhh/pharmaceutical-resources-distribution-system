@@ -50,16 +50,20 @@ const getFullName = (user) => {
 const getActivityRoleLabel = (role) => activityRoleLabels[role] || "Unknown role";
 
 const getLogTone = (module) => {
-  if (module === "Inventory" || module === "Medicine Request" || module === "Dispensing") {
+  if (module === "Inventory" || module === "Dispensing") {
     return "emerald";
   }
 
-  if (module === "User Account") {
+  if (module === "Medicine Request" || module === "Facility") {
+    return "amber";
+  }
+
+  if (module === "Stock Transfer" || module === "Transfer" || module === "User Account") {
     return "blue";
   }
 
-  if (module === "Facility") {
-    return "amber";
+  if (module === "Patients" || module === "Patient Registry") {
+    return "purple";
   }
 
   return "slate";
@@ -852,7 +856,7 @@ function ActivityLogCard({
               items={[
                 getFullName(log.user),
                 getActivityRoleLabel(log.user?.role),
-                log.user?.facility?.facility_name || "No facility",
+                log.user?.facility?.facility_name || "City Health Office",
               ]}
             />
           </div>
@@ -879,22 +883,44 @@ function ActivityDetailModal({
 
   const displayId = useMemo(() => {
     if (enriched.requestNumber) return enriched.requestNumber;
+    const isTransfer =
+      log?.module === "Stock Transfer" ||
+      log?.module === "Transfer" ||
+      (log?.action && log.action.toLowerCase().includes("transfer"));
+    const trCodeMatch = (log?.details || "").match(/#TR-([A-Za-z0-9-]+)/i);
+    if (trCodeMatch && trCodeMatch[0]) {
+      return trCodeMatch[0].toUpperCase();
+    }
     const txMatch = (log?.details || "").match(/transaction\s+([A-Za-z0-9-]+)/i);
     if (txMatch && txMatch[1]) {
       const code = txMatch[1].trim();
-      return code.length > 12 ? `#ID-${code.slice(0, 8).toUpperCase()}` : code;
+      return code.length > 12
+        ? isTransfer
+          ? `#TR-${code.slice(0, 8).toUpperCase()}`
+          : `#ID-${code.slice(0, 8).toUpperCase()}`
+        : code;
     }
     const trMatch = (log?.details || "").match(/(#[A-Za-z0-9_-]+)/);
     if (trMatch && trMatch[1]) {
       return trMatch[1].trim();
     }
     if (enriched.fullUuid) {
-      return `#ID-${enriched.fullUuid.slice(0, 8).toUpperCase()}`;
+      return isTransfer
+        ? `#TR-${enriched.fullUuid.slice(0, 8).toUpperCase()}`
+        : `#ID-${enriched.fullUuid.slice(0, 8).toUpperCase()}`;
     }
     return null;
-  }, [enriched.requestNumber, enriched.fullUuid, log?.details]);
+  }, [enriched.requestNumber, enriched.fullUuid, log?.details, log?.module, log?.action]);
 
   if (!log) return null;
+
+  const isTransferOrRequest =
+    log?.module === "Medicine Request" ||
+    log?.module === "Stock Transfer" ||
+    log?.module === "Transfer" ||
+    (log?.action &&
+      (log.action.toLowerCase().includes("request") ||
+        log.action.toLowerCase().includes("transfer")));
 
   const handleCopyId = (e) => {
     e?.stopPropagation();
@@ -935,7 +961,7 @@ function ActivityDetailModal({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
               <div className="min-w-0">
                 <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">
-                  Transaction / Request ID
+                  Transaction / Reference ID
                 </span>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="font-mono text-base font-black text-emerald-950">
@@ -966,14 +992,16 @@ function ActivityDetailModal({
 
           {/* Overview Grid */}
           <div className="grid gap-3 sm:grid-cols-2">
-            {/* Target Facility */}
+            {/* Facility */}
             <div className="rounded-xl border border-neutral-200 p-3.5 space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-neutral-400">
                 <FacilityIcon className="h-3.5 w-3.5 text-neutral-500" />
-                <span>Target Facility</span>
+                <span>{isTransferOrRequest ? "Destination Facility" : "Facility"}</span>
               </div>
               <p className="text-sm font-black text-[#0d1117]">
-                {enriched.facilityName || log.user?.facility?.facility_name || "Central Office"}
+                {(isTransferOrRequest && enriched.facilityName) ||
+                  log.user?.facility?.facility_name ||
+                  "City Health Office"}
               </p>
             </div>
 
@@ -987,7 +1015,7 @@ function ActivityDetailModal({
                 {getFullName(log.user)}
               </p>
               <p className="text-xs text-neutral-500 font-medium">
-                {getActivityRoleLabel(log.user?.role)} • {log.user?.facility?.facility_name || "Central Office"}
+                {getActivityRoleLabel(log.user?.role)} • {log.user?.facility?.facility_name || "City Health Office"}
               </p>
             </div>
 

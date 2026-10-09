@@ -17,6 +17,7 @@ import {
   addPatientManualDispensingRecord,
   getManualRecordMedicines,
 } from "@backend/services/patientsService";
+import { getSnapshot, getCachedUserSession, STORAGE_KEYS } from "@backend/database/snapshotStore";
 import {
   buildPatientDispensingFacilityOptions,
   filterPatientHistoryRows,
@@ -28,6 +29,7 @@ import {
   formatPatientDateOfBirth,
   formatPatientName,
   formatPatientRegisteredAt,
+  formatPatientRegisteredBy,
   getPatientRecordTypeLabel,
   PATIENT_GENDER_OPTIONS,
   PATIENT_HISTORY_DATE_MODES,
@@ -308,7 +310,13 @@ export function PatientTable({ archiveMode = "active", isCho, isLoading, onSelec
   );
 }
 
-const getTodayInputValue = () => new Date().toISOString().slice(0, 10);
+const getTodayInputValue = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 const emptyManualRecordForm = (facilityId = "") => ({
   dispense_date: getTodayInputValue(),
@@ -664,7 +672,11 @@ export function PatientViewModal({
               <section className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
                 <h3 className="text-sm font-bold text-[#0d1117]">Patient Details</h3>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <InfoBox icon={<CalendarIcon />} label="Date of Birth" value={formatPatientDateOfBirth(patient.date_of_birth)} />
+                  <InfoBox
+                    icon={<CalendarIcon />}
+                    label="Date of Birth"
+                    value={formatPatientDateOfBirth(patient.date_of_birth)}
+                  />
                   <InfoBox icon={<PhoneIcon />} label="Contact Number" value={formatPatientContact(patient.contact_number)} />
                   <InfoBox
                     icon={<UserIcon />}
@@ -679,16 +691,27 @@ export function PatientViewModal({
               <aside className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
                 <h3 className="text-sm font-bold text-[#0d1117]">Record Info</h3>
                 <div className="mt-4 space-y-3">
-                  <DetailLine label="Patient Code" value={formatPatientCode(patient.patient_code)} />
-                  <DetailLine label="Registered by" value={getRegisteredByName(patient.registered_by)} />
-                  <DetailLine label="Registered" value={formatPatientRegisteredAt(patient.created_at)} />
-                  <DetailLine label="Full Name" value={formatPatientName(patient)} />
-                  <DetailLine label="Gender" value={patient.gender || "-"} />
+                  <DetailLine
+                    label="Record Status"
+                    value={
+                      isArchived ? (
+                        <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+                          Archived
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-[#008f68]">
+                          Active
+                        </span>
+                      )
+                    }
+                  />
+                  <DetailLine label="Registered by" value={getRegisteredByName(patient.registered_by, patient.created_by)} />
+                  <DetailLine label="Date Registered" value={formatPatientRegisteredAt(patient.created_at)} />
                   {isArchived && (
                     <>
                       <DetailLine label="Archived" value={formatPatientArchivedAt(patient.archived_at)} />
                       <DetailLine label="Archive Reason" value={patient.archive_reason || "No reason provided"} />
-                      <DetailLine label="Archived by" value={patient.archived_by ? "CHO staff" : "-"} />
+                      <DetailLine label="Archived by" value={getRegisteredByName(patient.archived_by_profile, patient.archived_by) !== "—" ? getRegisteredByName(patient.archived_by_profile, patient.archived_by) : (patient.archived_by ? "CHO staff" : "-")} />
                     </>
                   )}
                 </div>
@@ -1408,7 +1431,7 @@ export function PatientFormModal({
                 value={formValues.date_of_birth || ""}
                 onChange={onChange}
                 disabled={isReadOnly}
-                max={new Date().toISOString().slice(0, 10)}
+                max={getTodayInputValue()}
                 required
               />
             </Field>
@@ -1495,10 +1518,12 @@ export function PatientFormModal({
   );
 }
 
-const getRegisteredByName = (registeredBy) => {
-  if (!registeredBy) {
-    return "—";
+export const getRegisteredByName = (registeredBy, createdBy) => {
+  const users = getSnapshot(STORAGE_KEYS.USERS, []);
+  const { profile: sessionProfile } = getCachedUserSession();
+  const fallbackUsers = Array.isArray(users) ? [...users] : [];
+  if (sessionProfile && !fallbackUsers.some((u) => u?.id === sessionProfile.id)) {
+    fallbackUsers.push(sessionProfile);
   }
-
-  return `${registeredBy.first_name || ""} ${registeredBy.last_name || ""}`.trim() || "—";
+  return formatPatientRegisteredBy(registeredBy, createdBy, fallbackUsers);
 };

@@ -8,7 +8,7 @@ This document records the development work performed with OpenCode on the PRDS p
 
 **Refactor to a Pure Catalog**
 
-The Medicines module is now a pure catalog / master-data module used for registering supplier medicines at the Central Health Office (CHO). All stock-oriented features that duplicate the Inventory module were removed.
+The Medicines module is now a pure catalog / master-data module used for registering supplier medicines at the City Health Office (CHO). All stock-oriented features that duplicate the Inventory module were removed.
 
 - Removed the stock column, stock 2x2 tiles, and dispensed-demand trend from the table and details panel.
 - Removed the metric row (total/critical/low/value cards).
@@ -16,7 +16,7 @@ The Medicines module is now a pure catalog / master-data module used for registe
 - `loadMedicines` now uses a single query against the `medicines` table (`id, generic_name, brand_name, unit_of_measure, dosage, unit_cost`) ordered by generic name.
 - The catalog table now has 4 columns: Medicine, Brand, Dosage, Cost.
 - Search was moved inside the Medicine Catalog card (two-row toolbar: header row = title + "Showing X of Y medicines" + Add Medicine; second row = search input).
-- Empty-state copy updated to reflect registration ("Register medicines received at the Central Health Office...").
+- Empty-state copy updated to reflect registration ("Register medicines received at the City Health Office...").
 
 **Role Gating**
 
@@ -251,3 +251,30 @@ Rebuilt from an early two-panel split + sticky bar into a guided 3-step wizard (
 
 - Session plans moved from `.opencode/plans/` to `.agents/plans/` for tidier repo organization (`.opencode/` removed).
 - New root `opencode.json` grants the plan agent write access to `.agents/plans/**/*.md` while keeping edits otherwise denied in plan mode; requires an OpenCode restart to take effect.
+
+**DATA INGESTION & IMPORT AUDIT (September 2026)**
+
+**ClientData Historical Dispensing Import Withdrawal**
+- **Date:** 2026-09-21
+- **Status:** Withdrawn / Voided
+- The proposed July dispensing and August RequestIssuanceSlip historical import was withdrawn because source medicine descriptions and formulations do not consistently match the official system catalog. The dispensing-import SQL files were removed from the repository.
+- Verification against the linked Supabase project confirmed that the import migration was not applied and no dispensing rows carry its import attribution labels. No dispensing, request, patient, or inventory data was inserted or deleted by this withdrawal.
+- The separate ListOfMedicine catalog import remains in place and is unchanged. The original ClientData workbooks are retained locally under `6-ClientData/` as source reference material.
+
+**OCTOBER 2026 BACKEND ARCHITECTURE & HARDENING PASS**
+
+**1. Commercial Supplier Procurement & Stock Returns Segregation**
+- **Architecture Segregation:** Purged field return batches from commercial inventory (`inventory`). Commercial inventory is strictly reserved for Supplier-to-CHO intake via Purchase Orders (`po_number` and `unit_cost`).
+- **Dedicated Stock Returns Schema:** Created `stock_returns` and `stock_return_items` tables with RLS policies, tracking Barangay Health Station medicine returns with return slips (`return_slip_no`), verification statuses, and quarantine custody ledger.
+- **Legacy Cleanup:** Dropped obsolete stock transfers tables (`stock_transfers`, `stock_transfer_items`) and cleaned legacy columns from the live database.
+
+**2. Incremental Delta Synchronization & Clinical Conflict Resolution**
+- **Delta Sync Engine:** Replaced full-table wipes with incremental synchronization using SQLite `sync_metadata` watermarks, Supabase `.gt('updated_at')` filters, and `sync_tombstones` deletion tracking. Reduced network sync payload by >95%.
+- **Clinical Primacy Axiom:** Enforced append-only conflict resolution for offline patient dispensing. When inventory reaches 0 during offline dispensing, transactions commit locally and sync without rejection, logging discrepancies into `stock_deficit_audits`.
+- **Deficit Reconciliation:** Implemented `reconcile_stock_deficit` RPC for Pharmacist II administrative resolution workflows.
+
+**3. Tauri Desktop SQLite & Shell Reliability**
+- Embedded SQLite (`prds.db` with WAL mode) fully mirrored with PostgreSQL schema across 14 tables.
+- Fixed layout shell prop mismatch in `StockReturnsModule.jsx` where `userProfile` was passed instead of `profile`, ensuring role badges and permission navigation menus render accurately.
+- Verified all 360 unit and integration tests pass (`npm test`).
+- Production packaging verified via `npm run desktop:build` producing Windows NSIS installer `PRDS Naga_1.0.0_x64-setup.exe`.

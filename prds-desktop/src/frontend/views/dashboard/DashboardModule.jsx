@@ -30,6 +30,7 @@ import {
   getMonthlyDispensedQuantity,
   getStockStatus,
 } from "@shared/utils/dashboardUtils";
+import { formatFacilityName } from "@shared/utils/facilityFormat";
 
 const defaultRequestStatus = {
   APPROVED: 0,
@@ -382,7 +383,7 @@ export default function DashboardModule() {
             batch_number,
             expiration_date,
             medicine:medicines(generic_name, brand_name, dosage, unit_of_measure),
-            facility:facilities(id, facility_name, facility_code)
+            facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code)
           `)
             .order("expiration_date", { ascending: true })
             .order("id", { ascending: true })
@@ -696,7 +697,7 @@ export default function DashboardModule() {
                     return (
                       <tr key={row.id || row.inventory_id}>
                         <td className="py-2.5 pr-3 font-semibold text-[#0d1117]">{row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}</td>
-                        <td className="px-3 py-2.5 text-neutral-600">{row.facility?.facility_name || row.facility_name || "-"}</td>
+                        <td className="px-3 py-2.5 text-neutral-600">{formatFacilityName(row.facility?.facility_name || row.facility_name) || "-"}</td>
                         <td className="px-3 py-2.5 text-neutral-600">{row.batch_number || "-"}</td>
                         <td className="px-3 py-2.5 text-right font-bold">{formatNumber(row.quantity)} / {formatNumber(row.threshold)}</td>
                         <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${risk === "CRITICAL" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}>{risk === "CRITICAL" ? "Critical" : "Low"}</span></td>
@@ -734,7 +735,7 @@ export default function DashboardModule() {
                   {recentRequests.map((request) => (
                     <tr key={request.id}>
                       <td className="py-2.5 pr-3 font-semibold text-[#0d1117]">{request.shortId}<span className="block text-[10px] font-normal text-neutral-500">{request.date}</span></td>
-                      <td className="px-3 py-2.5"><span className="block max-w-44 truncate">{request.medicine}</span><span className="text-[10px] text-neutral-500">{request.facility}</span></td>
+                      <td className="px-3 py-2.5"><span className="block max-w-44 truncate">{request.medicine}</span><span className="text-[10px] text-neutral-500">{formatFacilityName(request.facility)}</span></td>
                       <td className="px-3 py-2.5 text-right font-semibold">{formatNumber(request.quantity)}</td>
                       <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${statusClass[request.status] || "bg-neutral-100 text-neutral-600"}`}>{formatRequestStatus(request.status)}</span></td>
                     </tr>

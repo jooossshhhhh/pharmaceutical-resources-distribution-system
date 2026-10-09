@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Download, ChevronDown, Calendar as CalendarIcon, Building2, Check, FileSpreadsheet } from "lucide-react";
 import { formatReportDate } from "@shared/utils/reportUtils";
 
@@ -7,6 +7,8 @@ export default function ReportHeader({
   selectedFacilityId = "ALL",
   onSelectFacility,
   selectedDate = new Date(),
+  reportScope = "daily",
+  selectedPeriod = null,
   isBhw = false,
   facilityName = "Vicente Mendiola Center for Health (City Health Office)",
   onExportRis,
@@ -26,6 +28,14 @@ export default function ReportHeader({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const periodLabel = useMemo(() => {
+    if (reportScope === "monthly" && selectedPeriod) {
+      const monthDate = new Date(selectedPeriod.year, selectedPeriod.month - 1, 1);
+      return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(monthDate);
+    }
+    return formatReportDate(selectedDate);
+  }, [reportScope, selectedPeriod, selectedDate]);
+
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-5 border-b border-[#d8dadc]/60">
       <div>
@@ -34,8 +44,8 @@ export default function ReportHeader({
       </div>
 
       <div className="flex flex-wrap items-center gap-2.5">
-        {/* Facility Filter (CHO only) */}
-        {!isBhw && (
+        {/* Facility Filter (CHO only in Daily scope) */}
+        {!isBhw && reportScope === "daily" && (
           <div className="relative">
             <select
               value={selectedFacilityId}
@@ -53,11 +63,13 @@ export default function ReportHeader({
           </div>
         )}
 
-        {/* Selected Date Badge */}
-        <div className="flex items-center gap-1.5 bg-white border border-[#d8dadc] text-xs font-medium text-[#0d1117] rounded-lg px-3 py-2 shadow-xs">
-          <CalendarIcon className="h-3.5 w-3.5 text-[#00a36c]" />
-          <span>{formatReportDate(selectedDate)}</span>
-        </div>
+        {/* Selected Date Badge (Daily scope only) */}
+        {reportScope === "daily" && (
+          <div className="flex items-center gap-1.5 bg-white border border-[#d8dadc] text-xs font-medium text-[#0d1117] rounded-lg px-3 py-2 shadow-xs">
+            <CalendarIcon className="h-3.5 w-3.5 text-[#00a36c]" />
+            <span className="font-semibold">{periodLabel}</span>
+          </div>
+        )}
 
         {/* Export to Excel: Direct RIS button for BHW, Dropdown for CHO */}
         {isBhw || !onExportInventory ? (

@@ -10,6 +10,7 @@ import {
   getFriendlySyncTooltip,
   getSafeWatermarkWindow,
   getSnapshotFailureMessage,
+  isMissingRelationError,
   mergeSnapshotDelta,
 } from "./syncUtils.js";
 
@@ -163,6 +164,31 @@ test("getFriendlyDashboardErrorMessage replaces TypeError and technical jargon w
   assert.match(serverErrorWithFallback, /Showing your saved dashboard records/);
   assert.doesNotMatch(serverErrorWithFallback, /pgrst/i);
   assert.doesNotMatch(serverErrorWithFallback, /supabase/i);
+
+  const authSessionError = new Error("Your online session needs to be refreshed. Please sign in again to update protected records.");
+  authSessionError.code = "AUTH_SESSION_REQUIRED";
+  assert.match(
+    getFriendlyDashboardErrorMessage(authSessionError, true),
+    /Please sign in again/
+  );
+});
+
+test("isMissingRelationError detects removed optional database relations", () => {
+  assert.equal(
+    isMissingRelationError(
+      { code: "42P01", message: 'relation "public.stock_transfer_items" does not exist' },
+      "stock_transfer_items"
+    ),
+    true
+  );
+  assert.equal(
+    isMissingRelationError(
+      { code: "PGRST205", message: "Could not find the table 'stock_transfers' in the schema cache" },
+      "stock_transfers"
+    ),
+    true
+  );
+  assert.equal(isMissingRelationError(new Error("permission denied for table inventory"), "stock_transfers"), false);
 });
 
 test("formatUserFacingError cleans technical error messages", () => {

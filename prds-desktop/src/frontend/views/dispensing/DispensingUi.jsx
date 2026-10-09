@@ -100,6 +100,18 @@ export const SortDirectionIcon = ({ direction = "newest" }) => (
   </svg>
 );
 
+export const FilterIcon = () => (
+  <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+    <path d="M3 4a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2.586a1 1 0 0 1-.293.707l-6.414 6.414a1 1 0 0 0-.293.707V17l-4 4v-6.586a1 1 0 0 0-.293-.707L3.293 7.293A1 1 0 0 1 3 6.586V4Z" />
+  </svg>
+);
+
+export const ArrowUpDownIcon = () => (
+  <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+    <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
+  </svg>
+);
+
 export function VoidedBadge() {
   return (
     <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-red-700">

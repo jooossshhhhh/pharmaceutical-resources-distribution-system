@@ -1,15 +1,17 @@
-import { supabaseAuth } from "../../client/supabase";
+import { supabaseAuth } from "../../client/supabase.js";
 import {
   clearUserSession,
   getCachedUserSession,
   getLastLoginTimestamp,
   getTerminalPasscodeAccount,
+  getTerminalPasscodeAccounts,
   recordLoginTimestamp,
   removeTerminalPasscodeAccount,
   restoreSnapshotsFromSqlite,
   saveTerminalPasscodeAccount,
   saveUserSession,
-} from "../../database/snapshotStore";
+} from "../../database/snapshotStore.js";
+import { getSqliteDb, isTauriEnvironment } from "../../database/sqliteClient.js";
 import { getAuthErrorMessage as getAuthErrorMessageFromUtils } from "@shared/utils/authErrorUtils";
 import { isPhilippineMobileNumber } from "@shared/utils/authRegistrationUtils";
 import { signOutCurrentSession } from "./authSessionUtils.js";
@@ -24,17 +26,19 @@ import {
   verifyPasscodeHash,
   isDifferentFromCurrentPasscode,
 } from "@shared/utils/passcodeUtils";
-import { isCurrentNetworkOnline } from "../../sync/networkStatus";
+import { isCurrentNetworkOnline } from "../../sync/networkStatus.js";
 
 export { isPhilippineMobileNumber };
 
-const recordAuthActivity = async (action) => {
+const recordAuthActivity = async (action, details = null) => {
   if (!isCurrentNetworkOnline()) return;
+  // Database record_activity_log only accepts 'User Signed In' and 'User Signed Out' for Authentication module
+  if (action !== "User Signed In" && action !== "User Signed Out") return;
   try {
     await supabaseAuth.rpc("record_activity_log", {
       p_action: action,
       p_module: "Authentication",
-      p_details: `${action}.`,
+      p_details: details || `${action}.`,
     });
   } catch (err) {
     console.warn("Authentication activity log failed:", err);
@@ -363,7 +367,7 @@ export const signInWithPasscode = async ({ identifier, passcode }) => {
 
   // Restore active user session locally with current login time
   saveUserSession(updatedUser, account.profile);
-  await recordAuthActivity("User Signed In with Passcode");
+  await recordAuthActivity("User Signed In", "Signed in with 6-digit terminal passcode.");
   await restoreSnapshotsFromSqlite(account.profile?.facility_id, account.profile?.role).catch(() => {});
 
   return {
@@ -515,6 +519,8 @@ export const removeUserPasscode = async () => {
   await recordAuthActivity("Passcode Removed");
   return { success: true, has_passcode: false, profile: updatedProfile, user: activeUser };
 };
+
+export { restoreSupabaseSessionIfAvailable } from "./authSessionRestore.js";
 
 export const getCurrentAuthUser = async () => {
   if (isCurrentNetworkOnline()) {
@@ -702,7 +708,7 @@ export const signOutOtherSessions = async () => {
     throw error;
   }
 
-  await recordAuthActivity("Signed Out Other Sessions");
+  await recordAuthActivity("User Signed Out", "Signed out other active sessions.");
   return { success: true };
 };
 

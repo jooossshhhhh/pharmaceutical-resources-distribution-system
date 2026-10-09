@@ -9,15 +9,34 @@ import { supabase } from "../client/supabase.js";
 import { getSqliteDb, initSqliteSchema, isTauriEnvironment } from "../database/sqliteClient.js";
 import { getCachedUserSession } from "../database/snapshotStore.js";
 import { getMutationFailureStatus } from "../client/networkErrorUtils.js";
+import { isCurrentNetworkOnline } from "./networkStatus.js";
+import { restoreSupabaseSessionIfAvailable } from "../services/auth/authSessionRestore.js";
 
 const OUTBOX_STORAGE_KEY = "prds_offline_outbox_queue";
 const SUPPORTED_MUTATION_TYPES = new Set(["RPC", "INSERT", "UPDATE", "DELETE"]);
+const RETIRED_TRANSFER_MUTATION_TARGETS = new Set([
+  "stock_transfers",
+  "stock_transfer_items",
+  "stock_transfer_fulfillments",
+  "get_stock_transfer_allocation_batches",
+  "submit_bhw_stock_transfer_request",
+  "create_cho_stock_transfer",
+  "approve_stock_transfer",
+  "allocate_stock_transfer_for_pickup",
+  "reject_stock_transfer_request",
+  "confirm_stock_transfer_received",
+]);
 const listeners = new Set();
 const outboxListeners = new Set();
 let cachedPendingCount = 0;
 
 export const filterMutationsForUser = (mutations, userId) =>
   userId ? mutations.filter((item) => item.user_id === userId) : [];
+
+export const isRetiredTransferMutation = (item) => {
+  const target = String(item?.target || "").toLowerCase();
+  return RETIRED_TRANSFER_MUTATION_TARGETS.has(target) || target.includes("stock_transfer");
+};
 
 const mutationStatusPriority = { PENDING: 0, FAILED: 1, SYNCED: 2 };
 
@@ -74,6 +93,36 @@ function writeLocalStorageQueue(queue) {
 
 let memoryQueue = typeof window !== "undefined" ? readLocalStorageQueue() : [];
 
+async function discardRetiredTransferMutations(userId, entries) {
+  const retiredIds = new Set(
+    entries
+      .filter(isRetiredTransferMutation)
+      .map((item) => item.id)
+      .filter(Boolean)
+  );
+  if (retiredIds.size === 0) return false;
+
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      for (const id of retiredIds) {
+        await db.execute(
+          "DELETE FROM offline_mutation_queue WHERE id = $1 AND user_id = $2",
+          [id, userId]
+        );
+      }
+    } catch (err) {
+      console.warn("Failed to discard retired transfer mutations from SQLite:", err);
+    }
+  }
+
+  memoryQueue = readLocalStorageQueue().filter(
+    (item) => !(item.user_id === userId && (retiredIds.has(item.id) || isRetiredTransferMutation(item)))
+  );
+  writeLocalStorageQueue(memoryQueue);
+  return true;
+}
+
 async function getQueueEntries(userId) {
   if (!userId) return [];
 
@@ -106,7 +155,9 @@ async function getQueueEntries(userId) {
     }
   }
 
-  return filterMutationsForUser(mergeMutationQueues(sqliteRows, localRows), userId);
+  const mergedQueue = filterMutationsForUser(mergeMutationQueues(sqliteRows, localRows), userId);
+  await discardRetiredTransferMutations(userId, mergedQueue);
+  return mergedQueue.filter((item) => !isRetiredTransferMutation(item));
 }
 
 function notifyQueueChange() {
@@ -368,7 +419,16 @@ export async function processOutboxQueue() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
 
-  const userId = data.session?.user?.id;
+  let session = data?.session;
+  if (!session?.user?.id && isCurrentNetworkOnline()) {
+    try {
+      session = await restoreSupabaseSessionIfAvailable();
+    } catch (e) {
+      console.warn("Outbox queue session restore warning:", e);
+    }
+  }
+
+  const userId = session?.user?.id;
   if (!userId) return;
 
   const pending = await getPendingMutations(userId);

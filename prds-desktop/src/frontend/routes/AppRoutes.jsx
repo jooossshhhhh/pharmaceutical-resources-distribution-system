@@ -19,12 +19,12 @@ const ActivityLogsModule = lazy(() => import("@frontend/views/activity/ActivityL
 const FacilitiesModule = lazy(() => import("@frontend/views/facilities/FacilitiesModule"));
 const ForecastingModule = lazy(() => import("@frontend/views/forecasting/ForecastingModule"));
 const InventoryModule = lazy(() => import("@frontend/views/inventory/InventoryModule"));
+const StockReturnsModule = lazy(() => import("@frontend/views/stock-returns/StockReturnsModule"));
 const MedicinesModule = lazy(() => import("@frontend/views/medicines/MedicinesModule"));
 const NotificationsModule = lazy(() => import("@frontend/views/notifications/NotificationsModule"));
 const ProfileSettingsModule = lazy(() => import("@frontend/views/profile/ProfileSettingsModule"));
 const RequestsModule = lazy(() => import("@frontend/views/requests/RequestsModule"));
 const SuppliersModule = lazy(() => import("@frontend/views/suppliers/SuppliersModule"));
-const TransfersModule = lazy(() => import("@frontend/views/transfers/TransfersModule"));
 const UserManagementModule = lazy(() => import("@frontend/views/users/UserManagementModule"));
 const PatientsModule = lazy(() => import("@frontend/views/patients/PatientsModule"));
 const OtherProgramsModule = lazy(() => import("@frontend/views/other-programs/OtherProgramsModule"));
@@ -80,8 +80,16 @@ export default function AppRoutes() {
           />
           <Route path="/inventory" element={<InventoryModule />} />
           <Route path="/inventory-bhw" element={<Navigate to="/inventory" replace />} />
+          <Route
+            path="/stock-returns"
+            element={
+              <RoleGuard allowedRoles={["BHW", "PHARMA_I", "PHARMA_II"]}>
+                <StockReturnsModule />
+              </RoleGuard>
+            }
+          />
           <Route path="/requests" element={<RequestsModule />} />
-          <Route path="/transfers" element={<TransfersModule />} />
+          <Route path="/transfers" element={<Navigate to="/inventory" replace />} />
           <Route path="/forecasting" element={<ForecastingModule />} />
           <Route path="/notifications" element={<NotificationsModule />} />
           <Route path="/activity-logs" element={<ActivityLogsModule />} />

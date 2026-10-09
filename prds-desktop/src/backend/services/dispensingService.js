@@ -57,6 +57,7 @@ export const getWalkInInventory = async (facilityId) => {
         .from("inventory")
         .select(`
           id,
+          facility_id,
           medicine_id,
           supplier_id,
           quantity,
@@ -64,15 +65,20 @@ export const getWalkInInventory = async (facilityId) => {
           batch_number,
           date_received,
           expiration_date,
-          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure),
+          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost, categories),
           supplier:suppliers(id, supplier_name)
         `)
         .eq("facility_id", facilityId)
         .order("expiration_date", { ascending: true })
         .order("date_received", { ascending: true });
 
-      if (!error && data) {
-        return data;
+      if (!error && data && data.length > 0) {
+        const cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+        const medMap = new Map(cachedMedicines.map((m) => [m.id, m]));
+        return data.map((row) => ({
+          ...row,
+          medicine: row.medicine || medMap.get(row.medicine_id) || null,
+        }));
       }
     } catch (err) {
       console.warn("Online inventory fetch failed, falling back to snapshot:", err);
@@ -81,8 +87,15 @@ export const getWalkInInventory = async (facilityId) => {
 
   // Fallback to local snapshot
   const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+  const cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+  const medMap = new Map(cachedMedicines.map((m) => [m.id, m]));
+
   return cachedInventory
     .filter((inv) => !facilityId || String(inv.facility_id) === String(facilityId))
+    .map((inv) => ({
+      ...inv,
+      medicine: inv.medicine || medMap.get(inv.medicine_id) || null,
+    }))
     .sort((a, b) => (a.expiration_date || "").localeCompare(b.expiration_date || ""));
 };
 

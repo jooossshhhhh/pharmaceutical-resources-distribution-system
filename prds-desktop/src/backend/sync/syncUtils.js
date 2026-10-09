@@ -1,9 +1,37 @@
+import { AUTH_SESSION_REQUIRED_MESSAGE } from "../client/supabaseFetchGuard.js";
+
 const getErrorMessage = (error) => {
   if (!error) {
     return "Unknown error";
   }
 
   return error.message || String(error);
+};
+
+const isAuthSessionIssue = (error, text) =>
+  error?.code === "AUTH_SESSION_REQUIRED" ||
+  text.includes("auth_session_required") ||
+  text.includes(AUTH_SESSION_REQUIRED_MESSAGE.toLowerCase()) ||
+  text.includes("online session needs to be refreshed");
+
+const AUTH_SESSION_FRIENDLY_MESSAGE =
+  "Please sign in again to refresh your online session. Your saved local records remain available.";
+
+export const isMissingRelationError = (error, relationName = "") => {
+  const lower = `${error?.code || ""} ${error?.message || error || ""}`.toLowerCase();
+  const relation = String(relationName || "").toLowerCase();
+  const mentionsRelation = relation ? lower.includes(relation) : true;
+
+  return (
+    mentionsRelation &&
+    (lower.includes("42p01") ||
+      lower.includes("pgrst205") ||
+      lower.includes("does not exist") ||
+      lower.includes("schema cache") ||
+      lower.includes("could not find the table") ||
+      lower.includes("could not find") ||
+      lower.includes("relation "))
+  );
 };
 
 export const getSnapshotFailureMessage = (results, sourceNames = []) => {
@@ -55,16 +83,11 @@ export function formatFriendlySyncTime(isoString) {
 export function getFriendlySyncErrorMessage(rawError, pendingCount = 0) {
   const errStr = String(rawError || "").toLowerCase();
 
-  // 1. Snapshot / download refresh issues (specific to data sync download)
-  if (
-    errStr.includes("could not be refreshed") ||
-    errStr.includes("data source") ||
-    errStr.includes("snapshot")
-  ) {
-    return "Could not download the latest updates from the central server. Your local records remain accessible. Click to retry.";
+  if (isAuthSessionIssue(rawError, errStr)) {
+    return AUTH_SESSION_FRIENDLY_MESSAGE;
   }
 
-  // 2. Local updates waiting or queued (specific to outbox upload)
+  // 1. Local updates waiting or queued (specific to outbox upload)
   if (
     errStr.includes("waiting to sync") ||
     errStr.includes("failed to sync") ||
@@ -76,6 +99,15 @@ export function getFriendlySyncErrorMessage(rawError, pendingCount = 0) {
       return `${pendingCount} update${pendingCount === 1 ? " is" : "s are"} saved locally and waiting to sync. Click to retry.`;
     }
     return "Some updates could not be sent to the central server yet. They remain safe on this computer. Click to retry.";
+  }
+
+  // 2. Snapshot / download refresh issues (specific to data sync download)
+  if (
+    errStr.includes("could not be refreshed") ||
+    errStr.includes("data source") ||
+    errStr.includes("snapshot")
+  ) {
+    return "Could not download the latest updates from the central server. Your local records remain accessible. Click to retry.";
   }
 
   // 3. Cache / storage issues
@@ -166,6 +198,12 @@ export function getFriendlySyncTooltip({
 export function getFriendlyDashboardErrorMessage(error, hasFallback = true) {
   const errStr = String(error?.message || error || "").toLowerCase();
 
+  if (isAuthSessionIssue(error, errStr)) {
+    return hasFallback
+      ? "Please sign in again to refresh your online session. Showing your saved dashboard records."
+      : "Please sign in again to refresh your online session and load dashboard data.";
+  }
+
   const isNetworkIssue =
     errStr.includes("failed to fetch") ||
     errStr.includes("timeout") ||
@@ -224,6 +262,10 @@ export function formatUserFacingError(error, defaultMessage = "An unexpected err
 
   const msg = typeof error === "string" ? error : error?.message || String(error);
   const lower = `${String(error)} ${msg}`.toLowerCase();
+
+  if (isAuthSessionIssue(error, lower)) {
+    return AUTH_SESSION_FRIENDLY_MESSAGE;
+  }
 
   if (
     lower.includes("failed to fetch") ||
@@ -297,10 +339,10 @@ export function describeMutation(item = {}) {
     label = "Medicine Request";
     const num = payload.request_number || payload.id?.slice(0, 8) || "";
     description = num ? `Request #${num}` : "Barangay health station request";
-  } else if (target === "stock_transfers") {
-    label = "Stock Transfer";
-    const num = payload.transfer_number || payload.id?.slice(0, 8) || "";
-    description = num ? `Transfer #${num}` : "Inter-facility transfer";
+  } else if (target === "stock_returns") {
+    label = "Stock Return";
+    const num = payload.returnRecord?.return_slip_no || payload.return_slip_no || payload.id?.slice(0, 8) || "";
+    description = num ? `Return Slip #${num}` : "Barangay stock return";
   } else if (target === "other_programs") {
     label = "Special Program";
     description = payload.program_name || "Community health program";

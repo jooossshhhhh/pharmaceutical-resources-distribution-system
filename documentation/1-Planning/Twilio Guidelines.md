@@ -139,7 +139,7 @@ Before upgrading, you can test for free by adding your personal number:
 1. **Frontend Cooldown Timer:**
    * Enforce a strict **60-second countdown** on the PRDS Desktop UI before allowing the user to click "Resend OTP".
 2. **Database Profile Synchronization:**
-   * Review [SMS supabase setup.md](file:///d:/prds/documentation/1-Planning/SMS%20supabase%20setup.md) to ensure the database trigger `handle_new_auth_user_profile()` supports `new.phone` so authenticated users are saved in `public.profiles`.
+   * Ensure the Supabase database trigger `handle_new_auth_user_profile()` supports `new.phone` so phone-authenticated users are automatically created in `public.profiles`.
 3. **Role Gating:**
    * Newly verified phone accounts start in `status: 'PENDING'` until approved by a `PHARMA_II` (Admin).
 

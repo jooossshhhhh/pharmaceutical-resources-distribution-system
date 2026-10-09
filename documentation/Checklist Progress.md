@@ -2,15 +2,9 @@
 
 **Project:** Pharmaceutical Resources Distribution System (PRDS)  
 **Location:** City Health Office (CHO) of Naga, Cebu & 28 Barangay Health Stations (BHWs)  
-**Tracking Scope:** Implementation Tracking & Roadmap  
+**Tracking Scope:** Implementation Tracking & Documentation Roadmap  
 **File Location:** `documentation/Checklist Progress.md`  
-**Last Updated:** September 30, 2026  
-
----
-
-## Overview
-
-This checklist tracks the technical documentation, architectural specifications, and implementation guidelines formulated during recent planning and hardening sessions. The items below represent actionable blueprints scheduled for development and implementation.
+**Last Updated:** October 2026  
 
 ---
 
@@ -30,29 +24,20 @@ This checklist tracks the technical documentation, architectural specifications,
 * **Category:** Application Architecture
 * **Status:** ⏳ Pending Implementation (Scheduled for Development)
 * **Short Description:**  
-  Authoritative technical specification of PRDS's offline-first architecture (Cloud-Authoritative Outbox Pattern with Local SQLite Replication). Documents cloud-to-local replication, dual-layer storage (LevelDB fast snapshot store + SQLite `prds.db`), physical filesystem storage locations across Windows and Linux, and the Three-Zone Session Separation model (Zone 1: Supabase JWT/PKCE; Zone 2: Fast-Boot UI Profile Snapshot; Zone 3: SQLite domain records with zero stored credentials).
+  Authoritative technical specification of PRDS's offline-first architecture (Cloud-Authoritative Outbox Pattern with Local SQLite Replication). Documents cloud-to-local replication, dual-layer storage (LevelDB fast snapshot store + SQLite `prds.db`), physical filesystem storage locations across Windows and Linux, the Three-Zone Session Separation model, mutation lifecycle, and domain conflict resolution policies.
 
 ---
 
-### - [ ] 3. PRDS Offline and Online Sync Framework
-* **File Path:** [`./3-Application/PRDS Offline and Online Sync Framework.md`](file:///d:/prds/documentation/3-Application/PRDS%20Offline%20and%20Online%20Sync%20Framework.md)
-* **Category:** Application Architecture
-* **Status:** ⏳ Pending Implementation (Scheduled for Development)
+### - [x] 3. Report Module Components & Interpretation Guide
+* **File Path:** [`./3-Application/Report Module Components and Interpretation Guide.md`](file:///d:/prds/documentation/3-Application/Report%20Module%20Components%20and%20Interpretation%20Guide.md)
+* **Category:** Application Architecture & Clinical Reporting
+* **Status:** ✅ Completed Implementation
 * **Short Description:**  
-  Operational framework and module boundary definitions for offline data synchronization. Defines network status detection (`navigator.onLine` combined with active Supabase heartbeat pings), outbox queue synchronization flows, desktop client lifecycle hooks, and error-handling standards across the desktop application modules.
+  Technical component reference and clinical interpretation guide for the PRDS Desktop reporting system. Covers role-based access (`PHARMA_II`, `PHARMA_I`, `BHW`), Scope Switcher (`Daily RIS` vs `Monthly Physical Count`), 6-stage mathematical reconciliation formulas, interactive monthly ledger table, and low-level CFB/XML Excel generation matching official LGU templates (`inventory-form.xlsx` and `RIS-Template.xlsx`).
 
 ---
 
-### - [/] 4. Offline Sync Architecture Optimization Recommendations
-* **File Path:** [`./4-Logs/Offline Sync Architecture Recommendations - 2026-09-28.md`](file:///d:/prds/documentation/4-Logs/Offline%20Sync%20Architecture%20Recommendations%20-%202026-09-28.md)
-* **Category:** System Logs & Architecture Roadmap
-* **Status:** 🔄 In Progress (Phase 1 & Phase 2 Completed: SQLite Write Batching + Interactive Outbox Drawer UI)
-* **Short Description:**  
-  In-depth architectural review and optimization roadmap detailing 5 critical improvements to the offline sync pipeline: (1) Delta synchronization using `.gt('updated_at')` to replace full-table scans, (2) Batched SQLite transactions to prevent disk I/O thrashing (✅ Completed), (3) Floating Outbox Drawer UI for transparent sync feedback (✅ Completed), (4) Append-only clinical conflict resolution rules, and (5) Non-blocking background sync intervals.
-
----
-
-### - [x] 5. PRDS Input Validation, Rate Limiting, and Security Guidelines
+### - [x] 4. PRDS Input Validation, Rate Limiting, and Security Guidelines
 * **File Path:** [`./3-Application/PRDS Input Validation and Security Guidelines.md`](file:///d:/prds/documentation/3-Application/PRDS%20Input%20Validation%20and%20Security%20Guidelines.md)
 * **Category:** Application Security & UX Standards
 * **Status:** ✅ Completed Implementation
@@ -61,12 +46,21 @@ This checklist tracks the technical documentation, architectural specifications,
 
 ---
 
-### - [ ] 6. High-Priority Implementation Plan: Delta Sync & Clinical Conflict Resolution
+### - [x] 5. High-Priority Implementation Plan: Delta Sync & Clinical Conflict Resolution
 * **File Path:** [`./1-Planning/PRDS High Priority Implementation Plan - Delta Sync and Clinical Conflict Resolution.md`](file:///d:/prds/documentation/1-Planning/PRDS%20High%20Priority%20Implementation%20Plan%20-%20Delta%20Sync%20and%20Clinical%20Conflict%20Resolution.md)
 * **Category:** Planning & Core Engine Architecture
-* **Status:** 📋 Ready for Implementation (High Priority)
+* **Status:** ✅ Completed Implementation
 * **Short Description:**  
-  Comprehensive technical blueprint and database specifications for the two highest-priority offline sync optimizations: (1) **Incremental Delta Synchronization Engine** using SQLite `sync_metadata` watermarks, Supabase `.gt('updated_at')` queries, server-side `sync_tombstones` deletion tracking, and non-destructive transactional upserts replacing table wipes (slashing sync payload by ~99%); and (2) **Append-Only Clinical Conflict Resolution & Deficit Auditing Engine** enforcing the Clinical Primacy Axiom (physical patient dispensing can never be rejected), storing stock deficit discrepancies in `stock_deficit_audits`, and alerting the Chief Pharmacist (`PHARMA_II`) with a desktop reconciliation workflow.
+  Comprehensive technical blueprint and database specifications for offline sync optimizations: (1) **Incremental Delta Synchronization Engine** using SQLite `sync_metadata` watermarks, Supabase `.gt('updated_at')` queries, server-side `sync_tombstones` deletion tracking, and non-destructive transactional upserts replacing table wipes (slashing sync payload by ~99%); and (2) **Append-Only Clinical Conflict Resolution & Deficit Auditing Engine** enforcing the Clinical Primacy Axiom (physical patient dispensing can never be rejected), storing stock deficit discrepancies in `stock_deficit_audits`, and alerting the Chief Pharmacist (`PHARMA_II`) with a desktop reconciliation workflow.
+
+---
+
+### - [x] 6. Backend Audit & Commercial Inventory Segregation
+* **File Path:** [`./4-Logs/PRDS Backend Audit and Progress Report - October 2026.md`](file:///d:/prds/documentation/4-Logs/PRDS%20Backend%20Audit%20and%20Progress%20Report%20-%20October%202026.md)
+* **Category:** Architecture Audit & Data Decoupling
+* **Status:** ✅ Completed Implementation
+* **Short Description:**  
+  Authoritative audit and architecture documentation decoupling commercial Supplier procurement inventory from Barangay field returns. Covers `inventory` PO numbers & batch unit costs, dedicated `stock_returns` and `stock_return_items` custody schema with RLS policies, purging of legacy return batches, Tauri embedded SQLite replication (`prds.db` in WAL mode), 360-case automated test verification, and production desktop installer build.
 
 ---
 
@@ -74,10 +68,10 @@ This checklist tracks the technical documentation, architectural specifications,
 
 | Document | Primary Location | Focus Area | Status | Priority |
 |---|---|---|:---:|:---:|
-| **High-Priority Sync & Conflict Plan** | `1-Planning/` | Delta sync, clinical conflict resolution, deficit audits | 📋 Ready for Dev | **HIGH** |
-| **Twilio Guidelines** | `1-Planning/` | Phone OTP, Supabase integration, billing | ⏳ Pending | Medium |
-| **Sync Architecture** | `3-Application/` | Dual-layer storage, 3-zone session separation | ⏳ Pending | Medium |
-| **Sync Framework** | `3-Application/` | Network detection, outbox queue lifecycle | ⏳ Pending | Medium |
-| **Sync Recommendations** | `4-Logs/` | Delta sync, transaction batching, roadmap | 🔄 In Progress (Phase 1 & 2 Done) | Tracking |
+| **Backend Audit & Stock Returns** | `4-Logs/` | Commercial inventory vs stock returns, SQLite, build audit | ✅ Completed | Hardened |
+| **High-Priority Sync & Conflict Plan** | `1-Planning/` | Delta sync, clinical conflict resolution, deficit audits | ✅ Completed | Hardened |
+| **Report Module Guide** | `3-Application/` | Daily RIS vs Monthly Count, reconciliation math, Excel export | ✅ Completed | Hardened |
 | **Validation & Security** | `3-Application/` | Phone/password rules, avatar limits & cooldown, FEFO | ✅ Completed | Hardened |
+| **Sync Architecture** | `3-Application/` | Dual-layer storage, 3-zone session, lifecycle, conflict rules | ⏳ Pending | Medium |
+| **Twilio Guidelines** | `1-Planning/` | Phone OTP, Supabase integration, billing | ⏳ Pending | Medium |
 

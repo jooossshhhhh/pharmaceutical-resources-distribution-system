@@ -1,4 +1,5 @@
 import { formatPeso } from "@shared/utils/reportUtils";
+import { Pill, CircleDollarSign, Boxes, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 export default function ReportSummaryCards({ kpis }) {
   const {
@@ -16,83 +17,113 @@ export default function ReportSummaryCards({ kpis }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 flex-1">
       {/* Card 1: Medicines Dispensed Today */}
-      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-emerald-300 transition-colors flex flex-col justify-between">
-        <div>
-          <span className="text-[11.5px] font-semibold tracking-wide text-[#42474e] uppercase">
-            Medicines Dispensed Today
-          </span>
-          <div className="text-2xl font-bold text-[#0d1117] mt-1.5">
-            {dispensedToday.totalUnits.toLocaleString()}{" "}
-            <span className="text-sm font-medium text-[#42474e]">Units</span>
+      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-emerald-300 transition-all flex flex-col justify-between">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+              Medicines Dispensed Today
+            </span>
+            <div className="text-2xl font-black text-[#0d1117] mt-1.5">
+              {dispensedToday.totalUnits.toLocaleString()}{" "}
+              <span className="text-xs font-semibold text-[#5f6673]">Units</span>
+            </div>
+          </div>
+          <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-100">
+            <Pill className="h-4 w-4" />
           </div>
         </div>
-        <p className="text-[11.5px] text-[#42474e] mt-2.5">
-          Walk-in Patients: <span className="font-semibold text-[#0d1117]">{dispensedToday.walkInUnits}</span> | Barangay Centers:{" "}
-          <span className="font-semibold text-[#0d1117]">{dispensedToday.bhwUnits}</span>
+        <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
+          Walk-in: <span className="font-bold text-blue-700">{dispensedToday.walkInUnits.toLocaleString()}</span> | Barangays:{" "}
+          <span className="font-bold text-emerald-700">{dispensedToday.bhwUnits.toLocaleString()}</span>
         </p>
       </div>
 
       {/* Card 2: Total Medicine Cost */}
-      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-emerald-300 transition-colors flex flex-col justify-between">
-        <div>
-          <span className="text-[11.5px] font-semibold tracking-wide text-[#42474e] uppercase">
-            Total Medicine Cost
-          </span>
-          <div className="text-2xl font-bold text-[#0d1117] mt-1.5">
-            {formatPeso(totalMedicineCost)}
+      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-blue-300 transition-all flex flex-col justify-between">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+              Total Medicine Cost
+            </span>
+            <div className="text-2xl font-black text-[#0d1117] mt-1.5">
+              {formatPeso(totalMedicineCost)}
+            </div>
+          </div>
+          <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+            <CircleDollarSign className="h-4 w-4" />
           </div>
         </div>
-        <p className="text-[11.5px] text-[#42474e] mt-2.5">
-          Cost of medicines given out today
+        <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
+          Value of medicines distributed today
         </p>
       </div>
 
       {/* Card 3: Total Remaining Stock */}
-      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-emerald-300 transition-colors flex flex-col justify-between">
-        <div>
-          <span className="text-[11.5px] font-semibold tracking-wide text-[#42474e] uppercase">
-            Total Remaining Stock
-          </span>
-          <div className="text-2xl font-bold text-[#0d1117] mt-1.5">
-            {formatPeso(totalRemainingStockValue)}
+      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+              Total Remaining Stock
+            </span>
+            <div className="text-2xl font-black text-[#0d1117] mt-1.5">
+              {formatPeso(totalRemainingStockValue)}
+            </div>
+          </div>
+          <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0 border border-indigo-100">
+            <Boxes className="h-4 w-4" />
           </div>
         </div>
-        <p className="text-[11.5px] text-[#42474e] mt-2.5">
-          Total value of available medicines in stock
+        <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
+          Active valuation of warehouse inventory
         </p>
       </div>
 
       {/* Card 4: Low Stock Warning */}
-      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-emerald-300 transition-colors flex flex-col justify-between">
-        <div>
-          <span className="text-[11.5px] font-semibold tracking-wide text-[#42474e] uppercase">
-            Low Stock Warning
-          </span>
-          <div className="mt-1.5">
-            {!hasStockData ? (
-              <span className="text-2xl font-bold text-[#42474e]">
-                No data
-              </span>
-            ) : stockHealth.lowStockCount > 0 ? (
-              <span className="text-2xl font-bold text-amber-600">
-                {stockHealth.lowStockCount}{" "}
-                <span className="text-base font-semibold">
-                  {stockHealth.lowStockCount === 1 ? "Medicine Low" : "Medicines Low"}
+      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-amber-300 transition-all flex flex-col justify-between">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+              Stock Safety Health
+            </span>
+            <div className="mt-1.5">
+              {!hasStockData ? (
+                <span className="text-2xl font-black text-[#5f6673]">
+                  No data
                 </span>
-              </span>
+              ) : stockHealth.lowStockCount > 0 ? (
+                <span className="text-2xl font-black text-amber-600">
+                  {stockHealth.lowStockCount}{" "}
+                  <span className="text-sm font-bold text-amber-700">
+                    {stockHealth.lowStockCount === 1 ? "Medicine Low" : "Medicines Low"}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-2xl font-black text-[#00a36c]">
+                  All Healthy
+                </span>
+              )}
+            </div>
+          </div>
+          <div
+            className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 border ${
+              stockHealth.lowStockCount > 0
+                ? "bg-amber-50 text-amber-700 border-amber-200"
+                : "bg-emerald-50 text-emerald-700 border-emerald-200"
+            }`}
+          >
+            {stockHealth.lowStockCount > 0 ? (
+              <AlertTriangle className="h-4 w-4" />
             ) : (
-              <span className="text-2xl font-bold text-[#00a36c]">
-                All Stocks Healthy
-              </span>
+              <CheckCircle2 className="h-4 w-4" />
             )}
           </div>
         </div>
-        <p className="text-[11.5px] text-[#42474e] mt-2.5 truncate">
+        <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5] truncate">
           {!hasStockData
             ? "No inventory records available"
             : stockHealth.lowStockNames?.length > 0
             ? `${stockHealth.lowStockNames.join(", ")} need restocking`
-            : "No items below threshold"}
+            : "All medicines above safety threshold"}
         </p>
       </div>
     </div>

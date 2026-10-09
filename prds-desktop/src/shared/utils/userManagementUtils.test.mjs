@@ -15,6 +15,8 @@ import {
 
 const navItems = [
   { label: "Dashboard", path: "/dashboard" },
+  { label: "Stock Returns", path: "/stock-returns" },
+  { label: "Transfers", path: "/transfers" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
   { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"] },
   { label: "Suppliers", path: "/suppliers", roles: ["PHARMA_II"] },
@@ -33,6 +35,18 @@ test("only CHO roles can access the facilities module", () => {
   assert.equal(canAccessModule("BHW", "/facilities"), false);
 });
 
+test("all operational roles can access the stock returns module", () => {
+  assert.equal(canAccessModule("PHARMA_I", "/stock-returns"), true);
+  assert.equal(canAccessModule("PHARMA_II", "/stock-returns"), true);
+  assert.equal(canAccessModule("BHW", "/stock-returns"), true);
+});
+
+test("the retired transfer module is unavailable to all roles", () => {
+  assert.equal(canAccessModule("PHARMA_I", "/transfers"), false);
+  assert.equal(canAccessModule("PHARMA_II", "/transfers"), false);
+  assert.equal(canAccessModule("BHW", "/transfers"), false);
+});
+
 test("only Pharma II can access the suppliers module", () => {
   assert.equal(canAccessModule("PHARMA_I", "/suppliers"), false);
   assert.equal(canAccessModule("PHARMA_II", "/suppliers"), true);
@@ -42,17 +56,17 @@ test("only Pharma II can access the suppliers module", () => {
 test("filters role-restricted navigation items", () => {
   assert.deepEqual(
     getAllowedNavItems(navItems, "PHARMA_I").map((item) => item.label),
-    ["Dashboard", "Facilities", "Notifications"]
+    ["Dashboard", "Stock Returns", "Facilities", "Notifications"]
   );
 
   assert.deepEqual(
     getAllowedNavItems(navItems, "PHARMA_II").map((item) => item.label),
-    ["Dashboard", "User Management", "Facilities", "Suppliers", "Notifications"]
+    ["Dashboard", "Stock Returns", "User Management", "Facilities", "Suppliers", "Notifications"]
   );
 
   assert.deepEqual(
     getAllowedNavItems(navItems, "BHW").map((item) => item.label),
-    ["Dashboard", "Notifications"]
+    ["Dashboard", "Stock Returns", "Notifications"]
   );
 });
 
@@ -119,3 +133,16 @@ test("filters users by search, status, and role", () => {
     ["3"]
   );
 });
+
+test("filters users by facility", () => {
+  assert.deepEqual(
+    filterUsers(users, { facilityFilter: "NONE" }).map((user) => user.id),
+    ["3"]
+  );
+
+  assert.deepEqual(
+    filterUsers(users, { facilityFilter: "ALL" }).map((user) => user.id),
+    ["1", "2", "3"]
+  );
+});
+

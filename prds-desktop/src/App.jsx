@@ -10,6 +10,14 @@ function App() {
         console.warn("Unable to initialize the local database:", error);
       });
     }
+
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", handleContextMenu);
+    return () => {
+      document.removeEventListener("contextmenu", handleContextMenu);
+    };
   }, []);
 
   const [isPinned, setIsPinned] = useState(() => {

@@ -8,6 +8,7 @@ import {
   filterMutationsForUser,
   getFailedMutationCount,
   getPendingMutations,
+  isRetiredTransferMutation,
   mergeMutationQueues,
   retryFailedMutations,
 } from "./outboxQueue.js";
@@ -93,6 +94,38 @@ test("getFailedMutationCount includes terminal local queue failures", async () =
     };
 
     assert.equal(await getFailedMutationCount(), 1);
+  } finally {
+    globalThis.localStorage = originalStorage;
+  }
+});
+
+test("retired stock transfer mutations are discarded from the local outbox", async () => {
+  const originalStorage = globalThis.localStorage;
+  const stored = new Map([
+    ["prds_desktop_user_session", JSON.stringify({ id: "user-1" })],
+    ["prds_desktop_user_profile", JSON.stringify({ id: "user-1" })],
+    ["prds_offline_outbox_queue", JSON.stringify([
+      { id: "failed-transfer", user_id: "user-1", status: "FAILED", target: "stock_transfers" },
+      { id: "failed-rpc", user_id: "user-1", status: "FAILED", target: "submit_bhw_stock_transfer_request" },
+      { id: "failed-inventory", user_id: "user-1", status: "FAILED", target: "inventory" },
+    ])],
+  ]);
+
+  try {
+    globalThis.localStorage = {
+      getItem: (key) => stored.get(key) || null,
+      setItem: (key, value) => stored.set(key, value),
+      get length() { return stored.size; },
+      key: (index) => [...stored.keys()][index] || null,
+    };
+
+    assert.equal(isRetiredTransferMutation({ target: "stock_transfer_items" }), true);
+    assert.equal(isRetiredTransferMutation({ target: "inventory" }), false);
+    assert.equal(await getFailedMutationCount(), 1);
+    assert.deepEqual(
+      JSON.parse(stored.get("prds_offline_outbox_queue")).map((item) => item.id),
+      ["failed-inventory"]
+    );
   } finally {
     globalThis.localStorage = originalStorage;
   }

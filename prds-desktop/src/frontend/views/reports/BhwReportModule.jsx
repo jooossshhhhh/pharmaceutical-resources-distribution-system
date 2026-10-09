@@ -246,6 +246,7 @@ export default function BhwReportModule() {
         dispensingRows,
         requestRows,
         selectedDate,
+        facilityName,
       });
     } catch (err) {
       console.error("Export RIS failed:", err);

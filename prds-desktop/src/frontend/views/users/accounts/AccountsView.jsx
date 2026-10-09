@@ -4,6 +4,7 @@ export default function AccountsView({
   currentPage,
   isLoading,
   onPageChange,
+  onQuickApprove,
   onSelectUser,
   pageSize,
   totalCount,
@@ -15,6 +16,7 @@ export default function AccountsView({
       currentPage={currentPage}
       isLoading={isLoading}
       onPageChange={onPageChange}
+      onQuickApprove={onQuickApprove}
       onSelectUser={onSelectUser}
       pageSize={pageSize}
       totalCount={totalCount}

@@ -110,4 +110,7 @@
 * 2026-dispensing-walk-in-rpcs.sql
 * 2026-dispensing-performance-indexes.sql
 * 2026-backend-audit-hardening.sql
+* 2026-correct-cho-facility-name.sql
+* 2026-inventory-po-number-and-unit-cost.sql
+* 2026-inventory-stock-returns-and-disposal.sql
 

@@ -140,11 +140,34 @@ export const dataClient = {
               [record.id, record.request_number || record.id?.slice(0, 8), record.facility_id, record.status, jsonStr, record.updated_at || record.request_date || new Date().toISOString(), record.is_synced ?? 1]
             );
             break;
-          case "transfers":
-          case "stock_transfers":
+          case "stock_returns":
             await db.execute(
-              "INSERT OR REPLACE INTO transfers (id, transfer_number, source_facility_id, target_facility_id, status, data_json, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.transfer_number || record.id?.slice(0, 8), record.source_facility_id, record.destination_facility_id || record.target_facility_id, record.status, jsonStr, record.updated_at || record.transfer_date || new Date().toISOString(), record.is_synced ?? 1]
+              `INSERT OR REPLACE INTO stock_returns (
+                id, lot_no, medicine_id, medicine_name, brand_name, quantity, unit_cost,
+                expiration_date, reason, facility_id, status, submitted_by_id, verified_by_id,
+                submitted_at, verified_at, data_json, created_at, updated_at, is_synced
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                record.id,
+                record.lot_no,
+                record.medicine_id,
+                record.medicine_name,
+                record.brand_name,
+                record.quantity,
+                record.unit_cost,
+                record.expiration_date,
+                record.reason,
+                record.facility_id,
+                record.status,
+                record.submitted_by_id,
+                record.verified_by_id,
+                record.submitted_at,
+                record.verified_at,
+                jsonStr,
+                record.created_at || new Date().toISOString(),
+                record.updated_at || new Date().toISOString(),
+                record.is_synced ?? 1,
+              ]
             );
             break;
           case "other_programs":
@@ -196,8 +219,7 @@ export const dataClient = {
       medicine_dispensing: STORAGE_KEYS.DISPENSING,
       requests: STORAGE_KEYS.REQUESTS,
       medicine_requests: STORAGE_KEYS.REQUESTS,
-      transfers: STORAGE_KEYS.TRANSFERS,
-      stock_transfers: STORAGE_KEYS.TRANSFERS,
+      stock_returns: STORAGE_KEYS.STOCK_RETURNS,
       other_programs: STORAGE_KEYS.OTHER_PROGRAMS,
       forecasting: STORAGE_KEYS.FORECASTING,
       profiles: STORAGE_KEYS.USERS,

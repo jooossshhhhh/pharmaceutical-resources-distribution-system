@@ -82,6 +82,11 @@ const getNotificationMeta = (category) => {
       tone: "blue",
       icon: <TransferIcon />,
     },
+    facility: {
+      label: "Facility",
+      tone: "teal",
+      icon: <FacilityIcon />,
+    },
     system: {
       label: "System",
       tone: "emerald",
@@ -143,6 +148,7 @@ export default function NotificationsModule() {
     let lowStock = 0;
     let requests = 0;
     let transfers = 0;
+    let facility = 0;
     let system = 0;
 
     for (const notification of visibleNotifications) {
@@ -151,10 +157,11 @@ export default function NotificationsModule() {
       if (cat === "low_stock") lowStock++;
       else if (cat === "requests") requests++;
       else if (cat === "transfers") transfers++;
+      else if (cat === "facility") facility++;
       else system++;
     }
 
-    return { total, unread, lowStock, requests, transfers, system };
+    return { total, unread, lowStock, requests, transfers, facility, system };
   }, [visibleNotifications]);
 
   // Count active advanced filters
@@ -548,6 +555,30 @@ export default function NotificationsModule() {
                   {counts.transfers}
                 </span>
               </button>
+
+              {/* Facility Pill */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCategory((prev) => (prev === "facility" ? "all" : "facility"));
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                  category === "facility"
+                    ? "bg-teal-700 text-white shadow-xs"
+                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-teal-50 hover:text-teal-800"
+                }`}
+              >
+                <span>Facility</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                    category === "facility"
+                      ? "bg-white/20"
+                      : "bg-neutral-200/80 text-neutral-700"
+                  }`}
+                >
+                  {counts.facility}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -886,8 +917,8 @@ function NotificationCard({
             <AuditMetaRow
               items={[
                 getFullName(notification),
-                roleLabels[notification.recipient_role] || "No role",
-                notification.facility_name || "No facility",
+                roleLabels[notification.recipient_role] || "All Roles",
+                notification.facility_name || "All Facilities",
                 notification.is_read ? "Read" : "Unread",
               ]}
             />
@@ -1078,7 +1109,7 @@ function NotificationDetailModal({
                 {getFullName(notification)}
               </p>
               <p className="text-xs text-neutral-500 font-medium">
-                {roleLabels[notification.recipient_role] || "All roles"}
+                {roleLabels[notification.recipient_role] || "All Roles"}
               </p>
             </div>
           </div>
@@ -1240,6 +1271,14 @@ function SystemIcon() {
     <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
       <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-2 .4l-.1.1a1.7 1.7 0 0 0-.5 1.2V22h-4v-.1a1.7 1.7 0 0 0-.5-1.2l-.1-.1a1.7 1.7 0 0 0-2-.4l-.2.1-2-3.4.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H4v-4h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 2-.4l.1-.1A1.7 1.7 0 0 0 10.2 2V2h4v.1a1.7 1.7 0 0 0 .5 1.2l.1.1a1.7 1.7 0 0 0 2 .4l.2-.1 2 3.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4h-.2a1.7 1.7 0 0 0-1.6 1Z" />
+    </svg>
+  );
+}
+
+function FacilityIcon({ className = "h-5 w-5" }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+      <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1" />
     </svg>
   );
 }

@@ -6,10 +6,12 @@ import {
   buildCategoryForecastRows,
   buildForecastInterpretation,
   buildInventoryCoverageRows,
+  buildMedicineActionFindings,
   buildMedicineChartSeries,
   buildMonthlyConsumptionRows,
   calculateLinearRegression,
   getInventoryRisk,
+  getReliabilityMeta,
 } from "./forecastingUtils.js";
 
 const medicineA = {
@@ -200,4 +202,40 @@ test("buildForecastAnalytics returns 0 avgRSquared when there are no valid regre
   assert.equal(analytics.avgRSquared, 0);
   assert.equal(analytics.totalProjectedDemand, 0);
   assert.equal(analytics.increasingCount, 0);
+});
+
+test("getReliabilityMeta returns plain-language confidence labels", () => {
+  assert.equal(getReliabilityMeta(0.85, 4).label, "High");
+  assert.equal(getReliabilityMeta(0.5, 3).label, "Moderate");
+  assert.equal(getReliabilityMeta(0.2, 3).label, "Limited");
+  assert.equal(getReliabilityMeta(0.9, 1).label, "Needs Data");
+  assert.equal(getReliabilityMeta(null, 3).label, "Needs Data");
+});
+
+test("buildMedicineActionFindings calculates plain runout, reorder recommendation, and pace", () => {
+  const criticalFindings = buildMedicineActionFindings({
+    stockQuantity: 10,
+    threshold: 50,
+    nextMonthDemand: 60,
+    slope: 15,
+    historicalSeries: [{ key: "2026-01", value: 45 }, { key: "2026-02", value: 60 }],
+  });
+
+  assert.equal(criticalFindings.runout.severity, "critical");
+  assert.match(criticalFindings.runout.label, /Days of Supply Left/);
+  assert.equal(criticalFindings.action.type, "reorder");
+  assert.match(criticalFindings.action.label, /Request \+/);
+  assert.match(criticalFindings.pace.label, /Rising/);
+
+  const ampleFindings = buildMedicineActionFindings({
+    stockQuantity: 500,
+    threshold: 50,
+    nextMonthDemand: 0,
+    slope: 0,
+    historicalSeries: [{ key: "2026-01", value: 0 }],
+  });
+
+  assert.equal(ampleFindings.runout.severity, "normal");
+  assert.match(ampleFindings.runout.label, /Ample Stock/);
+  assert.equal(ampleFindings.action.type, "neutral");
 });

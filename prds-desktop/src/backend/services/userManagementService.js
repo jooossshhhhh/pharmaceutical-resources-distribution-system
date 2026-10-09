@@ -119,6 +119,25 @@ export const updateManagedUser = async ({ adminId, payload, user }) => {
         });
       }
 
+      const actionTitle =
+        payload.status === "ACTIVE" && user.status !== "ACTIVE"
+          ? "User Account Approved"
+          : payload.status === "DEACTIVATED" && user.status !== "DEACTIVATED"
+            ? "User Account Deactivated"
+            : "User Account Updated";
+
+      const userName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "User";
+      const logDetails = `${userName} (${payload.role}) status set to ${payload.status}.`;
+
+      if (adminId) {
+        await supabase.from("activity_logs").insert({
+          user_id: adminId,
+          action: actionTitle,
+          module: "User Account",
+          details: logDetails,
+        });
+      }
+
       return adminId;
     } catch (onlineErr) {
       console.warn("Online user update failed, queuing for offline background push:", onlineErr);
@@ -132,6 +151,30 @@ export const updateManagedUser = async ({ adminId, payload, user }) => {
     target: "profiles",
     payload: { id: user.id, values: payload },
   });
+
+  const actionTitle =
+    payload.status === "ACTIVE" && user.status !== "ACTIVE"
+      ? "User Account Approved"
+      : payload.status === "DEACTIVATED" && user.status !== "DEACTIVATED"
+        ? "User Account Deactivated"
+        : "User Account Updated";
+
+  const userName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "User";
+  const logDetails = `${userName} (${payload.role}) status set to ${payload.status}.`;
+
+  if (adminId) {
+    await enqueueMutation({
+      userId: adminId,
+      mutationType: "INSERT",
+      target: "activity_logs",
+      payload: {
+        user_id: adminId,
+        action: actionTitle,
+        module: "User Account",
+        details: logDetails,
+      },
+    });
+  }
 
   if (payload.status === "ACTIVE" && user.status !== "ACTIVE") {
     await enqueueMutation({

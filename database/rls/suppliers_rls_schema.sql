@@ -9,7 +9,7 @@ Controls access to supplier records.
 Business Rules:
 1. Only Pharma II can view, create, update, and delete
    supplier records. Supplier management is a
-   Central Health Office (CHO) admin task.
+   City Health Office (CHO) admin task.
 2. PHARMA_I and BHW cannot access supplier records
    directly. Inventory views that join suppliers run
    with the view owner's privileges and are unaffected.

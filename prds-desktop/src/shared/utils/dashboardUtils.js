@@ -1,3 +1,5 @@
+import { formatFacilityName } from "./facilityFormat.js";
+
 export const emptyStats = {
   stockedBatches: 0,
   dispensedThisMonth: 0,
@@ -9,18 +11,20 @@ export const emptyStats = {
 };
 
 export const getDashboardRoleConfig = ({ role, facilityName = "", facilityCode = "" } = {}) => {
+  const normalizedFacilityName = formatFacilityName(facilityName).trim();
+
   if (role === "BHW") {
     return {
       role,
       canReviewUsers: false,
       coverageLabel: "Assigned Facility Coverage",
       requestLabel: "My Facility Requests",
-      scopeLabel: facilityName
-        ? `${facilityName} facility view`
+      scopeLabel: normalizedFacilityName
+        ? `${normalizedFacilityName} facility view`
         : "Assigned facility view",
       subtitle:
         facilityCode || "Monitor requests, stock risks, and forecast trends for your assigned facility.",
-      title: facilityName || "Facility Dashboard",
+      title: normalizedFacilityName || "Facility Dashboard",
     };
   }
 
@@ -33,7 +37,7 @@ export const getDashboardRoleConfig = ({ role, facilityName = "", facilityCode =
       scopeLabel: "CHO operations monitoring",
       subtitle:
         facilityCode || "Track medicine requests, facility stock health, and distribution activity.",
-      title: facilityName || "CHO Operations",
+      title: normalizedFacilityName || "City Health Office - City of Naga",
     };
   }
 
@@ -42,10 +46,10 @@ export const getDashboardRoleConfig = ({ role, facilityName = "", facilityCode =
     canReviewUsers: true,
     coverageLabel: "City of Naga Health Center Coverage",
     requestLabel: "System Request Queue",
-    scopeLabel: "System-wide CHO oversight",
+    scopeLabel: null,
     subtitle:
       facilityCode || "Review requests, approvals, stock risks, forecasting, and facility activity.",
-    title: facilityName || "Admin Overview",
+    title: normalizedFacilityName || "City Health Office - City of Naga",
   };
 };
 

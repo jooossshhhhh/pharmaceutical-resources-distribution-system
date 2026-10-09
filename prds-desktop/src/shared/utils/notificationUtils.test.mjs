@@ -197,3 +197,12 @@ test("normalizes notification read updates from object and legacy arguments", ()
     { notificationId: "n-2", isRead: false, profileId: "user-2" }
   );
 });
+
+test("detects facility category from notification content", () => {
+  const facilityNotif = {
+    id: "fac-1",
+    title: "Facility Supply Allocation",
+    message: "New supply allocated to Main Health Center station.",
+  };
+  assert.equal(getNotificationCategory(facilityNotif), "facility");
+});

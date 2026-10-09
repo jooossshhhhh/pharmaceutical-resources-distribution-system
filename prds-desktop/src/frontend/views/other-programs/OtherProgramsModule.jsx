@@ -103,7 +103,7 @@ export default function OtherProgramsModule() {
         id, facility_id, program_name, program_date, description, status, completed_at, cancelled_at,
         medicines:program_medicines(
           id, medicine_id, quantity_used,
-          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure)
+          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost)
         )
       `).order("program_date", { ascending: false }),
       supabase.from("inventory").select("id, facility_id, medicine_id, quantity, expiration_date, medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure)").eq("facility_id", profile?.facility_id || "").gt("quantity", 0),

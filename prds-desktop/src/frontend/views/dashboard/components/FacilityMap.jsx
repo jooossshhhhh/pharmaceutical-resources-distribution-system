@@ -5,7 +5,6 @@ import { MapContainer, Marker, Popup, TileLayer, Tooltip, ZoomControl, useMap } 
 import L from "leaflet";
 import {
   AlertCircle,
-  ArrowRightLeft,
   Boxes,
   Building2,
   CheckCircle2,
@@ -962,7 +961,7 @@ export default function FacilityMap({
 
           {/* Quick Actions Footer */}
           <div className="border-t border-neutral-100 bg-neutral-50/70 p-3 space-y-1.5">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -977,21 +976,6 @@ export default function FacilityMap({
               >
                 <Boxes className="h-3.5 w-3.5 text-emerald-700" />
                 Inventory
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  navigate("/transfers", {
-                    state: {
-                      destFacilityId: inspectorFacility.id,
-                      facilityName: inspectorFacility.facility_name,
-                    },
-                  });
-                }}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-xs font-black text-neutral-700 shadow-xs transition hover:bg-neutral-100"
-              >
-                <ArrowRightLeft className="h-3.5 w-3.5 text-blue-700" />
-                Transfer
               </button>
             </div>
 

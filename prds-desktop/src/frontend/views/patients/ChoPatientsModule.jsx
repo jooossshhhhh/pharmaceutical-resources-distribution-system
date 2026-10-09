@@ -78,6 +78,7 @@ export default function ChoPatientsModule() {
           isCho
           loadPatients={loadPatients}
           patients={patients}
+          profile={profile}
         />
       )}
     </AdminShell>

@@ -7,6 +7,7 @@ import {
   buildMedicineOptions,
   buildWalkInRpcPayload,
   deductWalkInInventoryFefo,
+  filterAndSortMedicineOptions,
   FOLLOW_UP_ACTIONS,
   formatDispensingDayParts,
   formatTransactionNumber,
@@ -131,6 +132,32 @@ test("buildMedicineOptions aggregates non-expired batches per medicine in FEFO o
     paracetamol.batches.map((batch) => batch.batch_number),
     ["BATCH-A", "BATCH-B"]
   );
+});
+
+test("buildMedicineOptions strictly excludes expired and zero-stock inventory entries", () => {
+  const testRows = [
+    {
+      id: "batch-expired-1",
+      medicine_id: "med-expired",
+      quantity: 50,
+      batch_number: "BATCH-EXP",
+      expiration_date: "2024-05-15",
+      medicine: { generic_name: "Expired Med", brand_name: null, dosage: "500mg", unit_of_measure: "tablet" },
+    },
+    {
+      id: "batch-valid-1",
+      medicine_id: "med-valid",
+      quantity: 25,
+      batch_number: "BATCH-OK",
+      expiration_date: futureDate(60),
+      medicine: { generic_name: "Active Med", brand_name: null, dosage: "500mg", unit_of_measure: "tablet" },
+    },
+  ];
+
+  const options = buildMedicineOptions(testRows, "");
+  assert.equal(options.length, 1);
+  assert.equal(options[0].medicine_id, "med-valid");
+  assert.equal(options.find((opt) => opt.medicine_id === "med-expired"), undefined);
 });
 
 test("buildMedicineOptions filters by keyword across name fields", () => {
@@ -640,5 +667,37 @@ test("groupHistoryByTransaction assigns SCHEDULED, REFERRED, and COMPLETED statu
   assert.equal(matchesHistoryFilters({ status: "SCHEDULED", transaction: doneTx }), false);
   assert.equal(matchesHistoryFilters({ status: "COMPLETED", transaction: doneTx }), true);
   assert.equal(matchesHistoryFilters({ status: "REFERRED", transaction: refTx }), true);
+});
+
+test("filterAndSortMedicineOptions filters by keyword, form, stock level, and sorts properly", () => {
+  const options = buildMedicineOptions(inventoryRows, ""); // paracetamol (35 units, tablet), amoxicillin (40 units, capsule)
+
+  // Keyword filter
+  const kwResult = filterAndSortMedicineOptions({ options, keyword: "para" });
+  assert.equal(kwResult.length, 1);
+  assert.equal(kwResult[0].medicine_id, "med-1");
+
+  // Form filter
+  const tabletResult = filterAndSortMedicineOptions({ options, formFilter: "tablet" });
+  assert.equal(tabletResult.length, 1);
+  assert.equal(tabletResult[0].medicine_id, "med-1");
+
+  const capsuleResult = filterAndSortMedicineOptions({ options, formFilter: "capsule" });
+  assert.equal(capsuleResult.length, 1);
+  assert.equal(capsuleResult[0].medicine_id, "med-2");
+
+  // Sort by name
+  const asc = filterAndSortMedicineOptions({ options, sortBy: "NAME_ASC" });
+  assert.equal(asc[0].medicine.generic_name, "Amoxicillin");
+  assert.equal(asc[1].medicine.generic_name, "Paracetamol");
+
+  const desc = filterAndSortMedicineOptions({ options, sortBy: "NAME_DESC" });
+  assert.equal(desc[0].medicine.generic_name, "Paracetamol");
+  assert.equal(desc[1].medicine.generic_name, "Amoxicillin");
+
+  // Sort by stock
+  const stockDesc = filterAndSortMedicineOptions({ options, sortBy: "STOCK_DESC" });
+  assert.equal(stockDesc[0].total_quantity, 40); // Amoxicillin (40)
+  assert.equal(stockDesc[1].total_quantity, 35); // Paracetamol (35)
 });
 

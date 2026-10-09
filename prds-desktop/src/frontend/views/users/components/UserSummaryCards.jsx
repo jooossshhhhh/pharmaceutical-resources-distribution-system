@@ -50,11 +50,15 @@ export default function UserSummaryCards({ onSelectStatus, statusFilter, summary
               <p className="text-2xl font-black tracking-tight text-[#0d1117] leading-none">
                 {card.value}
               </p>
-              {card.active && (
+              {card.active ? (
                 <span className="rounded-full bg-[#6be9c2]/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#0d1117]">
                   Selected
                 </span>
-              )}
+              ) : card.id === "pending" && card.value > 0 ? (
+                <span className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                  Review
+                </span>
+              ) : null}
             </div>
             <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-neutral-500">
               {card.label}

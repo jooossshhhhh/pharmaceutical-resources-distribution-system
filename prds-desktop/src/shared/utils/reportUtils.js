@@ -285,7 +285,7 @@ export const aggregateTopMedicines = ({
           resolvedMedsMap = new Map(list.map((m) => [String(m.id), m]));
         }
       }
-    } catch {}
+    } catch { }
   }
 
   const getMedUnitCost = (r) => {
@@ -410,7 +410,7 @@ export const aggregateDailyDispensingTrend = ({
           resolvedMedsMap = new Map(list.map((m) => [String(m.id), m]));
         }
       }
-    } catch {}
+    } catch { }
   }
 
   const getMedUnitCost = (r) => {
@@ -467,4 +467,383 @@ export const aggregateDailyDispensingTrend = ({
     ...item,
     formattedDay: `${item.day}`,
   }));
+};
+
+/**
+ * Aggregates monthly dispensing distribution across the 3 primary channels:
+ * 1. Medicine Requests (Barangay Health Stations / Facilities)
+ * 2. Walk-in in the CHO (Direct Patient Dispensing)
+ * 3. Other Programs (Special Area Allocations & Health Missions)
+ */
+export const aggregateMonthlyDispensingDistribution = ({
+  dispensingRows = [],
+  requestRows = [],
+  otherProgramsRows = [],
+  year = new Date().getFullYear(),
+  month = new Date().getMonth() + 1,
+  medicinesMap = null,
+}) => {
+  const targetMonthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+
+  let resolvedMedsMap = medicinesMap;
+  if (!resolvedMedsMap && typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem("prds_snapshot_medicines");
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          resolvedMedsMap = new Map(list.map((m) => [String(m.id), m]));
+        }
+      }
+    } catch { }
+  }
+
+  const getMedUnitCost = (r) => {
+    let cost = Number(r.unit_cost ?? r.medicine?.unit_cost);
+    if (!isNaN(cost) && cost > 0) return cost;
+    const medId = String(r.medicine_id || r.medicine?.id || "");
+    if (resolvedMedsMap && medId) {
+      const found = resolvedMedsMap.get ? resolvedMedsMap.get(medId) : resolvedMedsMap[medId];
+      if (found) {
+        const foundCost = Number(found.unit_cost);
+        if (!isNaN(foundCost) && foundCost > 0) return foundCost;
+      }
+    }
+    return 0;
+  };
+
+  // 1. Walk-in in the CHO
+  let walkInUnits = 0;
+  let walkInCost = 0;
+  dispensingRows.forEach((r) => {
+    if (r.voided_at) return;
+    const dateKey = toDateKey(r.dispense_date || r.created_at);
+    if (!dateKey.startsWith(targetMonthPrefix)) return;
+    const qty = Number(r.quantity) || 0;
+    const unitCost = getMedUnitCost(r);
+    walkInUnits += qty;
+    walkInCost += qty * unitCost;
+  });
+
+  // 2. Medicine Requests (Barangays)
+  let requestUnits = 0;
+  let requestCost = 0;
+  requestRows.forEach((req) => {
+    if (req.status !== "COMPLETED") return;
+    const dateKey = toDateKey(
+      req.approved_at || req.received_at || req.updated_at || req.request_date
+    );
+    if (!dateKey.startsWith(targetMonthPrefix)) return;
+    const items = req.items || [];
+    items.forEach((item) => {
+      const qty = Number(item.quantity) || 0;
+      const unitCost = getMedUnitCost(item);
+      requestUnits += qty;
+      requestCost += qty * unitCost;
+    });
+  });
+
+  // 3. Other Programs
+  let otherProgramUnits = 0;
+  let otherProgramCost = 0;
+  otherProgramsRows.forEach((prog) => {
+    if (prog.status === "CANCELLED") return;
+    const dateKey = toDateKey(
+      prog.program_date || prog.completed_at || prog.created_at
+    );
+    if (!dateKey.startsWith(targetMonthPrefix)) return;
+    const meds = prog.medicines || [];
+    meds.forEach((m) => {
+      const qty = Number(m.quantity_used || m.quantity) || 0;
+      const unitCost = Number(m.unit_cost ?? m.medicine?.unit_cost ?? 0);
+      otherProgramUnits += qty;
+      otherProgramCost += qty * unitCost;
+    });
+  });
+
+  const totalUnits = walkInUnits + requestUnits + otherProgramUnits;
+  const totalCost = walkInCost + requestCost + otherProgramCost;
+
+  const channels = [
+    {
+      id: "requests",
+      name: "Medicine Requests",
+      description: "Barangay Health Stations",
+      units: requestUnits,
+      cost: requestCost,
+      percentage: totalUnits > 0 ? Number(((requestUnits / totalUnits) * 100).toFixed(1)) : 0,
+      color: "#00a36c", // Emerald / PRDS Brand
+    },
+    {
+      id: "walk_in",
+      name: "Walk-in",
+      description: "CHO Pharmacy Dispensing",
+      units: walkInUnits,
+      cost: walkInCost,
+      percentage: totalUnits > 0 ? Number(((walkInUnits / totalUnits) * 100).toFixed(1)) : 0,
+      color: "#2563eb", // Royal Blue
+    },
+    {
+      id: "other_programs",
+      name: "Other Programs",
+      description: "Special Allocations & Missions",
+      units: otherProgramUnits,
+      cost: otherProgramCost,
+      percentage: totalUnits > 0 ? Number(((otherProgramUnits / totalUnits) * 100).toFixed(1)) : 0,
+      color: "#8b5cf6", // Purple
+    },
+  ];
+
+  return {
+    channels,
+    totalUnits,
+    totalCost,
+  };
+};
+
+/**
+ * Aggregates dispensing volume and cost by hour of day for the selected date.
+ * Focuses on dispensary operating hours (8:00 AM to 5:00 PM) while dynamically
+ * including any outside-hours transactions if recorded.
+ */
+export const aggregateHourlyDispensingFlow = ({
+  dispensingRows = [],
+  requestRows = [],
+  selectedDate = new Date(),
+}) => {
+  const targetDateKey = toDateKey(selectedDate);
+  const hourlySlots = {};
+
+  // Standard dispensary working hours: 8 AM to 5 PM (8 to 17)
+  for (let h = 8; h <= 17; h++) {
+    hourlySlots[h] = {
+      hour: h,
+      label: h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`,
+      units: 0,
+      walkInUnits: 0,
+      bhwUnits: 0,
+      cost: 0,
+      transactions: 0,
+    };
+  }
+
+  // 1. Process Walk-ins
+  dispensingRows.forEach((row) => {
+    if (row.voided_at) return;
+    const rawTime = row.dispense_date || row.created_at;
+    if (!rawTime) return;
+    if (toDateKey(rawTime) !== targetDateKey) return;
+
+    const d = new Date(rawTime);
+    if (isNaN(d.getTime())) return;
+    const hour = d.getHours();
+
+    if (!hourlySlots[hour]) {
+      hourlySlots[hour] = {
+        hour,
+        label: hour === 0 ? "12 AM" : hour === 12 ? "12 PM" : hour < 12 ? `${hour} AM` : `${hour - 12} PM`,
+        units: 0,
+        walkInUnits: 0,
+        bhwUnits: 0,
+        cost: 0,
+        transactions: 0,
+      };
+    }
+
+    const qty = Number(row.quantity) || 0;
+    const unitCost = Number(row.medicine?.unit_cost ?? row.unit_cost ?? 0);
+    hourlySlots[hour].units += qty;
+    hourlySlots[hour].walkInUnits += qty;
+    hourlySlots[hour].cost += qty * unitCost;
+    hourlySlots[hour].transactions += 1;
+  });
+
+  // 2. Process Completed Barangay Requests
+  requestRows.forEach((req) => {
+    if (req.status !== "COMPLETED") return;
+    const rawTime = req.approved_at || req.received_at || req.updated_at || req.request_date;
+    if (!rawTime) return;
+    if (toDateKey(rawTime) !== targetDateKey) return;
+
+    const d = new Date(rawTime);
+    if (isNaN(d.getTime())) return;
+    const hour = d.getHours();
+
+    if (!hourlySlots[hour]) {
+      hourlySlots[hour] = {
+        hour,
+        label: hour === 0 ? "12 AM" : hour === 12 ? "12 PM" : hour < 12 ? `${hour} AM` : `${hour - 12} PM`,
+        units: 0,
+        walkInUnits: 0,
+        bhwUnits: 0,
+        cost: 0,
+        transactions: 0,
+      };
+    }
+
+    const items = req.items || [];
+    items.forEach((item) => {
+      const qty = Number(item.quantity) || 0;
+      const unitCost = Number(item.medicine?.unit_cost ?? item.unit_cost ?? 0);
+      hourlySlots[hour].units += qty;
+      hourlySlots[hour].bhwUnits += qty;
+      hourlySlots[hour].cost += qty * unitCost;
+    });
+    hourlySlots[hour].transactions += 1;
+  });
+
+  // Convert to sorted array
+  const sortedHours = Object.keys(hourlySlots)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const hoursData = sortedHours.map((h) => ({
+    ...hourlySlots[h],
+    cost: Number(hourlySlots[h].cost.toFixed(2)),
+  }));
+
+  const totalUnits = hoursData.reduce((sum, h) => sum + h.units, 0);
+  const totalCost = hoursData.reduce((sum, h) => sum + h.cost, 0);
+
+  // Identify peak hour
+  let peakHour = null;
+  let maxUnits = 0;
+  hoursData.forEach((h) => {
+    if (h.units > maxUnits) {
+      maxUnits = h.units;
+      peakHour = h;
+    }
+  });
+
+  return {
+    hours: hoursData,
+    totalUnits,
+    totalCost,
+    peakHour: maxUnits > 0 ? peakHour : null,
+  };
+};
+
+/**
+ * Extracts and formats all dispensing and allocation transactions for the selected date.
+ * Returns a sorted array (newest to oldest) suitable for on-screen table viewing and search.
+ */
+export const getDailyDispensingTransactions = ({
+  dispensingRows = [],
+  requestRows = [],
+  selectedDate = new Date(),
+  medicinesMap = null,
+}) => {
+  const targetDateKey = toDateKey(selectedDate);
+  const transactions = [];
+
+  const formatTime = (dateInput) => {
+    if (!dateInput) return "--:--";
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return "--:--";
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(d);
+  };
+
+  // 1. Walk-in rows
+  dispensingRows.forEach((row) => {
+    if (row.voided_at) return;
+    const rawTime = row.dispense_date || row.created_at;
+    if (!rawTime) return;
+    if (toDateKey(rawTime) !== targetDateKey) return;
+
+    const p = row.patient || {};
+    const patientName = [p.first_name, p.last_name].filter(Boolean).join(" ") || "Walk-in Patient";
+    const patientCode = p.patient_code || "";
+    const med = row.medicine || {};
+    const generic = (med.generic_name || row.generic_name || "").trim();
+    const dosage = (med.dosage || row.dosage || "").trim();
+    const brand = (med.brand_name || row.brand_name || "").trim();
+    const desc = formatItemDescription(generic, dosage);
+    const qty = Number(row.quantity) || 0;
+    const unitCost = Number(med.unit_cost ?? row.unit_cost ?? 0);
+    const doctor = row.prescribed_by?.trim() || "Attending Physician";
+    const dispenser = row.dispenser
+      ? [row.dispenser.first_name, row.dispenser.last_name].filter(Boolean).join(" ")
+      : row.manual_dispensed_by || "CHO Pharmacist";
+
+    transactions.push({
+      id: `walkin-${row.id}`,
+      rawTime,
+      timeFormatted: formatTime(rawTime),
+      channel: "Walk-in",
+      channelType: "walk_in",
+      recipient: patientName,
+      recipientSub: patientCode,
+      medicineName: desc,
+      brandName: brand,
+      quantity: qty,
+      unit: med.unit_of_measure || row.unit_of_measure || "units",
+      unitCost,
+      totalCost: qty * unitCost,
+      prescribedBy: doctor,
+      dispensedBy: dispenser,
+      batchNumber: row.batch?.batch_number || "-",
+      facility: "CHO Pharmacy",
+    });
+  });
+
+  // 2. Completed Barangay Requisition rows
+  requestRows.forEach((req) => {
+    if (req.status !== "COMPLETED") return;
+    const rawTime = req.approved_at || req.received_at || req.updated_at || req.request_date;
+    if (!rawTime) return;
+    if (toDateKey(rawTime) !== targetDateKey) return;
+
+    const facilityName = (
+      req.facility?.facility_name ||
+      req.destination_facility_name ||
+      "Barangay Health Station"
+    ).toUpperCase();
+
+    const items = req.items || [];
+    items.forEach((item, idx) => {
+      const med =
+        item.medicine ||
+        (medicinesMap?.get ? medicinesMap.get(item.medicine_id) : null) ||
+        {};
+      const generic = (med.generic_name || item.generic_name || "").trim();
+      const dosage = (med.dosage || item.dosage || "").trim();
+      const brand = (med.brand_name || item.brand_name || "").trim();
+      const desc = formatItemDescription(generic, dosage);
+      const qty = Number(item.quantity) || 0;
+      const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
+
+      transactions.push({
+        id: `bhw-${req.id}-${item.id || idx}`,
+        rawTime,
+        timeFormatted: formatTime(rawTime),
+        channel: "Barangay Request",
+        channelType: "requests",
+        recipient: facilityName,
+        recipientSub: req.request_number || "RIS Request",
+        medicineName: desc,
+        brandName: brand,
+        quantity: qty,
+        unit: med.unit_of_measure || item.unit_of_measure || "units",
+        unitCost,
+        totalCost: qty * unitCost,
+        prescribedBy: "Requisition Slip",
+        dispensedBy: "CHO Supply Center",
+        batchNumber: "Warehouse Batch",
+        facility: facilityName,
+      });
+    });
+  });
+
+  // Sort newest first
+  transactions.sort((a, b) => {
+    const timeA = new Date(a.rawTime).getTime() || 0;
+    const timeB = new Date(b.rawTime).getTime() || 0;
+    return timeB - timeA;
+  });
+
+  return transactions;
 };

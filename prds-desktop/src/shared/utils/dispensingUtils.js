@@ -180,6 +180,7 @@ export const getDefaultFollowUpDate = (today = new Date()) => {
 export const buildMedicineOptions = (inventoryRows, keyword = "") => {
   const term = (keyword || "").trim().toLowerCase();
   const medicines = new Map();
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   inventoryRows.forEach((row) => {
     if (!row.medicine_id || !row.medicine) {
@@ -196,28 +197,34 @@ export const buildMedicineOptions = (inventoryRows, keyword = "") => {
     }
 
     const entry = medicines.get(row.medicine_id);
+    const isExpired = row.expiration_date ? row.expiration_date.slice(0, 10) <= todayStr : false;
 
-    if (Number(row.quantity || 0) > 0 && new Date(row.expiration_date) > new Date()) {
+    if (Number(row.quantity || 0) > 0 && !isExpired) {
       entry.batches.push(row);
       entry.total_quantity += Number(row.quantity || 0);
     }
   });
 
   const options = Array.from(medicines.values())
-    .map((entry) => ({
-      ...entry,
-      batches: entry.batches.sort((batchA, batchB) => {
+    .map((entry) => {
+      const sortedBatches = entry.batches.sort((batchA, batchB) => {
         if (batchA.expiration_date !== batchB.expiration_date) {
-          return batchA.expiration_date < batchB.expiration_date ? -1 : 1;
+          return (batchA.expiration_date || "") < (batchB.expiration_date || "") ? -1 : 1;
         }
 
         if (batchA.date_received !== batchB.date_received) {
-          return batchA.date_received < batchB.date_received ? -1 : 1;
+          return (batchA.date_received || "") < (batchB.date_received || "") ? -1 : 1;
         }
 
-        return batchA.id < batchB.id ? -1 : 1;
-      }),
-    }))
+        return String(batchA.id) < String(batchB.id) ? -1 : 1;
+      });
+
+      return {
+        ...entry,
+        batches: sortedBatches,
+        nearest_expiration: sortedBatches[0]?.expiration_date || "",
+      };
+    })
     .filter((entry) => entry.total_quantity > 0);
 
   if (!term) {
@@ -230,10 +237,78 @@ export const buildMedicineOptions = (inventoryRows, keyword = "") => {
       entry.medicine.brand_name,
       entry.medicine.dosage,
       entry.medicine.unit_of_measure,
+      ...(entry.medicine.categories || []),
+      ...entry.batches.map((b) => b.batch_number),
     ]
       .filter(Boolean)
       .some((field) => String(field).toLowerCase().includes(term))
   );
+};
+
+export const filterAndSortMedicineOptions = ({
+  options = [],
+  keyword = "",
+  formFilter = "ALL",
+  stockFilter = "ALL",
+  sortBy = "NAME_ASC",
+}) => {
+  let result = options;
+
+  const term = (keyword || "").trim().toLowerCase();
+  if (term) {
+    result = result.filter((entry) =>
+      [
+        entry.medicine?.generic_name,
+        entry.medicine?.brand_name,
+        entry.medicine?.dosage,
+        entry.medicine?.unit_of_measure,
+        ...(entry.medicine?.categories || []),
+        ...(entry.batches || []).map((b) => b.batch_number),
+      ]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(term))
+    );
+  }
+
+  if (formFilter && formFilter !== "ALL") {
+    const fLower = formFilter.toLowerCase();
+    result = result.filter((entry) => {
+      const unit = (entry.medicine?.unit_of_measure || "").toLowerCase();
+      const dosage = (entry.medicine?.dosage || "").toLowerCase();
+      return unit === fLower || unit.includes(fLower) || dosage.includes(fLower);
+    });
+  }
+
+  if (stockFilter === "LOW") {
+    result = result.filter((entry) => (entry.total_quantity || 0) <= 10);
+  } else if (stockFilter === "NORMAL") {
+    result = result.filter((entry) => (entry.total_quantity || 0) > 10);
+  }
+
+  return [...result].sort((a, b) => {
+    if (sortBy === "NAME_ASC") {
+      const nameA = (a.medicine?.generic_name || "").toLowerCase();
+      const nameB = (b.medicine?.generic_name || "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    }
+    if (sortBy === "NAME_DESC") {
+      const nameA = (a.medicine?.generic_name || "").toLowerCase();
+      const nameB = (b.medicine?.generic_name || "").toLowerCase();
+      return nameB.localeCompare(nameA);
+    }
+    if (sortBy === "STOCK_DESC") {
+      return (b.total_quantity || 0) - (a.total_quantity || 0);
+    }
+    if (sortBy === "STOCK_ASC") {
+      return (a.total_quantity || 0) - (b.total_quantity || 0);
+    }
+    if (sortBy === "EXPIRY_ASC") {
+      const expA = a.nearest_expiration || a.batches?.[0]?.expiration_date || "9999-12-31";
+      const expB = b.nearest_expiration || b.batches?.[0]?.expiration_date || "9999-12-31";
+      return expA.localeCompare(expB);
+    }
+    return 0;
+  });
 };
 
 export const buildFefoPreview = (batches, requestedQuantity) => {

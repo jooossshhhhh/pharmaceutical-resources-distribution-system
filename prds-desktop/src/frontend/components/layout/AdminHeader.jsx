@@ -40,7 +40,6 @@ const pageTitles = {
     subtitle: "View stock levels and consumption",
   },
   "/requests": { title: "Request", subtitle: "Review and process medicine requests" },
-  "/transfers": { title: "Transfer", subtitle: "Track stock movement across facilities" },
   "/dispensing": { title: "Dispensing", subtitle: "Monitor patient medicine dispensing" },
   "/medicines": {
     title: "Medicine Catalog",

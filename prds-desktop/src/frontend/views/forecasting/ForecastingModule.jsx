@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Activity,
+  Clock,
   Download,
   Filter,
+  PackageCheck,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -19,6 +22,7 @@ import {
   buildCategoryForecastRows,
   buildForecastAnalytics,
   buildForecastingCsv,
+  buildMedicineActionFindings,
   buildMedicineChartSeries,
 } from "@shared/utils/forecastingUtils";
 import { parseMedicineCategories } from "@shared/utils/medicineUtils";
@@ -130,7 +134,7 @@ export default function ForecastingModule() {
                 medicine_id,
                 quantity,
                 threshold,
-                facility:facilities(facility_name),
+                facility:facilities!inventory_facility_id_fkey(facility_name),
                 medicine:medicines(generic_name, brand_name, dosage, unit_of_measure, categories)
               `)
               .order("quantity", { ascending: true })
@@ -304,6 +308,11 @@ export default function ForecastingModule() {
     });
   }, [monthHorizon, selectedRow]);
 
+  // Plain-language action findings for selected medicine
+  const actionFindings = useMemo(() => {
+    return buildMedicineActionFindings(selectedRow);
+  }, [selectedRow]);
+
   // Export Excel handler
   const handleExportExcel = () => {
     const csvContent = buildForecastingCsv(
@@ -357,56 +366,68 @@ export default function ForecastingModule() {
 
         {/* 2. Top 4 KPI Metric Cards */}
         <section className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
-          {/* Card 1: Total Projected Demand */}
+          {/* Card 1: Total Expected Demand */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
             <div>
               <p className="text-2xl font-black tracking-tight text-[#00a36c]">
                 {formatNumber(analytics.totalProjectedDemand ?? 0)}
               </p>
-              <p className="mt-1 text-xs font-bold text-slate-800">Total Projected Demand</p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Total Expected Demand</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
                 next {monthHorizon} months · {filteredTrendRows.length} items
               </p>
             </div>
           </div>
 
-          {/* Card 2: Stockout Risk Items */}
+          {/* Card 2: Medicines Running Low */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
             <div>
               <p className="text-2xl font-black tracking-tight text-amber-600">
                 {analytics.stockoutRiskCount ?? 0}
               </p>
-              <p className="mt-1 text-xs font-bold text-slate-800">Stockout Risk Items</p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Medicines Running Low</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                {analytics.stockoutRiskPercent ?? 0}% of filtered
+                {analytics.stockoutRiskPercent ?? 0}% of filtered items
               </p>
             </div>
           </div>
 
-          {/* Card 3: Increasing Trend */}
+          {/* Card 3: Rising Demand Items */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
             <div>
               <p className="text-2xl font-black tracking-tight text-[#0d1117]">
                 {analytics.increasingCount ?? 0}
               </p>
-              <p className="mt-1 text-xs font-bold text-slate-800">Increasing Trend</p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Rising Demand Items</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                positive slope detected
+                usage climbing month-over-month
               </p>
             </div>
           </div>
 
-          {/* Card 4: Avg R² */}
+          {/* Card 4: Forecast Reliability */}
           <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm shadow-slate-200/40">
             <div>
-              <p className="text-2xl font-black tracking-tight text-blue-600">
-                {analytics.avgRSquared != null && analytics.avgRSquared > 0
-                  ? Number(analytics.avgRSquared).toFixed(3)
-                  : "0.000"}
+              <p
+                className={`text-2xl font-black tracking-tight ${
+                  analytics.avgRSquared >= 0.7
+                    ? "text-[#00a36c]"
+                    : analytics.avgRSquared >= 0.35
+                    ? "text-blue-600"
+                    : "text-slate-600"
+                }`}
+              >
+                {analytics.avgRSquared >= 0.7
+                  ? "High"
+                  : analytics.avgRSquared >= 0.35
+                  ? "Moderate"
+                  : "Needs Data"}
               </p>
-              <p className="mt-1 text-xs font-bold text-slate-800">Avg R²</p>
+              <p className="mt-1 text-xs font-bold text-slate-800">Forecast Reliability</p>
               <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                regression fit quality
+                {analytics.avgRSquared > 0
+                  ? `avg R² ${Number(analytics.avgRSquared).toFixed(3)}`
+                  : "based on historical consistency"}
               </p>
             </div>
           </div>
@@ -502,13 +523,15 @@ export default function ForecastingModule() {
                       : "Select a medicine"}
                   </h2>
                   <p className="mt-0.5 text-xs font-medium text-slate-500">
-                    {selectedRow?.facilityName || selectedFacilityLabel} · slope{" "}
-                    {selectedRow && selectedRow.slope >= 0 ? "+" : ""}
-                    {selectedRow?.slope != null ? Number(selectedRow.slope).toFixed(1) : "0.0"}
-                    /mo · R²{" "}
-                    {selectedRow?.rSquared != null
-                      ? Number(selectedRow.rSquared).toFixed(3)
-                      : "0.000"}
+                    {selectedRow?.facilityName || selectedFacilityLabel} · Monthly Change:{" "}
+                    <span className="font-bold text-slate-700">
+                      {selectedRow && selectedRow.slope > 0 ? "+" : ""}
+                      {selectedRow?.slope != null ? Number(selectedRow.slope).toFixed(1) : "0.0"}/mo
+                    </span>
+                    {" "}· Reliability:{" "}
+                    <span className="font-bold text-slate-700">
+                      {selectedRow?.reliabilityMeta?.label || (selectedRow?.rSquared >= 0.7 ? "High" : selectedRow?.rSquared >= 0.35 ? "Moderate" : "Needs Data")}
+                    </span>
                   </p>
                 </div>
 
@@ -527,10 +550,94 @@ export default function ForecastingModule() {
                 )}
               </div>
 
-              {/* Projection Chart */}
+              {/* Projection Chart with Stock and Buffer Lines */}
               <div className="mt-3">
-                <ForecastingProjectionChart data={chartSeriesData} height={310} />
+                <ForecastingProjectionChart
+                  data={chartSeriesData}
+                  currentStock={selectedRow?.stockQuantity}
+                  threshold={selectedRow?.threshold}
+                  height={290}
+                />
               </div>
+
+              {/* Plain-Language Action Findings Strip */}
+              {selectedRow && (
+                <div className="mt-3.5 grid grid-cols-1 gap-2.5 border-t border-slate-100 pt-3 sm:grid-cols-3">
+                  {/* Box 1: Estimated Runout */}
+                  <div
+                    className={`rounded-xl border p-3 ${
+                      actionFindings.runout.severity === "critical"
+                        ? "border-red-200 bg-red-50/60"
+                        : actionFindings.runout.severity === "warning"
+                        ? "border-amber-200 bg-amber-50/60"
+                        : "border-slate-200/80 bg-slate-50/70"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                      <Clock className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Estimated Runout</span>
+                    </div>
+                    <p
+                      className={`mt-1 text-sm font-black ${
+                        actionFindings.runout.severity === "critical"
+                          ? "text-red-700"
+                          : actionFindings.runout.severity === "warning"
+                          ? "text-amber-700"
+                          : "text-slate-800"
+                      }`}
+                    >
+                      {actionFindings.runout.label}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                      {actionFindings.runout.subtext}
+                    </p>
+                  </div>
+
+                  {/* Box 2: Recommended Action */}
+                  <div
+                    className={`rounded-xl border p-3 ${
+                      actionFindings.action.type === "emergency"
+                        ? "border-red-200 bg-red-50/60"
+                        : actionFindings.action.type === "reorder"
+                        ? "border-emerald-200 bg-emerald-50/60"
+                        : "border-slate-200/80 bg-slate-50/70"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                      <PackageCheck className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Recommended Action</span>
+                    </div>
+                    <p
+                      className={`mt-1 text-sm font-black ${
+                        actionFindings.action.type === "emergency"
+                          ? "text-red-700"
+                          : actionFindings.action.type === "reorder"
+                          ? "text-emerald-700"
+                          : "text-slate-800"
+                      }`}
+                    >
+                      {actionFindings.action.label}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                      {actionFindings.action.subtext}
+                    </p>
+                  </div>
+
+                  {/* Box 3: Monthly Usage Pace */}
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
+                    <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                      <Activity className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Monthly Usage Pace</span>
+                    </div>
+                    <p className="mt-1 text-sm font-black text-slate-800">
+                      {actionFindings.pace.label}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                      {actionFindings.pace.subtext}
+                    </p>
+                  </div>
+                </div>
+              )}
             </section>
           </div>
         </section>

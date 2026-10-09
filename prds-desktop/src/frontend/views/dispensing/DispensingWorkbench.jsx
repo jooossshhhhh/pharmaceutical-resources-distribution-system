@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
+import { supabase } from "@backend/client/supabase";
+import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
 import {
   calculateAge,
   formatPatientCode,
@@ -21,6 +23,7 @@ import {
   buildDispensingCsv,
   buildFefoPreview,
   buildMedicineOptions,
+  filterAndSortMedicineOptions,
   FOLLOW_UP_ACTIONS,
   formatDispensingDateTime,
   formatTransactionNumber,
@@ -199,7 +202,15 @@ function ReceiptModal({ onClose, onExport, receipt }) {
 
 export default function DispensingWorkbench() {
   const { profile } = useAuth();
-  const profileFacilityId = profile?.facility_id;
+  const isBhw = profile?.role === "BHW";
+  const profileFacilityId = useMemo(() => {
+    if (profile?.facility_id) return profile.facility_id;
+    const cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+    const cho = cachedFacilities.find(
+      (f) => f.facility_code === "CHO-NAGA" || f.facility_type === "CHO"
+    );
+    return cho?.id || null;
+  }, [profile?.facility_id]);
 
   // Wizard step
   const [wizardStep, setWizardStep] = useState(1);
@@ -267,6 +278,31 @@ export default function DispensingWorkbench() {
     };
   }, [loadInventory]);
 
+  // Keep inventory fresh when arriving at the Medicines selection step
+  useEffect(() => {
+    if (wizardStep === 2) {
+      loadInventory();
+    }
+  }, [wizardStep, loadInventory]);
+
+  // Sync with live inventory changes across facilities/modules
+  useEffect(() => {
+    const channel = supabase
+      .channel("dispensing-inventory-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inventory" },
+        () => {
+          loadInventory();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadInventory]);
+
   const runPatientSearch = useCallback(async () => {
     const term = patientKeyword.trim();
 
@@ -283,6 +319,7 @@ export default function DispensingWorkbench() {
     try {
       const rows = await searchDispensingPatients({
         keyword: term,
+        facilityId: isBhw ? profileFacilityId : null,
       });
       setPatientResults(rows);
 
@@ -302,7 +339,7 @@ export default function DispensingWorkbench() {
     } finally {
       setIsSearchingPatients(false);
     }
-  }, [patientKeyword]);
+  }, [patientKeyword, isBhw, profileFacilityId]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -323,22 +360,38 @@ export default function DispensingWorkbench() {
     return () => window.clearTimeout(timerId);
   }, [wizardStep]);
 
-  const medicineOptions = useMemo(
-    () => buildMedicineOptions(inventoryRows, medicineKeyword),
-    [inventoryRows, medicineKeyword]
+  // All eligible available non-expired stock in facility inventory
+  const allAvailableMedicines = useMemo(
+    () => buildMedicineOptions(inventoryRows, ""),
+    [inventoryRows]
   );
 
   const optionsById = useMemo(
-    () => new Map(medicineOptions.map((option) => [option.medicine_id, option])),
-    [medicineOptions]
+    () => new Map(allAvailableMedicines.map((option) => [option.medicine_id, option])),
+    [allAvailableMedicines]
   );
+
+  // Only display medicine cards when the user is actively searching
+  const isSearchActive = Boolean(medicineKeyword.trim());
+
+  const displayedMedicineOptions = useMemo(() => {
+    if (!isSearchActive) {
+      return [];
+    }
+
+    return filterAndSortMedicineOptions({
+      options: allAvailableMedicines,
+      keyword: medicineKeyword,
+      sortBy: "NAME_ASC",
+    });
+  }, [isSearchActive, allAvailableMedicines, medicineKeyword]);
 
   const cartLines = useMemo(
     () =>
       cart.map((line) => {
         const option =
           optionsById.get(line.medicine_id) ||
-          buildMedicineOptions(inventoryRows, "").find((entry) => entry.medicine_id === line.medicine_id) ||
+          allAvailableMedicines.find((entry) => entry.medicine_id === line.medicine_id) ||
           null;
 
         const patientClaim = line.is_existing_claim
@@ -359,7 +412,7 @@ export default function DispensingWorkbench() {
           preview: option ? buildFefoPreview(option.batches, line.quantity) : { allocations: [], shortfall: 0 },
         };
       }),
-    [cart, inventoryRows, optionsById]
+    [cart, allAvailableMedicines, optionsById]
   );
 
   const selectedClaimed = selectedPatient ? claimedIds.has(selectedPatient.id) : false;
@@ -1222,12 +1275,14 @@ export default function DispensingWorkbench() {
                         <h3 className="text-sm font-bold text-[#0d1117]">Available medicines</h3>
                         <p className="mt-0.5 text-xs text-[#5f6673]">Select from current facility stock.</p>
                       </div>
-                      <span className="rounded-full bg-[#f7f6f3] px-2.5 py-1 text-xs font-bold text-[#5f6673] tabular-nums">
-                        {medicineOptions.length.toLocaleString()} shown
+                      <span className="rounded-full bg-[#f7f6f3] border border-[#d8dadc] px-2.5 py-1 text-xs font-semibold text-[#5f6673] tabular-nums">
+                        {isSearchActive
+                          ? `${displayedMedicineOptions.length.toLocaleString()} matching`
+                          : `${allAvailableMedicines.length.toLocaleString()} in stock`}
                       </span>
                     </div>
 
-                    <label className="relative block">
+                    <div className="relative">
                       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
                         <SearchIcon />
                       </span>
@@ -1235,16 +1290,26 @@ export default function DispensingWorkbench() {
                         value={medicineKeyword}
                         onChange={(event) => setMedicineKeyword(event.target.value)}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" && medicineOptions[0]) {
+                          if (event.key === "Enter" && displayedMedicineOptions[0]) {
                             event.preventDefault();
-                            addToCart(medicineOptions[0]);
+                            addToCart(displayedMedicineOptions[0]);
                           }
                         }}
-                        placeholder="Search available medicine, brand, dosage..."
-                        title="Press Enter to add the closest match"
-                        className="pl-9"
+                        placeholder="Search available medicine, brand, dosage, lot..."
+                        title="Type to search and select available stock"
+                        className="pl-9 pr-8"
                       />
-                    </label>
+                      {medicineKeyword && (
+                        <button
+                          type="button"
+                          onClick={() => setMedicineKeyword("")}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#8a93a3] hover:text-[#0d1117] rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                          aria-label="Clear search"
+                        >
+                          <XIcon />
+                        </button>
+                      )}
+                    </div>
 
                     {isLoadingInventory ? (
                       <div className="mt-3">
@@ -1253,15 +1318,41 @@ export default function DispensingWorkbench() {
                           Loading available medicine stock
                         </div>
                       </div>
+                    ) : !isSearchActive ? (
+                      /* Prompt state when user hasn't typed in search or picked a filter */
+                      <div className="mt-3 flex flex-col items-center justify-center rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff]/70 px-4 py-12 text-center">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 shadow-xs mb-3">
+                          <SearchIcon />
+                        </div>
+                        <h4 className="text-sm font-bold text-[#0d1117]">Search to view medicines</h4>
+                        <p className="mt-1 max-w-sm text-xs text-[#5f6673]">
+                          Type a medicine name, brand, dosage, or form above to view available stock and add to the claim.
+                        </p>
+                        <div className="mt-3.5 inline-flex items-center gap-2 rounded-full border border-[#d8dadc] bg-white px-3 py-1 text-xs text-[#42474e]">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>
+                            {allAvailableMedicines.length}{" "}
+                            {allAvailableMedicines.length === 1 ? "medicine" : "medicines"} available in facility stock
+                          </span>
+                        </div>
+                      </div>
                     ) : (
+                      /* Matching results when search or filter is active */
                       <div className="mt-3 grid max-h-[520px] gap-2 overflow-auto pr-1 xl:grid-cols-2">
-                        {medicineOptions.map((option) => {
+                        {displayedMedicineOptions.map((option) => {
                           const inCart = cart.some((line) => line.medicine_id === option.medicine_id);
                           const lowStock = option.total_quantity <= 10;
                           const existingClaimItem = activePatientClaim?.breakdown?.find(
                             (b) => b.medicine_id === option.medicine_id
                           );
                           const isCompletedForMonth = existingClaimItem?.is_completed;
+                          const expDate = option.nearest_expiration
+                            ? new Date(option.nearest_expiration).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })
+                            : null;
 
                           return (
                             <button
@@ -1286,6 +1377,11 @@ export default function DispensingWorkbench() {
                                   <p className="mt-1 text-xs text-[#5f6673]">
                                     {getMedicineFullLabel(option.medicine)}
                                   </p>
+                                  {expDate && (
+                                    <p className="mt-0.5 text-[11px] text-slate-500">
+                                      Earliest exp: {expDate}
+                                    </p>
+                                  )}
                                 </div>
                                 <span
                                   className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ${
@@ -1315,9 +1411,19 @@ export default function DispensingWorkbench() {
                           );
                         })}
 
-                        {medicineOptions.length === 0 && (
-                          <div className="col-span-full rounded-xl bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
-                            No medicine stock is currently available at your facility.
+                        {displayedMedicineOptions.length === 0 && (
+                          <div className="col-span-full rounded-xl border border-[#d8dadc] bg-[#f8f9ff] p-6 text-center text-sm font-medium text-[#5f6673]">
+                            <p className="font-bold text-[#0d1117]">No matching medicines found</p>
+                            <p className="mt-1 text-xs">
+                              No available medicines match "{medicineKeyword}". Check the spelling or generic name.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setMedicineKeyword("")}
+                              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#d8dadc] bg-white px-3 py-1.5 text-xs font-semibold text-[#0d1117] hover:bg-slate-50 cursor-pointer shadow-xs"
+                            >
+                              <span>Clear search</span>
+                            </button>
                           </div>
                         )}
                       </div>

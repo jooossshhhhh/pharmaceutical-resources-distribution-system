@@ -4,7 +4,7 @@ CHO Inventory Medicines RPC
 
 Purpose:
 Returns the medicines currently stocked (quantity > 0)
-in the Central Health Office (CHO) inventory, for the
+in the City Health Office (CHO) inventory, for the
 BHW medicine request form.
 
 Request Rule:

@@ -63,27 +63,44 @@ prds-desktop/
 │   │   └── views/             # Core Feature Modules
 │   │       ├── activity/      # ActivityLogsModule.jsx
 │   │       ├── auth/          # LoginPage, RegisterPage, OTPVerification, ForgotPassword
-│   │       ├── dashboard/     # DashboardModule.jsx, FacilityMap.jsx
+│   │       ├── dashboard/     # DashboardModule.jsx, FacilityMap.jsx, ForecastDemandBars.jsx
 │   │       ├── dispensing/    # DispensingWorkbench.jsx, DispensingUi.jsx
 │   │       ├── facilities/    # FacilitiesModule.jsx, FacilityCard.jsx
 │   │       ├── forecasting/   # ForecastingModule.jsx, ForecastingProjectionChart.jsx
 │   │       ├── inventory/     # ChoInventoryModule.jsx, BhwInventoryModule.jsx
 │   │       ├── medicines/     # MedicinesModule.jsx, MedicineCatalogTable.jsx
 │   │       ├── notifications/ # NotificationsModule.jsx
+│   │       ├── other-programs/# ComingSoonModule.jsx (PHARMA_II program placeholder)
 │   │       ├── patients/      # PatientRegistry.jsx, patientComponents.jsx
 │   │       ├── profile/       # ProfileSettingsModule.jsx
+│   │       ├── reports/       # ReportModule.jsx (Physical Count, Stock Card, Dispensing, RIS)
 │   │       ├── requests/      # ChoRequestsModule.jsx, BhwRequestsModule.jsx
+│   │       ├── shared/        # Shared sub-view components and badges
 │   │       ├── suppliers/     # SuppliersModule.jsx
 │   │       ├── transfers/     # ChoTransfersModule.jsx, BhwTransfersModule.jsx
 │   │       └── users/         # UserManagementModule.jsx, UserAccountsTable.jsx
 │   └── shared/                # Pure utility functions & Unit Tests
 │       └── utils/
+│           ├── activityLogUtils.js (and .test.mjs)
+│           ├── authErrorUtils.js (and .test.mjs)
+│           ├── authRegistrationUtils.js (and .test.mjs)
+│           ├── dashboardUtils.js (and .test.mjs)
+│           ├── demandUtils.js (and .test.mjs)
 │           ├── dispensingUtils.js (and .test.mjs)
+│           ├── facilityUtils.js (and .test.mjs)
 │           ├── forecastingUtils.js (and .test.mjs)
 │           ├── inventoryUtils.js (and .test.mjs)
+│           ├── medicineExportUtils.js (and .test.mjs)
+│           ├── medicineUtils.js (and .test.mjs)
+│           ├── notificationUtils.js (and .test.mjs)
+│           ├── passcodeUtils.js (and .test.mjs)
 │           ├── patientUtils.js (and .test.mjs)
+│           ├── profileSettingsUtils.js (and .test.mjs)
+│           ├── reportExportUtils.js (and .test.mjs)
+│           ├── reportUtils.js (and .test.mjs)
 │           ├── requestUtils.js (and .test.mjs)
-│           └── transferUtils.js (and .test.mjs)
+│           ├── transferUtils.js (and .test.mjs)
+│           └── userManagementUtils.js (and .test.mjs)
 ├── package.json
 └── vite.config.js
 ```
@@ -145,3 +162,19 @@ supabase/
 ├── migrations/                # Supabase CLI migration scripts
 └── templates/                 # Custom HTML templates for auth emails and confirmations
 ```
+
+---
+
+## 5. Architectural Placement Rules & Conventions
+
+To maintain codebase cleanlines and prevent architectural drift, the following placement conventions are strictly enforced:
+
+* **Backend Services:** Put Supabase queries, RPC calls, and offline mutation handling in `prds-desktop/src/backend/services/`.
+* **Sync & Outbox:** Put snapshot synchronization, network monitoring, and outbox behavior in `prds-desktop/src/backend/sync/`.
+* **Shared UI:** Put reusable UI components used across multiple features in `prds-desktop/src/frontend/components/`.
+* **Feature-Scoped UI:** Put feature-only UI views and sub-components in `prds-desktop/src/frontend/views/<feature>/components/`.
+* **Pure Domain Logic:** Put pure calculations, formatting, mathematical algorithms, and field validations in `prds-desktop/src/shared/utils/`.
+* **Unit Testing:** Keep tests beside the utility or service they verify, using `.test.mjs` running via the native Node.js test runner (`node --test`).
+* **Clean Tree:** Do not create empty category folders. Add a folder only when it contains an active implementation.
+* **Client Boundaries:** `prds-desktop` is the primary maintained client. `prds-web` is retained as a frozen legacy reference client and should not receive new desktop organization work.
+

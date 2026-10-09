@@ -267,7 +267,25 @@ export const buildMedicineTrendRows = ({
       cardBadgeClass: "inline-block rounded-full bg-emerald-100/80 text-emerald-700 px-3.5 py-1 text-xs font-bold whitespace-nowrap",
     };
 
-    if ((coverageMonths !== null && coverageMonths < 1.0) || risk.label === "Critical" || risk.label === "Low Stock" || inventory.quantity <= inventory.threshold) {
+    if (inventory.quantity === 0) {
+      circularRisk = {
+        type: "stockout",
+        label: "Stockout Risk",
+        badgeClass: "inline-block rounded-full bg-red-100/80 text-red-600 px-3 py-1 text-xs font-bold whitespace-nowrap",
+        cardBadgeClass: "inline-block rounded-full bg-red-100/80 text-red-600 px-3.5 py-1 text-xs font-bold whitespace-nowrap",
+      };
+    } else if (projectedDemand === 0 && inventory.quantity > 0) {
+      circularRisk = {
+        type: "optimal",
+        label: "Ample Stock",
+        badgeClass: "inline-block rounded-full bg-slate-100 text-slate-700 px-3 py-1 text-xs font-bold whitespace-nowrap",
+        cardBadgeClass: "inline-block rounded-full bg-slate-100 text-slate-700 px-3.5 py-1 text-xs font-bold whitespace-nowrap",
+      };
+    } else if (
+      (coverageMonths !== null && coverageMonths < 1.0) ||
+      risk.label === "Critical" ||
+      (inventory.threshold > 0 && inventory.quantity <= inventory.threshold && projectedDemand > 0)
+    ) {
       circularRisk = {
         type: "stockout",
         label: "Stockout Risk",
@@ -289,6 +307,8 @@ export const buildMedicineTrendRows = ({
     const activeSlope = forecastSeries.length >= 2 ? forecastRegression.slope : historicalRegression.slope;
     const activeRSquared = forecastSeries.length >= 2 ? forecastRegression.rSquared : historicalRegression.rSquared;
     const activeIntercept = forecastSeries.length >= 2 ? forecastRegression.intercept : historicalRegression.intercept;
+    const historyCount = historicalSeries.length;
+    const reliabilityMeta = getReliabilityMeta(activeRSquared, historyCount);
 
     return {
       brandName: medicine?.brand_name || "",
@@ -297,7 +317,9 @@ export const buildMedicineTrendRows = ({
         getMedicineCategory(medicine?.generic_name, medicine?.brand_name),
       circularRisk,
       coverageMonths,
-      coverageMultiplier: coverageMonths != null ? `${coverageMonths.toFixed(2)}x` : "—",
+      coverageMultiplier: coverageMonths != null
+        ? `${coverageMonths.toFixed(2)}x`
+        : (inventory.quantity > 0 && projectedDemand === 0 ? "Ample (>12m)" : "—"),
       direction: getTrendDirection(forecastRegression.slope),
       dosage: medicine?.dosage || "",
       facilityName,
@@ -313,6 +335,7 @@ export const buildMedicineTrendRows = ({
       medicineId,
       nextMonthDemand: projectedDemand,
       projectedDemand,
+      reliabilityMeta,
       risk,
       rSquared: activeRSquared,
       slope: activeSlope,
@@ -321,6 +344,124 @@ export const buildMedicineTrendRows = ({
       unitOfMeasure: medicine?.unit_of_measure || "unit",
     };
   });
+};
+
+export const getReliabilityMeta = (rSquared, historyCount = 2) => {
+  if (historyCount < 2 || rSquared == null || Number.isNaN(rSquared)) {
+    return { label: "Needs Data", badgeClass: "bg-slate-100 text-slate-500", desc: "Less than 2 months of history" };
+  }
+  if (rSquared >= 0.7) {
+    return { label: "High", badgeClass: "bg-emerald-100 text-emerald-800", desc: "Steady, predictable pattern" };
+  }
+  if (rSquared >= 0.35) {
+    return { label: "Moderate", badgeClass: "bg-blue-100 text-blue-800", desc: "Fluctuating month-to-month" };
+  }
+  return { label: "Limited", badgeClass: "bg-slate-100 text-slate-600", desc: "Low correlation; use with caution" };
+};
+
+export const buildMedicineActionFindings = (row) => {
+  if (!row) {
+    return {
+      runout: { label: "—", subtext: "Select a medicine to view runout estimates", severity: "normal" },
+      action: { label: "—", subtext: "No action calculated", type: "neutral" },
+      pace: { label: "—", subtext: "No dispensing data available" },
+    };
+  }
+
+  const currentStock = Number(row.stockQuantity ?? row.currentStock ?? 0);
+  const threshold = Number(row.threshold ?? 0);
+  const monthlyDemand = Number(row.nextMonthDemand ?? row.projectedDemand ?? 0);
+  const slope = Number(row.slope ?? 0);
+  const historyCount = Array.isArray(row.historicalSeries) ? row.historicalSeries.length : 0;
+
+  // 1. Estimated Runout (Days of Supply)
+  let runoutLabel = "—";
+  let runoutSubtext = "No forecast data";
+  let runoutSeverity = "normal";
+
+  if (currentStock === 0) {
+    runoutLabel = "Out of Stock (0 Days)";
+    runoutSubtext = "No medicine units on shelf";
+    runoutSeverity = "critical";
+  } else if (monthlyDemand <= 0) {
+    runoutLabel = "Ample Stock (>180 Days)";
+    runoutSubtext = "Zero patient demand recorded";
+    runoutSeverity = "normal";
+  } else {
+    const dailyDemand = monthlyDemand / 30;
+    const daysLeft = Math.round(currentStock / dailyDemand);
+
+    if (daysLeft <= 15) {
+      runoutLabel = `~${daysLeft} Days of Supply Left`;
+      runoutSubtext = "Urgent: Stock runs out in ~2 weeks";
+      runoutSeverity = "critical";
+    } else if (daysLeft <= 30) {
+      runoutLabel = `~${daysLeft} Days of Supply Left`;
+      runoutSubtext = "Stock depletes within 1 month";
+      runoutSeverity = "warning";
+    } else if (daysLeft <= 75) {
+      const mos = (daysLeft / 30).toFixed(1);
+      runoutLabel = `~${daysLeft} Days (${mos} Mos)`;
+      runoutSubtext = "Healthy operational buffer on shelf";
+      runoutSeverity = "normal";
+    } else {
+      const mos = (daysLeft / 30).toFixed(1);
+      runoutLabel = `~${mos} Months of Supply`;
+      runoutSubtext = "Stock exceeds standard 2.5-month buffer";
+      runoutSeverity = "normal";
+    }
+  }
+
+  // 2. Recommended Action
+  let actionLabel = "No Request Needed";
+  let actionSubtext = "Current stock covers upcoming needs";
+  let actionType = "neutral";
+
+  const targetBuffer = Math.round(monthlyDemand * 2) + threshold;
+  const shortage = targetBuffer - currentStock;
+
+  if (currentStock === 0) {
+    const qty = targetBuffer > 0 ? targetBuffer : Math.max(threshold, 100);
+    actionLabel = `Emergency Reorder: +${qty} units`;
+    actionSubtext = "Immediate requisition required from CHO";
+    actionType = "emergency";
+  } else if (shortage > 0) {
+    actionLabel = `Request +${shortage} units`;
+    actionSubtext = "Restores 60-day supply plus safety buffer";
+    actionType = "reorder";
+  } else if (currentStock > (monthlyDemand * 3 + threshold) && monthlyDemand > 0) {
+    actionLabel = "Monitor Expiration (FEFO)";
+    actionSubtext = "Surplus stock on hand; pause new orders";
+    actionType = "neutral";
+  } else {
+    actionLabel = "No Request Needed";
+    actionSubtext = "Stock on hand covers upcoming needs";
+    actionType = "neutral";
+  }
+
+  // 3. Usage Pace
+  let paceLabel = "Steady";
+  let paceSubtext = "Consistent month-to-month consumption";
+
+  if (historyCount < 2) {
+    paceLabel = monthlyDemand > 0 ? `Steady (~${monthlyDemand} units/mo)` : "No Recent Dispensing";
+    paceSubtext = "1 month of logs (needs 2+ mos for trend)";
+  } else if (slope > 0.5) {
+    paceLabel = `Rising (+${Math.abs(slope).toFixed(1)}/mo)`;
+    paceSubtext = "Patient demand climbing month-over-month";
+  } else if (slope < -0.5) {
+    paceLabel = `Falling (-${Math.abs(slope).toFixed(1)}/mo)`;
+    paceSubtext = "Patient demand slowing down";
+  } else {
+    paceLabel = `Steady (±0.0/mo)`;
+    paceSubtext = "Consistent month-to-month consumption";
+  }
+
+  return {
+    runout: { label: runoutLabel, subtext: runoutSubtext, severity: runoutSeverity },
+    action: { label: actionLabel, subtext: actionSubtext, type: actionType },
+    pace: { label: paceLabel, subtext: paceSubtext },
+  };
 };
 
 export const buildInventoryCoverageRows = ({ forecastRows = [], inventoryRows = [] } = {}) => {

@@ -109,7 +109,7 @@ test("filterFacilities searches facility metadata and stock health", () => {
       {
         ...facility,
         id: "facility-b",
-        facility_name: "Central Health Office",
+        facility_name: "City Health Office",
         facility_code: "CONHO",
         facility_type: "CHO",
         address: "East Poblacion, City of Naga, Cebu",
@@ -146,6 +146,7 @@ test("isChoFacility accurately distinguishes the City Health Office central hub"
   assert.equal(isChoFacility({ facility_code: "CHO-NAGA" }), true);
   assert.equal(isChoFacility({ facility_code: "cho" }), true);
   assert.equal(isChoFacility({ facility_type: "MAIN_HEALTH_CENTER" }), true);
+  assert.equal(isChoFacility({ facility_name: "City Health Office - City of Naga" }), true);
   assert.equal(isChoFacility({ facility_name: "Central Health Office - City of Naga" }), true);
   assert.equal(isChoFacility({ facility_name: "City Health Office Naga" }), true);
 

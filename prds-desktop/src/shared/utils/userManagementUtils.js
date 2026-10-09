@@ -17,6 +17,8 @@ export const moduleAccess = {
   "/suppliers": ["PHARMA_II"],
   "/other-programs": ["PHARMA_II"],
   "/facilities": ["PHARMA_I", "PHARMA_II"],
+  "/stock-returns": ["BHW", "PHARMA_I", "PHARMA_II"],
+  "/transfers": [],
 };
 
 export const canAccessModule = (role, path) => {
@@ -127,7 +129,10 @@ export const buildUserSummary = (users) => {
   );
 };
 
-export const filterUsers = (users, { roleFilter = "ALL", searchTerm = "", statusFilter = "ALL" } = {}) => {
+export const filterUsers = (
+  users,
+  { facilityFilter = "ALL", roleFilter = "ALL", searchTerm = "", statusFilter = "ALL" } = {}
+) => {
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
   return users.filter((user) => {
@@ -144,10 +149,18 @@ export const filterUsers = (users, { roleFilter = "ALL", searchTerm = "", status
       .join(" ")
       .toLowerCase();
 
+    const hasFacility = Boolean(user.facility_id || user.facility?.id || user.facility);
+    const matchesFacility =
+      facilityFilter === "ALL" ||
+      user.facility_id === facilityFilter ||
+      user.facility?.id === facilityFilter ||
+      (facilityFilter === "NONE" && !hasFacility);
+
     return (
       (!normalizedSearch || searchableText.includes(normalizedSearch)) &&
       (statusFilter === "ALL" || user.status === statusFilter) &&
-      (roleFilter === "ALL" || user.role === roleFilter)
+      (roleFilter === "ALL" || user.role === roleFilter) &&
+      matchesFacility
     );
   });
 };

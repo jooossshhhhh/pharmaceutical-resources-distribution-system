@@ -7,6 +7,7 @@ import {
   restorePatient,
   updatePatient,
 } from "@backend/services/patientsService";
+import { useAuth } from "../../context/useAuth";
 import PaginationControls from "../../components/PaginationControls";
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import {
@@ -34,6 +35,7 @@ import {
   sortPatients,
   validatePatientForm,
 } from "@shared/utils/patientUtils";
+import { exportPatientsExcel } from "@shared/utils/patientExportUtils";
 import { downloadExportFile } from "../../services/downloadManager";
 
 const emptyPatientForm = {
@@ -51,13 +53,17 @@ const emptyPatientForm = {
 export default function PatientRegistry({
   canArchive,
   canDelete,
+  currentUser,
   defaultDispensingFacilityId = "",
   dispensingFacilities = [],
   facilities,
   isCho,
   loadPatients,
   patients,
+  profile: propProfile,
 }) {
+  const { profile: authProfile } = useAuth() || {};
+  const activeProfile = propProfile || currentUser || authProfile;
   const [searchTerm, setSearchTerm] = useState("");
   const [facilityFilter, setFacilityFilter] = useState("");
   const [archiveMode, setArchiveMode] = useState(PATIENT_ARCHIVE_MODES.active);
@@ -187,15 +193,24 @@ export default function PatientRegistry({
   const handleSavePatient = async (event) => {
     event.preventDefault();
 
-    const validationError = validatePatientForm(formValues);
+    const resolvedFacilityId =
+      formValues.facility_id ||
+      (!isCho ? facilities[0]?.id || defaultDispensingFacilityId : "");
+
+    const valuesToValidate = {
+      ...formValues,
+      facility_id: resolvedFacilityId,
+    };
+
+    const validationError = validatePatientForm(valuesToValidate);
     if (validationError) {
       setError(validationError);
       return;
     }
 
     const duplicates = findDuplicatePatients({
-      excludeId: null,
-      formValues,
+      excludeId: modalMode === "edit" ? selectedPatient?.id : null,
+      formValues: valuesToValidate,
       patients,
     });
 
@@ -209,15 +224,16 @@ export default function PatientRegistry({
     }
 
     const payload = {
-      first_name: sanitizePatientName(formValues.first_name),
-      middle_name: formValues.middle_name?.trim() ? sanitizePatientName(formValues.middle_name) : null,
-      last_name: sanitizePatientName(formValues.last_name),
-      suffix: formValues.suffix || null,
-      gender: formValues.gender,
-      date_of_birth: formValues.date_of_birth,
-      contact_number: normalizePatientContactNumber(formValues.contact_number) || null,
-      address: formValues.address?.trim() || null,
-      facility_id: formValues.facility_id,
+      first_name: sanitizePatientName(valuesToValidate.first_name),
+      middle_name: valuesToValidate.middle_name?.trim() ? sanitizePatientName(valuesToValidate.middle_name) : null,
+      last_name: sanitizePatientName(valuesToValidate.last_name),
+      suffix: valuesToValidate.suffix || null,
+      gender: valuesToValidate.gender,
+      date_of_birth: valuesToValidate.date_of_birth,
+      contact_number: normalizePatientContactNumber(valuesToValidate.contact_number) || null,
+      address: valuesToValidate.address?.trim() || null,
+      facility_id: valuesToValidate.facility_id,
+      ...(modalMode === "create" ? { created_by: activeProfile?.id || null } : {}),
     };
 
     setIsSaving(true);
@@ -321,13 +337,46 @@ export default function PatientRegistry({
     }
   };
 
-  const handleExportExcel = () => {
-    const csv = buildPatientsCsv({ archiveMode, patients: sortedPatients });
-    downloadExportFile({
-      filename: `prds-patients-${new Date().toISOString().slice(0, 10)}`,
-      csv,
-      recordCount: sortedPatients.length,
-    });
+  const handleExportExcel = async () => {
+    try {
+      const activeMatches = (patients || [])
+        .filter((p) => !p.archived_at)
+        .filter((patient) =>
+          matchesPatientFilters({
+            facilityId: isCho ? facilityFilter || null : null,
+            patient,
+            query: searchTerm,
+          })
+        );
+      const sortedActive = sortPatients({ patients: activeMatches, sortMode });
+
+      const archivedMatches = (patients || [])
+        .filter((p) => Boolean(p.archived_at))
+        .filter((patient) =>
+          matchesPatientFilters({
+            facilityId: isCho ? facilityFilter || null : null,
+            patient,
+            query: searchTerm,
+          })
+        );
+      const sortedArchived = sortPatients({ patients: archivedMatches, sortMode });
+
+      const currentFacility = !isCho && facilities?.length ? facilities[0]?.facility_name : "";
+
+      await exportPatientsExcel({
+        activePatients: sortedActive,
+        archivedPatients: sortedArchived,
+        facilityName: currentFacility,
+      });
+    } catch (exportErr) {
+      console.error("Excel export error, falling back to CSV:", exportErr);
+      const csv = buildPatientsCsv({ archiveMode, patients: sortedPatients });
+      downloadExportFile({
+        filename: `prds-patients-${new Date().toISOString().slice(0, 10)}`,
+        csv,
+        recordCount: sortedPatients.length,
+      });
+    }
   };
 
   const handleRefreshPatients = async () => {
@@ -403,14 +452,16 @@ export default function PatientRegistry({
                 </span>
                 Refresh
               </button>
-              <button
-                type="button"
-                onClick={handleExportExcel}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
-              >
-                <ExportIcon />
-                Export
-              </button>
+              {archiveMode === PATIENT_ARCHIVE_MODES.active && (
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
+                >
+                  <ExportIcon />
+                  Export
+                </button>
+              )}
               {archiveMode === PATIENT_ARCHIVE_MODES.active && (
                 <button
                   type="button"
@@ -494,14 +545,15 @@ export default function PatientRegistry({
       </div>
 
       {selectedPatient && !modalMode && !confirmAction && (
-      <PatientViewModal
-        archiveMode={archiveMode}
-        canAddManualRecord={isCho}
-        canArchive={canArchive}
-        canDelete={canDelete}
-        defaultDispensingFacilityId={defaultDispensingFacilityId}
-        dispensingFacilities={dispensingFacilities}
-        facilities={facilities}
+        <PatientViewModal
+          archiveMode={archiveMode}
+          canAddManualRecord={isCho}
+          canArchive={canArchive}
+          canDelete={canDelete}
+          currentUser={activeProfile}
+          defaultDispensingFacilityId={defaultDispensingFacilityId}
+          dispensingFacilities={dispensingFacilities}
+          facilities={facilities}
           onArchive={handleArchivePatient}
           onClose={handleClearSelection}
           onDelete={handleDeletePatient}

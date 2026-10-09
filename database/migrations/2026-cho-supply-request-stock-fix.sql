@@ -2,7 +2,7 @@
 =====================================================
 MIGRATION: CHO Supply Request Seed Stock Fix
 
-Repairs and replenishes Central Health Office inventory
+Repairs and replenishes City Health Office inventory
 so BHW "New Supply Request" availability has stock to
 show:
 

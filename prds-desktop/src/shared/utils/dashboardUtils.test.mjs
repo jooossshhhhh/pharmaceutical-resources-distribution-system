@@ -21,14 +21,18 @@ const stats = {
 };
 
 test("pharmacist ii dashboard includes system administration actions", () => {
-  const config = getDashboardRoleConfig({ role: "PHARMA_II" });
+  const config = getDashboardRoleConfig({
+    role: "PHARMA_II",
+    facilityName: "Central Health Office - City of Naga",
+  });
   const cards = getDashboardStatCards({
     config,
     inventoryPath: "/inventory",
     stats,
   });
 
-  assert.equal(config.scopeLabel, "System-wide CHO oversight");
+  assert.equal(config.scopeLabel, null);
+  assert.equal(config.title, "City Health Office - City of Naga");
   assert.equal(config.canReviewUsers, true);
   assert.deepEqual(
     cards.map((card) => card.key),

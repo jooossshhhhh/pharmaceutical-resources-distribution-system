@@ -21,7 +21,6 @@ test("history snapshots paginate without fixed row caps", async () => {
   const source = await readFile(new URL("./syncManager.js", import.meta.url), "utf8");
   const historySources = [
     'from("medicine_requests")',
-    'from("stock_transfers")',
     'from("medicine_dispensing")',
     'from("forecasting")',
     'from("activity_logs")',
@@ -34,7 +33,7 @@ test("history snapshots paginate without fixed row caps", async () => {
     assert.ok(query.includes(".order(\"id\""), `${table} should have a stable tie-breaker`);
     assert.ok(!query.includes(".limit("), `${table} should not have a hard row cap`);
   }
-  assert.equal((source.match(/fetchAllRows\(\(\) =>/g) || []).length, 5);
+  assert.equal((source.match(/fetchAllRows\(\(\) =>/g) || []).length, 4);
 });
 
 test("sync reports remaining pending work and retries terminal failures only on manual sync", async () => {

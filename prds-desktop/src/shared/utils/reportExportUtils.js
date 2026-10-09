@@ -26,6 +26,24 @@ export function escapeXml(str) {
 }
 
 /**
+ * Safely decodes XML content from a CFB entry across both Node.js (Buffer/Uint8Array)
+ * and browser/WebView environments where CFB entry content is a regular Array of byte values.
+ */
+export function decodeXmlContent(content) {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  const bytes =
+    content instanceof Uint8Array
+      ? content
+      : Array.isArray(content)
+      ? new Uint8Array(content)
+      : typeof Buffer !== "undefined" && Buffer.isBuffer(content)
+      ? new Uint8Array(content.buffer, content.byteOffset, content.byteLength)
+      : new Uint8Array(content);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+/**
  * Matches an exact spreadsheet cell element (<c r="REF".../> or <c r="REF"...>...</c>)
  * without accidentally crossing into subsequent cell or row nodes.
  */
@@ -218,6 +236,7 @@ export function buildDailyRisBuffer({
   requestRows = [],
   selectedDate = new Date(),
   risNo = "",
+  facilityName = "",
 }) {
   const defaultExport = Reflect.get(XLSX, "default");
   const cfb =
@@ -226,7 +245,7 @@ export function buildDailyRisBuffer({
     (typeof window !== "undefined" ? window.XLSX?.CFB || window.CFB : null);
 
   if (!cfb || !RIS_TEMPLATE_BASE64) {
-    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo });
+    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
     return XLSX.write(wb, { bookType: "xlsx", type: "array" });
   }
 
@@ -236,7 +255,7 @@ export function buildDailyRisBuffer({
     const s2Entry = cfb.find(zip, "sheet2.xml") || cfb.find(zip, "/xl/worksheets/sheet2.xml");
 
     if (!s1Entry || !s2Entry) {
-      const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo });
+      const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
       return XLSX.write(wb, { bookType: "xlsx", type: "array" });
     }
 
@@ -245,7 +264,7 @@ export function buildDailyRisBuffer({
     const medicinesSnapshot = getSnapshot(STORAGE_KEYS.MEDICINES, []);
     const medicinesMap = new Map(medicinesSnapshot.map((m) => [String(m.id), m]));
 
-    // 1. Sheet 1 (CHO): Dispensing record in the dispensing module
+    // 1. Sheet 1 (CHO/BHS): Dispensing record in the dispensing module
     const choRows = dispensingRows.filter((r) => {
       if (r.voided_at) return false;
       return toDateKey(r.dispense_date || r.created_at) === targetDateKey;
@@ -271,7 +290,7 @@ export function buildDailyRisBuffer({
           brand,
           unit,
           quantity: qty,
-          area: "PHARMACY DISPENSING",
+          area: facilityName ? `${facilityName.toUpperCase()} DISPENSING` : "PHARMACY DISPENSING",
         });
       } else {
         choMap.get(key).quantity += qty;
@@ -310,8 +329,8 @@ export function buildDailyRisBuffer({
     });
     const bhwItems = Array.from(bhwMap.values());
 
-    const origS1Xml = new TextDecoder().decode(s1Entry.content);
-    const origS2Xml = new TextDecoder().decode(s2Entry.content);
+    const origS1Xml = decodeXmlContent(s1Entry.content);
+    const origS2Xml = decodeXmlContent(s2Entry.content);
 
     const newS1Xml = buildSheet1Xml(origS1Xml, choItems, dateFormatted, risNo);
     const newS2Xml = buildSheet2Xml(origS2Xml, bhwItems, dateFormatted, risNo);
@@ -325,7 +344,7 @@ export function buildDailyRisBuffer({
     return cfb.write(zip, { fileType: "zip", type: "array" });
   } catch (err) {
     console.warn("Failed to inject into template CFB, falling back to XLSX.write:", err);
-    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo });
+    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
     return XLSX.write(wb, { bookType: "xlsx", type: "array" });
   }
 }
@@ -341,6 +360,7 @@ export function buildDailyRisWorkbook({
   requestRows = [],
   selectedDate = new Date(),
   risNo = "",
+  facilityName = "",
 }) {
   let wb;
 
@@ -366,7 +386,7 @@ export function buildDailyRisWorkbook({
   const medicinesMap = new Map(medicinesSnapshot.map((m) => [String(m.id), m]));
 
   // ----------------------------------------------------
-  // SHEET 1: CHO (In-House Pharmacy Dispensing from dispensing module)
+  // SHEET 1: CHO / BHS (Pharmacy/Station Dispensing from dispensing module)
   // ----------------------------------------------------
   const choRows = dispensingRows.filter((r) => {
     if (r.voided_at) return false;
@@ -393,7 +413,7 @@ export function buildDailyRisWorkbook({
         brand,
         unit,
         quantity: qty,
-        area: "PHARMACY DISPENSING",
+        area: facilityName ? `${facilityName.toUpperCase()} DISPENSING` : "PHARMACY DISPENSING",
       });
     } else {
       choMap.get(key).quantity += qty;
@@ -409,8 +429,8 @@ export function buildDailyRisWorkbook({
   }
 
   // Set Header Title & Date (Cells D1, D2, D4, E4, D5, E5)
-  choWs["D1"] = { t: "s", v: "VICENTE MENDIOLA CENTER FOR HEALTH" };
-  choWs["D2"] = { t: "s", v: "REQUEST ISSUANCE SLIP" };
+  choWs["D1"] = { t: "s", v: facilityName ? facilityName.toUpperCase() : "VICENTE MENDIOLA CENTER FOR HEALTH" };
+  choWs["D2"] = { t: "s", v: facilityName ? `REQUEST ISSUANCE SLIP - ${facilityName.toUpperCase()}` : "REQUEST ISSUANCE SLIP" };
   choWs["D4"] = { t: "s", v: "DATE: " };
   choWs["E4"] = { t: "s", v: dateFormatted };
   choWs["D5"] = { t: "s", v: "RIS NO." };
@@ -529,6 +549,70 @@ export function buildDailyRisWorkbook({
 }
 
 /**
+ * Consolidates inventory records sharing the same medicine, lot/batch number, and expiration date.
+ * Merges quantities and retains earliest receipt dates to prevent duplicate rows for identical batches.
+ */
+export function consolidateInventoryRows(inventoryRows = []) {
+  if (!Array.isArray(inventoryRows) || inventoryRows.length === 0) return [];
+
+  const map = new Map();
+
+  for (const item of inventoryRows) {
+    const med = item.medicine || {};
+    const medId = String(item.medicine_id || med.id || med.generic_name || item.generic_name || "").trim().toLowerCase();
+    const batch = (item.batch_number || item.lot_number || item.lot || "").trim().toUpperCase();
+    const expiry = item.expiration_date || item.expiry_date || "";
+    const expiryKey = expiry ? toDateKey(expiry) : "NO_EXPIRY";
+    const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
+
+    const groupKey = `${medId}___${batch || "NO_BATCH"}___${expiryKey}___${unitCost}`;
+
+    if (!map.has(groupKey)) {
+      map.set(groupKey, {
+        ...item,
+        quantity: Number(item.quantity) || 0,
+        received_quantity: item.received_quantity !== undefined ? Number(item.received_quantity) : undefined,
+        additional_quantity: item.additional_quantity !== undefined ? Number(item.additional_quantity) : undefined,
+        remaining_quantity: item.remaining_quantity !== undefined ? Number(item.remaining_quantity) : undefined,
+        beginning_quantity: item.beginning_quantity !== undefined ? Number(item.beginning_quantity) : undefined,
+        issued_quantity: item.issued_quantity !== undefined ? Number(item.issued_quantity) : undefined,
+        expired_quantity: item.expired_quantity !== undefined ? Number(item.expired_quantity) : undefined,
+        program_quantity: item.program_quantity !== undefined ? Number(item.program_quantity) : undefined,
+      });
+    } else {
+      const existing = map.get(groupKey);
+      existing.quantity = (existing.quantity || 0) + (Number(item.quantity) || 0);
+      if (item.received_quantity !== undefined) {
+        existing.received_quantity = (existing.received_quantity || 0) + Number(item.received_quantity);
+      }
+      if (item.additional_quantity !== undefined) {
+        existing.additional_quantity = (existing.additional_quantity || 0) + Number(item.additional_quantity);
+      }
+      if (item.remaining_quantity !== undefined) {
+        existing.remaining_quantity = (existing.remaining_quantity || 0) + Number(item.remaining_quantity);
+      }
+      if (item.beginning_quantity !== undefined) {
+        existing.beginning_quantity = (existing.beginning_quantity || 0) + Number(item.beginning_quantity);
+      }
+      if (item.issued_quantity !== undefined) {
+        existing.issued_quantity = (existing.issued_quantity || 0) + Number(item.issued_quantity);
+      }
+      if (item.expired_quantity !== undefined) {
+        existing.expired_quantity = (existing.expired_quantity || 0) + Number(item.expired_quantity);
+      }
+      if (item.program_quantity !== undefined) {
+        existing.program_quantity = (existing.program_quantity || 0) + Number(item.program_quantity);
+      }
+      if (item.date_received && (!existing.date_received || item.date_received < existing.date_received)) {
+        existing.date_received = item.date_received;
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+/**
  * Processes and reconciles monthly inventory data from dispensing, requests, and programs
  */
 export function processMonthlyInventoryData({
@@ -540,6 +624,19 @@ export function processMonthlyInventoryData({
   month = new Date().getMonth() + 1,
 }) {
   const targetMonthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+  const daysInTargetMonth = new Date(year, month, 0).getDate();
+  const targetMonthEnd = `${targetMonthPrefix}-${String(daysInTargetMonth).padStart(2, "0")}`;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const isCurrentMonth = year === currentYear && month === currentMonth;
+  const isPastMonth = year < currentYear || (year === currentYear && month < currentMonth);
+
+  // If viewing current active month, any batch expired as of today is counted as expired;
+  // If viewing a completed past month, any batch expired on or before that month end is counted as expired.
+  const expirationCutoff = isCurrentMonth ? todayStr : (isPastMonth ? targetMonthEnd : "");
 
   // 1. Walk-in Dispensing
   const dispensingByBatch = new Map();
@@ -623,7 +720,9 @@ export function processMonthlyInventoryData({
   let totalExpiredVal = 0;
   let totalRemVal = 0;
 
-  const items = inventoryRows.map((item, idx) => {
+  const consolidatedInventory = consolidateInventoryRows(inventoryRows);
+
+  const items = consolidatedInventory.map((item, idx) => {
     const med = item.medicine || {};
     const medId = String(item.medicine_id || med.id || "");
     const batch = (item.batch_number || item.lot_number || item.lot || "").trim().toUpperCase();
@@ -671,9 +770,14 @@ export function processMonthlyInventoryData({
 
     // Expired Stocks
     let expiredQty = 0;
+    const expDateStr = item.expiration_date ? toDateKey(item.expiration_date) : "";
+    const isExplicitlyExpired = item.status === "EXPIRED" || Boolean(item.is_expired);
+    const isExpiredByDate = Boolean(expirationCutoff && expDateStr && expDateStr <= expirationCutoff);
+    const isItemExpired = isExplicitlyExpired || isExpiredByDate;
+
     if (item.expired_quantity !== undefined || item.expiredQty !== undefined) {
       expiredQty = Number(item.expired_quantity ?? item.expiredQty ?? 0);
-    } else if (item.status === "EXPIRED") {
+    } else if (isItemExpired) {
       expiredQty = Number(item.quantity) || 0;
     }
 
@@ -693,7 +797,7 @@ export function processMonthlyInventoryData({
     if (item.remaining_quantity !== undefined || item.remainingQty !== undefined) {
       remainingQty = Number(item.remaining_quantity ?? item.remainingQty ?? 0);
     } else {
-      remainingQty = item.status === "EXPIRED" ? 0 : (Number(item.quantity) || 0);
+      remainingQty = isItemExpired ? 0 : (Number(item.quantity) || 0);
     }
 
     // Reconciled Beginning Balance
@@ -748,6 +852,15 @@ export function processMonthlyInventoryData({
       remainingQty,
       remainingTotal,
     };
+  });
+
+  items.sort((a, b) => {
+    const cmp = (a.itemDescription || "").localeCompare(b.itemDescription || "");
+    if (cmp !== 0) return cmp;
+    return (a.lotNo || "").localeCompare(b.lotNo || "");
+  });
+  items.forEach((item, i) => {
+    item.index = i + 1;
   });
 
   return {
@@ -824,16 +937,22 @@ export function buildMonthlyInventoryBuffer({
       return XLSX.write(wb, { bookType: "xlsx", type: "array" });
     }
 
-    let xml = new TextDecoder().decode(s1Entry.content);
+    let xml = decodeXmlContent(s1Entry.content);
 
     // 1. Calculate Dates and Formatted Headers
+    const now = new Date();
+    const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
+
     const targetDate = new Date(year, month - 1, 1);
     const monthName = new Intl.DateTimeFormat("en-US", { month: "long" })
       .format(targetDate)
       .toUpperCase();
     const lastDay = new Date(year, month, 0).getDate();
-    const monthHeader = `MONTH : ${monthName} ${lastDay}, ${year}`;
-    const remainingHeader = `REMAINING BALANCE  AS OF \n${monthName} ${lastDay}, ${year}`;
+    // Adaptive date: If current in-progress month, stamp active date; if closed past month, stamp month-end
+    const effectiveRemDay = isCurrentMonth ? now.getDate() : lastDay;
+
+    const monthHeader = `MONTH : ${monthName} ${effectiveRemDay}, ${year}`;
+    const remainingHeader = `REMAINING BALANCE  AS OF \n${monthName} ${effectiveRemDay}, ${year}`;
 
     const prevDate = new Date(year, month - 1, 0);
     const prevMonthName = new Intl.DateTimeFormat("en-US", { month: "long" })
@@ -1103,13 +1222,19 @@ export function buildMonthlyInventoryWorkbook({
   }
 
   // Calculate Dates and Formatted Headers
+  const now = new Date();
+  const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
+
   const targetDate = new Date(year, month - 1, 1);
   const monthName = new Intl.DateTimeFormat("en-US", { month: "long" })
     .format(targetDate)
     .toUpperCase();
   const lastDay = new Date(year, month, 0).getDate();
-  const monthHeader = `MONTH : ${monthName} ${lastDay}, ${year}`;
-  const remainingHeader = `REMAINING BALANCE  AS OF \n${monthName} ${lastDay}, ${year}`;
+  // Adaptive date: If current in-progress month, stamp active date; if closed past month, stamp month-end
+  const effectiveRemDay = isCurrentMonth ? now.getDate() : lastDay;
+
+  const monthHeader = `MONTH : ${monthName} ${effectiveRemDay}, ${year}`;
+  const remainingHeader = `REMAINING BALANCE  AS OF \n${monthName} ${effectiveRemDay}, ${year}`;
 
   const prevDate = new Date(year, month - 1, 0);
   const prevMonthName = new Intl.DateTimeFormat("en-US", { month: "long" })
@@ -1315,10 +1440,12 @@ export async function exportDailyRisExcel({
   requestRows = [],
   selectedDate = new Date(),
   risNo = "",
+  facilityName = "",
 }) {
-  const buffer = buildDailyRisBuffer({ dispensingRows, requestRows, selectedDate, risNo });
+  const buffer = buildDailyRisBuffer({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
   const dateKey = toDateKey(selectedDate);
-  const filename = `Request_Issuance_Slip_${dateKey}.xlsx`;
+  const prefix = facilityName ? `${facilityName.replace(/\s+/g, "_")}_` : "";
+  const filename = `${prefix}Request_Issuance_Slip_${dateKey}.xlsx`;
 
   return downloadExportFile({
     filename,

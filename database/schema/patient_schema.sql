@@ -13,7 +13,7 @@ create table patients (
 
     facility_id uuid not null
         references facilities(id),
-    created_by uuid
+    created_by uuid default auth.uid()
         references profiles(id),
 
     patient_code text not null unique,

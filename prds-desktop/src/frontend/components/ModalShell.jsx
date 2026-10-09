@@ -35,6 +35,8 @@ export default function ModalShell({
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
         onCloseRef.current?.();
         return;
       }

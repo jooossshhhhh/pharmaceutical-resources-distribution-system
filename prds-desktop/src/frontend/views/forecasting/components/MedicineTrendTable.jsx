@@ -41,11 +41,11 @@ export default function MedicineTrendTable({
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Facility</th>
               <th className="px-4 py-3 text-right">Current Stock</th>
-              <th className="px-4 py-3 text-center">Trend</th>
-              <th className="px-4 py-3 text-right">Next Month</th>
-              <th className="px-4 py-3 text-center">Coverage</th>
-              <th className="px-4 py-3 text-center">R²</th>
-              <th className="px-5 py-3 text-center">Risk</th>
+              <th className="px-4 py-3 text-center">Monthly Change</th>
+              <th className="px-4 py-3 text-right">Next Month Need</th>
+              <th className="px-4 py-3 text-center">Supply Coverage</th>
+              <th className="px-4 py-3 text-center">Reliability</th>
+              <th className="px-5 py-3 text-center">Risk Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -73,12 +73,15 @@ export default function MedicineTrendTable({
                   >
                     <td className="px-5 py-3.5">
                       <p className="font-bold text-[#0d1117]">{fullName}</p>
+                      {row.brandName && (
+                        <p className="text-[11px] font-medium text-slate-400">{row.brandName}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-xs font-medium text-slate-500">
                       {row.category || "General"}
                     </td>
                     <td className="px-4 py-3.5 text-xs font-medium text-slate-600">
-                      {row.facilityName || "CHO Central"}
+                      {row.facilityName || "City Health Office"}
                     </td>
                     <td className="px-4 py-3.5 text-right font-bold text-slate-800">
                       {formatNumber(row.stockQuantity)}
@@ -88,15 +91,15 @@ export default function MedicineTrendTable({
                         {slope > 0.05 ? (
                           <>
                             <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
-                            <span className="text-emerald-700">+{slope.toFixed(1)}</span>
+                            <span className="text-emerald-700">+{slope.toFixed(1)}/mo</span>
                           </>
                         ) : slope < -0.05 ? (
                           <>
                             <TrendingDown className="h-3.5 w-3.5 text-rose-500" />
-                            <span className="text-rose-600">{slope.toFixed(1)}</span>
+                            <span className="text-rose-600">{slope.toFixed(1)}/mo</span>
                           </>
                         ) : (
-                          <span className="text-slate-400">0.0</span>
+                          <span className="text-xs font-semibold text-slate-400">Steady</span>
                         )}
                       </div>
                     </td>
@@ -115,8 +118,20 @@ export default function MedicineTrendTable({
                         {row.coverageMultiplier || "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 text-center text-xs font-medium text-slate-500">
-                      {Number(row.rSquared || 0).toFixed(3)}
+                    <td className="px-4 py-3.5 text-center">
+                      <span
+                        title={row.reliabilityMeta?.desc || `R² = ${Number(row.rSquared || 0).toFixed(3)}`}
+                        className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                          row.reliabilityMeta?.badgeClass ||
+                          (row.rSquared >= 0.7
+                            ? "bg-emerald-50 text-emerald-700"
+                            : row.rSquared >= 0.35
+                            ? "bg-blue-50 text-blue-700"
+                            : "bg-slate-100 text-slate-500")
+                        }`}
+                      >
+                        {row.reliabilityMeta?.label || (row.rSquared >= 0.7 ? "High" : row.rSquared >= 0.35 ? "Moderate" : "Needs Data")}
+                      </span>
                     </td>
                     <td className="px-5 py-3.5 text-center">
                       <span

@@ -2,7 +2,7 @@ import ModalShell from "../../../components/ModalShell";
 import LocationPicker from "../LocationPicker";
 
 const facilityTypes = [
-  { value: "CHO", label: "Central Health Office" },
+  { value: "CHO", label: "City Health Office" },
   { value: "HEALTH_CENTER", label: "Health Center" },
 ];
 
