@@ -241,7 +241,7 @@ export default function StockReturnDetailsModal({
                 type="button"
                 onClick={handleVerify}
                 disabled={isVerifying}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#00a36c] px-4 py-2 text-xs font-black text-white shadow-2xs hover:bg-[#008f5d] active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0d1117] px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-neutral-800 active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
               >
                 {isVerifying ? (
                   <>

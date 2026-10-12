@@ -770,7 +770,7 @@ export function ChoStockModal({
                   type="button"
                   onClick={handleConfirmSubmit}
                   disabled={isSaving}
-                  className="inline-flex h-9.5 items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 px-6 text-sm font-black text-white shadow-md transition cursor-pointer"
+                  className="inline-flex h-9.5 items-center gap-2 rounded-lg bg-[#0d1117] hover:bg-neutral-800 disabled:opacity-50 px-6 text-sm font-black text-white shadow-sm transition cursor-pointer"
                 >
                   <Check className="h-4 w-4" />
                   {isSaving ? "Confirming..." : "Confirm"}

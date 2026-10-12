@@ -1,11 +1,18 @@
-# Environment files
+# Environment files (secrets & API keys)
 .env
 .env.*
 !.env.example
 
-# opencode config (contains API keys)
+# OpenCode config (contains API keys)
 opencode.json
 opencode.jsonc
+
+# AI Assistants & Agent Tooling
+.agents/
+.claude/
+.cursor/
+.gemini/
+skills-lock.json
 
 # Dependencies
 node_modules/
@@ -17,6 +24,20 @@ dist/
 dist-ssr/
 **/dist-ssr/
 
+# Tauri build artifacts
+src-tauri/target/
+**/src-tauri/target/
+
+# Supabase CLI local artifacts
+.temp/
+supabase/.temp/
+
+# SQLite & local databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
 # Logs
 logs/
 *.log
@@ -25,9 +46,18 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Temporary debug dumps & scratch scripts
+diff_step*.txt
+step_*.txt
+scratch/
+**/scratch/
+*.tmp
+*.temp
+
 # OS and editor files
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/*
 !.vscode/extensions.json

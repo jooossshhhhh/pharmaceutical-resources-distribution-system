@@ -281,7 +281,7 @@ export default function ChoInventoryModule() {
                     <button
                       type="button"
                       onClick={() => openCreateModal("PROCUREMENT")}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#00a36c] hover:bg-[#008f5d] px-4 text-sm font-bold text-white shadow-xs transition active:scale-[0.99] cursor-pointer"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0d1117] hover:bg-neutral-800 px-4 text-xs font-black text-white shadow-sm transition active:scale-[0.99] cursor-pointer"
                     >
                       <PlusIcon />
                       Add Stock
