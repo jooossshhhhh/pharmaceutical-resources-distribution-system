@@ -19,7 +19,7 @@ const navItems = [
   { label: "Transfers", path: "/transfers" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
   { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"] },
-  { label: "Suppliers", path: "/suppliers", roles: ["PHARMA_II"] },
+  { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_II"] },
   { label: "Notifications", path: "/notifications" },
 ];
 
@@ -47,10 +47,10 @@ test("the retired transfer module is unavailable to all roles", () => {
   assert.equal(canAccessModule("BHW", "/transfers"), false);
 });
 
-test("only Pharma II can access the suppliers module", () => {
-  assert.equal(canAccessModule("PHARMA_I", "/suppliers"), false);
-  assert.equal(canAccessModule("PHARMA_II", "/suppliers"), true);
-  assert.equal(canAccessModule("BHW", "/suppliers"), false);
+test("only Pharma II can access other programs module", () => {
+  assert.equal(canAccessModule("PHARMA_I", "/other-programs"), false);
+  assert.equal(canAccessModule("PHARMA_II", "/other-programs"), true);
+  assert.equal(canAccessModule("BHW", "/other-programs"), false);
 });
 
 test("filters role-restricted navigation items", () => {
@@ -61,7 +61,7 @@ test("filters role-restricted navigation items", () => {
 
   assert.deepEqual(
     getAllowedNavItems(navItems, "PHARMA_II").map((item) => item.label),
-    ["Dashboard", "Stock Returns", "User Management", "Facilities", "Suppliers", "Notifications"]
+    ["Dashboard", "Stock Returns", "User Management", "Facilities", "Other Programs", "Notifications"]
   );
 
   assert.deepEqual(

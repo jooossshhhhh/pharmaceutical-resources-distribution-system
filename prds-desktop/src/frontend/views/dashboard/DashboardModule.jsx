@@ -382,7 +382,7 @@ export default function DashboardModule() {
             threshold,
             batch_number,
             expiration_date,
-            medicine:medicines(generic_name, brand_name, dosage, unit_of_measure),
+            medicine:medicines(generic_name, dosage, unit_of_measure),
             facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code)
           `)
             .order("expiration_date", { ascending: true })
@@ -688,7 +688,7 @@ export default function DashboardModule() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="border-b border-neutral-200 text-[10px] uppercase text-neutral-500">
+                <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   <tr><th className="py-2 pr-3">Medicine</th><th className="px-3 py-2">Facility</th><th className="px-3 py-2">Batch</th><th className="px-3 py-2 text-right">Qty / threshold</th><th className="py-2 pl-3">Risk</th></tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
@@ -728,7 +728,7 @@ export default function DashboardModule() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[490px] text-left text-xs">
-                <thead className="border-b border-neutral-200 text-[10px] uppercase text-neutral-500">
+                <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   <tr><th className="py-2 pr-3">Request</th><th className="px-3 py-2">Medicine</th><th className="px-3 py-2 text-right">Qty</th><th className="py-2 pl-3">Status</th></tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
@@ -801,7 +801,7 @@ export default function DashboardModule() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="border-b border-neutral-200 text-[10px] uppercase text-neutral-500">
+                <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   <tr><th className="py-2 pr-3">Medicine</th><th className="px-3 py-2">Batch</th><th className="px-3 py-2">Facility</th><th className="px-3 py-2 text-right">Quantity</th><th className="py-2 pl-3">Expiry</th></tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">

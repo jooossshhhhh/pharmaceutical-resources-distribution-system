@@ -14,7 +14,6 @@ export const statusOptions = [
 
 export const moduleAccess = {
   "/users": ["PHARMA_II"],
-  "/suppliers": ["PHARMA_II"],
   "/other-programs": ["PHARMA_II"],
   "/facilities": ["PHARMA_I", "PHARMA_II"],
   "/stock-returns": ["BHW", "PHARMA_I", "PHARMA_II"],

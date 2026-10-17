@@ -4,15 +4,12 @@ import {
   Calendar,
   CheckCircle2,
   Download,
-  Eye,
   Package,
   Pill,
   Plus,
   Receipt,
   RefreshCw,
-  RotateCcw,
   Search,
-  ShieldCheck,
   X,
 } from "lucide-react";
 
@@ -27,7 +24,6 @@ import {
   getReturnReasonLabel,
   getReturnReasonTone,
   getReturnStatusBadge,
-  RETURN_REASON_OPTIONS,
   RETURN_STATUS_OPTIONS,
 } from "@backend/services/stockReturnsService";
 import { formatCurrency, formatDate, formatNumber } from "@shared/utils/inventoryUtils";
@@ -44,11 +40,11 @@ export default function StockReturnsModule() {
   const [returnsList, setReturnsList] = useState(() => getSnapshot(STORAGE_KEYS.STOCK_RETURNS, []));
   const [facilities, setFacilities] = useState(() => getSnapshot(STORAGE_KEYS.FACILITIES, []));
   const [medicines, setMedicines] = useState(() => getSnapshot(STORAGE_KEYS.MEDICINES, []));
+  const [inventory, setInventory] = useState(() => getSnapshot(STORAGE_KEYS.INVENTORY, []));
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [facilityFilter, setFacilityFilter] = useState(() => isBhw ? profile?.facility_id || "ALL" : "ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [reasonFilter, setReasonFilter] = useState("ALL");
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [selectedReturnRecord, setSelectedReturnRecord] = useState(null);
   const [notice, setNotice] = useState("");
@@ -62,6 +58,7 @@ export default function StockReturnsModule() {
       setReturnsList(data);
       setFacilities(getSnapshot(STORAGE_KEYS.FACILITIES, []));
       setMedicines(getSnapshot(STORAGE_KEYS.MEDICINES, []));
+      setInventory(getSnapshot(STORAGE_KEYS.INVENTORY, []));
     } catch (err) {
       console.error("[StockReturnsModule] Failed to load stock returns:", err);
     } finally {
@@ -72,6 +69,15 @@ export default function StockReturnsModule() {
   useEffect(() => {
     void Promise.resolve().then(loadData);
   }, [loadData]);
+
+  // Listen for inventory change events across the app
+  useEffect(() => {
+    const handleInvChange = () => {
+      setInventory(getSnapshot(STORAGE_KEYS.INVENTORY, []));
+    };
+    window.addEventListener("prds:inventory-changed", handleInvChange);
+    return () => window.removeEventListener("prds:inventory-changed", handleInvChange);
+  }, []);
 
   const barangayFacilities = useMemo(
     () =>
@@ -85,6 +91,13 @@ export default function StockReturnsModule() {
     [facilities]
   );
 
+  const baseReturns = useMemo(() => {
+    if (isBhw && profile?.facility_id) {
+      return (returnsList || []).filter((item) => item.facility_id === profile.facility_id);
+    }
+    return returnsList || [];
+  }, [returnsList, isBhw, profile?.facility_id]);
+
   const filteredReturns = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     const activeFacilityFilter = isBhw ? profile?.facility_id || "ALL" : facilityFilter;
@@ -92,11 +105,11 @@ export default function StockReturnsModule() {
     return (returnsList || []).filter((item) => {
       if (activeFacilityFilter !== "ALL" && item.facility_id !== activeFacilityFilter) return false;
       if (statusFilter !== "ALL" && item.status !== statusFilter) return false;
-      if (reasonFilter !== "ALL" && item.reason !== reasonFilter) return false;
 
       if (!term) return true;
 
       return [
+        item.return_id,
         item.return_slip_no,
         item.id,
         item.lot_no,
@@ -112,10 +125,10 @@ export default function StockReturnsModule() {
         .toLowerCase()
         .includes(term);
     });
-  }, [returnsList, searchTerm, isBhw, profile?.facility_id, facilityFilter, statusFilter, reasonFilter]);
+  }, [returnsList, searchTerm, isBhw, profile?.facility_id, facilityFilter, statusFilter]);
 
   const pagination = usePaginatedRows(filteredReturns, 10);
-  const kpis = useMemo(() => calculateStockReturnKpis(filteredReturns), [filteredReturns]);
+  const kpis = useMemo(() => calculateStockReturnKpis(baseReturns), [baseReturns]);
 
   const totalValuation = useMemo(
     () =>
@@ -126,49 +139,47 @@ export default function StockReturnsModule() {
     [filteredReturns]
   );
 
-  const hasActiveFilters = Boolean(
-    searchTerm.trim() ||
-      (!isBhw && facilityFilter !== "ALL") ||
-      statusFilter !== "ALL" ||
-      reasonFilter !== "ALL"
-  );
-
-  const clearFilters = () => {
-    setSearchTerm("");
-    if (!isBhw) setFacilityFilter("ALL");
-    setStatusFilter("ALL");
-    setReasonFilter("ALL");
-    pagination.setCurrentPage(1);
-  };
-
   const handleRecordSuccess = (newRecord) => {
-    setNotice(isBhw ? "Stock return submitted to CHO." : "Stock return recorded.");
+    const record = Array.isArray(newRecord) ? newRecord[0] : newRecord;
+    const returnId = record?.return_id || "";
+    const isDirectlyConfirmed = record?.status === "CONFIRMED";
+    const count = Array.isArray(newRecord) ? newRecord.length : 1;
+    setNotice(
+      isDirectlyConfirmed
+        ? `Stock return ${returnId} (${count} ${count === 1 ? "medicine" : "medicines"}) recorded and confirmed.`
+        : `Stock return ${returnId} (${count} ${count === 1 ? "medicine" : "medicines"}) submitted to CHO (Pending confirmation).`
+    );
     setTimeout(() => setNotice(""), 5000);
-    setReturnsList((prev) => [newRecord, ...(prev || []).filter((item) => item.id !== newRecord.id)]);
     loadData();
   };
 
   const handleRecordUpdated = (updatedRecord) => {
+    const targetReturnId = updatedRecord.return_id || updatedRecord.return_slip_no;
     setReturnsList((prev) =>
-      (prev || []).map((item) => (item.id === updatedRecord.id ? { ...item, ...updatedRecord } : item))
+      (prev || []).map((item) => {
+        const itemReturnId = item.return_id || item.return_slip_no;
+        if (targetReturnId && itemReturnId === targetReturnId) {
+          return { ...item, ...updatedRecord, id: item.id };
+        }
+        return item.id === updatedRecord.id ? { ...item, ...updatedRecord } : item;
+      })
     );
-    setNotice("Stock return successfully verified.");
+    setNotice("Stock return successfully confirmed.");
     setTimeout(() => setNotice(""), 5000);
   };
 
   const handleExportCsv = () => {
     const headers = [
-      "Return Slip No",
+      "Return ID",
       "Return Date",
-      "Returning Facility",
+      ...(!isBhw ? ["Returning Facility"] : []),
       "Medicine Name",
       "Brand Name",
       "Batch / Lot No",
       "Quantity",
-      "Unit Cost (PHP)",
-      "Total Value (PHP)",
+      ...(!isBhw ? ["Unit Cost (PHP)", "Total Value (PHP)"] : []),
       "Expiration Date",
-      "Return Reason",
+      "Reason",
       "Status",
     ];
 
@@ -176,15 +187,14 @@ export default function StockReturnsModule() {
       const qty = parseInt(item.quantity, 10) || 0;
       const cost = parseFloat(item.unit_cost) || 0;
       return [
-        item.return_slip_no || String(item.id || "").slice(0, 8),
+        item.return_id || item.return_slip_no || String(item.id || "").slice(0, 8),
         item.return_date || item.submitted_at ? formatDate(item.return_date || item.submitted_at) : "",
-        item.facility?.facility_name || "",
+        ...(!isBhw ? [item.facility?.facility_name || ""] : []),
         item.medicine_name || "",
         item.brand_name || "",
         item.lot_no || item.batch_number || "",
         qty,
-        cost.toFixed(2),
-        (qty * cost).toFixed(2),
+        ...(!isBhw ? [cost.toFixed(2), (qty * cost).toFixed(2)] : []),
         item.expiration_date ? formatDate(item.expiration_date) : "",
         getReturnReasonLabel(item.reason),
         getReturnStatusBadge(item.status).label,
@@ -230,7 +240,7 @@ export default function StockReturnsModule() {
               <p className="mt-1 text-xs font-semibold text-neutral-500">
                 {isBhw
                   ? "Record and dispatch returned medicine stock to the City Health Office central warehouse."
-                  : "Review, verify, and reconcile medicines returned by barangay health stations."}
+                  : "Review, confirm, and reconcile medicines returned by barangay health stations."}
               </p>
             </div>
 
@@ -265,29 +275,24 @@ export default function StockReturnsModule() {
         </section>
 
         {/* Metric Summary Cards in standard PRDS format */}
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <MetricCard
-            label="Total Returns"
-            value={formatNumber(filteredReturns.length)}
-            sub="return entries on record"
+            label="Pending Confirmation"
+            value={formatNumber(kpis.pendingConfirmationCount)}
+            onClick={() => setStatusFilter((prev) => (prev === "PENDING" ? "ALL" : "PENDING"))}
+            active={statusFilter === "PENDING"}
+            compact
+          />
+          <MetricCard
+            label="Confirmed Returns"
+            value={formatNumber(kpis.confirmedCount)}
+            onClick={() => setStatusFilter((prev) => (prev === "CONFIRMED" ? "ALL" : "CONFIRMED"))}
+            active={statusFilter === "CONFIRMED"}
             compact
           />
           <MetricCard
             label="Returned Units"
             value={formatNumber(kpis.totalUnitsReturned)}
-            sub="total medicine items"
-            compact
-          />
-          <MetricCard
-            label="Pending Review"
-            value={formatNumber(kpis.pendingVerificationCount)}
-            sub="awaiting CHO verification"
-            compact
-          />
-          <MetricCard
-            label="Verified Returns"
-            value={formatNumber(kpis.verifiedCount)}
-            sub={totalValuation > 0 ? `${formatCurrency(totalValuation)} reconciled` : "reconciled to CHO"}
             compact
           />
         </section>
@@ -316,7 +321,7 @@ export default function StockReturnsModule() {
                     setSearchTerm(event.target.value);
                     pagination.setCurrentPage(1);
                   }}
-                  placeholder="Search slip, batch, medicine, facility..."
+                  placeholder="Search Return ID, batch, medicine, facility..."
                   className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-8 text-xs font-semibold text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
                 {searchTerm && (
@@ -349,28 +354,12 @@ export default function StockReturnsModule() {
               )}
 
               <select
-                value={reasonFilter}
-                onChange={(event) => {
-                  setReasonFilter(event.target.value);
-                  pagination.setCurrentPage(1);
-                }}
-                className="h-9 max-w-[155px] rounded-lg border border-[#d8dadc] bg-white px-2.5 text-xs font-bold text-neutral-700 outline-none transition hover:border-neutral-300 focus:border-emerald-500 cursor-pointer truncate"
-              >
-                <option value="ALL">All Reasons</option>
-                {RETURN_REASON_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-
-              <select
                 value={statusFilter}
                 onChange={(event) => {
                   setStatusFilter(event.target.value);
                   pagination.setCurrentPage(1);
                 }}
-                className="h-9 max-w-[145px] rounded-lg border border-[#d8dadc] bg-white px-2.5 text-xs font-bold text-neutral-700 outline-none transition hover:border-neutral-300 focus:border-emerald-500 cursor-pointer truncate"
+                className="h-9 rounded-lg border border-[#d8dadc] bg-white px-2.5 text-xs font-bold text-neutral-700 outline-none transition hover:border-neutral-300 focus:border-emerald-500 cursor-pointer"
               >
                 <option value="ALL">All Statuses</option>
                 {RETURN_STATUS_OPTIONS.map((option) => (
@@ -379,171 +368,105 @@ export default function StockReturnsModule() {
                   </option>
                 ))}
               </select>
-
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 text-xs font-bold text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 transition cursor-pointer"
-                  title="Clear active filters"
-                >
-                  <RotateCcw className="h-3 w-3 text-neutral-500" />
-                  Clear
-                </button>
-              )}
             </div>
           </div>
 
-          {/* Clean, Non-Cluttered Table Matching Database Schema */}
+          {/* Streamlined, Readable Stock Returns Table */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="sticky top-0 z-10 border-y border-neutral-100 bg-[#f7f6f3] text-[11px] font-black uppercase tracking-[0.14em] text-[#42474e]">
+            <table className="w-full min-w-[850px] text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="w-[16%] px-4 py-2.5">Return Slip #</th>
-                  <th className="w-[18%] px-4 py-2.5">Returning Facility</th>
-                  <th className="w-[28%] px-4 py-2.5">Medicine &amp; Batch</th>
-                  <th className="w-[10%] px-4 py-2.5 text-right">Quantity</th>
-                  <th className="w-[14%] px-4 py-2.5">Return Reason</th>
-                  <th className="w-[10%] px-4 py-2.5">Status</th>
-                  <th className="w-[4%] px-4 py-2.5 text-right">Action</th>
+                  <th className="px-4 py-3">Return ID</th>
+                  {!isBhw && <th className="px-4 py-3">Returning Facility</th>}
+                  <th className="px-4 py-3">Medicine</th>
+                  <th className="px-4 py-3">Batch / Lot</th>
+                  <th className="px-4 py-3">Expiration Date</th>
+                  <th className="px-4 py-3 text-right">Quantity</th>
+                  <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {pagination.paginatedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center">
+                    <td colSpan={isBhw ? 6 : 7} className="px-4 py-12 text-center">
                       <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                         <Package className="h-5 w-5" />
                       </div>
                       <p className="font-bold text-[#0d1117]">No Stock Returns Found</p>
                       <p className="mt-0.5 text-xs font-medium text-neutral-400">
-                        {hasActiveFilters
-                          ? "Try adjusting or clearing the active filters."
-                          : isBhw
+                        {isBhw
                           ? "Use 'Send Return' when your barangay station has medicines to return to CHO."
                           : "Returned medicines from barangay stations will be listed here for inspection."}
                       </p>
-                      {hasActiveFilters && (
-                        <button
-                          type="button"
-                          onClick={clearFilters}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5 text-neutral-500" />
-                          Clear filters
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ) : (
                   pagination.paginatedRows.map((item) => {
-                    const reasonTone = getReturnReasonTone(item.reason);
-                    const reasonLabel = getReturnReasonLabel(item.reason);
                     const statusBadge = getReturnStatusBadge(item.status);
-                    const returnSlipDisplay =
+                    const returnIdDisplay =
+                      item.return_id ||
                       item.return_slip_no ||
-                      (item.id ? `RET-${String(item.id).slice(0, 8).toUpperCase()}` : "-");
-                    const dateDisplay =
-                      item.return_date || item.submitted_at
-                        ? formatDate(item.return_date || item.submitted_at)
-                        : item.created_at
-                        ? formatDate(item.created_at)
-                        : null;
+                      (item.id ? `RET-${String(item.id).slice(0, 8).toUpperCase()}` : "—");
 
                     return (
                       <tr
                         key={item.id}
                         onClick={() => setSelectedReturnRecord(item)}
-                        className="group cursor-pointer transition hover:bg-emerald-50/35"
+                        className="group cursor-pointer transition hover:bg-emerald-50/30"
                       >
-                        {/* Return Slip Column */}
-                        <td className="px-4 py-3 align-middle">
-                          <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[#0d1117]">
-                            <Receipt className="h-3.5 w-3.5 text-neutral-400 shrink-0" />
-                            <span>{returnSlipDisplay}</span>
-                          </div>
-                          {dateDisplay && (
-                            <p className="mt-0.5 text-[11px] font-semibold text-neutral-400">
-                              {dateDisplay}
-                            </p>
-                          )}
-                        </td>
-
-                        {/* Returning Facility Column */}
-                        <td className="px-4 py-3 align-middle">
-                          <div className="flex items-center gap-1.5">
-                            <Building2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                            <span className="text-xs font-bold text-[#0d1117] line-clamp-1">
-                              {item.facility?.facility_name || "Barangay Health Center"}
-                            </span>
-                          </div>
-                          {item.facility?.facility_code && (
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                              {item.facility.facility_code}
-                            </p>
-                          )}
-                        </td>
-
-                        {/* Medicine Name & Batch Column */}
-                        <td className="px-4 py-3 align-middle">
-                          <p className="text-sm font-black text-[#0d1117] leading-snug">
-                            {item.medicine_name || "Medicine Item"}
-                          </p>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500 font-semibold">
-                            <span className="font-mono bg-neutral-100 border border-neutral-200/60 rounded px-1.5 py-0.2 text-[10px] font-bold text-neutral-700">
-                              Lot: {item.lot_no || item.batch_number || "—"}
-                            </span>
-                            {item.brand_name && (
-                              <span>• Brand: {item.brand_name}</span>
-                            )}
-                            {item.expiration_date && (
-                              <span>• Exp: {formatDate(item.expiration_date)}</span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Quantity Column */}
-                        <td className="px-4 py-3 align-middle text-right">
-                          <p className="text-sm font-black text-[#0d1117]">
-                            {formatNumber(item.quantity)}
-                          </p>
-                          {Number(item.unit_cost) > 0 && (
-                            <p className="text-[11px] font-semibold text-neutral-400">
-                              {formatCurrency((item.quantity || 0) * (item.unit_cost || 0))}
-                            </p>
-                          )}
-                        </td>
-
-                        {/* Reason Column */}
-                        <td className="px-4 py-3 align-middle">
-                          <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ${reasonTone}`}>
-                            {reasonLabel}
+                        {/* Return ID (Clean ID only, no date subheading) */}
+                        <td className="px-4 py-3.5 align-middle">
+                          <span className="font-mono text-xs font-bold text-[#0d1117] tracking-tight">
+                            {returnIdDisplay}
                           </span>
                         </td>
 
-                        {/* Status Column */}
-                        <td className="px-4 py-3 align-middle">
+                        {/* Returning Facility (CHO view only) */}
+                        {!isBhw && (
+                          <td className="px-4 py-3.5 align-middle">
+                            <span className="text-xs font-bold text-[#0d1117]">
+                              {item.facility?.facility_name || "Barangay Health Center"}
+                            </span>
+                          </td>
+                        )}
+
+                        {/* Medicine Generic & Brand */}
+                        <td className="px-4 py-3.5 align-middle">
+                          <p className="text-xs font-bold text-[#0d1117] leading-tight">
+                            {item.medicine_name || "Medicine Item"}
+                          </p>
+                          <p className="mt-0.5 text-[11px] font-medium text-neutral-500">
+                            {item.brand_name || "Generic"}
+                          </p>
+                        </td>
+
+                        {/* Batch / Lot */}
+                        <td className="px-4 py-3.5 align-middle font-mono text-xs font-semibold text-neutral-800">
+                          {item.lot_no || item.batch_number || "—"}
+                        </td>
+
+                        {/* Expiration Date */}
+                        <td className="px-4 py-3.5 align-middle text-xs font-medium text-neutral-700">
+                          {item.expiration_date ? formatDate(item.expiration_date) : "—"}
+                        </td>
+
+                        {/* Quantity */}
+                        <td className="px-4 py-3.5 align-middle text-right">
+                          <span className="text-xs font-black text-[#0d1117] tabular-nums">
+                            {formatNumber(item.quantity)}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 py-3.5 align-middle">
                           <span
                             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${statusBadge.tone}`}
                           >
-                            {item.status === "VERIFIED" && <ShieldCheck className="h-3 w-3 shrink-0" />}
+                            {(item.status === "CONFIRMED" || item.status === "VERIFIED") && (
+                              <CheckCircle2 className="h-3 w-3 shrink-0" />
+                            )}
                             {statusBadge.label}
                           </span>
-                        </td>
-
-                        {/* Action Column */}
-                        <td
-                          className="px-4 py-3 align-middle text-right"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setSelectedReturnRecord(item)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#d8dadc] bg-white px-2.5 py-1 text-xs font-bold text-neutral-700 shadow-2xs transition hover:border-neutral-400 hover:bg-neutral-50 active:scale-[0.98] cursor-pointer"
-                          >
-                            <Eye className="h-3.5 w-3.5 text-neutral-500" />
-                            View
-                          </button>
                         </td>
                       </tr>
                     );
@@ -574,6 +497,7 @@ export default function StockReturnsModule() {
         onSuccess={handleRecordSuccess}
         facilities={facilities}
         medicines={medicines}
+        inventory={inventory}
         currentUserProfile={profile}
       />
 
@@ -581,6 +505,7 @@ export default function StockReturnsModule() {
         isOpen={!!selectedReturnRecord}
         onClose={() => setSelectedReturnRecord(null)}
         returnRecord={selectedReturnRecord}
+        allReturns={returnsList}
         onRecordUpdated={handleRecordUpdated}
         currentUserProfile={profile}
       />

@@ -452,6 +452,10 @@ export const getDuplicateRequestMedicineIds = (items = []) => {
 export const getRequestTrackingSteps = (request = {}) => {
   const status = request.status || "PENDING";
   const approvedLikeStatuses = ["APPROVED", "COMPLETED"];
+  const completedDate =
+    request.received_at ||
+    request.completed_at ||
+    (status === "COMPLETED" ? request.updated_at : null);
 
   return [
     {
@@ -471,9 +475,16 @@ export const getRequestTrackingSteps = (request = {}) => {
           : "current",
     },
     {
-      detail: status === "COMPLETED" ? "Released to facility" : "Awaiting release",
-      key: "in_transit",
-      label: "For Release",
+      detail:
+        status === "COMPLETED"
+          ? "Picked up"
+          : status === "APPROVED"
+            ? "Ready for pickup"
+            : status === "REJECTED"
+              ? "Not released"
+              : "Awaiting release",
+      key: "ready_to_pickup",
+      label: "Ready to Pickup",
       state:
         status === "COMPLETED"
           ? "complete"
@@ -482,9 +493,18 @@ export const getRequestTrackingSteps = (request = {}) => {
             : "pending",
     },
     {
-      detail: request.received_at ? formatRequestDate(request.received_at) : "Pending",
-      key: "received",
-      label: "Received",
+      detail:
+        status === "COMPLETED"
+          ? completedDate
+            ? formatRequestDate(completedDate)
+            : "Completed"
+          : status === "APPROVED"
+            ? "Awaiting pickup"
+            : status === "REJECTED"
+              ? "Cancelled"
+              : "Pending",
+      key: "completed",
+      label: "Completed",
       state: status === "COMPLETED" ? "complete" : "pending",
     },
   ];

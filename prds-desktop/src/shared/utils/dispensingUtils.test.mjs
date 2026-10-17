@@ -5,6 +5,7 @@ import {
   buildDispensingCsv,
   buildFefoPreview,
   buildMedicineOptions,
+  buildPatientHistoryRows,
   buildWalkInRpcPayload,
   deductWalkInInventoryFefo,
   filterAndSortMedicineOptions,
@@ -397,6 +398,20 @@ test("follow-up helpers format defaults and labels", () => {
     }),
     "Refer to barangay - Inayagan Barangay Health Center"
   );
+  assert.equal(
+    getFollowUpDisplay({
+      followUpAction: FOLLOW_UP_ACTIONS.refer,
+      referredFacility: { facility_name: "City Health Office", facility_type: "CHO" },
+    }),
+    "Refer to City Health Office"
+  );
+  assert.equal(
+    getFollowUpDisplay({
+      followUpAction: FOLLOW_UP_ACTIONS.refer,
+      referredFacility: { facility_code: "CHO-NAGA", facility_name: "City Health Office - Naga" },
+    }),
+    "Refer to City Health Office"
+  );
 });
 
 test("medicine labels compose generic, dosage, brand and unit", () => {
@@ -700,4 +715,139 @@ test("filterAndSortMedicineOptions filters by keyword, form, stock level, and so
   assert.equal(stockDesc[0].total_quantity, 40); // Amoxicillin (40)
   assert.equal(stockDesc[1].total_quantity, 35); // Paracetamol (35)
 });
+
+test("buildPatientHistoryRows tracks partial dispensing and balance fulfillment without double-counting needed quantity", () => {
+  const medicine = {
+    id: "med-1",
+    generic_name: "Paracetamol",
+    dosage: "500mg",
+    unit_of_measure: "tablet",
+  };
+
+  // Transaction 1: Initial claim on Jan 10. Prescribed needed = 10, released = 5.
+  const txn1 = {
+    key: "txn-1",
+    transactionId: "11111111-0000-0000-0000-000000000001",
+    dispenseDate: "2026-01-10T10:00:00Z",
+    dispenser: { first_name: "Maria", last_name: "Santos" },
+    dispensingFacility: { facility_name: "City Health Office" },
+    rows: [{
+      medicine_id: "med-1",
+      needed_quantity: 10,
+      quantity: 5,
+      prescribed_by: "Dr. Reyes",
+      dispense_date: "2026-01-10T10:00:00Z",
+    }],
+    medicineLines: [{
+      medicine,
+      neededQuantity: 10,
+      releasedQuantity: 5,
+      rows: [{
+        medicine_id: "med-1",
+        needed_quantity: 10,
+        quantity: 5,
+        prescribed_by: "Dr. Reyes",
+      }],
+    }],
+  };
+
+  // Transaction 2: Follow-up claim on Jan 17. In DB, needed_quantity is 10, released = 5.
+  const txn2 = {
+    key: "txn-2",
+    transactionId: "22222222-0000-0000-0000-000000000002",
+    dispenseDate: "2026-01-17T10:00:00Z",
+    dispenser: { first_name: "Maria", last_name: "Santos" },
+    dispensingFacility: { facility_name: "City Health Office" },
+    rows: [{
+      medicine_id: "med-1",
+      needed_quantity: 10,
+      quantity: 5,
+      prescribed_by: "Dr. Reyes",
+      dispense_date: "2026-01-17T10:00:00Z",
+    }],
+    medicineLines: [{
+      medicine,
+      neededQuantity: 10,
+      releasedQuantity: 5,
+      rows: [{
+        medicine_id: "med-1",
+        needed_quantity: 10,
+        quantity: 5,
+        prescribed_by: "Dr. Reyes",
+      }],
+    }],
+  };
+
+  const rows = buildPatientHistoryRows([txn1, txn2]);
+
+  // Returned newest-first: row 0 is Jan 17, row 1 is Jan 10
+  assert.equal(rows.length, 2);
+
+  // Follow-up row (Jan 17)
+  const followUpRow = rows[0];
+  assert.equal(followUpRow.dispenseId, "22222222-0000-0000-0000-000000000002");
+  assert.equal(followUpRow.neededQuantity, null); // Rendered as "—" to avoid double-counting
+  assert.equal(followUpRow.releasedQuantity, 5);
+  assert.equal(followUpRow.balanceQuantity, 0); // Balance fulfilled
+  assert.equal(followUpRow.status, "COMPLETED");
+  assert.equal(followUpRow.isFollowUp, true);
+  assert.equal(followUpRow.dispensedBy, "Maria Santos");
+
+  // Initial row (Jan 10)
+  const initialRow = rows[1];
+  assert.equal(initialRow.dispenseId, "11111111-0000-0000-0000-000000000001");
+  assert.equal(initialRow.neededQuantity, 10); // Declared initial need
+  assert.equal(initialRow.releasedQuantity, 5);
+  assert.equal(initialRow.balanceQuantity, 5); // 10 - 5 = 5 remaining
+  assert.equal(initialRow.status, "PARTIAL");
+  assert.equal(initialRow.isFollowUp, false);
+});
+
+test("buildPatientHistoryRows handles immediate full completion and voided transactions", () => {
+  const medicine = { id: "med-2", generic_name: "Amoxicillin", dosage: "500mg" };
+
+  const completeTxn = {
+    key: "txn-complete",
+    transactionId: "33333333-0000-0000-0000-000000000003",
+    dispenseDate: "2026-02-01T09:00:00Z",
+    medicineLines: [{
+      medicine,
+      neededQuantity: 12,
+      releasedQuantity: 12,
+      rows: [{ medicine_id: "med-2", needed_quantity: 12, quantity: 12 }],
+    }],
+  };
+
+  const voidedTxn = {
+    key: "txn-voided",
+    transactionId: "44444444-0000-0000-0000-000000000004",
+    dispenseDate: "2026-02-05T09:00:00Z",
+    voidedAt: "2026-02-05T10:00:00Z",
+    voidReason: "Wrong patient selected",
+    medicineLines: [{
+      medicine,
+      neededQuantity: 10,
+      releasedQuantity: 5,
+      rows: [{ medicine_id: "med-2", needed_quantity: 10, quantity: 5 }],
+    }],
+  };
+
+  const rows = buildPatientHistoryRows([completeTxn, voidedTxn]);
+
+  assert.equal(rows.length, 2);
+
+  // Newest is voided
+  const voidedRow = rows[0];
+  assert.equal(voidedRow.status, "VOIDED");
+  assert.equal(voidedRow.balanceQuantity, 5);
+
+  // Older is complete
+  const completeRow = rows[1];
+  assert.equal(completeRow.neededQuantity, 12);
+  assert.equal(completeRow.releasedQuantity, 12);
+  assert.equal(completeRow.balanceQuantity, 0);
+  assert.equal(completeRow.status, "COMPLETED");
+  assert.equal(completeRow.isFollowUp, false);
+});
+
 

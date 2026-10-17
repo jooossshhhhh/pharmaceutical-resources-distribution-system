@@ -1,7 +1,7 @@
 import { formatPeso } from "@shared/utils/reportUtils";
 import { Pill, CircleDollarSign, Boxes, AlertTriangle, CheckCircle2 } from "lucide-react";
 
-export default function ReportSummaryCards({ kpis }) {
+export default function ReportSummaryCards({ kpis, isBhw = false }) {
   const {
     dispensedToday = { totalUnits: 0, walkInUnits: 0, bhwUnits: 0 },
     totalMedicineCost = 0,
@@ -38,45 +38,89 @@ export default function ReportSummaryCards({ kpis }) {
         </p>
       </div>
 
-      {/* Card 2: Total Medicine Cost */}
-      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-blue-300 transition-all flex flex-col justify-between">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
-              Total Medicine Cost
-            </span>
-            <div className="text-2xl font-black text-[#0d1117] mt-1.5">
-              {formatPeso(totalMedicineCost)}
+      {/* Card 2: Total Medicine Cost (CHO) / Stocked Medicines (BHW) */}
+      {isBhw ? (
+        <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-blue-300 transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+                Stocked Medicines
+              </span>
+              <div className="text-2xl font-black text-[#0d1117] mt-1.5">
+                {(stockHealth.totalItems || 0).toLocaleString()}{" "}
+                <span className="text-xs font-semibold text-[#5f6673]">Items</span>
+              </div>
+            </div>
+            <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+              <Boxes className="h-4 w-4" />
             </div>
           </div>
-          <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
-            <CircleDollarSign className="h-4 w-4" />
-          </div>
+          <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
+            Active medicines available at station
+          </p>
         </div>
-        <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
-          Value of medicines distributed today
-        </p>
-      </div>
+      ) : (
+        <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-blue-300 transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+                Total Medicine Cost
+              </span>
+              <div className="text-2xl font-black text-[#0d1117] mt-1.5">
+                {formatPeso(totalMedicineCost)}
+              </div>
+            </div>
+            <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
+              <CircleDollarSign className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
+            Value of medicines distributed today
+          </p>
+        </div>
+      )}
 
-      {/* Card 3: Total Remaining Stock */}
-      <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
-              Total Remaining Stock
-            </span>
-            <div className="text-2xl font-black text-[#0d1117] mt-1.5">
-              {formatPeso(totalRemainingStockValue)}
+      {/* Card 3: Total Remaining Stock (CHO) / Quarantined Batches (BHW) */}
+      {isBhw ? (
+        <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+                Quarantined Batches
+              </span>
+              <div className="text-2xl font-black text-[#0d1117] mt-1.5">
+                {(stockHealth.expiredCount || 0).toLocaleString()}{" "}
+                <span className="text-xs font-semibold text-[#5f6673]">Lots</span>
+              </div>
+            </div>
+            <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0 border border-indigo-100">
+              <Pill className="h-4 w-4" />
             </div>
           </div>
-          <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0 border border-indigo-100">
-            <Boxes className="h-4 w-4" />
-          </div>
+          <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
+            {stockHealth.expiredCount > 0 ? "Expired stock pending return to CHO" : "No expired lots quarantined"}
+          </p>
         </div>
-        <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
-          Active valuation of warehouse inventory
-        </p>
-      </div>
+      ) : (
+        <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-[11.5px] font-semibold tracking-wide text-[#5f6673] uppercase">
+                Total Remaining Stock
+              </span>
+              <div className="text-2xl font-black text-[#0d1117] mt-1.5">
+                {formatPeso(totalRemainingStockValue)}
+              </div>
+            </div>
+            <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0 border border-indigo-100">
+              <Boxes className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-[11.5px] text-[#5f6673] mt-2.5 pt-2 border-t border-[#f1f3f5]">
+            Active valuation of warehouse inventory
+          </p>
+        </div>
+      )}
 
       {/* Card 4: Low Stock Warning */}
       <div className="bg-white border border-[#d8dadc] rounded-xl p-4 shadow-xs hover:border-amber-300 transition-all flex flex-col justify-between">

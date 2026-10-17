@@ -21,56 +21,7 @@ import {
 } from "../../services/downloadManager";
 
 
-const pageTitles = {
-  "/dashboard": {
-    title: "Dashboard",
-    subtitle: new Intl.DateTimeFormat("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    }).format(new Date()),
-  },
-  "/inventory": {
-    title: "Inventory Management",
-    subtitle: "Track medicine stock levels across all facilities",
-  },
-  "/inventory-bhw": {
-    title: "Facility Inventory",
-    subtitle: "View stock levels and consumption",
-  },
-  "/requests": { title: "Request", subtitle: "Review and process medicine requests" },
-  "/dispensing": { title: "Dispensing", subtitle: "Monitor patient medicine dispensing" },
-  "/medicines": {
-    title: "Medicine Catalog",
-    subtitle: "Browse and manage the full list of medicines and pricing",
-  },
-  "/facilities": { title: "Facilities", subtitle: "Manage healthcare facilities" },
-  "/suppliers": {
-    title: "Suppliers",
-    subtitle: "Manage supplier records and contact details",
-  },
-  "/patients": { title: "Patients", subtitle: "Manage patient records" },
-  "/forecasting": { title: "Forecasting", subtitle: "Review demand forecasts" },
-  "/activity-logs": {
-    title: "Activity Logs",
-    subtitle: "Review user actions, profile changes, inventory updates, and facility activity.",
-  },
-  "/notifications": {
-    title: "Notifications",
-    subtitle: "System alerts, request updates, and transfer notifications",
-  },
-  "/users": {
-    title: "User Management",
-    subtitle: "Review accounts, approvals, roles, and facility assignments",
-  },
-  "/profile-settings": {
-    title: "My Profile",
-    subtitle: "Manage personal account details, credentials, and security",
-  },
-};
-
-export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
+export default function AdminHeader({ profile, onSignOut }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -88,10 +39,13 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   const [headerError, setHeaderError] = useState("");
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
-  const pageInfo = pageTitles[location.pathname] || {
-    title: "PRDS",
-    subtitle: currentDateTime,
-  };
+  const formattedDate = useMemo(() => {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(currentTime);
+  }, [currentTime]);
 
   const handleConfirmSignOut = async () => {
     setLogoutError("");
@@ -226,20 +180,20 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
   };
 
   return (
-    <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-[#d8dadc] bg-[#f8f9ff] px-6 shadow-sm shadow-neutral-200/50">
+    <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-[#e5e7eb] bg-white px-6 shadow-xs">
       <div className="min-w-0">
         <h1 className="truncate text-lg font-black tracking-tight text-[#0d1117]">
-          {pageInfo.title}
+          PRDS
         </h1>
-        <p className="truncate text-xs font-medium text-[#42474e]">
-          {pageInfo.subtitle}
+        <p className="truncate text-xs font-semibold text-[#5f6673]">
+          {formattedDate}
         </p>
       </div>
 
       <div className="flex items-center gap-3">
         <SyncStatusBadge />
 
-        <div className="hidden items-center gap-2 rounded-full border border-[#eff4ff] bg-[#eff4ff]/80 px-3.5 py-1.5 text-xs font-black tabular-nums tracking-wide text-[#0d1117] sm:flex">
+        <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-1.5 text-xs font-bold tabular-nums tracking-wide text-slate-800 sm:flex">
           <ClockIcon />
           {formattedTime}
         </div>
@@ -250,7 +204,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
             setIsDownloadsOpen(false);
             setIsNotificationsOpen((isOpen) => !isOpen);
           }}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[#42474e] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
           aria-label="Open notifications"
         >
           <BellIcon />
@@ -268,7 +222,7 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
             className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition ${
               isDownloadsOpen
                 ? "bg-[#e8fff7] text-[#007f5f] ring-1 ring-[#007f5f]/30"
-                : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
             aria-label="Open recent exports"
             title="Recent Exports"
@@ -291,8 +245,8 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
           }}
           className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
             isPreferencesOpen
-              ? "bg-[#eff4ff] text-[#0d1117] ring-1 ring-[#d8dadc]"
-              : "text-[#42474e] hover:bg-[#eff4ff] hover:text-[#0d1117]"
+              ? "bg-slate-100 text-slate-900 ring-1 ring-slate-300"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
           }`}
           aria-label="Open system preferences"
           title="System Preferences"
@@ -300,17 +254,18 @@ export default function AdminHeader({ profile, currentDateTime, onSignOut }) {
           <SettingsIcon />
         </button>
 
-        <div className="hidden h-6 w-px bg-[#d8dadc] sm:block" />
+        <div className="hidden h-6 w-px bg-slate-200 sm:block" />
 
         <button
           type="button"
           onClick={() => setShowLogoutModal(true)}
-          className="hidden h-8 items-center gap-2 rounded-md px-2 text-sm font-bold text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-950 sm:flex cursor-pointer"
+          className="hidden h-8 items-center gap-2 rounded-md px-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 sm:flex cursor-pointer"
         >
           <LogoutIcon />
           Logout
         </button>
       </div>
+
 
       {isNotificationsOpen && (
         <div className={`absolute ${notificationOffset} top-12.5 z-50 w-75.5 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xl shadow-neutral-200/70`}>

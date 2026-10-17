@@ -35,7 +35,7 @@ export default function UserAccountsTable({
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-neutral-50 text-xs font-black uppercase tracking-[0.14em] text-neutral-500">
+          <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-4 py-3">User</th>
               <th className="px-4 py-3">Contact</th>

@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { formatPeso } from "@shared/utils/reportUtils";
+import { groupReportItemsByPo } from "@shared/utils/reportExportUtils";
 import {
   Search,
   Download,
@@ -72,15 +73,27 @@ export default function MonthlyInventoryLedgerTable({
       });
     }
 
-    // 2. Search term
+    // 2. Search term (matches Generic Name, Brand, Lot No, Program Name, and Purchase Order / PO Number)
     if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
+      const q = searchTerm.toLowerCase().trim();
+      const cleanQ = q.replace(/^po\s*(no\.?)?\s*[-:]?\s*/i, "").trim();
       result = result.filter((item) => {
         const desc = (item.itemDescription || "").toLowerCase();
         const brand = (item.brandName || "").toLowerCase();
         const lot = (item.lotNo || "").toLowerCase();
         const prog = (item.programName || "").toLowerCase();
-        return desc.includes(q) || brand.includes(q) || lot.includes(q) || prog.includes(q);
+        const po = (item.poNumber || "").toLowerCase();
+        const formattedPo = `po no. ${po}`;
+
+        return (
+          desc.includes(q) ||
+          brand.includes(q) ||
+          lot.includes(q) ||
+          prog.includes(q) ||
+          po.includes(q) ||
+          formattedPo.includes(q) ||
+          (cleanQ && po.includes(cleanQ))
+        );
       });
     }
 
@@ -136,6 +149,13 @@ export default function MonthlyInventoryLedgerTable({
     return filteredItems.slice(start, start + pageSize);
   }, [filteredItems, currentPage, pageSize]);
 
+  // Group paginated items by Purchase Order (matching official inventory-report.xlsx layout)
+  const paginatedGroups = useMemo(() => {
+    return groupReportItemsByPo(paginatedItems);
+  }, [paginatedItems]);
+
+
+
   return (
     <div className="bg-white border border-[#d8dadc] rounded-xl shadow-xs overflow-hidden flex flex-col">
       {/* Top Toolbar */}
@@ -144,12 +164,15 @@ export default function MonthlyInventoryLedgerTable({
           <h3 className="text-sm font-bold text-[#0d1117]">
             Monthly Physical Count Inventory Ledger
           </h3>
+          <p className="text-[11px] text-[#42474e] mt-0.5 font-medium">
+            REPORT ON PHYSICAL COUNT OF INVENTORIES: VMCH MEDICINE SUPPLIES MONTH &bull; {new Intl.DateTimeFormat("en-US", { month: "long" }).format(new Date(year, month - 1, 1))}, {year}
+          </p>
         </div>
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Toggle */}
-          <div className="inline-flex items-center bg-[#f7f6f3] border border-[#d8dadc] p-0.5 rounded-lg text-xs">
+          <div className="inline-flex items-center bg-slate-100 border border-slate-200 p-0.5 rounded-lg text-xs">
             <button
               type="button"
               onClick={() => setViewMode("full")}
@@ -201,7 +224,7 @@ export default function MonthlyInventoryLedgerTable({
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Search generic name, brand, lot number..."
+              placeholder="Search generic name, brand, lot, PO number..."
               className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#d8dadc] rounded-lg text-xs text-[#0d1117] placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
             {searchTerm && (
@@ -362,7 +385,7 @@ export default function MonthlyInventoryLedgerTable({
 
           {/* Table Body */}
           <tbody className="divide-y divide-[#d8dadc]/60">
-            {paginatedItems.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <tr>
                 <td colSpan={viewMode === "full" ? 28 : 17} className="py-12 text-center text-[#42474e]">
                   <AlertCircle className="h-6 w-6 mx-auto text-slate-300 mb-1.5" />
@@ -373,36 +396,56 @@ export default function MonthlyInventoryLedgerTable({
                 </td>
               </tr>
             ) : (
-              paginatedItems.map((item, rowIdx) => {
-                const globalIdx = (currentPage - 1) * pageSize + rowIdx + 1;
-                const isEven = rowIdx % 2 === 0;
-
+              paginatedGroups.map((group, groupIdx) => {
                 return (
-                  <tr
-                    key={`${item.lotNo}-${item.index || rowIdx}`}
-                    className={`hover:bg-[#f8f9ff] transition-colors ${
-                      isEven ? "bg-white" : "bg-[#fcfdfd]"
-                    }`}
-                  >
-                    {/* Identification */}
-                    <td className="px-2.5 py-1.5 text-center font-mono text-[11px] text-[#42474e] border-r border-[#d8dadc]/60">
-                      {globalIdx}
-                    </td>
-                    <td className="px-3 py-1.5 font-semibold text-[#0d1117] border-r border-[#d8dadc]/60">
-                      {item.itemDescription}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-center text-[11px] text-[#42474e] border-r border-[#d8dadc]/60">
-                      {item.unitOfMeasure}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-[#42474e] border-r border-[#d8dadc]/60">
-                      {item.brandName || "-"}
-                    </td>
-                    <td className="px-2.5 py-1.5 font-mono text-[11px] text-[#0d1117] border-r border-[#d8dadc]/60">
-                      {item.lotNo}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-[11px] text-[#42474e] border-r border-[#d8dadc]/60">
-                      {item.expiryDate}
-                    </td>
+                  <Fragment key={`po-group-${group.poNumber || "default"}-${groupIdx}`}>
+                    {/* Official Statutory PO Group Header Row (Row 5 in inventory-report.xlsx) */}
+                    <tr className="bg-amber-50/70 border-y border-amber-200/80 font-semibold text-xs">
+                      <td className="px-2.5 py-1 text-center font-mono text-[10.5px] text-amber-700/70 border-r border-amber-200/60">
+                        §
+                      </td>
+                      <td
+                        colSpan={viewMode === "full" ? 27 : 16}
+                        className="px-3 py-1 font-mono text-xs text-amber-950 font-bold"
+                      >
+                        {group.headerText || "PO NO."}
+                      </td>
+                    </tr>
+
+                    {group.items.map((item, itemIdx) => {
+                      const itemOffsetInPage = paginatedItems.indexOf(item);
+                      const globalIdx =
+                        (currentPage - 1) * pageSize +
+                        (itemOffsetInPage >= 0 ? itemOffsetInPage : itemIdx) +
+                        1;
+                      const isEven = (globalIdx - 1) % 2 === 0;
+
+                      return (
+                        <tr
+                          key={`${item.lotNo}-${item.index || globalIdx}`}
+                          className={`hover:bg-[#f8f9ff] transition-colors ${
+                            isEven ? "bg-white" : "bg-[#fcfdfd]"
+                          }`}
+                        >
+                          {/* Identification (Rows C through H: 6 columns) */}
+                          <td className="px-2.5 py-1.5 text-center font-mono text-[11px] text-[#42474e] border-r border-[#d8dadc]/60">
+                            {globalIdx}
+                          </td>
+                          <td className="px-3 py-1.5 font-semibold text-[#0d1117] border-r border-[#d8dadc]/60">
+                            {item.itemDescription}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-center text-[11px] text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.unitOfMeasure}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.brandName || "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 font-mono text-[11px] text-[#0d1117] border-r border-[#d8dadc]/60">
+                            {item.lotNo}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-[11px] text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.expiryDate}
+                          </td>
 
                     {/* Beginning */}
                     <td className="px-2.5 py-1.5 text-right font-medium border-r border-[#d8dadc]/60">
@@ -508,6 +551,9 @@ export default function MonthlyInventoryLedgerTable({
                       {formatPeso(item.remainingTotal)}
                     </td>
                   </tr>
+                      );
+                    })}
+                  </Fragment>
                 );
               })
             )}

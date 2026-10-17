@@ -97,7 +97,7 @@ function Detail({ label, value, highlight = false }) {
   return (
     <div
       className={`rounded-lg px-3 py-2.5 ${
-        highlight ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-[#f7f6f3]"
+        highlight ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-slate-100"
       }`}
     >
       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">

@@ -4,66 +4,107 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
-  Pill,
-  Receipt,
   RotateCcw,
-  ShieldCheck,
-  X,
+  UserCheck,
 } from "lucide-react";
 
 import ModalShell from "../../../components/ModalShell";
 import {
+  confirmStockReturn,
   getReturnReasonLabel,
   getReturnReasonTone,
   getReturnStatusBadge,
-  verifyStockReturn,
 } from "@backend/services/stockReturnsService";
 import { formatCurrency, formatDate, formatNumber } from "@shared/utils/inventoryUtils";
+
+/**
+ * Returns clean brand name or empty string if generic/none.
+ */
+const formatBrandName = (brand) => {
+  if (!brand) return "";
+  const trimmed = String(brand).trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === "generic" ||
+    lower === "generic (no brand)" ||
+    lower === "none" ||
+    lower === "n/a" ||
+    lower === "—" ||
+    lower === "-"
+  ) {
+    return "";
+  }
+  return trimmed;
+};
 
 export default function StockReturnDetailsModal({
   isOpen,
   onClose,
   returnRecord,
+  allReturns = [],
   onRecordUpdated,
   currentUserProfile,
 }) {
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState("");
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
 
   if (!isOpen || !returnRecord) return null;
 
   const isCho = currentUserProfile?.role === "PHARMA_I" || currentUserProfile?.role === "PHARMA_II";
   const statusBadge = getReturnStatusBadge(returnRecord.status);
+  const isConfirmed = statusBadge.value === "CONFIRMED";
   const reasonTone = getReturnReasonTone(returnRecord.reason);
   const reasonLabel = getReturnReasonLabel(returnRecord.reason);
-  const qty = parseInt(returnRecord.quantity, 10) || 0;
-  const unitCost = parseFloat(returnRecord.unit_cost) || 0;
-  const totalValue = qty * unitCost;
-  const returnSlipDisplay =
+
+  const targetReturnId = returnRecord.return_id || returnRecord.return_slip_no;
+  const matchingItems = targetReturnId && allReturns?.length
+    ? allReturns.filter((r) => (r.return_id || r.return_slip_no) === targetReturnId)
+    : [];
+
+  const lineItems = Array.isArray(returnRecord.items) && returnRecord.items.length > 0
+    ? returnRecord.items
+    : matchingItems.length > 0
+    ? matchingItems
+    : [returnRecord];
+
+  const totalQty = lineItems.reduce((acc, it) => acc + (parseInt(it.quantity, 10) || 0), 0);
+  const totalValue = lineItems.reduce((acc, it) => {
+    const itemQty = parseInt(it.quantity, 10) || 0;
+    const itemCost = parseFloat(it.unit_cost) || 0;
+    return acc + itemQty * itemCost;
+  }, 0);
+
+  const returnIdDisplay =
+    returnRecord.return_id ||
     returnRecord.return_slip_no ||
     (returnRecord.id ? `RET-${String(returnRecord.id).slice(0, 8).toUpperCase()}` : "-");
 
-  const handleVerify = async () => {
+  const facilityName = returnRecord.facility?.facility_name || "Barangay Health Center";
+
+  const handleConfirm = async () => {
     if (!currentUserProfile?.id) {
-      setVerifyError("User profile is missing. Please re-login.");
+      setConfirmError("User profile is missing. Please re-login.");
       return;
     }
-    setIsVerifying(true);
-    setVerifyError("");
+    setIsConfirming(true);
+    setConfirmError("");
     try {
-      await verifyStockReturn(returnRecord.id, currentUserProfile.id);
+      const itemsToConfirm = lineItems.length > 0 ? lineItems : [returnRecord];
+      await Promise.all(
+        itemsToConfirm.map((it) => confirmStockReturn(it.id, currentUserProfile.id))
+      );
       onRecordUpdated?.({
         ...returnRecord,
-        status: "VERIFIED",
-        verified_by_id: currentUserProfile.id,
-        verified_at: new Date().toISOString(),
+        status: "CONFIRMED",
+        confirmed_by_id: currentUserProfile.id,
+        confirmed_at: new Date().toISOString(),
       });
       onClose();
     } catch (err) {
-      console.error("[StockReturnDetailsModal] Verification error:", err);
-      setVerifyError(err.message || "Failed to verify stock return.");
+      console.error("[StockReturnDetailsModal] Confirmation error:", err);
+      setConfirmError(err.message || "Failed to confirm stock return.");
     } finally {
-      setIsVerifying(false);
+      setIsConfirming(false);
     }
   };
 
@@ -71,9 +112,9 @@ export default function StockReturnDetailsModal({
     <ModalShell
       onClose={onClose}
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
-      panelClassName="max-w-2xl w-full p-0 overflow-hidden rounded-xl bg-white shadow-2xl"
+      panelClassName="w-full max-w-4xl p-0 overflow-hidden rounded-2xl bg-white shadow-2xl transition-all"
     >
-      <div className="flex max-h-[90vh] flex-col overflow-hidden">
+      <div className="flex max-h-[90vh] w-full flex-col overflow-hidden">
         {/* Standard PRDS Modal Header */}
         <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
           <div className="flex items-center gap-3">
@@ -82,58 +123,50 @@ export default function StockReturnDetailsModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-mono text-lg font-black leading-tight text-[#0d1117]">
-                  {returnSlipDisplay}
+                <h3 className="font-mono text-base sm:text-lg font-black leading-tight text-[#0d1117]">
+                  {returnIdDisplay}
                 </h3>
                 <span
                   className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-black ${statusBadge.tone}`}
                 >
-                  {returnRecord.status === "VERIFIED" && <ShieldCheck className="h-3 w-3 shrink-0" />}
+                  {isConfirmed && <CheckCircle2 className="h-3 w-3 shrink-0" />}
                   {statusBadge.label}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs font-medium text-neutral-500">
-                Stock return voucher • Barangay to Central Warehouse
+              <p className="mt-0.5 text-xs font-semibold text-neutral-500">
+                {facilityName} to City Health Office
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 cursor-pointer"
-            aria-label="Close modal"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Modal Body */}
-        <div className="prds-modal-scrollbar flex-1 space-y-4 overflow-y-auto px-6 py-5">
-          {verifyError && (
+        <div className="prds-modal-scrollbar flex-1 space-y-4 overflow-y-auto px-6 py-4.5">
+          {confirmError && (
             <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-              <p className="flex-1">{verifyError}</p>
+              <p className="flex-1">{confirmError}</p>
             </div>
           )}
 
-          {/* Section 1: Overview Grid */}
-          <section className="grid grid-cols-1 gap-3 rounded-xl border border-[#d8dadc] bg-[#fbfaf8] p-4 text-xs sm:grid-cols-2">
+          {/* Section 1: Overview Grid (Balanced 2x2 with Reorganized Confirmation Details) */}
+          <section className="grid grid-cols-1 gap-3 sm:gap-4 rounded-xl border border-neutral-200 bg-neutral-50/70 p-4 text-xs sm:grid-cols-2">
             <div>
-              <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
+              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
                 Returning Station
               </span>
-              <p className="mt-1 flex items-center gap-1.5 text-sm font-black text-[#0d1117]">
+              <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-[#0d1117]">
                 <Building2 className="h-4 w-4 text-emerald-700 shrink-0" />
-                <span>{returnRecord.facility?.facility_name || "Barangay Health Center"}</span>
+                <span>{facilityName}</span>
               </p>
             </div>
 
             <div>
-              <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
+              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
                 Date Submitted / Returned
               </span>
-              <p className="mt-1 flex items-center gap-1.5 text-xs font-bold text-[#0d1117]">
-                <Calendar className="h-3.5 w-3.5 text-neutral-400 shrink-0" />
+              <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-[#0d1117]">
+                <Calendar className="h-4 w-4 text-neutral-400 shrink-0" />
                 <span>
                   {returnRecord.return_date || returnRecord.submitted_at
                     ? formatDate(returnRecord.return_date || returnRecord.submitted_at)
@@ -145,8 +178,8 @@ export default function StockReturnDetailsModal({
             </div>
 
             <div>
-              <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
-                Return Reason
+              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
+                Reason
               </span>
               <div className="mt-1">
                 <span className={`inline-flex rounded-md px-2.5 py-0.5 text-xs font-bold ${reasonTone}`}>
@@ -156,74 +189,110 @@ export default function StockReturnDetailsModal({
             </div>
 
             <div>
-              <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
-                Lot / Batch Number
+              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
+                Confirmation Details
               </span>
-              <p className="mt-1 font-mono text-xs font-black text-[#0d1117]">
-                {returnRecord.lot_no || returnRecord.batch_number || "—"}
-              </p>
+              {isConfirmed ? (
+                <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-emerald-800">
+                  <UserCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Confirmed on {formatDate(returnRecord.confirmed_at || returnRecord.return_date)} by CHO Pharmacist
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-amber-700">
+                  <span className="inline-block h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>Pending CHO Confirmation</span>
+                </p>
+              )}
             </div>
+
+            {returnRecord.remarks && (
+              <div className="sm:col-span-2 pt-2.5 border-t border-neutral-200/60">
+                <span className="text-[11px] font-black uppercase tracking-wider text-neutral-400 mr-2">
+                  Remarks:
+                </span>
+                <span className="text-xs sm:text-sm font-medium text-neutral-700">{returnRecord.remarks}</span>
+              </div>
+            )}
           </section>
 
           {/* Section 2: Returned Line Items Table */}
-          <section className="overflow-hidden rounded-xl border border-[#d8dadc]">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead className="border-b border-neutral-100 bg-[#f7f6f3] text-[11px] font-black uppercase tracking-[0.14em] text-[#42474e]">
-                <tr>
-                  <th className="px-3.5 py-2.5">Medicine Item</th>
-                  <th className="px-3.5 py-2.5">Batch / Lot</th>
-                  <th className="px-3.5 py-2.5 text-right">Quantity</th>
-                  <th className="px-3.5 py-2.5 text-right">Unit Cost</th>
-                  <th className="px-3.5 py-2.5 text-right">Total Value</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 bg-white">
-                <tr>
-                  <td className="px-3.5 py-3">
-                    <div className="flex items-center gap-1.5 font-black text-[#0d1117]">
-                      <Pill className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                      <span>{returnRecord.medicine_name || "Medicine Item"}</span>
-                    </div>
-                    {returnRecord.brand_name && (
-                      <p className="mt-0.5 text-[11px] font-semibold text-neutral-500">
-                        Brand: {returnRecord.brand_name}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-3.5 py-3 font-mono font-bold text-neutral-700">
-                    {returnRecord.lot_no || returnRecord.batch_number || "—"}
-                  </td>
-                  <td className="px-3.5 py-3 text-right font-black text-[#0d1117]">
-                    {formatNumber(qty)}
-                  </td>
-                  <td className="px-3.5 py-3 text-right font-semibold text-neutral-700">
-                    {unitCost > 0 ? formatCurrency(unitCost) : "—"}
-                  </td>
-                  <td className="px-3.5 py-3 text-right font-black text-emerald-800">
-                    {totalValue > 0 ? formatCurrency(totalValue) : "—"}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <section className="overflow-hidden rounded-xl border border-neutral-200">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-xs sm:text-sm">
+                <thead className="border-b border-neutral-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2.5 whitespace-nowrap">Medicine Name</th>
+                    <th className="px-4 py-2.5 whitespace-nowrap">Medicine Brand</th>
+                    <th className="px-4 py-2.5 whitespace-nowrap">Batch / Lot</th>
+                    <th className="px-4 py-2.5 whitespace-nowrap">Expiration Date</th>
+                    <th className="px-4 py-2.5 text-right whitespace-nowrap">Quantity</th>
+                    {isCho && <th className="px-4 py-2.5 text-right whitespace-nowrap">Unit Cost</th>}
+                    {isCho && <th className="px-4 py-2.5 text-right whitespace-nowrap">Total Value</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 bg-white">
+                  {lineItems.map((item, idx) => {
+                    const itemQty = parseInt(item.quantity, 10) || 0;
+                    const itemCost = parseFloat(item.unit_cost) || 0;
+                    const itemTotal = itemQty * itemCost;
+                    const brandDisplay = formatBrandName(item.brand_name);
+
+                    return (
+                      <tr key={item.id || idx} className="hover:bg-neutral-50/50 transition-colors">
+                        <td className="px-4 py-3 align-middle font-black text-[#0d1117] text-sm">
+                          {item.medicine_name || item.medicine?.generic_name || "Medicine Name"}
+                        </td>
+                        <td className="px-4 py-3 align-middle text-neutral-700 font-medium text-xs sm:text-sm">
+                          {brandDisplay}
+                        </td>
+                        <td className="px-4 py-3 align-middle font-mono font-semibold text-neutral-700 text-xs sm:text-sm whitespace-nowrap">
+                          {item.lot_no || item.batch_number || "—"}
+                        </td>
+                        <td className="px-4 py-3 align-middle text-neutral-700 font-medium text-xs sm:text-sm whitespace-nowrap">
+                          {item.expiration_date ? formatDate(item.expiration_date) : "—"}
+                        </td>
+                        <td className="px-4 py-3 align-middle text-right font-black text-[#0d1117] text-sm tabular-nums whitespace-nowrap">
+                          {formatNumber(itemQty)}
+                        </td>
+                        {isCho && (
+                          <td className="px-4 py-3 align-middle text-right font-semibold text-neutral-700 text-xs sm:text-sm whitespace-nowrap">
+                            {itemCost > 0 ? formatCurrency(itemCost) : "—"}
+                          </td>
+                        )}
+                        {isCho && (
+                          <td className="px-4 py-3 align-middle text-right font-black text-emerald-800 text-sm whitespace-nowrap">
+                            {itemTotal > 0 ? formatCurrency(itemTotal) : "—"}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           {/* Section 3: Summary Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-700">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50/70 px-4 py-2.5 text-xs sm:text-sm text-neutral-600">
             <span className="font-bold text-[#0d1117]">Return Item Summary</span>
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-4">
               <span>
-                Total Units: <strong className="text-[#0d1117]">{formatNumber(qty)}</strong>
+                Total Units: <strong className="font-black text-sm text-[#0d1117]">{formatNumber(totalQty)}</strong>
               </span>
-              <span>
-                Total Valuation: <strong className="text-emerald-800">{formatCurrency(totalValue)}</strong>
-              </span>
+              {isCho && (
+                <span>
+                  Total Valuation: <strong className="font-black text-sm text-emerald-800">{formatCurrency(totalValue)}</strong>
+                </span>
+              )}
             </div>
           </div>
         </div>
 
         {/* Standard PRDS Modal Footer */}
-        <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50 px-6 py-3.5">
-          <div className="text-[11px] font-semibold text-neutral-500">
+        <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50/60 px-6 py-3.5">
+          <div className="text-[11px] sm:text-xs font-semibold text-neutral-500">
             Current Status: <span className="font-black text-[#0d1117]">{statusBadge.label}</span>
           </div>
 
@@ -236,22 +305,22 @@ export default function StockReturnDetailsModal({
               Close
             </button>
 
-            {isCho && returnRecord.status !== "VERIFIED" && (
+            {isCho && !isConfirmed && (
               <button
                 type="button"
-                onClick={handleVerify}
-                disabled={isVerifying}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0d1117] px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-neutral-800 active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
+                onClick={handleConfirm}
+                disabled={isConfirming}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-emerald-800 active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
               >
-                {isVerifying ? (
+                {isConfirming ? (
                   <>
                     <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Verifying...
+                    Confirming...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    Verify &amp; Accept Return
+                    Confirm Return
                   </>
                 )}
               </button>

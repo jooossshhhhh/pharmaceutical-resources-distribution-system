@@ -460,11 +460,19 @@ export async function processOutboxQueue() {
       }
 
       if (res?.error) {
+        if (item.mutation_type === "INSERT" && (res.error.code === "23505" || String(res.error.message || "").toLowerCase().includes("duplicate key"))) {
+          await markMutationSynced(item.id);
+          continue;
+        }
         throw res.error;
       }
       assertMutationAffectedRow(item.mutation_type, payload, res?.data, item.target);
       await markMutationSynced(item.id);
     } catch (err) {
+      if (item.mutation_type === "INSERT" && (err?.code === "23505" || String(err?.message || "").toLowerCase().includes("duplicate key"))) {
+        await markMutationSynced(item.id);
+        continue;
+      }
       console.warn(`Outbox replay failed for mutation ${item.id}:`, err);
       const failureStatus = getMutationFailureStatus(err);
       await markMutationFailed(item.id, err?.message || String(err), failureStatus);

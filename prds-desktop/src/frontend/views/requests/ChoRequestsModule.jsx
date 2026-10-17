@@ -1,7 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  AlertTriangle,
+  Building2,
+  Check,
+  CheckCircle2,
+  Clock,
+  FileSpreadsheet,
+  FileText,
+  Package,
+  Pill,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
+
 import AdminShell from "../../components/layout/AdminShell";
 import ModalShell from "../../components/ModalShell";
+import NotificationModal from "../../components/NotificationModal";
 import PaginationControls from "../../components/PaginationControls";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
@@ -9,6 +25,7 @@ import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import { formatDateTime } from "@shared/utils/dashboardUtils";
 import { FacilityPicker } from "../inventory/inventoryComponents";
 import {
+  confirmRequestReceived,
   createManualMedicineRequest,
   getRequestReleaseBatches,
   getRequestsData,
@@ -20,10 +37,10 @@ import {
   getAllocatedQuantityForItem,
   getAllocationValidationError,
   getForecastDemandMap,
-  getItemLabel,
   getMedicineFullLabel,
   getRequestNumber,
   getRequestPriority,
+  getRequesterName,
   getRequestSourceLabel,
   getRequestSummary,
   getRequestTotalQuantity,
@@ -35,7 +52,6 @@ import {
   validateManualPaperRequest,
 } from "@shared/utils/requestUtils";
 import {
-  CheckIcon as UiCheckIcon,
   CloseIcon as UiCloseIcon,
   FilterDropdown,
   PlusIcon,
@@ -126,7 +142,6 @@ export default function ChoRequestsModule() {
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [sortMode, setSortMode] = useState("newest");
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [currentStep, setCurrentStep] = useState("REQUEST");
   const [remarks, setRemarks] = useState("");
   const [releaseBatches, setReleaseBatches] = useState([]);
   const [releaseAllocations, setReleaseAllocations] = useState([]);
@@ -279,7 +294,6 @@ export default function ChoRequestsModule() {
 
   const resetFlow = () => {
     setSelectedRequest(null);
-    setCurrentStep("REQUEST");
     setRemarks("");
     setReviewError("");
     setReleaseError("");
@@ -289,7 +303,6 @@ export default function ChoRequestsModule() {
 
   const openRequest = (request) => {
     setSelectedRequest(request);
-    setCurrentStep(request.status === "PENDING" ? "ALLOCATION" : "REVIEW AND APPROVAL");
     setRemarks(request.remarks || "");
     setReviewError("");
     setReleaseError("");
@@ -338,6 +351,7 @@ export default function ChoRequestsModule() {
       if (result?.queued) {
         setNotice("Paper request queued offline. It will be recorded when connection returns.");
       } else {
+        setNotice("Paper requisition encoded and saved to pending requests successfully.");
         setStatusFilter("PENDING");
       }
       await loadRequests();
@@ -357,12 +371,7 @@ export default function ChoRequestsModule() {
   }, []);
 
   useEffect(() => {
-    if (
-      !selectedRequestDetails ||
-      selectedRequestDetails.status !== "PENDING" ||
-      currentStep === "REQUEST" ||
-      currentStep === "RELEASE"
-    ) {
+    if (!selectedRequestDetails || selectedRequestDetails.status !== "PENDING") {
       return;
     }
 
@@ -465,6 +474,9 @@ export default function ChoRequestsModule() {
           })
         )
       );
+      setNotice(
+        `Requisition ${getRequestDisplayNumber(selectedRequestDetails)} has been rejected.`
+      );
       await loadRequests();
       resetFlow();
     } catch (saveError) {
@@ -513,7 +525,7 @@ export default function ChoRequestsModule() {
 
         updatedRequests.push(
           await reviewMedicineRequest({
-            allocations: allocationsForRequest.length > 0 ? allocationsForRequest : activeAllocations,
+            allocations: selectedRequestDetails.isGrouped ? allocationsForRequest : activeAllocations,
             profileId: profile.id,
             remarks,
             requestId: request.id,
@@ -522,14 +534,39 @@ export default function ChoRequestsModule() {
         );
       }
 
-      setSelectedRequest({
-        ...selectedRequestDetails,
-        status: "COMPLETED",
-        requests: updatedRequests.map((request) => ({ ...request, status: "COMPLETED" })),
-      });
-      setCurrentStep("RELEASE");
+      setNotice(
+        `Requisition ${getRequestDisplayNumber(selectedRequestDetails)} has been approved and released successfully.`
+      );
+      setStatusFilter("APPROVED");
+      await loadRequests();
+      resetFlow();
+    } catch (saveError) {
+      setReviewError(saveError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const completeApprovedRequest = async () => {
+    if (!selectedRequestDetails) return;
+    setIsSaving(true);
+    setReviewError("");
+
+    try {
+      const targetRequestEntries = selectedRequestDetails.isGrouped
+        ? selectedRequestDetails.requests || []
+        : [selectedRequestDetails];
+
+      for (const request of targetRequestEntries) {
+        await confirmRequestReceived({ requestId: request.id });
+      }
+
+      setNotice(
+        `Requisition ${getRequestDisplayNumber(selectedRequestDetails)} has been marked as Completed successfully.`
+      );
       setStatusFilter("COMPLETED");
       await loadRequests();
+      resetFlow();
     } catch (saveError) {
       setReviewError(saveError.message);
     } finally {
@@ -539,104 +576,84 @@ export default function ChoRequestsModule() {
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
-      {notice && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{notice}</p>}
+      <NotificationModal
+        notice={notice}
+        onClose={() => setNotice("")}
+        autoCloseMs={8000}
+      />
       {error && (
         <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           {error}
         </p>
       )}
 
-      <div className="motion-safe:transition-all motion-safe:duration-200 motion-safe:ease-out">
-        {currentStep === "REQUEST" && (
-          <RequestListView
-            activeSortOptions={activeSortOptions}
-            currentPage={currentPage}
-            facilityId={facilityId}
-            facilityOptions={facilityOptions}
-            filteredRequests={filteredRequests}
-            forecastDemandMap={forecastDemandMap}
-            isLoading={isLoading}
-            keyword={keyword}
-            onAddRequest={() => setIsManualRequestOpen(true)}
-            onFacilityChange={setFacilityId}
-            onKeywordChange={setKeyword}
-            onOpenRequest={openRequest}
-            onPageChange={setCurrentPage}
-            onPriorityChange={(nextPriority) => {
-              setPriorityFilter(nextPriority);
-              setCurrentPage(1);
-            }}
-            priorityFilter={priorityFilter}
-            onSortChange={(nextSortMode) => {
-              setSortMode(nextSortMode);
-            }}
-            onStatusChange={(nextStatus) => {
-              setStatusFilter(nextStatus);
-              setCurrentPage(1);
-            }}
-            pageSize={pageSize}
-            paginatedRequests={paginatedRequests}
-            showFacilityColumn={showFacilityColumn}
-            sortMode={sortMode}
-            statusFilter={statusFilter}
-            stockMap={stockMap}
-            summary={summary}
-            tableColumnCount={tableColumnCount}
-            totalCount={totalCount}
-            totalPages={totalPages}
-          />
-        )}
+      <RequestListView
+        activeSortOptions={activeSortOptions}
+        currentPage={currentPage}
+        facilityId={facilityId}
+        facilityOptions={facilityOptions}
+        filteredRequests={filteredRequests}
+        forecastDemandMap={forecastDemandMap}
+        isLoading={isLoading}
+        keyword={keyword}
+        onAddRequest={() => setIsManualRequestOpen(true)}
+        onFacilityChange={setFacilityId}
+        onKeywordChange={setKeyword}
+        onOpenRequest={openRequest}
+        onPageChange={setCurrentPage}
+        onPriorityChange={(nextPriority) => {
+          setPriorityFilter(nextPriority);
+          setCurrentPage(1);
+        }}
+        priorityFilter={priorityFilter}
+        onSortChange={(nextSortMode) => {
+          setSortMode(nextSortMode);
+        }}
+        onStatusChange={(nextStatus) => {
+          setStatusFilter(nextStatus);
+          setCurrentPage(1);
+        }}
+        pageSize={pageSize}
+        paginatedRequests={paginatedRequests}
+        showFacilityColumn={showFacilityColumn}
+        sortMode={sortMode}
+        statusFilter={statusFilter}
+        stockMap={stockMap}
+        summary={summary}
+        tableColumnCount={tableColumnCount}
+        totalCount={totalCount}
+        totalPages={totalPages}
+      />
 
-        {currentStep === "ALLOCATION" && selectedRequestDetails && (
-          <AllocationStep
-            allocationError={allocationError}
-            isLoading={isReleaseLoading}
-            onBack={resetFlow}
-            onProceed={() => {
-              if (allocationError) {
-                setReviewError(allocationError);
-                return;
-              }
-              setReviewError("");
-              setCurrentStep("REVIEW AND APPROVAL");
-            }}
-            onReleaseQuantityChange={updateReleaseQuantity}
-            releaseAllocations={releaseAllocations}
-            releaseBatches={releaseBatches}
-            releaseError={releaseError}
-            request={selectedRequestDetails}
-          />
-        )}
-
-        {currentStep === "REVIEW AND APPROVAL" && selectedRequestDetails && (
-          <ReviewApprovalStep
-            allocations={activeAllocations}
-            approverName={getProfileName(profile)}
-            isSaving={isSaving}
-            onBack={() =>
-              selectedRequestDetails.status === "PENDING"
-                ? setCurrentStep("ALLOCATION")
-                : resetFlow()
-            }
-            onRelease={releaseRequest}
-            releaseBatches={releaseBatches}
-            remarks={remarks}
-            request={selectedRequestDetails}
-            reviewError={reviewError}
-            setRemarks={setRemarks}
-          />
-        )}
-
-        {currentStep === "RELEASE" && selectedRequestDetails && (
-          <ReleaseStep onBackToRequests={resetFlow} request={selectedRequestDetails} />
-        )}
-      </div>
+      {selectedRequestDetails && (
+        <ChoReviewModal
+          allocationError={allocationError}
+          approverName={getProfileName(profile)}
+          forecastDemandMap={forecastDemandMap}
+          isLoadingBatches={isReleaseLoading}
+          isSaving={isSaving}
+          onClose={resetFlow}
+          onComplete={completeApprovedRequest}
+          onReject={rejectRequest}
+          onRelease={releaseRequest}
+          onReleaseQuantityChange={updateReleaseQuantity}
+          releaseAllocations={releaseAllocations}
+          releaseBatches={releaseBatches}
+          releaseError={releaseError}
+          remarks={remarks}
+          request={selectedRequestDetails}
+          reviewError={reviewError}
+          setRemarks={setRemarks}
+          stockMap={stockMap}
+        />
+      )}
 
       {isManualRequestOpen && (
         <ManualPaperRequestModal
           error={manualRequestError}
           facilities={facilities.filter((facility) => facility.facility_type === "HEALTH_CENTER")}
           form={manualRequestForm}
+          inventoryRows={inventoryRows}
           isSaving={isSavingManualRequest}
           medicines={medicines}
           onAddItem={() =>
@@ -839,8 +856,8 @@ function RequestListView({
                 showFacilityColumn ? "min-w-[52rem]" : "min-w-[44rem]"
               } w-full border-collapse text-left`}
             >
-              <thead className="bg-[#f7f6f3] border-b border-neutral-100">
-                <tr className="text-[10px] font-black uppercase tracking-[0.16em] text-neutral-500">
+              <thead className="border-b border-slate-200/80 bg-white">
+                <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   <th className="px-4 py-3">Request ID</th>
                   {showFacilityColumn && <th className="px-4 py-3">Facility</th>}
                   <th className="px-4 py-3">Items</th>
@@ -961,334 +978,559 @@ function RequestRow({
   );
 }
 
-function AllocationStep({
+function ChoReviewModal({
   allocationError,
-  isLoading,
-  onBack,
-  onProceed,
+  approverName,
+  forecastDemandMap,
+  isLoadingBatches,
+  isSaving,
+  onClose,
+  onComplete,
+  onReject,
+  onRelease,
   onReleaseQuantityChange,
   releaseAllocations,
   releaseBatches,
   releaseError,
-  request,
-}) {
-  return (
-    <RequestPanel>
-      <RequestPanelHeader
-        eyebrow="Allocation"
-        title={getRequestDisplayNumber(request)}
-        subtitle="Review requested medicine and set the release quantity CHO will provide."
-        actions={<RequestStatusBadge status={request.status} />}
-      />
-
-      <div className="space-y-4 bg-neutral-50/40 p-4">
-        <RequestContextCards request={request} />
-
-        {isLoading ? (
-          <p className="rounded-xl border border-neutral-200 bg-white px-4 py-8 text-center text-sm font-bold text-neutral-500">
-            Loading CHO lot inventory...
-          </p>
-        ) : releaseError ? (
-          <p className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">
-            {releaseError}
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {(request.items || []).map((item) => {
-              const itemBatches = releaseBatches.filter(
-                (batch) => batch.request_item_id === item.id
-              );
-              const requestedQuantity = Number(item.quantity || 0);
-              const releasedQuantity = getAllocatedQuantityForItem(item.id, releaseAllocations);
-              const availableQuantity = itemBatches.reduce(
-                (total, batch) => total + Number(batch.quantity || 0),
-                0
-              );
-              const remainingStock = Math.max(0, availableQuantity - releasedQuantity);
-
-              return (
-                <article
-                  key={item.id}
-                  className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
-                >
-                  <div className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_160px_160px_160px] lg:items-center">
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-black text-black">
-                        {getItemLabel(item)}
-                      </p>
-                      <p className="mt-1 text-xs font-semibold text-neutral-500">
-                        {item.medicine?.brand_name || "No brand"} -{" "}
-                        {item.medicine?.unit_of_measure || "No measurement"}
-                      </p>
-                    </div>
-                    <QuantityStat label="Needed quantity" value={requestedQuantity} />
-                    <label className="grid gap-1 text-[10px] font-black uppercase tracking-wide text-neutral-500">
-                      Release quantity
-                      <input
-                        type="number"
-                        min="0"
-                        max={Math.min(requestedQuantity, availableQuantity)}
-                        value={releasedQuantity || ""}
-                        onChange={(event) => onReleaseQuantityChange(item, event.target.value)}
-                        className="h-9 w-28 rounded-lg border border-neutral-200 px-2 text-right text-sm font-black normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                      />
-                    </label>
-                    <QuantityStat
-                      label="Central Stock"
-                      value={remainingStock}
-                      subtext={releasedQuantity > 0 ? `Initial: ${availableQuantity.toLocaleString()}` : null}
-                    />
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-
-        {allocationError && (
-          <p role="alert" className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
-            {allocationError}
-          </p>
-        )}
-
-        <FlowFooter
-          backLabel="Back to Requests"
-          nextLabel="Proceed to Review"
-          onBack={onBack}
-          onNext={onProceed}
-          nextDisabled={isLoading || Boolean(releaseError) || Boolean(allocationError)}
-        />
-      </div>
-    </RequestPanel>
-  );
-}
-
-function ReviewApprovalStep({
-  allocations,
-  approverName,
-  isSaving,
-  onBack,
-  onRelease,
   remarks,
   request,
   reviewError,
   setRemarks,
+  stockMap,
 }) {
+  const [isConfirmingReject, setIsConfirmingReject] = useState(false);
   const isPending = request.status === "PENDING";
-  const displayedAllocations = isPending
-    ? allocations
-    : (request.fulfillments || []).map((fulfillment) => ({
-        request_item_id: fulfillment.request_item_id,
-        source_inventory_id: fulfillment.source_inventory_id,
-        quantity: fulfillment.quantity,
-      }));
+  const isCompleted = request.status === "COMPLETED";
+  const isRejected = request.status === "REJECTED";
+
+  const priority = getRequestPriority(request, stockMap, forecastDemandMap);
+  const items = request.items || [];
+  const itemCount = items.length;
+  const totalRequestedQty = getRequestTotalQuantity(request);
+
+  const totalAllocatedQty = useMemo(() => {
+    if (isPending) {
+      return releaseAllocations.reduce((sum, a) => sum + Number(a.quantity || 0), 0);
+    }
+    if (request.fulfillments && request.fulfillments.length > 0) {
+      return request.fulfillments.reduce((sum, f) => sum + Number(f.quantity || 0), 0);
+    }
+    return isRejected ? 0 : totalRequestedQty;
+  }, [isPending, releaseAllocations, request.fulfillments, isRejected, totalRequestedQty]);
 
   return (
-    <RequestPanel>
-      <RequestPanelHeader
-        eyebrow="Review and Approval"
-        title={getRequestDisplayNumber(request)}
-        subtitle="Final check before CHO releases the approved quantities."
-        actions={<RequestStatusBadge status={request.status} />}
-      />
-
-      <div className="space-y-4 bg-neutral-50/40 p-4">
-        <RequestContextCards request={request} approverName={approverName} />
-
-        <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <div className="border-b border-neutral-100 px-4 py-3">
-            <h3 className="text-sm font-black text-black">Allocated medicines</h3>
-            <p className="mt-1 text-xs font-semibold text-neutral-500">
-              Needed quantity stays from the original request. Release quantity is what CHO will provide.
-            </p>
+    <ModalShell
+      labelledBy="cho-review-modal-title"
+      onClose={onClose}
+      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
+      panelClassName="max-w-3xl w-full p-0 overflow-hidden rounded-2xl bg-white shadow-2xl border border-neutral-100"
+    >
+      <div className="w-full flex max-h-[90vh] flex-col overflow-hidden">
+        {/* Modal Header */}
+        <header className="flex items-center justify-between border-b border-neutral-100 px-6 py-4 bg-neutral-50/40">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
+              <Package className="h-5 w-5" />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 id="cho-review-modal-title" className="text-base font-black text-neutral-900 tracking-tight">
+                  {getRequestDisplayNumber(request)}
+                </h3>
+                <RequestStatusBadge status={request.status} />
+              </div>
+              <p className="mt-0.5 text-xs font-semibold text-neutral-500">
+                {request.facility?.facility_name || "Health Center"} · Submitted {formatRequestDate(request.request_date)}
+              </p>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[560px] w-full border-collapse text-left text-sm">
-              <thead className="bg-neutral-50 text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
-                <tr>
-                  <th className="px-4 py-3">Medicine</th>
-                  <th className="px-4 py-3 text-right">Needed quantity</th>
-                  <th className="px-4 py-3 text-right">Release quantity</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {(request.items || []).map((item) => {
-                  const releaseQuantity = getAllocatedQuantityForItem(item.id, displayedAllocations);
-
-                  return (
-                    <tr key={item.id}>
-                      <td className="px-4 py-3">
-                        <p className="font-black text-black">{getItemLabel(item)}</p>
-                        <p className="mt-1 text-xs font-semibold text-neutral-500">
-                          {item.medicine?.brand_name || "No brand"} -{" "}
-                          {item.medicine?.unit_of_measure || "No measurement"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-right font-black text-neutral-800">
-                        {Number(item.quantity || 0).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right font-black text-neutral-800">
-                        {releaseQuantity.toLocaleString()}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-500">
-          CHO remarks
-          <textarea
-            value={remarks}
-            disabled={!isPending}
-            onChange={(event) => setRemarks(event.target.value)}
-            rows="3"
-            placeholder="Optional approval or release note..."
-            className="resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50"
-          />
-        </label>
-
-        {reviewError && (
-          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
-            {reviewError}
-          </p>
-        )}
-
-        <footer className="flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
-            onClick={onBack}
-            className="h-10 rounded-lg bg-neutral-100 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-200"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 transition"
+            aria-label="Close modal"
           >
-            {isPending ? "Back to Allocation" : "Back to Requests"}
+            <X className="h-4 w-4" />
           </button>
-          {isPending && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={onRelease}
-                className="h-10 rounded-lg bg-emerald-600 px-5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
-              >
-                {isSaving ? "Releasing..." : "Release"}
-              </button>
+        </header>
+
+        {/* Modal Body */}
+        <div className="prds-modal-scrollbar flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {/* Error & Warning Banners */}
+          {reviewError && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
+              <p className="flex-1">{reviewError}</p>
             </div>
           )}
+          {releaseError && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-orange-200 bg-orange-50 p-3.5 text-xs font-semibold text-orange-700">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-orange-600 mt-0.5" />
+              <p className="flex-1">{releaseError}</p>
+            </div>
+          )}
+
+          {/* Overview KPI Cards */}
+          <section className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="rounded-xl border border-neutral-200/80 bg-white p-3 shadow-2xs flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                  Requesting Station
+                </p>
+                <p className="mt-1 text-xs sm:text-[13px] font-black text-neutral-900 leading-snug break-words" title={request.facility?.facility_name}>
+                  {request.facility?.facility_name || "Health Center"}
+                </p>
+              </div>
+              <p className="mt-1.5 text-[11px] font-semibold text-neutral-500">
+                {request.facility?.facility_code || "BHC"}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-neutral-200/80 bg-white p-3 shadow-2xs flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                  Requested Items
+                </p>
+                <p className="mt-1 text-base font-black text-neutral-900">
+                  {itemCount} {itemCount === 1 ? "medicine" : "medicines"}
+                </p>
+              </div>
+              <p className="mt-1.5 text-[11px] font-bold text-neutral-500">
+                {totalRequestedQty.toLocaleString()} units total
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-neutral-200/80 bg-white p-3 shadow-2xs flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                  Priority
+                </p>
+                <div className="mt-1">
+                  <RequestPriorityBadge priority={priority} />
+                </div>
+              </div>
+              <p className="mt-1.5 text-[11px] font-medium text-neutral-500">
+                {request.isGrouped ? getGroupedSourceLabel(request) : getRequestSourceLabel(request)}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-neutral-200/80 bg-white p-3 shadow-2xs flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                  Requisition Date
+                </p>
+                <p className="mt-1 text-sm font-black text-neutral-900">
+                  {formatRequestDate(request.request_date)}
+                </p>
+              </div>
+              <p className="mt-1.5 text-[11px] font-medium text-neutral-500 truncate" title={getRequesterName(request)}>
+                {getRequesterName(request)}
+              </p>
+            </div>
+          </section>
+
+          {/* Contextual Status Banner */}
+          {isPending ? (
+            <div className="flex items-center gap-2.5 rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900">
+              <Clock className="h-4 w-4 text-blue-700 shrink-0" />
+              <span>
+                <strong>Awaiting CHO Review & Allocation.</strong> Earliest-expiring batches are automatically prioritized (FEFO). You may adjust release quantities before approving.
+              </span>
+            </div>
+          ) : isCompleted ? (
+            <div className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+              <Check className="h-4 w-4 text-emerald-700 shrink-0" />
+              <span>
+                <strong>Requisition Fulfilled & Released.</strong> Medicines have been released from City Health Office to {request.facility?.facility_name || "the requesting station"}.
+              </span>
+            </div>
+          ) : isRejected ? (
+            <div className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50/70 p-3 text-xs text-red-900">
+              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+              <span>
+                <strong>Requisition Rejected.</strong> This request was reviewed and rejected by CHO.
+              </span>
+            </div>
+          ) : request.status === "APPROVED" ? (
+            <div className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+              <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0" />
+              <span>
+                <strong>Approved & Ready for Pickup.</strong> Supplies have been allocated and staged for pickup at CHO. Once collected, click &quot;Mark as Completed&quot; below (or the BHW will confirm upon pickup).
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900">
+              <CheckCircle2 className="h-4 w-4 text-blue-700 shrink-0" />
+              <span>
+                <strong>Approved.</strong> Requisition has been approved by CHO.
+              </span>
+            </div>
+          )}
+
+          {/* Requested Medicines Section */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-neutral-700" />
+                <h4 className="text-xs font-black uppercase tracking-wider text-neutral-700">
+                  Requested Medicines
+                </h4>
+              </div>
+              <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[11px] font-bold text-neutral-600">
+                {itemCount} {itemCount === 1 ? "medicine" : "medicines"} · {totalRequestedQty.toLocaleString()} units needed
+              </span>
+            </div>
+
+            {isLoadingBatches ? (
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50/70 py-8 text-center text-xs font-bold text-neutral-500">
+                Loading central stock inventory...
+              </div>
+            ) : items.length === 0 ? (
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-center text-xs font-semibold text-neutral-500">
+                No medicine items recorded for this requisition.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {items.map((item, idx) => {
+                  const genericName = item.medicine?.generic_name || "Unknown Generic Name";
+                  const brandName = item.medicine?.brand_name;
+                  const dosage = item.medicine?.dosage;
+                  const unit = item.medicine?.unit_of_measure || "unit";
+                  const requestedQuantity = Number(item.quantity || 0);
+
+                  let availableQuantity = 0;
+                  let releasedQuantity = 0;
+                  let remainingStock = 0;
+                  let maxAllowed = 0;
+
+                  if (isPending) {
+                    const itemBatches = releaseBatches.filter(
+                      (batch) => batch.request_item_id === item.id
+                    );
+                    availableQuantity = itemBatches.reduce(
+                      (total, batch) => total + Number(batch.quantity || 0),
+                      0
+                    );
+                    releasedQuantity = getAllocatedQuantityForItem(item.id, releaseAllocations);
+                    remainingStock = Math.max(0, availableQuantity - releasedQuantity);
+                    maxAllowed = Math.min(requestedQuantity, availableQuantity);
+                  } else {
+                    const fulfillments = (request.fulfillments || []).filter(
+                      (f) => f.request_item_id === item.id
+                    );
+                    releasedQuantity = fulfillments.length > 0
+                      ? fulfillments.reduce((sum, f) => sum + Number(f.quantity || 0), 0)
+                      : isRejected || (request.fulfillments && request.fulfillments.length > 0)
+                        ? 0
+                        : requestedQuantity;
+                  }
+
+                  return (
+                    <article
+                      key={item.id || idx}
+                      className="rounded-xl border border-neutral-200/90 bg-white p-3.5 shadow-2xs hover:border-emerald-200 transition-colors"
+                    >
+                      {/* Top Row: Title, Brand, Dosage, Unit */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-[11px] font-black text-neutral-500">
+                            #{idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-baseline gap-1.5">
+                              <h5 className="text-sm font-black text-neutral-900 leading-snug">
+                                {genericName}
+                              </h5>
+                              <span className="text-xs font-bold text-neutral-500">
+                                ({brandName || "Generic"})
+                              </span>
+                            </div>
+
+                            {/* Standardized Badges: Dosage, Unit */}
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              {dosage && (
+                                <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200/70 px-2 py-0.5 text-[11px] font-bold text-blue-800">
+                                  Dosage: {dosage}
+                                </span>
+                              )}
+                              <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                                Unit: {unit}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Stock Indicator Status Badge (for Pending) */}
+                        {isPending && (
+                          <div className="shrink-0">
+                            {availableQuantity === 0 ? (
+                              <span className="rounded-full bg-red-100 border border-red-200 px-2.5 py-0.5 text-[10px] font-black text-red-700">
+                                Out of Stock
+                              </span>
+                            ) : availableQuantity < requestedQuantity ? (
+                              <span className="rounded-full bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-[10px] font-black text-amber-800">
+                                Partial Stock ({availableQuantity})
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-black text-emerald-800">
+                                Sufficient Stock
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom Row: Quantities & Release Controls */}
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-neutral-100 pt-3 text-xs">
+                        {/* Needed Quantity */}
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                            Needed Quantity
+                          </p>
+                          <p className="mt-1 text-sm font-black text-neutral-900">
+                            {requestedQuantity.toLocaleString()}{" "}
+                            <span className="text-xs font-semibold text-neutral-500">{unit}</span>
+                          </p>
+                        </div>
+
+                        {/* Central Stock (for Pending) or Fulfillment Status */}
+                        {isPending ? (
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                              Central Stock
+                            </p>
+                            <p className="mt-1 text-sm font-black text-neutral-900">
+                              {availableQuantity.toLocaleString()}{" "}
+                              <span className="text-xs font-semibold text-neutral-500">{unit} available</span>
+                            </p>
+                            {releasedQuantity > 0 && (
+                              <p className="text-[11px] font-semibold text-neutral-400">
+                                {remainingStock.toLocaleString()} {unit} left after release
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                              Fulfillment Status
+                            </p>
+                            <p className="mt-1 text-sm font-bold text-neutral-700">
+                              {isCompleted ? "Fulfilled" : isRejected ? "Not Released" : "Ready for Pickup"}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Release Quantity Field */}
+                        {isPending ? (
+                          <div className="sm:text-right">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-neutral-500 block">
+                              Release Quantity
+                            </label>
+                            <div className="mt-1 inline-flex items-center gap-1.5 sm:justify-end">
+                              <input
+                                type="number"
+                                min="0"
+                                max={maxAllowed}
+                                value={releasedQuantity === 0 ? "" : releasedQuantity}
+                                onChange={(e) => onReleaseQuantityChange(item, e.target.value)}
+                                placeholder="0"
+                                className="h-8.5 w-24 rounded-lg border border-neutral-300 px-2 text-right text-sm font-black text-neutral-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                              />
+                              <span className="text-xs font-bold text-neutral-600">{unit}</span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-1 sm:justify-end">
+                              <button
+                                type="button"
+                                onClick={() => onReleaseQuantityChange(item, maxAllowed)}
+                                disabled={maxAllowed === 0}
+                                className="rounded bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-600 hover:bg-neutral-200 transition disabled:opacity-40 cursor-pointer"
+                              >
+                                Full ({maxAllowed})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onReleaseQuantityChange(item, 0)}
+                                className="rounded bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-600 hover:bg-neutral-200 transition cursor-pointer"
+                              >
+                                0
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="sm:text-right">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                              Released Quantity
+                            </p>
+                            <p className={`mt-1 text-base font-black ${releasedQuantity === 0 ? "text-red-600" : "text-emerald-700"}`}>
+                              {releasedQuantity.toLocaleString()}{" "}
+                              <span className="text-xs font-bold text-neutral-500">{unit}</span>
+                            </p>
+                            {releasedQuantity === 0 && (
+                              <span className="mt-0.5 inline-block rounded bg-red-100 px-1.5 py-0.2 text-[9px] font-black text-red-700">
+                                0 Released (Out of stock)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Allocation Validation Error */}
+          {allocationError && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-orange-200 bg-orange-50 p-3 text-xs font-bold text-orange-700">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-orange-600 mt-0.5" />
+              <p>{allocationError}</p>
+            </div>
+          )}
+
+          {/* Remarks Section */}
+          {isPending ? (
+            <div className="space-y-1.5 pt-2 border-t border-neutral-100">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black uppercase tracking-wider text-neutral-500 block">
+                  CHO Remarks & Handling Notes (optional)
+                </label>
+                {items.some((item) => getAllocatedQuantityForItem(item.id, releaseAllocations) === 0) && (
+                  <span className="text-[11px] font-semibold text-amber-700">
+                    Note reason for items allocated 0 quantity
+                  </span>
+                )}
+              </div>
+              <textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows="2"
+                placeholder="Optional approval notes, reason for 0 or partial quantity released, pickup instructions..."
+                className="w-full resize-none rounded-xl border border-neutral-300 px-3.5 py-2 text-xs font-medium text-neutral-800 outline-none placeholder:text-neutral-400 transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+          ) : remarks ? (
+            <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/70 p-3 text-xs space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 block">
+                CHO Remarks
+              </span>
+              <p className="font-semibold text-neutral-700 leading-relaxed">{remarks}</p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Modal Footer */}
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-6 py-3.5 bg-neutral-50/50">
+          <div>
+            {isPending ? (
+              <div className="flex items-center gap-2 text-xs font-bold text-neutral-700">
+                <Package className="h-4 w-4 text-emerald-600" />
+                <span>
+                  Releasing: <strong className="text-emerald-700">{totalAllocatedQty.toLocaleString()}</strong> of{" "}
+                  <strong className="text-neutral-900">{totalRequestedQty.toLocaleString()} units</strong>
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs font-bold text-neutral-700">
+                <Package className="h-4 w-4 text-emerald-600" />
+                <span>
+                  Total Released Units: <strong className="text-emerald-700">{totalAllocatedQty.toLocaleString()} units</strong>
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div>
+            {isPending ? (
+              isConfirmingReject ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-red-700">Reject this requisition?</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingReject(false)}
+                    className="h-8.5 rounded-lg bg-neutral-100 px-3 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={onReject}
+                    className="h-8.5 rounded-lg bg-red-600 px-3.5 text-xs font-bold text-white hover:bg-red-700 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSaving ? "Rejecting..." : "Confirm Reject"}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="h-8.5 rounded-lg bg-neutral-100 px-3.5 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => setIsConfirmingReject(true)}
+                    className="h-8.5 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    Reject Request
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving || isLoadingBatches || Boolean(allocationError)}
+                    onClick={onRelease}
+                    className="inline-flex items-center gap-1.5 h-8.5 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition disabled:cursor-not-allowed disabled:bg-neutral-300 cursor-pointer"
+                  >
+                    <Check className="h-4 w-4" />
+                    {isSaving ? "Releasing..." : "Approve & Release"}
+                  </button>
+                </div>
+              )
+            ) : request.status === "APPROVED" ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-8.5 rounded-lg bg-neutral-100 px-4 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={onComplete}
+                  className="inline-flex items-center gap-1.5 h-8.5 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition disabled:opacity-50 cursor-pointer"
+                >
+                  <Check className="h-4 w-4 stroke-[2.5]" />
+                  <span>{isSaving ? "Completing..." : "Mark as Completed"}</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-8.5 rounded-lg bg-neutral-100 px-4 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
+              >
+                Close
+              </button>
+            )}
+          </div>
         </footer>
       </div>
-    </RequestPanel>
-  );
-}
-
-function ReleaseStep({ onBackToRequests, request }) {
-  return (
-    <RequestPanel>
-      <RequestPanelHeader
-        eyebrow="Release"
-        title="Request completed"
-        subtitle="The released medicines were recorded and moved to completed request history."
-        actions={<RequestStatusBadge status="COMPLETED" />}
-      />
-      <div className="bg-neutral-50/40 p-4">
-        <div className="rounded-xl border border-emerald-100 bg-white p-5 shadow-sm">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-            <UiCheckIcon />
-          </span>
-          <h3 className="mt-4 text-lg font-black text-black">{getRequestDisplayNumber(request)}</h3>
-          <p className="mt-1 text-sm font-semibold text-neutral-600">
-            Released to {request.facility?.facility_name || "the requesting facility"}.
-          </p>
-          <button
-            type="button"
-            onClick={onBackToRequests}
-            className="mt-5 h-10 rounded-lg bg-black px-5 text-sm font-black text-white hover:bg-neutral-800"
-          >
-            Back to Requests
-          </button>
-        </div>
-      </div>
-    </RequestPanel>
-  );
-}
-
-function RequestContextCards({ approverName, request }) {
-  return (
-    <div className="grid gap-3 lg:grid-cols-3">
-      <DetailCard label="Requesting facility">
-        <p className="font-black text-black">{request.facility?.facility_name || "No facility"}</p>
-      </DetailCard>
-      <DetailCard label="Request type">
-        <p className="font-black text-black">
-          {request.isGrouped ? getGroupedSourceLabel(request) : getRequestSourceLabel(request)}
-        </p>
-      </DetailCard>
-      <DetailCard label={approverName ? "Approver" : "Request date"}>
-        <p className="font-black text-black">
-          {approverName || formatRequestDate(request.request_date)}
-        </p>
-        <p className="mt-1 text-xs font-semibold text-neutral-500">
-          {approverName ? "Based on current session" : "Submitted request"}
-        </p>
-      </DetailCard>
-    </div>
-  );
-}
-
-function DetailCard({ children, label }) {
-  return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <h3 className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
-        {label}
-      </h3>
-      <div className="mt-2">{children}</div>
-    </section>
-  );
-}
-
-function QuantityStat({ label, subtext, value }) {
-  return (
-    <div>
-      <p className="text-[10px] font-black uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-1 text-sm font-black text-neutral-900">
-        {Number(value || 0).toLocaleString()}
-      </p>
-      {subtext && (
-        <p className="text-[11px] font-semibold text-neutral-400">{subtext}</p>
-      )}
-    </div>
-  );
-}
-
-function FlowFooter({ backLabel, nextDisabled, nextLabel, onBack, onNext }) {
-  return (
-    <footer className="flex flex-wrap items-center justify-between gap-2">
-      <button
-        type="button"
-        onClick={onBack}
-        className="h-10 rounded-lg bg-neutral-100 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-200"
-      >
-        {backLabel}
-      </button>
-      <button
-        type="button"
-        disabled={nextDisabled}
-        onClick={onNext}
-        className="h-10 rounded-lg bg-black px-5 text-sm font-black text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
-      >
-        {nextLabel}
-      </button>
-    </footer>
+    </ModalShell>
   );
 }
 
 function ManualPaperRequestModal({
   error,
-  facilities,
+  facilities = [],
   form,
+  inventoryRows = [],
   isSaving,
-  medicines,
+  medicines = [],
   onAddItem,
   onChange,
   onClose,
@@ -1296,127 +1538,275 @@ function ManualPaperRequestModal({
   onSubmit,
   onUpdateItem,
 }) {
+  const medicinesMap = useMemo(
+    () => new Map(medicines.map((medicine) => [medicine.id, medicine])),
+    [medicines]
+  );
+
+  const warehouseStockMap = useMemo(() => {
+    const map = new Map();
+    for (const row of inventoryRows) {
+      if (!form.facility_id || row.facility_id !== form.facility_id) {
+        map.set(row.medicine_id, (map.get(row.medicine_id) || 0) + Number(row.quantity || 0));
+      }
+    }
+    return map;
+  }, [inventoryRows, form.facility_id]);
+
+  const selectedMedicineIds = useMemo(() => {
+    return new Set(form.items.map((item) => item.medicine_id).filter(Boolean));
+  }, [form.items]);
+
+  const totalRequestedUnits = useMemo(() => {
+    return form.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  }, [form.items]);
+
   return (
     <ModalShell
       labelledBy="paper-request-title"
       onClose={onClose}
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
-      panelClassName="max-w-3xl"
+      panelClassName="max-w-3xl w-full p-0 overflow-hidden rounded-2xl bg-white shadow-2xl border border-neutral-100"
     >
-      <form onSubmit={onSubmit} className="w-full overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">
-              Manual Request
-            </p>
-            <h2 id="paper-request-title" className="mt-1 text-lg font-black text-black">
-              Add Request
-            </h2>
-            <p className="mt-1 text-sm font-semibold text-neutral-500">
-              Save the barangay paper list as a pending request for CHO review and release.
-            </p>
+      <form onSubmit={onSubmit} className="w-full flex max-h-[90vh] flex-col overflow-hidden">
+        {/* Modal Header */}
+        <header className="flex items-center justify-between border-b border-neutral-100 px-6 py-4 bg-neutral-50/50">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+              <FileSpreadsheet className="h-5 w-5" />
+            </span>
+            <div className="flex items-center gap-2">
+              <h2 id="paper-request-title" className="text-base font-black text-neutral-900 tracking-tight">
+                Record Manual Requisition
+              </h2>
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                Paper Slip Entry
+              </span>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-800">
-            <UiCloseIcon />
-          </button>
         </header>
 
-        <div className="max-h-[70vh] space-y-4 overflow-y-auto p-5">
+        {/* Modal Body */}
+        <div className="prds-modal-scrollbar flex-1 space-y-4 overflow-y-auto px-6 py-5">
           {error && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
-              {error}
-            </p>
+            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
+              <p className="flex-1">{error}</p>
+            </div>
           )}
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="grid gap-1.5 text-xs font-black uppercase tracking-wide text-neutral-500">
-              Requesting barangay
-              <select
-                value={form.facility_id}
-                onChange={(event) => onChange("facility_id", event.target.value)}
-                className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-              >
-                <option value="">Select barangay facility</option>
-                {facilities.map((facility) => (
-                  <option key={facility.id} value={facility.id}>
-                    {facility.facility_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-black uppercase tracking-wide text-neutral-500">
-              Paper requester
-              <input
-                value={form.manual_requested_by}
-                onChange={(event) => onChange("manual_requested_by", event.target.value)}
-                placeholder="Optional name from paper list"
-                className="h-10 rounded-lg border border-neutral-200 px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-              />
-            </label>
+          {/* Section 1: Requisition Origin & Reference */}
+          <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-neutral-800 uppercase tracking-wider">
+              <Building2 className="h-4 w-4 text-emerald-600" />
+              <span>Requisition Source & Reference</span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Requesting Barangay Health Station <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={form.facility_id}
+                  onChange={(event) => onChange("facility_id", event.target.value)}
+                  className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
+                >
+                  <option value="">Select barangay station...</option>
+                  {facilities.map((facility) => (
+                    <option key={facility.id} value={facility.id}>
+                      {facility.facility_name} ({facility.facility_code || "BHC"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  BHW/Barangay Representative
+                </label>
+                <input
+                  type="text"
+                  value={form.manual_requested_by}
+                  onChange={(event) => onChange("manual_requested_by", event.target.value)}
+                  placeholder="e.g. Maria Santos (Midwife / BHW)"
+                  className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
+                />
+              </div>
+            </div>
           </div>
 
-          <section className="rounded-xl border border-neutral-200">
-            <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-              <h3 className="text-sm font-black text-black">Medicines</h3>
-              <button type="button" onClick={onAddItem} className="h-8 rounded-lg bg-neutral-900 px-3 text-xs font-black text-white">
-                Add line
+          {/* Section 2: Requested Medicines */}
+          <div className="rounded-xl border border-neutral-200/80 bg-white p-4 space-y-3.5 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Pill className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-neutral-800">
+                  Requested Medicines List
+                </h3>
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10.5px] font-bold text-neutral-600">
+                  {form.items.length} {form.items.length === 1 ? "item line" : "item lines"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onAddItem}
+                className="inline-flex items-center gap-1.5 h-8 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white px-3 text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Medicine Line</span>
               </button>
             </div>
-            <div className="space-y-2 p-3">
-              {form.items.map((item, index) => (
-                <div key={index} className="grid gap-2 rounded-lg bg-neutral-50 p-2 md:grid-cols-[minmax(0,1fr)_120px_72px]">
-                  <select
-                    value={item.medicine_id}
-                    onChange={(event) => onUpdateItem(index, "medicine_id", event.target.value)}
-                    className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option value="">Select medicine</option>
-                    {medicines.map((medicine) => (
-                      <option key={medicine.id} value={medicine.id}>
-                        {getMedicineFullLabel(medicine)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(event) => onUpdateItem(index, "quantity", event.target.value)}
-                    placeholder="Quantity"
-                    className="h-10 rounded-lg border border-neutral-200 px-3 text-sm font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onRemoveItem(index)}
-                    disabled={form.items.length === 1}
-                    className="h-10 rounded-lg border border-neutral-200 bg-white text-xs font-black text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
 
-          <label className="grid gap-1.5 text-xs font-black uppercase tracking-wide text-neutral-500">
-            Remarks
+            <div className="space-y-2.5">
+              {form.items.map((item, index) => {
+                const selectedMed = medicinesMap.get(item.medicine_id);
+                const warehouseStock = item.medicine_id ? warehouseStockMap.get(item.medicine_id) ?? null : null;
+
+                return (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-neutral-200/90 bg-[#fafbfc] hover:border-neutral-300 p-3 transition"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      {/* Item index */}
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-neutral-200/80 text-[11px] font-black text-neutral-700 mt-1">
+                        #{index + 1}
+                      </span>
+
+                      {/* Medicine selection */}
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-[11px] font-bold text-neutral-600 mb-1">
+                          Medicine <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={item.medicine_id}
+                          onChange={(event) => onUpdateItem(index, "medicine_id", event.target.value)}
+                          className="w-full h-9.5 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition truncate"
+                        >
+                          <option value="">Select medicine from catalog...</option>
+                          {medicines.map((medicine) => {
+                            const isAlreadySelected =
+                              selectedMedicineIds.has(medicine.id) && item.medicine_id !== medicine.id;
+                            return (
+                              <option
+                                key={medicine.id}
+                                value={medicine.id}
+                                disabled={isAlreadySelected}
+                              >
+                                {medicine.generic_name} {medicine.dosage ? `(${medicine.dosage})` : ""}{" "}
+                                {medicine.brand_name && medicine.brand_name !== "-" ? `• ${medicine.brand_name}` : ""}{" "}
+                                {isAlreadySelected ? "— (Already Added)" : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+
+                        {/* Medicine details badge */}
+                        {selectedMed && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                            <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200/80 px-2 py-0.5 font-bold text-blue-700">
+                              Unit: {selectedMed.unit_of_measure || "units"}
+                            </span>
+                            {warehouseStock !== null && (
+                              <span
+                                className={`inline-flex items-center rounded-md px-2 py-0.5 font-bold border ${
+                                  warehouseStock > 0
+                                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                    : "bg-amber-50 border-amber-200 text-amber-800"
+                                }`}
+                              >
+                                {warehouseStock > 0
+                                  ? `CHO Central Stock: ${warehouseStock.toLocaleString()} ${selectedMed.unit_of_measure || "units"}`
+                                  : "Zero Stock in Central Warehouse"}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quantity input */}
+                      <div className="w-28 sm:w-36 shrink-0">
+                        <label className="block text-[11px] font-bold text-neutral-600 mb-1">
+                          Quantity <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(event) => onUpdateItem(index, "quantity", event.target.value)}
+                            placeholder="0"
+                            className="w-full h-9.5 rounded-lg border border-neutral-200 bg-white pl-3 pr-9 text-xs font-bold text-neutral-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-neutral-400 pointer-events-none truncate max-w-[32px]">
+                            {selectedMed?.unit_of_measure || "qty"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Remove button */}
+                      <div className="pt-5.5">
+                        <button
+                          type="button"
+                          onClick={() => onRemoveItem(index)}
+                          disabled={form.items.length === 1}
+                          title={form.items.length === 1 ? "At least one item line is required" : "Remove this medicine line"}
+                          className="grid h-9.5 w-9.5 place-items-center rounded-lg border border-neutral-200 bg-white text-neutral-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition disabled:opacity-30 disabled:hover:text-neutral-400 disabled:hover:border-neutral-200 disabled:hover:bg-white cursor-pointer"
+                          aria-label="Remove item"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 3: Remarks & Documentation Notes */}
+          <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-neutral-800 uppercase tracking-wider">
+              <FileText className="h-4 w-4 text-neutral-600" />
+              <span>Remarks & Paper Notes</span>
+            </div>
             <textarea
               value={form.remarks}
               onChange={(event) => onChange("remarks", event.target.value)}
-              rows="3"
-              placeholder="Optional note from paper request..."
-              className="resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              rows="2"
+              placeholder="Optional notes, urgency instructions, or delivery specifications from the paper slip..."
+              className="w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
             />
-          </label>
+          </div>
         </div>
 
-        <footer className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg bg-neutral-50 px-5 text-sm font-black text-neutral-700 hover:bg-neutral-100">
-            Cancel
-          </button>
-          <button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-black px-5 text-sm font-black text-white hover:bg-neutral-800 disabled:opacity-50">
-            {isSaving ? "Saving..." : "Save Pending Request"}
-          </button>
+        {/* Modal Footer */}
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-6 py-3.5 bg-neutral-50/60">
+          <div className="flex items-center gap-2 text-xs font-bold text-neutral-700">
+            <Package className="h-4 w-4 text-emerald-600" />
+            <span>
+              Total Requested Units: <strong className="text-emerald-700">{totalRequestedUnits.toLocaleString()} units</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-9 rounded-lg border border-neutral-200 bg-white px-4 text-xs font-bold text-neutral-700 hover:bg-neutral-100 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="h-9 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 text-xs font-bold text-white transition shadow-sm disabled:opacity-50 cursor-pointer"
+            >
+              <Check className="h-4 w-4" />
+              <span>{isSaving ? "Adding..." : "Add Medicine Request"}</span>
+            </button>
+          </div>
         </footer>
       </form>
     </ModalShell>

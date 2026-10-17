@@ -19,42 +19,8 @@ export default function DailyDispensingLogTable({
   formattedDate = "Today",
 }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [channelFilter, setChannelFilter] = useState("ALL"); // ALL, walk_in, requests
+  const [selectedChannel, setSelectedChannel] = useState(null); // 'walk_in' or 'requests'
   const [currentPage, setCurrentPage] = useState(1);
-
-  // Filtered transactions
-  const filtered = useMemo(() => {
-    let result = transactions || [];
-
-    if (channelFilter !== "ALL") {
-      result = result.filter((item) => item.channelType === channelFilter);
-    }
-
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim();
-      result = result.filter((item) => {
-        return (
-          item.medicineName?.toLowerCase().includes(q) ||
-          item.brandName?.toLowerCase().includes(q) ||
-          item.recipient?.toLowerCase().includes(q) ||
-          item.recipientSub?.toLowerCase().includes(q) ||
-          item.prescribedBy?.toLowerCase().includes(q) ||
-          item.dispensedBy?.toLowerCase().includes(q)
-        );
-      });
-    }
-
-    return result;
-  }, [transactions, channelFilter, searchTerm]);
-
-  // Reset pagination on filter change
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
-  const validPage = Math.min(currentPage, totalPages);
-
-  const paginatedRows = useMemo(() => {
-    const start = (validPage - 1) * ROWS_PER_PAGE;
-    return filtered.slice(start, start + ROWS_PER_PAGE);
-  }, [filtered, validPage]);
 
   // Channel counts
   const walkInCount = useMemo(
@@ -65,6 +31,55 @@ export default function DailyDispensingLogTable({
     () => (transactions || []).filter((t) => t.channelType === "requests").length,
     [transactions]
   );
+
+  // Active channel: user selection, or fallback to the channel with records, default 'walk_in'
+  const activeChannel = useMemo(() => {
+    if (selectedChannel === "walk_in" || selectedChannel === "requests") {
+      return selectedChannel;
+    }
+    if (walkInCount === 0 && requestsCount > 0) {
+      return "requests";
+    }
+    return "walk_in";
+  }, [selectedChannel, walkInCount, requestsCount]);
+
+  // Filtered transactions for active channel & search
+  const filtered = useMemo(() => {
+    let result = (transactions || []).filter((item) => item.channelType === activeChannel);
+
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      result = result.filter((item) => {
+        return (
+          item.medicineName?.toLowerCase().includes(q) ||
+          item.brandName?.toLowerCase().includes(q) ||
+          item.recipient?.toLowerCase().includes(q) ||
+          item.recipientSub?.toLowerCase().includes(q) ||
+          (activeChannel === "walk_in"
+            ? item.prescribedBy?.toLowerCase().includes(q) ||
+              item.dispensedBy?.toLowerCase().includes(q)
+            : (item.requestedBy || item.prescribedBy)?.toLowerCase().includes(q) ||
+              (item.releasedBy || item.dispensedBy)?.toLowerCase().includes(q))
+        );
+      });
+    }
+
+    return result;
+  }, [transactions, activeChannel, searchTerm]);
+
+  // Reset pagination on filter change
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+  const validPage = Math.min(currentPage, totalPages);
+
+  const paginatedRows = useMemo(() => {
+    const start = (validPage - 1) * ROWS_PER_PAGE;
+    return filtered.slice(start, start + ROWS_PER_PAGE);
+  }, [filtered, validPage]);
+
+  const searchPlaceholder =
+    activeChannel === "walk_in"
+      ? "Search medicine, patient, prescriber..."
+      : "Search medicine, barangay, requester...";
 
   return (
     <div className="bg-white border border-[#d8dadc] rounded-xl shadow-xs overflow-hidden transition-all">
@@ -80,64 +95,72 @@ export default function DailyDispensingLogTable({
             </span>
           </div>
           <p className="text-xs text-[#5f6673] mt-0.5">
-            Transaction log of all medicines released on {formattedDate}
+            {activeChannel === "walk_in"
+              ? `Walk-in patient dispensing records on ${formattedDate}`
+              : `Barangay health station requisitions issued on ${formattedDate}`}
           </p>
         </div>
 
         {/* Filter Pills + Search */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-          {/* Channel Filters */}
+          {/* Channel Filters (No "All" tab) */}
           <div className="inline-flex rounded-lg border border-[#d8dadc] p-0.5 bg-[#f4f6f8] text-xs">
             <button
               type="button"
               onClick={() => {
-                setChannelFilter("ALL");
+                setSelectedChannel("walk_in");
                 setCurrentPage(1);
               }}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                channelFilter === "ALL"
-                  ? "bg-white text-[#0d1117] shadow-xs"
-                  : "text-[#5f6673] hover:text-[#0d1117]"
-              }`}
-            >
-              All ({transactions.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setChannelFilter("walk_in");
-                setCurrentPage(1);
-              }}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                channelFilter === "walk_in"
+              className={`px-3 py-1 rounded-md font-semibold transition-all inline-flex items-center gap-1.5 ${
+                activeChannel === "walk_in"
                   ? "bg-white text-blue-700 shadow-xs"
                   : "text-[#5f6673] hover:text-[#0d1117]"
               }`}
             >
-              Walk-in ({walkInCount})
+              <UserCheck className="h-3.5 w-3.5" />
+              <span>Walk-in</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeChannel === "walk_in"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-[#e5e7eb] text-[#5f6673]"
+                }`}
+              >
+                {walkInCount}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => {
-                setChannelFilter("requests");
+                setSelectedChannel("requests");
                 setCurrentPage(1);
               }}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                channelFilter === "requests"
+              className={`px-3 py-1 rounded-md font-semibold transition-all inline-flex items-center gap-1.5 ${
+                activeChannel === "requests"
                   ? "bg-white text-emerald-700 shadow-xs"
                   : "text-[#5f6673] hover:text-[#0d1117]"
               }`}
             >
-              Barangay Requests ({requestsCount})
+              <Building2 className="h-3.5 w-3.5" />
+              <span>Barangay Requests</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeChannel === "requests"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-[#e5e7eb] text-[#5f6673]"
+                }`}
+              >
+                {requestsCount}
+              </span>
             </button>
           </div>
 
           {/* Search Input */}
-          <div className="relative min-w-[210px]">
+          <div className="relative min-w-[220px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8c929c]" />
             <input
               type="text"
-              placeholder="Search medicine, patient, doctor..."
+              placeholder={searchPlaceholder}
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -162,32 +185,45 @@ export default function DailyDispensingLogTable({
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="bg-[#f9fafb] text-[#5f6673] font-semibold border-b border-[#e5e7eb]">
+            <tr className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <th className="py-2.5 px-4 w-[110px]">Time</th>
-              <th className="py-2.5 px-4 min-w-[170px]">Recipient / Beneficiary</th>
-              <th className="py-2.5 px-4 w-[130px]">Channel</th>
-              <th className="py-2.5 px-4 min-w-[200px]">Medicine Dispensed</th>
+              <th className="py-2.5 px-4 min-w-[190px]">
+                {activeChannel === "walk_in" ? "Patient / Beneficiary" : "Barangay Station"}
+              </th>
+              <th className="py-2.5 px-4 min-w-[220px]">
+                {activeChannel === "walk_in" ? "Medicine Dispensed" : "Medicine Issued"}
+              </th>
               <th className="py-2.5 px-4 w-[110px] text-right">Quantity</th>
-              <th className="py-2.5 px-4 w-[110px] text-right">Price</th>
-              <th className="py-2.5 px-4 min-w-[140px]">Prescriber</th>
-              <th className="py-2.5 px-4 min-w-[130px]">Dispensed By</th>
+              <th className="py-2.5 px-4 w-[120px] text-right">
+                {activeChannel === "walk_in" ? "Price" : "Total Value"}
+              </th>
+              <th className="py-2.5 px-4 min-w-[140px]">
+                {activeChannel === "walk_in" ? "Prescriber" : "Requested By"}
+              </th>
+              <th className="py-2.5 px-4 min-w-[130px]">
+                {activeChannel === "walk_in" ? "Dispensed By" : "Released By"}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#f1f3f5]">
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-12 text-center">
+                <td colSpan={7} className="py-12 text-center">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <FileText className="h-7 w-7 text-[#8c929c]" />
                     <span className="text-xs font-semibold text-[#0d1117]">
                       {searchTerm
                         ? "No transactions match your search"
-                        : "No dispensing transactions recorded on this date"}
+                        : activeChannel === "walk_in"
+                        ? "No walk-in dispensing recorded on this date"
+                        : "No barangay supply requisitions issued on this date"}
                     </span>
-                    <p className="text-[11.5px] text-[#5f6673] max-w-[340px]">
+                    <p className="text-[11.5px] text-[#5f6673] max-w-[360px]">
                       {searchTerm
-                        ? "Try clearing the search term or switching channel filters."
-                        : `No medicines were released to walk-in patients or barangay health centers on ${formattedDate}.`}
+                        ? "Try clearing the search term or switching channel tabs."
+                        : activeChannel === "walk_in"
+                        ? `No medicines were dispensed to walk-in patients on ${formattedDate}.`
+                        : `No medicine requisitions were approved or released to barangay health stations on ${formattedDate}.`}
                     </p>
                     {searchTerm && (
                       <button
@@ -215,30 +251,20 @@ export default function DailyDispensingLogTable({
                     </span>
                   </td>
 
-                  {/* Recipient */}
+                  {/* Recipient / Barangay Station */}
                   <td className="py-2.5 px-4">
-                    <div className="font-bold text-[#0d1117] text-[12px] leading-tight">
-                      {tx.recipient}
+                    <div className="font-bold text-[#0d1117] text-[12px] leading-tight flex items-center gap-1.5">
+                      {activeChannel === "walk_in" ? (
+                        <UserCheck className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                      ) : (
+                        <Building2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      )}
+                      <span>{tx.recipient}</span>
                     </div>
                     {tx.recipientSub && (
-                      <div className="text-[10.5px] text-[#5f6673] font-mono mt-0.5">
+                      <div className="text-[10.5px] text-[#5f6673] font-mono mt-0.5 ml-5">
                         {tx.recipientSub}
                       </div>
-                    )}
-                  </td>
-
-                  {/* Channel Badge */}
-                  <td className="py-2.5 px-4 whitespace-nowrap">
-                    {tx.channelType === "walk_in" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        <UserCheck className="h-3 w-3" />
-                        Walk-in
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <Building2 className="h-3 w-3" />
-                        Barangay
-                      </span>
                     )}
                   </td>
 
@@ -270,14 +296,18 @@ export default function DailyDispensingLogTable({
                     {formatPeso(tx.totalCost)}
                   </td>
 
-                  {/* Prescriber */}
+                  {/* Prescriber (Walk-in) / Requested By (Requests) */}
                   <td className="py-2.5 px-4 text-[#5f6673] text-[11px] truncate max-w-[150px]">
-                    {tx.prescribedBy}
+                    {activeChannel === "walk_in"
+                      ? tx.prescribedBy
+                      : (tx.requestedBy || tx.prescribedBy || "Requisition Slip")}
                   </td>
 
-                  {/* Dispensed By */}
+                  {/* Dispensed By (Walk-in) / Released By (Requests) */}
                   <td className="py-2.5 px-4 text-[#5f6673] text-[11px] truncate max-w-[140px]">
-                    {tx.dispensedBy}
+                    {activeChannel === "walk_in"
+                      ? tx.dispensedBy
+                      : (tx.releasedBy || tx.dispensedBy || "CHO Supply Center")}
                   </td>
                 </tr>
               ))

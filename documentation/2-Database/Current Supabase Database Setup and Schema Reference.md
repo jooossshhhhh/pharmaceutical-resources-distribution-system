@@ -42,14 +42,12 @@ Stores the City Health Office central warehouse and all 28 Barangay Health Stati
   * `created_at`, `updated_at` (`timestamptz`)
 
 #### 2. `medicines`
-Defines the standard pharmaceutical formulary catalog approved by the City Health Office.
+Defines the standard pharmaceutical formulary catalog approved by the City Health Office. Note that brand names and unit costs are tracked per inventory procurement batch in `inventory`, keeping the master formulary strictly generic and normalized.
 * **Primary Key:** `id` (UUID, `gen_random_uuid()`)
 * **Columns:**
-  * `generic_name` (`text`, NOT NULL) — International nonproprietary name (e.g., `"Amoxicillin Trihydrate"`)
-  * `brand_name` (`text`, Nullable) — Commercial brand identifier (e.g., `"Himox"`)
-  * `dosage` (`text`, NOT NULL) — Strength and form (e.g., `"500 mg Capsule"`, `"100 mg/mL, 10 mL Drops"`)
+  * `generic_name` (`text`, NOT NULL) — International nonproprietary name (e.g., `"Amoxicillin"`)
+  * `dosage` (`text`, NOT NULL) — Strength and form (e.g., `"500mg"`, `"100 mg/mL, 10 mL"`)
   * `unit_of_measure` (`text`, NOT NULL) — Dispensing packaging (e.g., `"capsule"`, `"tablet"`, `"bottle"`, `"vial"`)
-  * `unit_cost` (`numeric(10,2)`, DEFAULT `0.00`) — Standard acquisition cost in Philippine Peso (₱)
   * `categories` (`text[]` or `jsonb`) — Therapeutic groups (e.g., `["Anti-Infectives", "Analgesics"]`)
   * `created_at`, `updated_at` (`timestamptz`)
 
@@ -87,6 +85,7 @@ Physical stock batches tracked per medicine, lot, and custodian health facility.
   * `facility_id` (`uuid`, references `facilities(id)` ON DELETE CASCADE) — Current holding facility
   * `medicine_id` (`uuid`, references `medicines(id)` ON DELETE CASCADE)
   * `supplier_id` (`uuid`, references `suppliers(id)`, Nullable)
+  * `brand_name` (`text`, Nullable) — Commercial brand identifier for this specific delivery/lot (e.g., `"Medimox"`)
   * `quantity` (`integer`, NOT NULL, DEFAULT 0, CHECK `quantity >= 0`) — Physical units in stock
   * `threshold` (`integer`, NOT NULL, DEFAULT 0) — Reorder warning threshold
   * `batch_number` (`text`, NOT NULL) — Manufacturer batch/lot code
@@ -107,31 +106,37 @@ Physical stock batches tracked per medicine, lot, and custodian health facility.
 Ledger of returned or quarantined batches from Barangay health centers to the CHO Central Warehouse.
 * **Primary Key:** `id` (UUID, `gen_random_uuid()`)
 * **Columns:**
-  * `lot_no` (`text`, NOT NULL) — Returned batch number
+  * `return_id` (`text`, UNIQUE) — Standardized return reference code (e.g., `RET-HCINAYAGAN-20261014-2D3E`)
+  * `facility_id` (`uuid`, references `facilities(id)`) — Originating barangay health station
+  * `source_inventory_id` (`uuid`, references `inventory(id)`, Nullable) — Source inventory ledger batch deducted
   * `medicine_id` (`uuid`, references `medicines(id)`)
-  * `medicine_name`, `brand_name` (`text`)
+  * `medicine_name` (`text`, NOT NULL), `brand_name` (`text`, Nullable)
+  * `lot_no` (`text`, NOT NULL) — Returned batch/lot number
   * `quantity` (`integer`, NOT NULL, CHECK `quantity > 0`)
   * `unit_cost` (`numeric(10,2)`, DEFAULT 0.00)
-  * `expiration_date` (`date`, Nullable)
-  * `reason` (`text`, NOT NULL) — Reason for return (Near Expiry, Overstock, Damaged, Recalled)
-  * `facility_id` (`uuid`, references `facilities(id)`) — Originating health center
+  * `expiration_date` (`date`, NOT NULL)
+  * `reason` (`text`, NOT NULL) — Reason for return (EXCESS_STOCK, NEAR_EXPIRY, EXPIRED, DAMAGED, RECALLED, OTHER)
+  * `status` (`text`, DEFAULT `'PENDING'`, CHECK in `'PENDING'`, `'CONFIRMED'`, `'CANCELLED'`)
+  * `remarks` (`text`, Nullable) — Custom notes or custom reason description
   * `submitted_by_id` (`uuid`, references `profiles(id)`) — BHW encoder
-  * `verified_by_id` (`uuid`, references `profiles(id)`, Nullable) — Pharmacist acknowledging receipt
-  * `status` (`text`, DEFAULT `'PENDING'`, CHECK in `'PENDING'`, `'RECEIVED'`, `'VERIFIED'`, `'CANCELLED'`)
-  * `submitted_at`, `verified_at` (`timestamptz`)
-  * *Legacy Compatibility Columns:* `return_slip_no`, `source_facility_id`, `destination_facility_id`, `return_date`, `remarks`
+  * `submitted_at` (`timestamptz`, NOT NULL)
+  * `confirmed_by_id` (`uuid`, references `profiles(id)`, Nullable) — CHO Pharmacist confirming receipt
+  * `confirmed_at` (`timestamptz`, Nullable)
+  * `created_at`, `updated_at` (`timestamptz`, NOT NULL)
 
 #### 7. `stock_return_items`
-Child detail items supporting legacy multi-item return slips.
+Itemized batch records linking back to `stock_returns`.
 * **Primary Key:** `id` (UUID, `gen_random_uuid()`)
 * **Columns:**
   * `return_id` (`uuid`, references `stock_returns(id)` ON DELETE CASCADE)
+  * `source_inventory_id` (`uuid`, references `inventory(id)`, Nullable)
   * `medicine_id` (`uuid`, references `medicines(id)`)
-  * `batch_number` (`text`)
+  * `medicine_name`, `brand_name` (`text`, Nullable)
+  * `lot_no` (`text`, Nullable)
   * `quantity` (`integer`, CHECK `quantity > 0`)
-  * `unit_cost` (`numeric(10,2)`)
-  * `expiration_date` (`date`)
-  * `target_inventory_id` (`uuid`, references `inventory(id)`, Nullable)
+  * `expiration_date` (`date`, Nullable)
+  * `unit_cost` (`numeric(10,2)`, Nullable)
+  * `created_at` (`timestamptz`, NOT NULL)
 
 ---
 

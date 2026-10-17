@@ -84,7 +84,7 @@ export default function MonthYearSelector({
         <select
           value={month}
           onChange={(e) => onChangePeriod?.({ year, month: Number(e.target.value) })}
-          className="bg-[#f7f6f3] border border-[#d8dadc] hover:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs font-semibold text-[#0d1117] rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
+          className="bg-white border border-slate-200 hover:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs font-semibold text-[#0d1117] rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
         >
           {MONTH_NAMES.map((mName, idx) => (
             <option key={mName} value={idx + 1}>
@@ -97,7 +97,7 @@ export default function MonthYearSelector({
         <select
           value={year}
           onChange={(e) => onChangePeriod?.({ year: Number(e.target.value), month })}
-          className="bg-[#f7f6f3] border border-[#d8dadc] hover:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs font-semibold text-[#0d1117] rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
+          className="bg-white border border-slate-200 hover:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs font-semibold text-[#0d1117] rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
         >
           {AVAILABLE_YEARS.map((y) => (
             <option key={y} value={y}>

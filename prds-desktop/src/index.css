@@ -108,6 +108,16 @@ input[type="number"] {
   animation: prds-modal-panel-out 0.18s ease-in both;
 }
 
+/* Tactile modal card definition: subtle ambient ring and deep elevation */
+.prds-modal-root .prds-modal-panel-enter[class*="bg-white"],
+.prds-modal-root .prds-modal-panel-exit[class*="bg-white"],
+.prds-modal-root .prds-modal-panel-enter > div[class*="rounded-"][class*="bg-white"],
+.prds-modal-root .prds-modal-panel-exit > div[class*="rounded-"][class*="bg-white"],
+.prds-modal-root .prds-modal-panel-enter > form[class*="rounded-"][class*="bg-white"],
+.prds-modal-root .prds-modal-panel-exit > form[class*="rounded-"][class*="bg-white"] {
+  box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.16), 0 8px 10px -6px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
 html {
   width: 100%;
   height: 100%;
@@ -165,9 +175,9 @@ body {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   background:
-    radial-gradient(1100px 480px at 85% -8%, rgb(107 233 194 / 0.14), transparent 60%),
-    radial-gradient(900px 420px at -10% 0%, rgb(0 163 108 / 0.08), transparent 55%),
-    #f7f6f3;
+    radial-gradient(1100px 480px at 85% -8%, rgb(107 233 194 / 0.12), transparent 60%),
+    radial-gradient(900px 420px at -10% 0%, rgb(0 163 108 / 0.06), transparent 55%),
+    #f1f5f9;
 }
 
 .prds-admin-shell .font-black {
@@ -198,7 +208,7 @@ body {
 }
 
 .prds-main-scrollbar {
-  scrollbar-color: #42474e #f3efe9;
+  scrollbar-color: #cbd5e1 #f1f5f9;
   scrollbar-width: thin;
 }
 
@@ -208,17 +218,17 @@ body {
 }
 
 .prds-main-scrollbar::-webkit-scrollbar-track {
-  background: #f3efe9;
+  background: #f1f5f9;
 }
 
 .prds-main-scrollbar::-webkit-scrollbar-thumb {
-  background: #42474e;
-  border: 2px solid #f3efe9;
+  background: #cbd5e1;
+  border: 2px solid #f1f5f9;
   border-radius: 999px;
 }
 
 .prds-main-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #00a36c;
+  background: #94a3b8;
 }
 
 .prds-modal-scrollbar {

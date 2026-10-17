@@ -555,6 +555,21 @@ export function buildDailyRisWorkbook({
 export function consolidateInventoryRows(inventoryRows = []) {
   if (!Array.isArray(inventoryRows) || inventoryRows.length === 0) return [];
 
+  // Pre-scan to build batchToPo and batchToCost maps
+  const batchToPo = new Map();
+  const batchToCost = new Map();
+  for (const item of inventoryRows) {
+    const batch = (item.batch_number || item.lot_number || item.lot || "").trim().toUpperCase();
+    const po = String(item.po_number || item.purchase_order || item.poNumber || item.po_no || "").trim();
+    if (batch && po && !batchToPo.has(batch)) {
+      batchToPo.set(batch, po);
+    }
+    const cost = Number(item.unit_cost ?? item.medicine?.unit_cost ?? 0);
+    if (batch && cost > 0 && !batchToCost.has(batch)) {
+      batchToCost.set(batch, cost);
+    }
+  }
+
   const map = new Map();
 
   for (const item of inventoryRows) {
@@ -563,13 +578,23 @@ export function consolidateInventoryRows(inventoryRows = []) {
     const batch = (item.batch_number || item.lot_number || item.lot || "").trim().toUpperCase();
     const expiry = item.expiration_date || item.expiry_date || "";
     const expiryKey = expiry ? toDateKey(expiry) : "NO_EXPIRY";
-    const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
+    let unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
+    if ((!unitCost || unitCost === 0) && batch && batchToCost.has(batch)) {
+      unitCost = batchToCost.get(batch);
+    }
+    let poNumber = String(item.po_number || item.purchase_order || item.poNumber || item.po_no || "").trim();
+    if (!poNumber && batch && batchToPo.has(batch)) {
+      poNumber = batchToPo.get(batch);
+    }
 
-    const groupKey = `${medId}___${batch || "NO_BATCH"}___${expiryKey}___${unitCost}`;
+    const groupKey = `${medId}___${batch || "NO_BATCH"}___${expiryKey}___${unitCost}___${poNumber}`;
 
     if (!map.has(groupKey)) {
       map.set(groupKey, {
         ...item,
+        po_number: poNumber,
+        poNumber,
+        unit_cost: unitCost,
         quantity: Number(item.quantity) || 0,
         received_quantity: item.received_quantity !== undefined ? Number(item.received_quantity) : undefined,
         additional_quantity: item.additional_quantity !== undefined ? Number(item.additional_quantity) : undefined,
@@ -581,6 +606,10 @@ export function consolidateInventoryRows(inventoryRows = []) {
       });
     } else {
       const existing = map.get(groupKey);
+      if (!existing.po_number && poNumber) {
+        existing.po_number = poNumber;
+        existing.poNumber = poNumber;
+      }
       existing.quantity = (existing.quantity || 0) + (Number(item.quantity) || 0);
       if (item.received_quantity !== undefined) {
         existing.received_quantity = (existing.received_quantity || 0) + Number(item.received_quantity);
@@ -726,6 +755,7 @@ export function processMonthlyInventoryData({
     const med = item.medicine || {};
     const medId = String(item.medicine_id || med.id || "");
     const batch = (item.batch_number || item.lot_number || item.lot || "").trim().toUpperCase();
+    const poNumber = String(item.po_number || item.purchase_order || item.poNumber || item.po_no || "").trim();
 
     const generic = (med.generic_name || item.generic_name || "").trim();
     const dosage = (med.dosage || item.dosage || "").trim();
@@ -830,6 +860,7 @@ export function processMonthlyInventoryData({
 
     return {
       index: idx + 1,
+      poNumber,
       itemDescription,
       unitOfMeasure,
       brandName,
@@ -855,6 +886,13 @@ export function processMonthlyInventoryData({
   });
 
   items.sort((a, b) => {
+    const poA = a.poNumber || "";
+    const poB = b.poNumber || "";
+    if (poA && !poB) return -1;
+    if (!poA && poB) return 1;
+    if (poA !== poB) {
+      return poA.localeCompare(poB, undefined, { numeric: true, sensitivity: "base" });
+    }
     const cmp = (a.itemDescription || "").localeCompare(b.itemDescription || "");
     if (cmp !== 0) return cmp;
     return (a.lotNo || "").localeCompare(b.lotNo || "");
@@ -878,13 +916,70 @@ export function processMonthlyInventoryData({
 }
 
 /**
+ * Formats the PO Number header label for Column D.
+ * For non-empty PO numbers, returns "PO NO. <number>" (normalizing redundant PO prefixes).
+ * For empty/unassigned POs, returns strictly "PO NO." so the pharmacist can fill it in manually.
+ */
+export function formatPoHeader(poNumber) {
+  const trimmed = String(poNumber || "").trim();
+  if (!trimmed) {
+    return "PO NO.";
+  }
+  if (/^PO\s*NO\.?\s*/i.test(trimmed)) {
+    const rest = trimmed.replace(/^PO\s*NO\.?\s*/i, "").trim();
+    return rest ? `PO NO. ${rest}` : "PO NO.";
+  }
+  if (/^PO[\s.:-]*/i.test(trimmed)) {
+    const rest = trimmed.replace(/^PO[\s.:-]*/i, "").trim();
+    return rest ? `PO NO. ${rest}` : "PO NO.";
+  }
+  return `PO NO. ${trimmed}`;
+}
+
+/**
+ * Groups reconciled monthly report items by PO Number.
+ * Preserves the sorted item order within each group.
+ */
+export function groupReportItemsByPo(items = []) {
+  if (!items || items.length === 0) {
+    return [
+      {
+        poNumber: "",
+        headerText: "PO NO.",
+        items: [],
+      },
+    ];
+  }
+
+  const groups = [];
+  let currentGroup = null;
+
+  for (const item of items) {
+    const itemPo = (item.poNumber || "").trim();
+    if (!currentGroup || currentGroup.poNumber !== itemPo) {
+      currentGroup = {
+        poNumber: itemPo,
+        headerText: formatPoHeader(itemPo),
+        items: [],
+      };
+      groups.push(currentGroup);
+    }
+    currentGroup.items.push(item);
+  }
+
+  return groups;
+}
+
+/**
  * Builds the Monthly Inventory Physical Count XLSX binary buffer directly into the client's official
- * template package (inventory-form.xlsx).
+ * template package (inventory-report.xlsx).
  * Guarantees 100% preservation of:
  * - Font faces (Aptos Narrow, Amasis MT Pro Light), sizes, colors, and borders
  * - Exact column widths (<cols>) and row heights
- * - Date addressing in C5 (Month), I5 (Beginning Balance), AG5 (Remaining Balance)
- * - Dynamic rows with Excel formulas (=I*J, =L*M, =L+I, =SUM(...), etc.)
+ * - Date addressing in Row 3: C3 (Title & Month), I3 (Beginning Balance), AB3 (Remaining Balance)
+ * - Row 4 subheaders
+ * - Dynamic rows from Row 5 onwards with PO section headers (Option 1) and medicine items
+ * - Formulas for quantities, unit costs, total costs, and grand totals
  */
 export function buildMonthlyInventoryBuffer({
   inventoryRows = [],
@@ -947,11 +1042,12 @@ export function buildMonthlyInventoryBuffer({
     const monthName = new Intl.DateTimeFormat("en-US", { month: "long" })
       .format(targetDate)
       .toUpperCase();
+    const monthNameTitle = new Intl.DateTimeFormat("en-US", { month: "long" })
+      .format(targetDate);
     const lastDay = new Date(year, month, 0).getDate();
     // Adaptive date: If current in-progress month, stamp active date; if closed past month, stamp month-end
     const effectiveRemDay = isCurrentMonth ? now.getDate() : lastDay;
 
-    const monthHeader = `MONTH : ${monthName} ${effectiveRemDay}, ${year}`;
     const remainingHeader = `REMAINING BALANCE  AS OF \n${monthName} ${effectiveRemDay}, ${year}`;
 
     const prevDate = new Date(year, month - 1, 0);
@@ -962,33 +1058,33 @@ export function buildMonthlyInventoryBuffer({
     const prevYear = prevDate.getFullYear();
     const begBalanceHeader = `BEGINNING BALANCE AS OF \n${prevMonthName} ${prevLastDay}, ${prevYear}`;
 
-    // 2. Update Title (Row 3, Cell C3)
-    const resolvedFacility = facilityName
-      ? facilityName.toUpperCase().includes("MEDICINE SUPPLIES")
+    // 2. Update Row 3 Headers: C3 (Title & Month), I3 (Beginning Balance Date), AB3 (Remaining Balance Date)
+    const resolvedFacility =
+      !facilityName ||
+      /VICENTE MENDIOLA|CITY HEALTH OFFICE|\bCHO\b|\bVMCH\b/i.test(facilityName)
+        ? "VMCH MEDICINE SUPPLIES"
+        : facilityName.toUpperCase().includes("MEDICINE SUPPLIES")
         ? facilityName.toUpperCase()
-        : `${facilityName.toUpperCase()} MEDICINE SUPPLIES`
-      : "VMCH MEDICINE SUPPLIES";
-    const titleText = `REPORT ON PHYSICAL COUNT OF INVENTORIES\n${resolvedFacility}`;
+        : `${facilityName.toUpperCase()} MEDICINE SUPPLIES`;
+    const titleHeader = `REPORT ON PHYSICAL COUNT OF INVENTORIES: ${resolvedFacility} MONTH \n${monthNameTitle}, ${year}`;
+
     xml = xml.replace(
       cellRegex("C3"),
-      `<c r="C3" s="36" t="inlineStr"><is><t xml:space="preserve">${escapeXml(titleText)}</t></is></c>`
+      `<c r="C3" s="20" t="inlineStr"><is><t xml:space="preserve">${escapeXml(titleHeader)}</t></is></c>`
+    );
+    xml = xml.replace(
+      cellRegex("I3"),
+      `<c r="I3" s="17" t="inlineStr"><is><t xml:space="preserve">${escapeXml(begBalanceHeader)}</t></is></c>`
+    );
+    xml = xml.replace(
+      cellRegex("AB3"),
+      `<c r="AB3" s="14" t="inlineStr"><is><t xml:space="preserve">${escapeXml(remainingHeader)}</t></is></c>`
     );
 
-    // 3. Update Dates in Row 5: C5 (Month), I5 (Beginning Balance), AG5 (Remaining Balance)
-    xml = xml.replace(
-      cellRegex("C5"),
-      `<c r="C5" s="45" t="inlineStr"><is><t xml:space="preserve">${escapeXml(monthHeader)}</t></is></c>`
-    );
-    xml = xml.replace(
-      cellRegex("I5"),
-      `<c r="I5" s="42" t="inlineStr"><is><t xml:space="preserve">${escapeXml(begBalanceHeader)}</t></is></c>`
-    );
-    xml = xml.replace(
-      cellRegex("AG5"),
-      `<c r="AG5" s="54" t="inlineStr"><is><t xml:space="preserve">${escapeXml(remainingHeader)}</t></is></c>`
-    );
+    // Ensure sheet view starts cleanly at A1 so Column C (ITEM NO) is immediately visible without horizontal scrolling
+    xml = xml.replace(/topLeftCell="[A-Z0-9]+"/g, 'topLeftCell="A1"');
 
-    // 4. Reconcile and calculate data rows
+    // 3. Reconcile and calculate data rows
     const { items, totals } = processMonthlyInventoryData({
       inventoryRows,
       dispensingRows,
@@ -998,167 +1094,210 @@ export function buildMonthlyInventoryBuffer({
       month,
     });
 
+    const groups = groupReportItemsByPo(items);
     const itemCount = items.length;
-    const numDataRows = Math.max(3, itemCount);
-    const lastDataRow = 6 + numDataRows;
-    const totalRow = lastDataRow + 1;
 
-    let rowsXml = "";
-    for (let i = 0; i < numDataRows; i++) {
-      const rowNum = 7 + i;
-      const item = items[i];
-      const isLastData = (i === numDataRows - 1);
-      const spacerStyle = isLastData ? 's="20"' : 's="19"';
+    // 4. Auto-adjust column widths for Column D (Item Description), Column F (Brand), and Column G (Lot No)
+    // Base template widths: Col D = 41.28515625, Col F = 12.7109375, Col G = 12.7109375
+    let maxDescLen = 0;
+    let maxBrandLen = 0;
+    let maxLotLen = 0;
 
-      rowsXml += `<row r="${rowNum}" spans="3:35" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
-      if (item) {
-        // C: Item No (Amasis MT Pro Light 8pt, center, border 1)
-        rowsXml += `<c r="C${rowNum}" s="7"><v>${item.index}</v></c>`;
-        // D: Description (Amasis MT Pro Light 10pt, left, border 1)
-        rowsXml += `<c r="D${rowNum}" s="24" t="inlineStr"><is><t>${escapeXml(item.itemDescription)}</t></is></c>`;
-        // E: Unit of Measure (Amasis MT Pro Light 10pt, left, border 1)
-        rowsXml += `<c r="E${rowNum}" s="24" t="inlineStr"><is><t>${escapeXml(item.unitOfMeasure)}</t></is></c>`;
-        // F: Brand (Amasis MT Pro Light 10pt, left, center, border 1)
-        rowsXml += `<c r="F${rowNum}" s="25" t="inlineStr"><is><t>${escapeXml(item.brandName)}</t></is></c>`;
-        // G: Lot No (Amasis MT Pro Light 10pt, left, border 1)
-        rowsXml += `<c r="G${rowNum}" s="24" t="inlineStr"><is><t>${escapeXml(item.lotNo)}</t></is></c>`;
-        // H: Expiry Date (Amasis MT Pro Light 10pt, left, border 1)
-        rowsXml += `<c r="H${rowNum}" s="24" t="inlineStr"><is><t>${escapeXml(item.expiryDate)}</t></is></c>`;
-        // Beginning (I, J, K) - I is quantity (s=28), J & K are costs (s=26 with peso format & border 1)
-        rowsXml += `<c r="I${rowNum}" s="28"><v>${item.beginningQty}</v></c>`;
-        rowsXml += `<c r="J${rowNum}" s="26"><v>${item.unitCost}</v></c>`;
-        rowsXml += `<c r="K${rowNum}" s="26"><f>I${rowNum}*J${rowNum}</f><v>${item.begTotal}</v></c>`;
-        // Additional (L, M, N)
-        rowsXml += `<c r="L${rowNum}" s="28"><v>${item.additionalQty}</v></c>`;
-        rowsXml += `<c r="M${rowNum}" s="26"><v>${item.additionalQty > 0 ? item.unitCost : 0}</v></c>`;
-        rowsXml += `<c r="N${rowNum}" s="26"><f>L${rowNum}*M${rowNum}</f><v>${item.addTotal}</v></c>`;
-        // Spacer O
-        rowsXml += `<c r="O${rowNum}" ${spacerStyle}/>`;
-        // Summation (P, Q, R)
-        rowsXml += `<c r="P${rowNum}" s="28"><f>L${rowNum}+I${rowNum}</f><v>${item.grossQty}</v></c>`;
-        rowsXml += `<c r="Q${rowNum}" s="26"><f>J${rowNum}</f><v>${item.unitCost}</v></c>`;
-        rowsXml += `<c r="R${rowNum}" s="26"><f>Q${rowNum}*P${rowNum}</f><v>${item.grossTotal}</v></c>`;
-        // Spacer S
-        rowsXml += `<c r="S${rowNum}" ${spacerStyle}/>`;
-        // Less Issuances (T, U, V)
-        rowsXml += `<c r="T${rowNum}" s="28"><v>${item.issuedQty}</v></c>`;
-        rowsXml += `<c r="U${rowNum}" s="26"><f>Q${rowNum}</f><v>${item.unitCost}</v></c>`;
-        rowsXml += `<c r="V${rowNum}" s="26"><f>U${rowNum}*T${rowNum}</f><v>${item.issuedTotal}</v></c>`;
-        // Spacer W
-        rowsXml += `<c r="W${rowNum}" ${spacerStyle}/>`;
-        // Transferred to Other Programs (X, Y, Z, AA)
-        rowsXml += `<c r="X${rowNum}" s="28"><v>${item.programQty}</v></c>`;
-        rowsXml += `<c r="Y${rowNum}" s="26"><v>${item.programQty > 0 ? item.unitCost : 0}</v></c>`;
-        rowsXml += `<c r="Z${rowNum}" s="26"><f>X${rowNum}*Y${rowNum}</f><v>${item.programTotal}</v></c>`;
-        rowsXml += `<c r="AA${rowNum}" s="31" t="inlineStr"><is><t>${escapeXml(item.programName)}</t></is></c>`;
-        // Spacer AB
-        rowsXml += `<c r="AB${rowNum}" ${spacerStyle}/>`;
-        // Expired (AC, AD, AE)
-        rowsXml += `<c r="AC${rowNum}" s="28"><v>${item.expiredQty}</v></c>`;
-        rowsXml += `<c r="AD${rowNum}" s="26"><v>${item.expiredQty > 0 ? item.unitCost : 0}</v></c>`;
-        rowsXml += `<c r="AE${rowNum}" s="26"><f>AC${rowNum}*AD${rowNum}</f><v>${item.expiredTotal}</v></c>`;
-        // Spacer AF
-        rowsXml += `<c r="AF${rowNum}" ${spacerStyle}/>`;
-        // Remaining Balance (AG, AH, AI)
-        rowsXml += `<c r="AG${rowNum}" s="28"><f>P${rowNum}-(T${rowNum}+X${rowNum}+AC${rowNum})</f><v>${item.remainingQty}</v></c>`;
-        rowsXml += `<c r="AH${rowNum}" s="26"><f>U${rowNum}</f><v>${item.unitCost}</v></c>`;
-        rowsXml += `<c r="AI${rowNum}" s="26"><f>AH${rowNum}*AG${rowNum}</f><v>${item.remainingTotal}</v></c>`;
-      } else {
-        // Blank row preserving exact placeholders & styling with full borders
-        rowsXml += `<c r="C${rowNum}" s="7"><v>${i + 1}</v></c>`;
-        rowsXml += `<c r="D${rowNum}" s="24"/><c r="E${rowNum}" s="24"/><c r="F${rowNum}" s="25"/><c r="G${rowNum}" s="24"/><c r="H${rowNum}" s="24"/><c r="I${rowNum}" s="28"/>`;
-        rowsXml += `<c r="J${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="K${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="L${rowNum}" s="28"/>`;
-        rowsXml += `<c r="M${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="N${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="O${rowNum}" ${spacerStyle}/><c r="P${rowNum}" s="28"/>`;
-        rowsXml += `<c r="Q${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="R${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="S${rowNum}" ${spacerStyle}/><c r="T${rowNum}" s="28"/>`;
-        rowsXml += `<c r="U${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="V${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="W${rowNum}" ${spacerStyle}/><c r="X${rowNum}" s="28"/>`;
-        rowsXml += `<c r="Y${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="Z${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="AA${rowNum}" s="31"/><c r="AB${rowNum}" ${spacerStyle}/><c r="AC${rowNum}" s="28"/>`;
-        rowsXml += `<c r="AD${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="AE${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="AF${rowNum}" ${spacerStyle}/><c r="AG${rowNum}" s="28"/>`;
-        rowsXml += `<c r="AH${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="AI${rowNum}" s="26" t="inlineStr"><is><t>₱</t></is></c>`;
+    for (const group of groups) {
+      if (group.headerText) {
+        maxDescLen = Math.max(maxDescLen, group.headerText.length);
       }
-      rowsXml += `</row>`;
+      for (const it of group.items || []) {
+        if (it.itemDescription) {
+          maxDescLen = Math.max(maxDescLen, it.itemDescription.length);
+        }
+        if (it.brandName) {
+          maxBrandLen = Math.max(maxBrandLen, it.brandName.length);
+        }
+        if (it.lotNo) {
+          maxLotLen = Math.max(maxLotLen, String(it.lotNo).length);
+        }
+      }
     }
 
-    // 5. Total Row (all cost totals have formula + value + peso format; unit cost cells are clean/empty with full borders)
-    const kTotalContent = itemCount > 0
-      ? `<f>SUM(K7:K${lastDataRow})</f><v>${totals.totalBegVal}</v>`
-      : `<is><t>₱</t></is>`;
+    const baseColDWidth = 41.28515625;
+    const baseColFWidth = 12.7109375;
+    const baseColGWidth = 12.7109375;
+
+    // Excel font width calculation: characters + 4 padding
+    const colDWidth = Math.max(baseColDWidth, maxDescLen + 4);
+    const colFWidth = Math.max(baseColFWidth, maxBrandLen + 4);
+    const colGWidth = Math.max(baseColGWidth, maxLotLen + 4);
+
+    const colsXml = `<cols>` +
+      `<col min="2" max="2" width="11" customWidth="1"/>` +
+      `<col min="4" max="4" width="${colDWidth}" customWidth="1"/>` +
+      `<col min="5" max="5" width="15.7109375" customWidth="1"/>` +
+      `<col min="6" max="6" width="${colFWidth}" style="2" customWidth="1"/>` +
+      `<col min="7" max="7" width="${colGWidth}" customWidth="1"/>` +
+      `<col min="8" max="23" width="12.7109375" customWidth="1"/>` +
+      `<col min="24" max="24" width="15.7109375" customWidth="1"/>` +
+      `<col min="25" max="30" width="12.7109375" customWidth="1"/>` +
+      `</cols>`;
+
+    xml = xml.replace(/<cols>[\s\S]*?<\/cols>/, colsXml);
+
+    let rowsXml = "";
+    let currentRow = 5;
+
+    if (itemCount === 0) {
+      // Empty template state: 1 PO header row ("PO NO." at row 5) followed by 3 empty medicine rows (rows 6, 7, 8)
+      const group = groups[0];
+      rowsXml += `<row r="${currentRow}" spans="3:30" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
+      rowsXml += `<c r="C${currentRow}" s="4"/>`;
+      rowsXml += `<c r="D${currentRow}" s="32" t="inlineStr"><is><t>${escapeXml(group.headerText)}</t></is></c>`;
+      rowsXml += `<c r="E${currentRow}" s="4"/><c r="F${currentRow}" s="33"/><c r="G${currentRow}" s="4"/><c r="H${currentRow}" s="4"/><c r="I${currentRow}" s="4"/>`;
+      rowsXml += `<c r="J${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="K${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="N${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="Q${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="T${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="W${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AA${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AD${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `</row>`;
+      currentRow++;
+
+      for (let b = 0; b < 3; b++) {
+        rowsXml += `<row r="${currentRow}" spans="3:30" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
+        rowsXml += `<c r="C${currentRow}" s="4"><v>${b + 1}</v></c>`;
+        rowsXml += `<c r="D${currentRow}" s="33"/><c r="E${currentRow}" s="4"/><c r="F${currentRow}" s="33"/><c r="G${currentRow}" s="4"/><c r="H${currentRow}" s="4"/><c r="I${currentRow}" s="4"/>`;
+        rowsXml += `<c r="J${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="K${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="N${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="Q${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="T${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="W${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AA${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AD${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `</row>`;
+        currentRow++;
+      }
+    } else {
+      for (const group of groups) {
+        // 1. PO Section Header row ABOVE the medicines (D uses s="32" for bright yellow highlight matching official template)
+        rowsXml += `<row r="${currentRow}" spans="3:30" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
+        rowsXml += `<c r="C${currentRow}" s="4"/>`;
+        rowsXml += `<c r="D${currentRow}" s="32" t="inlineStr"><is><t>${escapeXml(group.headerText)}</t></is></c>`;
+        rowsXml += `<c r="E${currentRow}" s="4"/><c r="F${currentRow}" s="33"/><c r="G${currentRow}" s="4"/><c r="H${currentRow}" s="4"/><c r="I${currentRow}" s="4"/>`;
+        rowsXml += `<c r="J${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="K${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="N${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="Q${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="T${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="W${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AA${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AD${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `</row>`;
+        currentRow++;
+
+        // 2. Medicine Items under this PO: Exact 8pt Amasis MT Pro font with uniform thin borders matching official template
+        for (const item of group.items) {
+          rowsXml += `<row r="${currentRow}" spans="3:30" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
+          rowsXml += `<c r="C${currentRow}" s="4"><v>${item.index}</v></c>`;
+          rowsXml += `<c r="D${currentRow}" s="33" t="inlineStr"><is><t>${escapeXml(item.itemDescription)}</t></is></c>`;
+          rowsXml += `<c r="E${currentRow}" s="4" t="inlineStr"><is><t>${escapeXml(item.unitOfMeasure)}</t></is></c>`;
+          rowsXml += `<c r="F${currentRow}" s="33" t="inlineStr"><is><t>${escapeXml(item.brandName)}</t></is></c>`;
+          rowsXml += `<c r="G${currentRow}" s="4" t="inlineStr"><is><t>${escapeXml(item.lotNo)}</t></is></c>`;
+          rowsXml += `<c r="H${currentRow}" s="4" t="inlineStr"><is><t>${escapeXml(item.expiryDate)}</t></is></c>`;
+          // Beg Balance (I, J, K)
+          rowsXml += `<c r="I${currentRow}" s="4"><v>${item.beginningQty}</v></c>`;
+          rowsXml += `<c r="J${currentRow}" s="36"><v>${item.unitCost}</v></c>`;
+          rowsXml += `<c r="K${currentRow}" s="36"><f>I${currentRow}*J${currentRow}</f><v>${item.begTotal}</v></c>`;
+          // Additional Deliveries (L, M, N)
+          rowsXml += `<c r="L${currentRow}" s="4"><v>${item.additionalQty}</v></c>`;
+          rowsXml += `<c r="M${currentRow}" s="36"><v>${item.additionalQty > 0 ? item.unitCost : 0}</v></c>`;
+          rowsXml += `<c r="N${currentRow}" s="36"><f>L${currentRow}*M${currentRow}</f><v>${item.addTotal}</v></c>`;
+          // Summation (O, P, Q)
+          rowsXml += `<c r="O${currentRow}" s="4"><f>I${currentRow}+L${currentRow}</f><v>${item.grossQty}</v></c>`;
+          rowsXml += `<c r="P${currentRow}" s="36"><f>J${currentRow}</f><v>${item.unitCost}</v></c>`;
+          rowsXml += `<c r="Q${currentRow}" s="36"><f>O${currentRow}*P${currentRow}</f><v>${item.grossTotal}</v></c>`;
+          // Issuances (R, S, T)
+          rowsXml += `<c r="R${currentRow}" s="4"><v>${item.issuedQty}</v></c>`;
+          rowsXml += `<c r="S${currentRow}" s="36"><f>P${currentRow}</f><v>${item.unitCost}</v></c>`;
+          rowsXml += `<c r="T${currentRow}" s="36"><f>R${currentRow}*S${currentRow}</f><v>${item.issuedTotal}</v></c>`;
+          // Transferred to Other Programs (U, V, W, X)
+          rowsXml += `<c r="U${currentRow}" s="4"><v>${item.programQty}</v></c>`;
+          rowsXml += `<c r="V${currentRow}" s="36"><v>${item.programQty > 0 ? item.unitCost : 0}</v></c>`;
+          rowsXml += `<c r="W${currentRow}" s="36"><f>U${currentRow}*V${currentRow}</f><v>${item.programTotal}</v></c>`;
+          rowsXml += `<c r="X${currentRow}" s="33" t="inlineStr"><is><t>${escapeXml(item.programName)}</t></is></c>`;
+          // Expired (Y, Z, AA)
+          rowsXml += `<c r="Y${currentRow}" s="4"><v>${item.expiredQty}</v></c>`;
+          rowsXml += `<c r="Z${currentRow}" s="36"><v>${item.expiredQty > 0 ? item.unitCost : 0}</v></c>`;
+          rowsXml += `<c r="AA${currentRow}" s="36"><f>Y${currentRow}*Z${currentRow}</f><v>${item.expiredTotal}</v></c>`;
+          // Remaining Balance (AB, AC, AD)
+          rowsXml += `<c r="AB${currentRow}" s="4"><f>O${currentRow}-(R${currentRow}+U${currentRow}+Y${currentRow})</f><v>${item.remainingQty}</v></c>`;
+          rowsXml += `<c r="AC${currentRow}" s="36"><f>P${currentRow}</f><v>${item.unitCost}</v></c>`;
+          rowsXml += `<c r="AD${currentRow}" s="36"><f>AB${currentRow}*AC${currentRow}</f><v>${item.remainingTotal}</v></c>`;
+          rowsXml += `</row>`;
+          currentRow++;
+        }
+      }
+    }
+
+    // 5. Total Row
+    const lastDataRow = currentRow - 1;
+    const totalRow = currentRow;
+
+    const kTotalContent = itemCount > 0 ? `<f>SUM(K5:K${lastDataRow})</f><v>${totals.totalBegVal}</v>` : `<is><t>₱</t></is>`;
     const kTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
 
-    const nTotalContent = itemCount > 0
-      ? `<f>SUM(N7:N${lastDataRow})</f><v>${totals.totalAddVal}</v>`
-      : `<is><t>₱</t></is>`;
+    const nTotalContent = itemCount > 0 ? `<f>SUM(N5:N${lastDataRow})</f><v>${totals.totalAddVal}</v>` : `<is><t>₱</t></is>`;
     const nTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
 
-    const rTotalContent = itemCount > 0
-      ? `<f>SUM(R7:R${lastDataRow})</f><v>${totals.totalGrossVal}</v>`
-      : `<is><t>₱</t></is>`;
-    const rTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
+    const qTotalContent = itemCount > 0 ? `<f>SUM(Q5:Q${lastDataRow})</f><v>${totals.totalGrossVal}</v>` : `<is><t>₱</t></is>`;
+    const qTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
 
-    const vTotalContent = itemCount > 0
-      ? `<f>SUM(V7:V${lastDataRow})</f><v>${totals.totalIssuedVal}</v>`
-      : `<is><t>₱</t></is>`;
-    const vTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
+    const tTotalContent = itemCount > 0 ? `<f>SUM(T5:T${lastDataRow})</f><v>${totals.totalIssuedVal}</v>` : `<is><t>₱</t></is>`;
+    const tTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
 
-    const zTotalContent = itemCount > 0
-      ? `<f>SUM(Z7:Z${lastDataRow})</f><v>${totals.totalProgVal}</v>`
-      : `<is><t>₱</t></is>`;
-    const zTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
+    const wTotalContent = itemCount > 0 ? `<f>SUM(W5:W${lastDataRow})</f><v>${totals.totalProgVal}</v>` : `<is><t>₱</t></is>`;
+    const wTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
 
-    const aeTotalContent = itemCount > 0
-      ? `<f>SUM(AE7:AE${lastDataRow})</f><v>${totals.totalExpiredVal}</v>`
-      : `<is><t>₱</t></is>`;
-    const aeTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
+    const aaTotalContent = itemCount > 0 ? `<f>SUM(AA5:AA${lastDataRow})</f><v>${totals.totalExpiredVal}</v>` : `<is><t>₱</t></is>`;
+    const aaTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
 
-    const aiTotalContent = itemCount > 0
-      ? `<f>SUM(AI7:AI${lastDataRow})</f><v>${totals.totalRemVal}</v>`
-      : `<is><t>₱</t></is>`;
-    const aiTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
+    const adTotalContent = itemCount > 0 ? `<f>SUM(AD5:AD${lastDataRow})</f><v>${totals.totalRemVal}</v>` : `<is><t>₱</t></is>`;
+    const adTotalType = itemCount > 0 ? "" : ' t="inlineStr"';
 
-    let totalRowXml = `<row r="${totalRow}" spans="3:35" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
-    totalRowXml += `<c r="C${totalRow}" s="16"/>`;
-    totalRowXml += `<c r="D${totalRow}" s="17" t="inlineStr"><is><t>TOTAL</t></is></c>`;
-    totalRowXml += `<c r="E${totalRow}" s="21"/><c r="F${totalRow}" s="22"/><c r="G${totalRow}" s="21"/><c r="H${totalRow}" s="21"/><c r="I${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="J${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="K${totalRow}" s="27"${kTotalType}>${kTotalContent}</c>`;
-    totalRowXml += `<c r="L${totalRow}" s="29"/>`;
-    totalRowXml += `<c r="M${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="N${totalRow}" s="27"${nTotalType}>${nTotalContent}</c>`;
-    totalRowXml += `<c r="O${totalRow}" s="23"/><c r="P${totalRow}" s="29"/>`;
-    totalRowXml += `<c r="Q${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="R${totalRow}" s="27"${rTotalType}>${rTotalContent}</c>`;
-    totalRowXml += `<c r="S${totalRow}" s="23"/><c r="T${totalRow}" s="29"/>`;
-    totalRowXml += `<c r="U${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="V${totalRow}" s="27"${vTotalType}>${vTotalContent}</c>`;
-    totalRowXml += `<c r="W${totalRow}" s="23"/><c r="X${totalRow}" s="29"/>`;
-    totalRowXml += `<c r="Y${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="Z${totalRow}" s="27"${zTotalType}>${zTotalContent}</c>`;
-    totalRowXml += `<c r="AA${totalRow}" s="32"/><c r="AB${totalRow}" s="23"/><c r="AC${totalRow}" s="29"/>`;
-    totalRowXml += `<c r="AD${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="AE${totalRow}" s="27"${aeTotalType}>${aeTotalContent}</c>`;
-    totalRowXml += `<c r="AF${totalRow}" s="23"/><c r="AG${totalRow}" s="29"/>`;
-    totalRowXml += `<c r="AH${totalRow}" s="27"/>`;
-    totalRowXml += `<c r="AI${totalRow}" s="27"${aiTotalType}>${aiTotalContent}</c>`;
+    let totalRowXml = `<row r="${totalRow}" spans="3:30" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
+    totalRowXml += `<c r="C${totalRow}" s="4"/>`;
+    totalRowXml += `<c r="D${totalRow}" s="3" t="inlineStr"><is><t>TOTAL</t></is></c>`;
+    totalRowXml += `<c r="E${totalRow}" s="3"/><c r="F${totalRow}" s="3"/><c r="G${totalRow}" s="3"/><c r="H${totalRow}" s="3"/><c r="I${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="J${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="K${totalRow}" s="37"${kTotalType}>${kTotalContent}</c>`;
+    totalRowXml += `<c r="L${totalRow}" s="3"/><c r="M${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="N${totalRow}" s="37"${nTotalType}>${nTotalContent}</c>`;
+    totalRowXml += `<c r="O${totalRow}" s="3"/><c r="P${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="Q${totalRow}" s="37"${qTotalType}>${qTotalContent}</c>`;
+    totalRowXml += `<c r="R${totalRow}" s="3"/><c r="S${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="T${totalRow}" s="37"${tTotalType}>${tTotalContent}</c>`;
+    totalRowXml += `<c r="U${totalRow}" s="3"/><c r="V${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="W${totalRow}" s="37"${wTotalType}>${wTotalContent}</c>`;
+    totalRowXml += `<c r="X${totalRow}" s="3"/><c r="Y${totalRow}" s="3"/><c r="Z${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="AA${totalRow}" s="37"${aaTotalType}>${aaTotalContent}</c>`;
+    totalRowXml += `<c r="AB${totalRow}" s="3"/><c r="AC${totalRow}" s="37"/>`;
+    totalRowXml += `<c r="AD${totalRow}" s="37"${adTotalType}>${adTotalContent}</c>`;
     totalRowXml += `</row>`;
 
-    // 6. Replace sheetData from row 7 onwards
-    const sheetDataTailRegex = /<row r="7"[\s\S]*?<\/sheetData>/;
+    // 6. Replace sheetData from row 5 onwards
+    const sheetDataTailRegex = /<row r="5"[\s\S]*?<\/sheetData>/;
     xml = xml.replace(sheetDataTailRegex, `${rowsXml}${totalRowXml}</sheetData>`);
 
     // 7. Update dimensions
-    xml = xml.replace(/<dimension ref="C3:AI\d+"/, `<dimension ref="C3:AI${totalRow}"`);
+    xml = xml.replace(/<dimension ref="C3:AD\d+"/, `<dimension ref="C3:AD${totalRow}"`);
+
+    // 8. Suppress all Excel background warnings (numbers stored as text, formula range, empty cells, etc.)
+    const ignoredErrorsXml = `<ignoredErrors>` +
+      `<ignoredError sqref="C3:AD${totalRow + 100}" numberStoredAsText="1" evalError="1" twoDigitTextYear="1" formula="1" formulaRange="1" unlockedFormula="1" emptyCellReference="1"/>` +
+      `</ignoredErrors>`;
+    if (xml.includes("</ignoredErrors>")) {
+      xml = xml.replace(/<ignoredErrors>[\s\S]*?<\/ignoredErrors>/, ignoredErrorsXml);
+    } else {
+      xml = xml.replace("</worksheet>", `${ignoredErrorsXml}</worksheet>`);
+    }
 
     s1Entry.content = new TextEncoder().encode(xml);
     s1Entry.size = s1Entry.content.length;
@@ -1213,7 +1352,7 @@ export function buildMonthlyInventoryWorkbook({
     wb = XLSX.utils.book_new();
   }
 
-  const sheetName = wb.SheetNames[0] || "Sheet1";
+  const sheetName = wb.SheetNames[0] || "Inventory";
   let ws = wb.Sheets[sheetName];
   if (!ws) {
     ws = {};
@@ -1229,11 +1368,12 @@ export function buildMonthlyInventoryWorkbook({
   const monthName = new Intl.DateTimeFormat("en-US", { month: "long" })
     .format(targetDate)
     .toUpperCase();
+  const monthNameTitle = new Intl.DateTimeFormat("en-US", { month: "long" })
+    .format(targetDate);
   const lastDay = new Date(year, month, 0).getDate();
   // Adaptive date: If current in-progress month, stamp active date; if closed past month, stamp month-end
   const effectiveRemDay = isCurrentMonth ? now.getDate() : lastDay;
 
-  const monthHeader = `MONTH : ${monthName} ${effectiveRemDay}, ${year}`;
   const remainingHeader = `REMAINING BALANCE  AS OF \n${monthName} ${effectiveRemDay}, ${year}`;
 
   const prevDate = new Date(year, month - 1, 0);
@@ -1244,59 +1384,61 @@ export function buildMonthlyInventoryWorkbook({
   const prevYear = prevDate.getFullYear();
   const begBalanceHeader = `BEGINNING BALANCE AS OF \n${prevMonthName} ${prevLastDay}, ${prevYear}`;
 
-  const resolvedFacilityName = facilityName
-    ? facilityName.toUpperCase().includes("MEDICINE SUPPLIES")
+  const resolvedFacilityName =
+    !facilityName ||
+    /VICENTE MENDIOLA|CITY HEALTH OFFICE|\bCHO\b|\bVMCH\b/i.test(facilityName)
+      ? "VMCH MEDICINE SUPPLIES"
+      : facilityName.toUpperCase().includes("MEDICINE SUPPLIES")
       ? facilityName.toUpperCase()
-      : `${facilityName.toUpperCase()} MEDICINE SUPPLIES`
-    : "VMCH MEDICINE SUPPLIES";
+      : `${facilityName.toUpperCase()} MEDICINE SUPPLIES`;
 
-  // Section Headers & Titles
-  const titleText = `REPORT ON PHYSICAL COUNT OF INVENTORIES\n${resolvedFacilityName}`;
+  // Section Headers & Titles (Row 3)
+  const titleText = `REPORT ON PHYSICAL COUNT OF INVENTORIES: ${resolvedFacilityName} MONTH \n${monthNameTitle}, ${year}`;
   ws["C3"] = { t: "s", v: titleText };
-  ws["C5"] = { t: "s", v: monthHeader };
-  ws["I5"] = { t: "s", v: begBalanceHeader };
-  ws["L5"] = { t: "s", v: "ADDITIONAL STOCKS ; \nPROCURED ;  RETURNED MEDICINES FROM BARANGAY/MEDICS" };
-  ws["P5"] = { t: "s", v: "SUMMATION ( BEGINNING BALANCE + \nADDITIONAL PURCHASES; RETURNED MEDS;DONATIONS)" };
-  ws["T5"] = { t: "s", v: "LESS ISSUANCES (PHARMACY DISPENSING & BARANGAY CONSULTATION)" };
-  ws["X5"] = { t: "s", v: "TRANSFERRED TO OTHER PROGRAMS" };
-  ws["AA5"] = { t: "s", v: "AREA/\nPROGRAM" };
-  ws["AC5"] = { t: "s", v: "EXPIRED" };
-  ws["AG5"] = { t: "s", v: remainingHeader };
+  ws["I3"] = { t: "s", v: begBalanceHeader };
+  ws["L3"] = { t: "s", v: "ADDITIONAL DELIVERIES/RETURNS" };
+  ws["O3"] = { t: "s", v: "SUMMATION ( BEGINNING BALANCE + \nADDITIONAL DELIVERY)" };
+  ws["R3"] = { t: "s", v: " ISSUANCES" };
+  ws["U3"] = { t: "s", v: "TRANSFERRED TO OTHER \nPROGRAM" };
+  ws["X3"] = { t: "s", v: "AREA/\nPROGRAM" };
+  ws["Y3"] = { t: "s", v: "EXPIRED ITEMS" };
+  ws["AB3"] = { t: "s", v: remainingHeader };
 
-  // Sub-headers in Row 6
-  ws["C6"] = { t: "s", v: "ITEM NO" };
-  ws["D6"] = { t: "s", v: "ITEM DESCRIPTION" };
-  ws["E6"] = { t: "s", v: "UNIT OF \nMEASUREMENT" };
-  ws["F6"] = { t: "s", v: "BRAND" };
-  ws["G6"] = { t: "s", v: "LOT NO" };
-  ws["H6"] = { t: "s", v: "EXPIRY DATE" };
-  ws["I6"] = { t: "s", v: "QUANTITY" };
-  ws["J6"] = { t: "s", v: "UNIT COST" };
-  ws["K6"] = { t: "s", v: "TOTAL COST" };
-  ws["L6"] = { t: "s", v: "QUANTITY" };
-  ws["M6"] = { t: "s", v: "UNIT COST" };
-  ws["N6"] = { t: "s", v: "TOTAL COST" };
-  ws["P6"] = { t: "s", v: "QUANTITY" };
-  ws["Q6"] = { t: "s", v: "UNIT COST" };
-  ws["R6"] = { t: "s", v: "TOTAL COST" };
-  ws["T6"] = { t: "s", v: "QUANTITY" };
-  ws["U6"] = { t: "s", v: "UNIT COST" };
-  ws["V6"] = { t: "s", v: "TOTAL COST" };
-  ws["X6"] = { t: "s", v: "QUANTITY" };
-  ws["Y6"] = { t: "s", v: "UNIT COST" };
-  ws["Z6"] = { t: "s", v: "TOTAL COST" };
-  ws["AC6"] = { t: "s", v: "QUANTITY" };
-  ws["AD6"] = { t: "s", v: "UNIT COST" };
-  ws["AE6"] = { t: "s", v: "TOTAL COST" };
-  ws["AG6"] = { t: "s", v: "QUANTITY" };
-  ws["AH6"] = { t: "s", v: "UNIT COST" };
-  ws["AI6"] = { t: "s", v: "TOTAL COST" };
+  // Sub-headers in Row 4
+  ws["C4"] = { t: "s", v: "ITEM NO" };
+  ws["D4"] = { t: "s", v: "ITEM DESCRIPTION" };
+  ws["E4"] = { t: "s", v: "UNIT " };
+  ws["F4"] = { t: "s", v: "BRAND" };
+  ws["G4"] = { t: "s", v: "LOT NO" };
+  ws["H4"] = { t: "s", v: "EXPIRY DATE" };
+  ws["I4"] = { t: "s", v: "QUANTITY" };
+  ws["J4"] = { t: "s", v: "UNIT COST" };
+  ws["K4"] = { t: "s", v: "TOTAL COST" };
+  ws["L4"] = { t: "s", v: "QUANTITY" };
+  ws["M4"] = { t: "s", v: "UNIT COST" };
+  ws["N4"] = { t: "s", v: "TOTAL COST" };
+  ws["O4"] = { t: "s", v: "QUANTITY" };
+  ws["P4"] = { t: "s", v: "UNIT COST" };
+  ws["Q4"] = { t: "s", v: "TOTAL COST" };
+  ws["R4"] = { t: "s", v: "QUANTITY" };
+  ws["S4"] = { t: "s", v: "UNIT COST" };
+  ws["T4"] = { t: "s", v: "TOTAL COST" };
+  ws["U4"] = { t: "s", v: "QUANTITY" };
+  ws["V4"] = { t: "s", v: "UNIT COST" };
+  ws["W4"] = { t: "s", v: "TOTAL COST" };
+  ws["X4"] = { t: "s", v: "AREA/\nPROGRAM" };
+  ws["Y4"] = { t: "s", v: "QUANTITY" };
+  ws["Z4"] = { t: "s", v: "UNIT COST" };
+  ws["AA4"] = { t: "s", v: "TOTAL COST" };
+  ws["AB4"] = { t: "s", v: "QUANTITY" };
+  ws["AC4"] = { t: "s", v: "UNIT COST" };
+  ws["AD4"] = { t: "s", v: "TOTAL COST" };
 
-  // Clear existing template data cells (rows >= 7)
+  // Clear existing template data cells (rows >= 5)
   for (const k of Object.keys(ws)) {
     if (k.startsWith("!")) continue;
     const match = k.match(/^[A-Z]+(\d+)$/);
-    if (match && parseInt(match[1], 10) >= 7) {
+    if (match && parseInt(match[1], 10) >= 5) {
       delete ws[k];
     }
   }
@@ -1311,94 +1453,164 @@ export function buildMonthlyInventoryWorkbook({
     month,
   });
 
+  const groups = groupReportItemsByPo(items);
   const itemCount = items.length;
-  const numDataRows = Math.max(3, itemCount);
-  const lastDataRow = 6 + numDataRows;
-  const totalRow = lastDataRow + 1;
 
-  for (let i = 0; i < numDataRows; i++) {
-    const rowNum = 7 + i;
-    const item = items[i];
+  let currentRow = 5;
 
-    if (item) {
-      ws[`C${rowNum}`] = { t: "n", v: item.index };
-      ws[`D${rowNum}`] = { t: "s", v: item.itemDescription };
-      ws[`E${rowNum}`] = { t: "s", v: item.unitOfMeasure };
-      ws[`F${rowNum}`] = { t: "s", v: item.brandName };
-      ws[`G${rowNum}`] = { t: "s", v: item.lotNo };
-      ws[`H${rowNum}`] = { t: "s", v: item.expiryDate };
-      ws[`I${rowNum}`] = { t: "n", v: item.beginningQty };
-      ws[`J${rowNum}`] = { t: "n", v: item.unitCost, z: "₱#,##0.00" };
-      ws[`K${rowNum}`] = { t: "n", f: `I${rowNum}*J${rowNum}`, v: item.begTotal, z: "₱#,##0.00" };
-      ws[`L${rowNum}`] = { t: "n", v: item.additionalQty };
-      ws[`M${rowNum}`] = { t: "n", v: item.additionalQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
-      ws[`N${rowNum}`] = { t: "n", f: `L${rowNum}*M${rowNum}`, v: item.addTotal, z: "₱#,##0.00" };
-      ws[`P${rowNum}`] = { t: "n", f: `L${rowNum}+I${rowNum}`, v: item.grossQty };
-      ws[`Q${rowNum}`] = { t: "n", f: `J${rowNum}`, v: item.unitCost, z: "₱#,##0.00" };
-      ws[`R${rowNum}`] = { t: "n", f: `Q${rowNum}*P${rowNum}`, v: item.grossTotal, z: "₱#,##0.00" };
-      ws[`T${rowNum}`] = { t: "n", v: item.issuedQty };
-      ws[`U${rowNum}`] = { t: "n", f: `Q${rowNum}`, v: item.unitCost, z: "₱#,##0.00" };
-      ws[`V${rowNum}`] = { t: "n", f: `U${rowNum}*T${rowNum}`, v: item.issuedTotal, z: "₱#,##0.00" };
-      ws[`X${rowNum}`] = { t: "n", v: item.programQty };
-      ws[`Y${rowNum}`] = { t: "n", v: item.programQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
-      ws[`Z${rowNum}`] = { t: "n", f: `X${rowNum}*Y${rowNum}`, v: item.programTotal, z: "₱#,##0.00" };
-      ws[`AA${rowNum}`] = { t: "s", v: item.programName };
-      ws[`AC${rowNum}`] = { t: "n", v: item.expiredQty };
-      ws[`AD${rowNum}`] = { t: "n", v: item.expiredQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
-      ws[`AE${rowNum}`] = { t: "n", f: `AC${rowNum}*AD${rowNum}`, v: item.expiredTotal, z: "₱#,##0.00" };
-      ws[`AG${rowNum}`] = { t: "n", f: `P${rowNum}-(T${rowNum}+X${rowNum}+AC${rowNum})`, v: item.remainingQty };
-      ws[`AH${rowNum}`] = { t: "n", f: `U${rowNum}`, v: item.unitCost, z: "₱#,##0.00" };
-      ws[`AI${rowNum}`] = { t: "n", f: `AH${rowNum}*AG${rowNum}`, v: item.remainingTotal, z: "₱#,##0.00" };
-    } else {
-      ws[`C${rowNum}`] = { t: "n", v: i + 1 };
-      ws[`D${rowNum}`] = { t: "s", v: "" };
-      ws[`J${rowNum}`] = { t: "s", v: "₱" };
-      ws[`K${rowNum}`] = { t: "s", v: "₱" };
-      ws[`M${rowNum}`] = { t: "s", v: "₱" };
-      ws[`N${rowNum}`] = { t: "s", v: "₱" };
-      ws[`Q${rowNum}`] = { t: "s", v: "₱" };
-      ws[`R${rowNum}`] = { t: "s", v: "₱" };
-      ws[`U${rowNum}`] = { t: "s", v: "₱" };
-      ws[`V${rowNum}`] = { t: "s", v: "₱" };
-      ws[`Y${rowNum}`] = { t: "s", v: "₱" };
-      ws[`Z${rowNum}`] = { t: "s", v: "₱" };
-      ws[`AD${rowNum}`] = { t: "s", v: "₱" };
-      ws[`AE${rowNum}`] = { t: "s", v: "₱" };
-      ws[`AH${rowNum}`] = { t: "s", v: "₱" };
-      ws[`AI${rowNum}`] = { t: "s", v: "₱" };
+  if (itemCount === 0) {
+    const group = groups[0];
+    ws[`D${currentRow}`] = { t: "s", v: group.headerText };
+    ws[`J${currentRow}`] = { t: "s", v: "₱" };
+    ws[`K${currentRow}`] = { t: "s", v: "₱" };
+    ws[`M${currentRow}`] = { t: "s", v: "₱" };
+    ws[`N${currentRow}`] = { t: "s", v: "₱" };
+    ws[`P${currentRow}`] = { t: "s", v: "₱" };
+    ws[`Q${currentRow}`] = { t: "s", v: "₱" };
+    ws[`S${currentRow}`] = { t: "s", v: "₱" };
+    ws[`T${currentRow}`] = { t: "s", v: "₱" };
+    ws[`V${currentRow}`] = { t: "s", v: "₱" };
+    ws[`W${currentRow}`] = { t: "s", v: "₱" };
+    ws[`Z${currentRow}`] = { t: "s", v: "₱" };
+    ws[`AA${currentRow}`] = { t: "s", v: "₱" };
+    ws[`AC${currentRow}`] = { t: "s", v: "₱" };
+    ws[`AD${currentRow}`] = { t: "s", v: "₱" };
+    currentRow++;
+
+    for (let b = 0; b < 3; b++) {
+      ws[`C${currentRow}`] = { t: "n", v: b + 1 };
+      ws[`D${currentRow}`] = { t: "s", v: "" };
+      ws[`J${currentRow}`] = { t: "s", v: "₱" };
+      ws[`K${currentRow}`] = { t: "s", v: "₱" };
+      ws[`M${currentRow}`] = { t: "s", v: "₱" };
+      ws[`N${currentRow}`] = { t: "s", v: "₱" };
+      ws[`P${currentRow}`] = { t: "s", v: "₱" };
+      ws[`Q${currentRow}`] = { t: "s", v: "₱" };
+      ws[`S${currentRow}`] = { t: "s", v: "₱" };
+      ws[`T${currentRow}`] = { t: "s", v: "₱" };
+      ws[`V${currentRow}`] = { t: "s", v: "₱" };
+      ws[`W${currentRow}`] = { t: "s", v: "₱" };
+      ws[`Z${currentRow}`] = { t: "s", v: "₱" };
+      ws[`AA${currentRow}`] = { t: "s", v: "₱" };
+      ws[`AC${currentRow}`] = { t: "s", v: "₱" };
+      ws[`AD${currentRow}`] = { t: "s", v: "₱" };
+      currentRow++;
+    }
+  } else {
+    for (const group of groups) {
+      // 1. PO Header Row above the medicines (Option 1)
+      ws[`D${currentRow}`] = { t: "s", v: group.headerText };
+      ws[`J${currentRow}`] = { t: "s", v: "₱" };
+      ws[`K${currentRow}`] = { t: "s", v: "₱" };
+      ws[`M${currentRow}`] = { t: "s", v: "₱" };
+      ws[`N${currentRow}`] = { t: "s", v: "₱" };
+      ws[`P${currentRow}`] = { t: "s", v: "₱" };
+      ws[`Q${currentRow}`] = { t: "s", v: "₱" };
+      ws[`S${currentRow}`] = { t: "s", v: "₱" };
+      ws[`T${currentRow}`] = { t: "s", v: "₱" };
+      ws[`V${currentRow}`] = { t: "s", v: "₱" };
+      ws[`W${currentRow}`] = { t: "s", v: "₱" };
+      ws[`Z${currentRow}`] = { t: "s", v: "₱" };
+      ws[`AA${currentRow}`] = { t: "s", v: "₱" };
+      ws[`AC${currentRow}`] = { t: "s", v: "₱" };
+      ws[`AD${currentRow}`] = { t: "s", v: "₱" };
+      currentRow++;
+
+      // 2. Medicine Items under this PO
+      for (const item of group.items) {
+        ws[`C${currentRow}`] = { t: "n", v: item.index };
+        ws[`D${currentRow}`] = { t: "s", v: item.itemDescription };
+        ws[`E${currentRow}`] = { t: "s", v: item.unitOfMeasure };
+        ws[`F${currentRow}`] = { t: "s", v: item.brandName };
+        ws[`G${currentRow}`] = { t: "s", v: item.lotNo };
+        ws[`H${currentRow}`] = { t: "s", v: item.expiryDate };
+        ws[`I${currentRow}`] = { t: "n", v: item.beginningQty };
+        ws[`J${currentRow}`] = { t: "n", v: item.unitCost, z: "₱#,##0.00" };
+        ws[`K${currentRow}`] = { t: "n", f: `I${currentRow}*J${currentRow}`, v: item.begTotal, z: "₱#,##0.00" };
+        ws[`L${currentRow}`] = { t: "n", v: item.additionalQty };
+        ws[`M${currentRow}`] = { t: "n", v: item.additionalQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
+        ws[`N${currentRow}`] = { t: "n", f: `L${currentRow}*M${currentRow}`, v: item.addTotal, z: "₱#,##0.00" };
+        ws[`O${currentRow}`] = { t: "n", f: `I${currentRow}+L${currentRow}`, v: item.grossQty };
+        ws[`P${currentRow}`] = { t: "n", f: `J${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
+        ws[`Q${currentRow}`] = { t: "n", f: `O${currentRow}*P${currentRow}`, v: item.grossTotal, z: "₱#,##0.00" };
+        ws[`R${currentRow}`] = { t: "n", v: item.issuedQty };
+        ws[`S${currentRow}`] = { t: "n", f: `P${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
+        ws[`T${currentRow}`] = { t: "n", f: `R${currentRow}*S${currentRow}`, v: item.issuedTotal, z: "₱#,##0.00" };
+        ws[`U${currentRow}`] = { t: "n", v: item.programQty };
+        ws[`V${currentRow}`] = { t: "n", v: item.programQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
+        ws[`W${currentRow}`] = { t: "n", f: `U${currentRow}*V${currentRow}`, v: item.programTotal, z: "₱#,##0.00" };
+        ws[`X${currentRow}`] = { t: "s", v: item.programName };
+        ws[`Y${currentRow}`] = { t: "n", v: item.expiredQty };
+        ws[`Z${currentRow}`] = { t: "n", v: item.expiredQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
+        ws[`AA${currentRow}`] = { t: "n", f: `Y${currentRow}*Z${currentRow}`, v: item.expiredTotal, z: "₱#,##0.00" };
+        ws[`AB${currentRow}`] = { t: "n", f: `O${currentRow}-(R${currentRow}+U${currentRow}+Y${currentRow})`, v: item.remainingQty };
+        ws[`AC${currentRow}`] = { t: "n", f: `P${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
+        ws[`AD${currentRow}`] = { t: "n", f: `AB${currentRow}*AC${currentRow}`, v: item.remainingTotal, z: "₱#,##0.00" };
+        currentRow++;
+      }
     }
   }
 
   // TOTAL Row
-  ws[`D${totalRow}`] = { t: "s", v: "TOTAL" };
-  ws[`K${totalRow}`] = { t: "n", f: `SUM(K7:K${lastDataRow})`, v: totals.totalBegVal, z: "₱#,##0.00" };
-  ws[`N${totalRow}`] = { t: "n", f: `SUM(N7:N${lastDataRow})`, v: totals.totalAddVal, z: "₱#,##0.00" };
-  ws[`R${totalRow}`] = { t: "n", f: `SUM(R7:R${lastDataRow})`, v: totals.totalGrossVal, z: "₱#,##0.00" };
-  ws[`V${totalRow}`] = { t: "n", f: `SUM(V7:V${lastDataRow})`, v: totals.totalIssuedVal, z: "₱#,##0.00" };
-  ws[`Z${totalRow}`] = { t: "n", f: `SUM(Z7:Z${lastDataRow})`, v: totals.totalProgVal, z: "₱#,##0.00" };
-  ws[`AE${totalRow}`] = { t: "n", f: `SUM(AE7:AE${lastDataRow})`, v: totals.totalExpiredVal, z: "₱#,##0.00" };
-  ws[`AI${totalRow}`] = { t: "n", f: `SUM(AI7:AI${lastDataRow})`, v: totals.totalRemVal, z: "₱#,##0.00" };
+  const lastDataRow = currentRow - 1;
+  const totalRow = currentRow;
 
-  ws["!ref"] = `C3:AI${totalRow}`;
+  ws[`D${totalRow}`] = { t: "s", v: "TOTAL" };
+  ws[`K${totalRow}`] = { t: "n", f: `SUM(K5:K${lastDataRow})`, v: totals.totalBegVal, z: "₱#,##0.00" };
+  ws[`N${totalRow}`] = { t: "n", f: `SUM(N5:N${lastDataRow})`, v: totals.totalAddVal, z: "₱#,##0.00" };
+  ws[`Q${totalRow}`] = { t: "n", f: `SUM(Q5:Q${lastDataRow})`, v: totals.totalGrossVal, z: "₱#,##0.00" };
+  ws[`T${totalRow}`] = { t: "n", f: `SUM(T5:T${lastDataRow})`, v: totals.totalIssuedVal, z: "₱#,##0.00" };
+  ws[`W${totalRow}`] = { t: "n", f: `SUM(W5:W${lastDataRow})`, v: totals.totalProgVal, z: "₱#,##0.00" };
+  ws[`AA${totalRow}`] = { t: "n", f: `SUM(AA5:AA${lastDataRow})`, v: totals.totalExpiredVal, z: "₱#,##0.00" };
+  ws[`AD${totalRow}`] = { t: "n", f: `SUM(AD5:AD${lastDataRow})`, v: totals.totalRemVal, z: "₱#,##0.00" };
+
+
+
+  ws["!ref"] = `C3:AD${totalRow}`;
   ws["!merges"] = [
-    { s: { r: 2, c: 2 }, e: { r: 3, c: 34 } }, // C3:AI4
-    { s: { r: 4, c: 2 }, e: { r: 4, c: 7 } },  // C5:H5 (Month)
-    { s: { r: 4, c: 8 }, e: { r: 4, c: 10 } }, // I5:K5 (Beginning)
-    { s: { r: 4, c: 11 }, e: { r: 4, c: 13 } },// L5:N5 (Additional)
-    { s: { r: 4, c: 15 }, e: { r: 4, c: 17 } },// P5:R5 (Summation)
-    { s: { r: 4, c: 19 }, e: { r: 4, c: 21 } },// T5:V5 (Issuances)
-    { s: { r: 4, c: 23 }, e: { r: 4, c: 25 } },// X5:Z5 (Transferred)
-    { s: { r: 4, c: 28 }, e: { r: 4, c: 30 } },// AC5:AE5 (Expired)
-    { s: { r: 4, c: 32 }, e: { r: 4, c: 34 } },// AG5:AI5 (Remaining)
+    { s: { r: 2, c: 24 }, e: { r: 2, c: 26 } }, // Y3:AA3
+    { s: { r: 2, c: 27 }, e: { r: 2, c: 29 } }, // AB3:AD3
+    { s: { r: 2, c: 8 },  e: { r: 2, c: 10 } }, // I3:K3
+    { s: { r: 2, c: 2 },  e: { r: 2, c: 7 } },  // C3:H3
+    { s: { r: 2, c: 11 }, e: { r: 2, c: 13 } }, // L3:N3
+    { s: { r: 2, c: 14 }, e: { r: 2, c: 16 } }, // O3:Q3
+    { s: { r: 2, c: 17 }, e: { r: 2, c: 19 } }, // R3:T3
+    { s: { r: 2, c: 20 }, e: { r: 2, c: 22 } }, // U3:W3
   ];
+
+  let maxDescLen = 0;
+  let maxBrandLen = 0;
+  let maxLotLen = 0;
+
+  for (const group of groups) {
+    if (group.headerText) {
+      maxDescLen = Math.max(maxDescLen, group.headerText.length);
+    }
+    for (const it of group.items || []) {
+      if (it.itemDescription) {
+        maxDescLen = Math.max(maxDescLen, it.itemDescription.length);
+      }
+      if (it.brandName) {
+        maxBrandLen = Math.max(maxBrandLen, it.brandName.length);
+      }
+      if (it.lotNo) {
+        maxLotLen = Math.max(maxLotLen, String(it.lotNo).length);
+      }
+    }
+  }
+
+  const colDWch = Math.max(42, Math.min(85, maxDescLen + 4));
+  const colFWch = Math.max(13, Math.min(45, maxBrandLen + 4));
+  const colGWch = Math.max(13, Math.min(30, maxLotLen + 4));
+
   ws["!cols"] = [
     { wch: 4 },  // A
     { wch: 11 }, // B
     { wch: 8 },  // C (ITEM NO)
-    { wch: 26 }, // D (ITEM DESCRIPTION)
-    { wch: 16 }, // E (UNIT OF MEASURE)
-    { wch: 13 }, // F (BRAND)
-    { wch: 13 }, // G (LOT NO)
+    { wch: colDWch }, // D (ITEM DESCRIPTION)
+    { wch: 16 }, // E (UNIT)
+    { wch: colFWch }, // F (BRAND)
+    { wch: colGWch }, // G (LOT NO)
     { wch: 13 }, // H (EXPIRY DATE)
     { wch: 13 }, // I (QUANTITY)
     { wch: 13 }, // J (UNIT COST)
@@ -1406,27 +1618,22 @@ export function buildMonthlyInventoryWorkbook({
     { wch: 13 }, // L (QUANTITY)
     { wch: 13 }, // M (UNIT COST)
     { wch: 13 }, // N (TOTAL COST)
-    { wch: 6 },  // O
-    { wch: 13 }, // P (QUANTITY)
-    { wch: 13 }, // Q (UNIT COST)
-    { wch: 13 }, // R (TOTAL COST)
-    { wch: 6 },  // S
-    { wch: 13 }, // T (QUANTITY)
-    { wch: 13 }, // U (UNIT COST)
-    { wch: 13 }, // V (TOTAL COST)
-    { wch: 6 },  // W
-    { wch: 13 }, // X (QUANTITY)
-    { wch: 13 }, // Y (UNIT COST)
-    { wch: 13 }, // Z (TOTAL COST)
-    { wch: 16 }, // AA (AREA / PROGRAM)
-    { wch: 6 },  // AB
-    { wch: 13 }, // AC (QUANTITY)
-    { wch: 13 }, // AD (UNIT COST)
-    { wch: 13 }, // AE (TOTAL COST)
-    { wch: 6 },  // AF
-    { wch: 13 }, // AG (QUANTITY)
-    { wch: 13 }, // AH (UNIT COST)
-    { wch: 13 }, // AI (TOTAL COST)
+    { wch: 13 }, // O (QUANTITY)
+    { wch: 13 }, // P (UNIT COST)
+    { wch: 13 }, // Q (TOTAL COST)
+    { wch: 13 }, // R (QUANTITY)
+    { wch: 13 }, // S (UNIT COST)
+    { wch: 13 }, // T (TOTAL COST)
+    { wch: 13 }, // U (QUANTITY)
+    { wch: 13 }, // V (UNIT COST)
+    { wch: 13 }, // W (TOTAL COST)
+    { wch: 16 }, // X (AREA/PROGRAM)
+    { wch: 13 }, // Y (QUANTITY)
+    { wch: 13 }, // Z (UNIT COST)
+    { wch: 13 }, // AA (TOTAL COST)
+    { wch: 13 }, // AB (QUANTITY)
+    { wch: 13 }, // AC (UNIT COST)
+    { wch: 13 }, // AD (TOTAL COST)
   ];
 
   return wb;

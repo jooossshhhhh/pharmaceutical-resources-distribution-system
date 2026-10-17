@@ -35,7 +35,7 @@ export default function MedicineTrendTable({
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[960px] text-left text-sm">
-          <thead className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-black uppercase tracking-wider text-slate-500">
+          <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-5 py-3">Medicine</th>
               <th className="px-4 py-3">Category</th>

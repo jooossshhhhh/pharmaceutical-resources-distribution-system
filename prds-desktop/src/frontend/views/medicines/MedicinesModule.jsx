@@ -30,7 +30,7 @@ const fetchMedicineRows = async () => {
   try {
     const { data, error } = await supabase
       .from("medicines")
-      .select("id, generic_name, brand_name, unit_of_measure, dosage, unit_cost, categories")
+      .select("id, generic_name, unit_of_measure, dosage, categories")
       .order("generic_name", { ascending: true });
 
     if (error) {
@@ -168,10 +168,8 @@ export default function MedicinesModule() {
     setModalMedicine(medicine);
     setFormValues({
       generic_name: medicine.generic_name || "",
-      brand_name: medicine.brand_name || "",
       unit_of_measure: medicine.unit_of_measure || "",
       dosage: medicine.dosage || "",
-      unit_cost: medicine.unit_cost ?? "",
       categories: formatMedicineCategories(medicine.categories),
     });
     setMedicineError("");
@@ -223,8 +221,6 @@ export default function MedicinesModule() {
       setFieldErrors((prev) => ({ ...prev, dosage: "Dosage is required." }));
     } else if (name === "categories" && parseMedicineCategories(value).length === 0) {
       setFieldErrors((prev) => ({ ...prev, categories: "Category is required." }));
-    } else if (name === "unit_cost" && trimmed !== "" && Number(trimmed) < 0) {
-      setFieldErrors((prev) => ({ ...prev, unit_cost: "Unit cost cannot be negative." }));
     }
   };
 
@@ -243,10 +239,6 @@ export default function MedicinesModule() {
 
     if (parseMedicineCategories(formValues.categories).length === 0) {
       return "Category is required.";
-    }
-
-    if (formValues.unit_cost !== "" && Number(formValues.unit_cost) < 0) {
-      return "Unit cost cannot be negative.";
     }
 
     return "";
@@ -275,7 +267,6 @@ export default function MedicinesModule() {
       const duplicate = exactMatches[0];
       const duplicateLabel = [
         duplicate.generic_name,
-        duplicate.brand_name,
         duplicate.dosage,
         duplicate.unit_of_measure,
       ]
@@ -296,10 +287,8 @@ export default function MedicinesModule() {
 
     const payload = {
       generic_name: formValues.generic_name.trim(),
-      brand_name: formValues.brand_name.trim() || null,
       unit_of_measure: formValues.unit_of_measure.trim(),
       dosage: formValues.dosage.trim(),
-      unit_cost: formValues.unit_cost === "" ? null : Number(formValues.unit_cost),
       categories: parseMedicineCategories(formValues.categories),
     };
 
@@ -322,7 +311,7 @@ export default function MedicinesModule() {
               (formValues.unit_of_measure || "").trim().toLowerCase()
         );
         const existingLabel = matching
-          ? [matching.generic_name, matching.brand_name, matching.dosage, matching.unit_of_measure]
+          ? [matching.generic_name, matching.dosage, matching.unit_of_measure]
               .filter(Boolean)
               .join(" / ")
           : "an existing medicine";
@@ -346,7 +335,6 @@ export default function MedicinesModule() {
       const existing = sameGenericMatches[0];
       const existingLabel = [
         existing.generic_name,
-        existing.brand_name,
         existing.dosage,
         existing.unit_of_measure,
       ]

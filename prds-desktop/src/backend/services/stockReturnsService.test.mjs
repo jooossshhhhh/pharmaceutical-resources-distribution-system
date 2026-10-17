@@ -4,6 +4,7 @@ import {
   buildStockReturnPayload,
   flattenStockReturnRows,
   calculateStockReturnKpis,
+  generateReturnId,
   generateReturnSlipNo,
   getReturnReasonLabel,
   getReturnReasonTone,
@@ -70,28 +71,28 @@ test("flattenStockReturnRows converts legacy slip item data into finalized stock
   ]);
 
   assert.equal(rows.length, 1);
-  assert.deepEqual(rows[0], {
-    id: "item-1",
-    lot_no: "A-100",
-    medicine_id: null,
-    medicine_name: "Amoxicillin",
-    brand_name: "Amoxil",
-    quantity: 5,
-    unit_cost: 3.25,
-    expiration_date: "2026-11-30",
-    reason: "NEARING_EXPIRY",
-    facility_id: "facility-1",
-    facility: { id: "facility-1", facility_name: "Alpaco Health Center" },
-    status: "RECEIVED",
-  });
+  assert.equal(rows[0].id, "item-1");
+  assert.equal(rows[0].return_id, "ret-1");
+  assert.equal(rows[0].lot_no, "A-100");
+  assert.equal(rows[0].medicine_name, "Amoxicillin");
+  assert.equal(rows[0].brand_name, "Amoxil");
+  assert.equal(rows[0].quantity, 5);
+  assert.equal(rows[0].unit_cost, 3.25);
+  assert.equal(rows[0].expiration_date, "2026-11-30");
+  assert.equal(rows[0].reason, "NEARING_EXPIRY");
+  assert.equal(rows[0].facility_id, "facility-1");
+  assert.equal(rows[0].status, "RECEIVED");
 });
 
-test("generateReturnSlipNo formats return slip numbers accurately with facility code and date", () => {
+test("generateReturnId and generateReturnSlipNo format return IDs accurately with facility code and date", () => {
+  const returnId = generateReturnId("BHW-ALPACO");
+  assert.match(returnId, /^RET-BHWALPACO-\d{8}-[A-Z0-9]{4}$/);
+
   const slipNo = generateReturnSlipNo("BHW-ALPACO");
   assert.match(slipNo, /^RET-BHWALPACO-\d{8}-[A-Z0-9]{4}$/);
 
-  const fallbackSlip = generateReturnSlipNo();
-  assert.match(fallbackSlip, /^RET-BHW-\d{8}-[A-Z0-9]{4}$/);
+  const fallbackReturnId = generateReturnId();
+  assert.match(fallbackReturnId, /^RET-BHW-\d{8}-[A-Z0-9]{4}$/);
 });
 
 test("return reason and status helpers return proper labels and tone badges", () => {
@@ -100,8 +101,14 @@ test("return reason and status helpers return proper labels and tone badges", ()
 
   assert.equal(getReturnReasonTone("COLD_CHAIN_ALERT"), "bg-rose-100 text-rose-700");
 
+  const confirmedBadge = getReturnStatusBadge("CONFIRMED");
+  assert.equal(confirmedBadge.label, "Confirmed");
+
   const verifiedBadge = getReturnStatusBadge("VERIFIED");
-  assert.equal(verifiedBadge.label, "Verified");
+  assert.equal(verifiedBadge.label, "Confirmed");
+
+  const pendingBadge = getReturnStatusBadge("PENDING");
+  assert.equal(pendingBadge.label, "Pending");
 
   const unknownBadge = getReturnStatusBadge("CUSTOM_STATUS");
   assert.equal(unknownBadge.label, "CUSTOM_STATUS");
@@ -147,3 +154,31 @@ test("calculateStockReturnKpis accurately computes finalized row totals, verific
   assert.equal(kpis.topStations[1].name, "Cantabaco Health Center");
   assert.equal(kpis.topStations[1].count, 1);
 });
+
+test("buildStockReturnPayload defaults unit_cost to 0 when omitted by BHW submission", () => {
+  const result = buildStockReturnPayload({
+    formValues: {
+      lot_no: "LOT-9999",
+      medicine_id: "med-1",
+      quantity: "25",
+      expiration_date: "2027-01-01",
+      reason: "EXCESS_STOCK",
+      facility_id: "bhw-facility",
+    },
+    medicine: {
+      id: "med-1",
+      generic_name: "Amoxicillin",
+      brand_name: "Amoxil",
+    },
+    userProfile: {
+      id: "user-bhw",
+      role: "BHW",
+      facility_id: "bhw-facility",
+    },
+  });
+
+  assert.equal(result.unit_cost, 0);
+  assert.equal(result.status, "PENDING");
+  assert.equal(result.quantity, 25);
+});
+

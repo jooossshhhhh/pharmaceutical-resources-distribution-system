@@ -1059,7 +1059,7 @@ function ActivityDetailModal({
               </h4>
               <div className="rounded-xl border border-neutral-200 overflow-hidden">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-500 uppercase tracking-wider font-bold">
+                  <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     <tr>
                       <th className="px-4 py-2.5">Medicine</th>
                       <th className="px-4 py-2.5">Dosage / Form</th>

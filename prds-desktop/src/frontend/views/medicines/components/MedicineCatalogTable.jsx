@@ -28,7 +28,7 @@ export default function MedicineCatalogTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr className="border-b border-neutral-100 bg-neutral-50 text-left text-[11px] font-black uppercase tracking-[0.14em] text-neutral-500">
+            <tr className="border-b border-slate-200/80 bg-white text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <th className="px-5 py-3">Medicine</th>
               <th className="px-5 py-3">Dosage</th>
               <th className="px-5 py-3">Unit</th>
@@ -66,11 +66,6 @@ export default function MedicineCatalogTable({
                     <p className="max-w-[24rem] text-sm font-black text-black">
                       {medicine.generic_name || "Unnamed medicine"}
                     </p>
-                    {medicine.brand_name && (
-                      <p className="mt-1 text-xs font-semibold text-neutral-400">
-                        {medicine.brand_name}
-                      </p>
-                    )}
                   </td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-black text-neutral-700">

@@ -102,7 +102,7 @@ export function FilterChip({ active, children, icon, onClick }) {
       className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 ${
         active
           ? "bg-black text-white shadow-md shadow-black/10"
-          : "bg-[#f7f6f3] text-[#0d1117] hover:bg-[#eff4ff]"
+          : "bg-slate-100 text-slate-700 hover:bg-slate-200/80"
       }`}
     >
       {icon}

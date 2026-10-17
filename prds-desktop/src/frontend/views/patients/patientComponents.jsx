@@ -5,6 +5,7 @@ import ModalShell from "../../components/ModalShell";
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import { getDispensingHistory, getFacilityMedicineStockOverview } from "@backend/services/dispensingService";
 import {
+  buildPatientHistoryRows,
   formatDispensingDateTime,
   formatTransactionNumber,
   getFollowUpDisplay,
@@ -481,28 +482,7 @@ export function PatientViewModal({
   );
 
   const historyRows = useMemo(
-    () =>
-      transactions.flatMap((transaction) =>
-        transaction.medicineLines.map((line) => {
-          const firstRow = line.rows[0] || {};
-
-          return {
-            date: transaction.dispenseDate,
-            dispenseDate: transaction.dispenseDate,
-            dispenseId: transaction.transactionId || transaction.key,
-            dispensedBy: getDispensedByName(firstRow, transaction),
-            dispensingFacility: firstRow.dispensing_facility || transaction.dispensingFacility,
-            followUp: getFollowUpDisplay(line) || "None",
-            isManual: line.rows.some((row) => row.is_manual_record),
-            key: `${transaction.key}-${firstRow.medicine_id || firstRow.id}`,
-            medicine: line.medicine,
-            neededQuantity: line.neededQuantity,
-            prescribedBy: firstRow.prescribed_by || "Not recorded",
-            recordType: firstRow.record_type || (firstRow.is_manual_record ? PATIENT_MANUAL_RECORD_TYPES.historyOnly : "LIVE_DISPENSING"),
-            releasedQuantity: line.releasedQuantity,
-          };
-        })
-      ),
+    () => buildPatientHistoryRows(transactions),
     [transactions]
   );
 
@@ -608,8 +588,8 @@ export function PatientViewModal({
     <ModalShell
       labelledBy="patient-view-modal-title"
       onClose={onClose}
-      overlayClassName="bg-slate-950/40 backdrop-blur-sm"
-      panelClassName="max-w-6xl"
+      overlayClassName="bg-slate-950/30 backdrop-blur-[2px]"
+      panelClassName="max-w-4xl"
     >
       <div className="max-h-[88vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] bg-[#f8fffb] px-5 py-4">
@@ -825,7 +805,7 @@ export function PatientViewModal({
                           <button
                             type="button"
                             onClick={() => setHistoryDateFilter({ end: "", mode: PATIENT_HISTORY_DATE_MODES.all, start: "", value: "" })}
-                            className="h-8 rounded-lg px-3 font-bold text-[#5f6673] hover:bg-[#f7f6f3]"
+                            className="h-8 rounded-lg px-3 font-bold text-[#5f6673] hover:bg-slate-100"
                           >
                             Clear
                           </button>
@@ -861,13 +841,15 @@ export function PatientViewModal({
               )}
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-[#f8f9ff] text-[10px] font-bold uppercase tracking-wide text-[#6b7280]">
+                <table className="w-full min-w-[1100px] text-left text-xs">
+                  <thead className="sticky top-0 z-10 border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Dispense ID</th>
                       <th className="px-4 py-3">Medicine</th>
                       <th className="px-4 py-3 text-right">Needed quantity</th>
                       <th className="px-4 py-3 text-right">Released quantity</th>
+                      <th className="px-4 py-3 text-right">Balance quantity</th>
+                      <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Dispensed by</th>
                       <th className="px-4 py-3">Prescribed by</th>
                       <th className="px-4 py-3">Dispensing facility</th>
@@ -878,14 +860,14 @@ export function PatientViewModal({
                     {isLoadingClaims &&
                       [0, 1, 2].map((key) => (
                         <tr key={key}>
-                          <td colSpan={8} className="px-4 py-3">
+                          <td colSpan={10} className="px-4 py-3">
                             <div className="h-10 animate-pulse rounded-lg bg-[#f8f9ff]" />
                           </td>
                         </tr>
                       ))}
                     {!isLoadingClaims && paginatedHistoryRows.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="px-4 py-12 text-center">
+                        <td colSpan={10} className="px-4 py-12 text-center">
                           <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#eff4ff] text-[#5f6673]">
                             <ClipboardIcon />
                           </span>
@@ -910,10 +892,41 @@ export function PatientViewModal({
                             <p className="text-[11px] text-[#5f6673]">{getMedicineFullLabel(row.medicine)}</p>
                           </td>
                           <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
-                            {Number(row.neededQuantity || 0).toLocaleString()}
+                            {row.neededQuantity != null ? (
+                              Number(row.neededQuantity).toLocaleString()
+                            ) : (
+                              <span className="font-normal text-[#9ca3af]" title="Prescribed in initial claim">
+                                —
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
                             {Number(row.releasedQuantity || 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold tabular-nums">
+                            {row.balanceQuantity > 0 ? (
+                              <span className="text-amber-800">{Number(row.balanceQuantity).toLocaleString()}</span>
+                            ) : (
+                              <span className="text-emerald-700">0</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {row.status === "COMPLETED" ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                Completed
+                              </span>
+                            ) : row.status === "VOIDED" ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700">
+                                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                Voided
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                Partial
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 font-semibold text-[#42474e]">{row.dispensedBy}</td>
                           <td className="px-4 py-3 text-[#42474e]">{row.prescribedBy}</td>
@@ -1091,7 +1104,7 @@ export function PatientViewModal({
                 <button
                   type="button"
                   onClick={() => setViewMode("details")}
-                  className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+                  className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
                 >
                   Cancel
                 </button>
@@ -1159,7 +1172,7 @@ export function PatientViewModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
           >
             Close
           </button>
@@ -1262,7 +1275,7 @@ export function PatientConfirmModal({
             type="button"
             onClick={onCancel}
             disabled={isSaving}
-            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
           </button>
@@ -1492,7 +1505,7 @@ export function PatientFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
           >
             Cancel
           </button>

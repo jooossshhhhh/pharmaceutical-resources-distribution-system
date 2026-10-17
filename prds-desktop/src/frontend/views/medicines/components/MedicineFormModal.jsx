@@ -84,13 +84,14 @@ export default function MedicineFormModal({
                 required
               />
               <Field
-                label="Brand Name"
-                name="brand_name"
-                value={formValues.brand_name}
+                label="Dosage"
+                name="dosage"
+                value={formValues.dosage}
                 onChange={onChange}
                 onBlur={onBlur}
                 disabled={isReadOnly}
-                error={fieldErrors.brand_name}
+                error={fieldErrors.dosage}
+                required
               />
               <UnitField
                 error={fieldErrors.unit_of_measure}
@@ -103,16 +104,6 @@ export default function MedicineFormModal({
                 showCustomUnit={showCustomUnit}
               />
               <Field
-                label="Dosage"
-                name="dosage"
-                value={formValues.dosage}
-                onChange={onChange}
-                onBlur={onBlur}
-                disabled={isReadOnly}
-                error={fieldErrors.dosage}
-                required
-              />
-              <Field
                 label="Category"
                 name="categories"
                 value={formValues.categories}
@@ -122,26 +113,6 @@ export default function MedicineFormModal({
                 error={fieldErrors.categories}
                 placeholder="e.g., Anti-Infectives, HIV Program"
                 required
-              />
-            </div>
-          </section>
-
-          <section className="mt-4 rounded-xl border border-neutral-100 bg-white p-4">
-            <h4 className="text-sm font-black text-black">Pricing</h4>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Field
-                label="Unit Cost"
-                name="unit_cost"
-                type="number"
-                min="0"
-                step="0.01"
-                value={formValues.unit_cost}
-                onChange={onChange}
-                onBlur={onBlur}
-                disabled={isReadOnly}
-                prefix="PHP"
-                className="pl-11"
-                error={fieldErrors.unit_cost}
               />
             </div>
           </section>

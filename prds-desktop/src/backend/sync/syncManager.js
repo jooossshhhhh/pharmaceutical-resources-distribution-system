@@ -47,7 +47,6 @@ const statusListeners = new Set();
 const unsupportedUpdatedAtTables = new Set([
   "medicines",
   "facilities",
-  "suppliers",
   "other_programs",
   "medicine_requests",
   "medicine_dispensing",
@@ -57,6 +56,15 @@ const unsupportedUpdatedAtTables = new Set([
 
 export function clearUnsupportedUpdatedAtTables() {
   unsupportedUpdatedAtTables.clear();
+}
+
+const unsupportedOptionalTables = new Set([
+  "sync_tombstones",
+  "stock_deficit_audits",
+]);
+
+export function clearUnsupportedOptionalTables() {
+  unsupportedOptionalTables.clear();
 }
 
 export function subscribeSyncStatus(callback) {
@@ -193,11 +201,18 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         activeWatermark = null;
         res = await fetchWithTimeout(buildQueryFn(null), timeoutMs);
       }
+      if (res?.error) {
+        console.warn(`[syncManager] Query error on ${datasetName || "dataset"}:`, res.error);
+      }
       return { ...res, usedWatermark: activeWatermark };
     };
 
     // Safe optional query helper: treats pending tables (sync_tombstones, stock_deficit_audits) as empty if not migrated
-    const safeOptionalFetch = async (queryPromise, timeoutMs = 15000) => {
+    const safeOptionalFetch = async (tableName, queryFactory, timeoutMs = 15000) => {
+      if (tableName && unsupportedOptionalTables.has(tableName)) {
+        return { data: [], error: null };
+      }
+      const queryPromise = typeof queryFactory === "function" ? queryFactory() : queryFactory;
       const res = await fetchWithTimeout(queryPromise, timeoutMs);
       if (res?.error) {
         const msg = String(res.error.message || "").toLowerCase();
@@ -209,6 +224,9 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           msg.includes("could not find") ||
           msg.includes("permission denied")
         ) {
+          if (tableName) {
+            unsupportedOptionalTables.add(tableName);
+          }
           return { data: [], error: null };
         }
       }
@@ -220,7 +238,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
     let medicinesWatermark = null;
     let otherProgramsWatermark = null;
     let facilitiesWatermark = null;
-    let suppliersWatermark = null;
     let inventoryWatermark = null;
     let patientsWatermark = null;
     let requestsWatermark = null;
@@ -236,7 +253,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         medWm,
         progWm,
         facWm,
-        supWm,
         invWm,
         patWm,
         reqWm,
@@ -250,7 +266,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         getDatasetSyncWatermark("medicines"),
         getDatasetSyncWatermark("other_programs"),
         getDatasetSyncWatermark("facilities"),
-        getDatasetSyncWatermark("suppliers"),
         getDatasetSyncWatermark("inventory"),
         getDatasetSyncWatermark("patients"),
         getDatasetSyncWatermark("medicine_requests"),
@@ -265,7 +280,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       medicinesWatermark = getSafeWatermarkWindow(medWm);
       otherProgramsWatermark = getSafeWatermarkWindow(progWm);
       facilitiesWatermark = getSafeWatermarkWindow(facWm);
-      suppliersWatermark = getSafeWatermarkWindow(supWm);
       inventoryWatermark = getSafeWatermarkWindow(invWm);
       patientsWatermark = getSafeWatermarkWindow(patWm);
       requestsWatermark = getSafeWatermarkWindow(reqWm);
@@ -281,7 +295,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       medicinesWatermark,
       otherProgramsWatermark,
       facilitiesWatermark,
-      suppliersWatermark,
       inventoryWatermark,
       patientsWatermark,
       requestsWatermark,
@@ -300,29 +313,31 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
 
     const tombstonesPromise = minSafeWatermark
       ? safeOptionalFetch(
-          supabase
-            .from("sync_tombstones")
-            .select("id, table_name, record_id, deleted_at")
-            .gt("deleted_at", minSafeWatermark)
-            .order("deleted_at", { ascending: true })
+          "sync_tombstones",
+          () =>
+            supabase
+              .from("sync_tombstones")
+              .select("id, table_name, record_id, deleted_at")
+              .gt("deleted_at", minSafeWatermark)
+              .order("deleted_at", { ascending: true })
         )
       : Promise.resolve({ data: [], error: null });
 
     const deficitAuditsPromise = safeOptionalFetch(
-      (() => {
+      "stock_deficit_audits",
+      () => {
         let q = supabase.from("stock_deficit_audits").select("*");
         if (deficitAuditsWatermark) {
           q = q.gt("updated_at", deficitAuditsWatermark);
         }
         return q.order("created_at", { ascending: false });
-      })()
+      }
     );
 
     const [
       medicinesRes,
       otherProgramsRes,
       facilitiesRes,
-      suppliersRes,
       inventoryRes,
       patientsRes,
       requestsRes,
@@ -342,7 +357,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         (wm) => {
           let q = supabase
             .from("medicines")
-            .select("id, generic_name, brand_name, unit_of_measure, dosage, unit_cost, categories");
+            .select("id, generic_name, unit_of_measure, dosage, categories");
           if (wm) {
             q = q.gt("updated_at", wm);
           }
@@ -365,7 +380,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 id,
                 medicine_id,
                 quantity_used,
-                medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost)
+                medicine:medicines(id, generic_name, dosage, unit_of_measure)
               )
             `);
           if (wm) {
@@ -389,52 +404,37 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         },
         facilitiesWatermark
       ),
-      // Suppliers
-      safeFetchSingle(
-        "suppliers",
-        (wm) => {
-          let q = supabase
-            .from("suppliers")
-            .select("id, supplier_name, contact_number, address, status");
-          if (wm) {
-            q = q.gt("updated_at", wm);
-          }
-          return q.order("supplier_name", { ascending: true });
-        },
-        suppliersWatermark
-      ),
       // Inventory with relations
       (async () => {
         const fullInventorySelect = `
           id,
           facility_id,
           medicine_id,
-          supplier_id,
           quantity,
           threshold,
           batch_number,
           po_number,
           unit_cost,
+          brand_name,
           date_received,
           expiration_date,
           origin_facility_id,
           intake_type,
           return_reason,
           status,
-          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost),
+          medicine:medicines(id, generic_name, dosage, unit_of_measure),
           facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code)
         `;
         const baseInventorySelect = `
           id,
           facility_id,
           medicine_id,
-          supplier_id,
           quantity,
           threshold,
           batch_number,
           date_received,
           expiration_date,
-          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost),
+          medicine:medicines(id, generic_name, dosage, unit_of_measure),
           facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code)
         `;
 
@@ -587,20 +587,23 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         (wm) => {
           let q = supabase.from("stock_returns").select(`
             id,
-            lot_no,
+            return_id,
+            facility_id,
+            source_inventory_id,
             medicine_id,
             medicine_name,
             brand_name,
+            lot_no,
             quantity,
             unit_cost,
             expiration_date,
             reason,
-            facility_id,
             status,
+            remarks,
             submitted_by_id,
-            verified_by_id,
             submitted_at,
-            verified_at,
+            confirmed_by_id,
+            confirmed_at,
             created_at,
             updated_at,
             facility:facilities!stock_returns_facility_id_fkey(id, facility_name, facility_code)
@@ -649,7 +652,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                   voided_at,
                   void_reason,
                   patient_id,
-                  medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure),
+                  medicine:medicines(id, generic_name, dosage, unit_of_measure),
                   patient:patients(
                     id,
                     patient_code,
@@ -706,7 +709,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                     voided_at,
                     void_reason,
                     patient_id,
-                    medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure),
+                    medicine:medicines(id, generic_name, dosage, unit_of_measure),
                     patient:patients(
                       id,
                       patient_code,
@@ -897,7 +900,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       medicinesRes,
       otherProgramsRes,
       facilitiesRes,
-      suppliersRes,
       inventoryRes,
       patientsRes,
       requestsRes,
@@ -926,7 +928,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       "Medicines",
       "Other Programs",
       "Facilities",
-      "Suppliers",
       "Inventory",
       "Patients",
       "Requests",
@@ -939,6 +940,10 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       "Notifications",
       "Deficit audits",
     ]);
+
+    if (snapshotError) {
+      console.warn("[syncManager] Snapshot failure:", snapshotError);
+    }
 
     if (!isCurrentSession()) {
       updateSyncStatus("IDLE");
@@ -978,7 +983,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
     applyDeltaOrFullSnapshot(STORAGE_KEYS.MEDICINES, medicinesRes, medicinesWatermark, "medicines", "Medicines");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, otherProgramsRes, otherProgramsWatermark, "other_programs", "Other Programs");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.FACILITIES, facilitiesRes, facilitiesWatermark, "facilities", "Facilities");
-    applyDeltaOrFullSnapshot(STORAGE_KEYS.SUPPLIERS, suppliersRes, suppliersWatermark, "suppliers", "Suppliers");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.INVENTORY, inventoryRes, inventoryWatermark, "inventory", "Inventory");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.PATIENTS, patientsRes, patientsWatermark, "patients", "Patients");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.REQUESTS, requestsRes, requestsWatermark, "medicine_requests", "Requests");
@@ -1063,44 +1067,20 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             const rows = medicinesRes.data.map((m) => [
               m.id,
               m.generic_name,
-              m.brand_name,
               m.dosage,
               m.unit_of_measure,
-              m.unit_cost,
               JSON.stringify(m.categories || []),
               JSON.stringify(m),
             ]);
             await batchInsertOrReplace(
               db,
               "medicines",
-              ["id", "generic_name", "brand_name", "dosage", "unit_of_measure", "unit_cost", "categories_json", "data_json"],
+              ["id", "generic_name", "dosage", "unit_of_measure", "categories_json", "data_json"],
               rows
             );
           }
         }
 
-        if (suppliersRes.data) {
-          if (!isCurrentSession()) return false;
-          if (suppliersWatermark && suppliersRes.usedWatermark !== null) {
-            await purgeTombstones("suppliers");
-          } else {
-            await db.execute("DELETE FROM suppliers");
-          }
-          if (suppliersRes.data.length > 0) {
-            const rows = suppliersRes.data.map((s) => [
-              s.id,
-              s.supplier_name,
-              s.status,
-              JSON.stringify(s),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "suppliers",
-              ["id", "supplier_name", "status", "data_json"],
-              rows
-            );
-          }
-        }
 
         if (inventoryRes.data) {
           if (!isCurrentSession()) return false;
@@ -1128,7 +1108,10 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM inventory");
           }
 
-          const rawInventory = getSnapshot(STORAGE_KEYS.INVENTORY) || inventoryRes.data || [];
+          const rawInventory =
+            Array.isArray(inventoryRes?.data) && inventoryRes.usedWatermark === null
+              ? inventoryRes.data
+              : (getSnapshot(STORAGE_KEYS.INVENTORY) || inventoryRes?.data || []);
           const inventorySourceData = rawInventory.filter(
             (inv) =>
               inv?.intake_type !== "RETURN" &&
@@ -1149,9 +1132,11 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 (poNumber && String(poNumber).startsWith("RET-") ? "RETURN" : "PROCUREMENT");
               const returnReason = inv.return_reason || local?.return_reason || null;
               const status = inv.status || local?.status || "ACTIVE";
+              const brandName = inv.brand_name || local?.brand_name || inv.medicine?.brand_name || null;
 
               const enrichedInv = {
                 ...inv,
+                brand_name: brandName,
                 po_number: poNumber,
                 unit_cost: unitCost,
                 origin_facility_id: originFacilityId,
@@ -1164,7 +1149,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 inv.id,
                 inv.facility_id,
                 inv.medicine_id,
-                inv.supplier_id,
                 inv.quantity,
                 inv.threshold,
                 inv.batch_number,
@@ -1176,6 +1160,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 intakeType,
                 returnReason,
                 status,
+                brandName,
                 JSON.stringify(enrichedInv),
               ];
             });
@@ -1187,7 +1172,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 "id",
                 "facility_id",
                 "medicine_id",
-                "supplier_id",
                 "quantity",
                 "threshold",
                 "batch_number",
@@ -1199,6 +1183,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 "intake_type",
                 "return_reason",
                 "status",
+                "brand_name",
                 "data_json",
               ],
               rows
@@ -1267,48 +1252,54 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           if (stockReturnsRes.data.length > 0) {
             const returnRows = stockReturnsRes.data.map((r) => [
               r.id,
-              r.lot_no,
+              r.return_id || r.id,
+              r.facility_id,
+              r.source_inventory_id || null,
               r.medicine_id,
               r.medicine_name,
-              r.brand_name,
+              r.brand_name || null,
+              r.lot_no,
               r.quantity,
               r.unit_cost,
               r.expiration_date,
               r.reason,
-              r.facility_id,
               r.status || "PENDING",
+              r.remarks || null,
               r.submitted_by_id,
-              r.verified_by_id,
               r.submitted_at,
-              r.verified_at,
-              JSON.stringify(r),
+              r.confirmed_by_id || null,
+              r.confirmed_at || null,
               r.created_at || new Date().toISOString(),
               r.updated_at || new Date().toISOString(),
               1,
+              JSON.stringify(r),
             ]);
             await batchInsertOrReplace(
               db,
               "stock_returns",
               [
                 "id",
-                "lot_no",
+                "return_id",
+                "facility_id",
+                "source_inventory_id",
                 "medicine_id",
                 "medicine_name",
                 "brand_name",
+                "lot_no",
                 "quantity",
                 "unit_cost",
                 "expiration_date",
                 "reason",
-                "facility_id",
                 "status",
+                "remarks",
                 "submitted_by_id",
-                "verified_by_id",
                 "submitted_at",
-                "verified_at",
-                "data_json",
+                "confirmed_by_id",
+                "confirmed_at",
                 "created_at",
                 "updated_at",
                 "is_synced",
+                "data_json",
               ],
               returnRows
             );
@@ -1565,7 +1556,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       updateWatermarkIfSuccess("medicines", medicinesRes),
       updateWatermarkIfSuccess("other_programs", otherProgramsRes),
       updateWatermarkIfSuccess("facilities", facilitiesRes),
-      updateWatermarkIfSuccess("suppliers", suppliersRes),
       updateWatermarkIfSuccess("inventory", inventoryRes),
       updateWatermarkIfSuccess("patients", patientsRes),
       updateWatermarkIfSuccess("medicine_requests", requestsRes),

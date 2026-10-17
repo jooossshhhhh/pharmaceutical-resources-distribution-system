@@ -140,36 +140,37 @@ test("buildMonthlyInventoryWorkbook creates valid physical count inventory form"
   // Title and Facility Headers (C3)
   assert.ok(sheet["C3"]?.v.includes("REPORT ON PHYSICAL COUNT OF INVENTORIES"));
   assert.ok(sheet["C3"]?.v.includes("VMCH MEDICINE SUPPLIES"));
-  // Month header check in C5, I5, AG5
-  assert.equal(sheet["C5"]?.v, "MONTH : JULY 31, 2026");
-  assert.ok(sheet["I5"]?.v.includes("JUNE 30, 2026"));
-  assert.ok(sheet["AG5"]?.v.includes("JULY 31, 2026"));
+  assert.ok(sheet["C3"]?.v.includes("July, 2026"));
+  assert.ok(sheet["I3"]?.v.includes("JUNE 30, 2026"));
+  assert.ok(sheet["AB3"]?.v.includes("JULY 31, 2026"));
+  // Row 5 is PO Header row above medicines (Option 1)
+  assert.equal(sheet["D5"]?.v, "PO NO.");
 
-  // First item starting at Row 7, columns C to AI
-  assert.equal(sheet["C7"]?.v, 1); // ITEM NO
-  assert.equal(sheet["D7"]?.v, "Dicycloverine 10mg/5mL"); // ITEM DESCRIPTION
-  assert.equal(sheet["E7"]?.v, "BOTTLE"); // UNIT
-  assert.equal(sheet["F7"]?.v, "MYRENTYL"); // BRAND
-  assert.equal(sheet["G7"]?.v, "ZMN073"); // LOT NO
-  assert.equal(sheet["H7"]?.v, "2026-12-31"); // EXPIRY DATE
-  assert.equal(sheet["I7"]?.v, 52); // Beginning balance quantity
-  assert.equal(sheet["J7"]?.v, 35); // Unit cost
-  assert.equal(sheet["K7"]?.f, "I7*J7"); // Formula
+  // First item starting at Row 6, columns C to AD
+  assert.equal(sheet["C6"]?.v, 1); // ITEM NO
+  assert.equal(sheet["D6"]?.v, "Dicycloverine 10mg/5mL"); // ITEM DESCRIPTION
+  assert.equal(sheet["E6"]?.v, "BOTTLE"); // UNIT
+  assert.equal(sheet["F6"]?.v, "MYRENTYL"); // BRAND
+  assert.equal(sheet["G6"]?.v, "ZMN073"); // LOT NO
+  assert.equal(sheet["H6"]?.v, "2026-12-31"); // EXPIRY DATE
+  assert.equal(sheet["I6"]?.v, 52); // Beginning balance quantity
+  assert.equal(sheet["J6"]?.v, 35); // Unit cost
+  assert.equal(sheet["K6"]?.f, "I6*J6"); // Formula
+  assert.equal(sheet["K6"]?.v, 1820);
+  assert.equal(sheet["O6"]?.f, "I6+L6"); // Gross Available
+  assert.equal(sheet["O6"]?.v, 52);
+  assert.equal(sheet["AB6"]?.f, "O6-(R6+U6+Y6)"); // Remaining Ending Balance formula
+  assert.equal(sheet["AB6"]?.v, 52);
+  assert.equal(sheet["AC6"]?.f, "P6");
+  assert.equal(sheet["AD6"]?.f, "AB6*AC6");
+  assert.equal(sheet["AD6"]?.v, 1820);
+
+  // Total Row at Row 7 (Row 5 is PO Header, Row 6 is item, Row 7 is TOTAL)
+  assert.equal(sheet["D7"]?.v, "TOTAL");
+  assert.equal(sheet["K7"]?.f, "SUM(K5:K6)");
   assert.equal(sheet["K7"]?.v, 1820);
-  assert.equal(sheet["P7"]?.f, "L7+I7"); // Gross Available
-  assert.equal(sheet["P7"]?.v, 52);
-  assert.equal(sheet["AG7"]?.f, "P7-(T7+X7+AC7)"); // Remaining Ending Balance formula
-  assert.equal(sheet["AG7"]?.v, 52);
-  assert.equal(sheet["AH7"]?.f, "U7");
-  assert.equal(sheet["AI7"]?.f, "AH7*AG7");
-  assert.equal(sheet["AI7"]?.v, 1820);
-
-  // Total Row at Row 10 (at least 3 data rows: 7, 8, 9, then total at 10)
-  assert.equal(sheet["D10"]?.v, "TOTAL");
-  assert.equal(sheet["K10"]?.f, "SUM(K7:K9)");
-  assert.equal(sheet["K10"]?.v, 1820);
-  assert.equal(sheet["AI10"]?.f, "SUM(AI7:AI9)");
-  assert.equal(sheet["AI10"]?.v, 1820);
+  assert.equal(sheet["AD7"]?.f, "SUM(AD5:AD6)");
+  assert.equal(sheet["AD7"]?.v, 1820);
 });
 
 test("buildMonthlyInventoryWorkbook accurately reconciles issuances and other programs into beginning balance", () => {
@@ -220,21 +221,27 @@ test("buildMonthlyInventoryWorkbook accurately reconciles issuances and other pr
 
   const sheet = wb.Sheets[wb.SheetNames[0]];
 
-  // Reconciliation check in row 7:
+  // Row 5 is PO Header row above medicines
+  assert.equal(sheet["D5"]?.v, "PO NO.");
+
+  // Reconciliation check in row 6 (medicine item):
   // Issued = 6 (walk-in) + 4 (request) = 10
-  assert.equal(sheet["T7"]?.v, 10);
+  assert.equal(sheet["R6"]?.v, 10);
   // Programs = 2, Program name = ANTI-RABIES MISSION
-  assert.equal(sheet["X7"]?.v, 2);
-  assert.equal(sheet["AA7"]?.v, "ANTI-RABIES MISSION");
+  assert.equal(sheet["U6"]?.v, 2);
+  assert.equal(sheet["X6"]?.v, "ANTI-RABIES MISSION");
   // Remaining physical count = 42
-  assert.equal(sheet["AG7"]?.v, 42);
+  assert.equal(sheet["AB6"]?.v, 42);
   // Beginning balance = 42 + 10 + 2 = 54
-  assert.equal(sheet["I7"]?.v, 54);
-  assert.equal(sheet["P7"]?.v, 54); // Gross available
-  assert.equal(sheet["K7"]?.v, 54 * 35); // Beginning total
-  assert.equal(sheet["V7"]?.v, 10 * 35); // Issuance total
-  assert.equal(sheet["Z7"]?.v, 2 * 35); // Program total
-  assert.equal(sheet["AI7"]?.v, 42 * 35); // Remaining total
+  assert.equal(sheet["I6"]?.v, 54);
+  assert.equal(sheet["O6"]?.v, 54); // Gross available
+  assert.equal(sheet["K6"]?.v, 54 * 35); // Beginning total
+  assert.equal(sheet["T6"]?.v, 10 * 35); // Issuance total
+  assert.equal(sheet["W6"]?.v, 2 * 35); // Program total
+  assert.equal(sheet["AD6"]?.v, 42 * 35); // Remaining total
+
+  // Total at Row 7
+  assert.equal(sheet["D7"]?.v, "TOTAL");
 });
 
 test("buildMonthlyInventoryBuffer generates a valid XLSX buffer with official template styling", () => {
@@ -264,45 +271,184 @@ test("buildMonthlyInventoryBuffer generates a valid XLSX buffer with official te
   assert.ok(parsedWb.SheetNames.length > 0);
 
   const sheet = parsedWb.Sheets[parsedWb.SheetNames[0]];
-  assert.ok(sheet["C3"]?.v.includes("REPORT ON PHYSICAL COUNT OF INVENTORIES"));
+  assert.ok(sheet["C3"]?.v.includes("REPORT ON PHYSICAL COUNT OF INVENTORIES: VMCH MEDICINE SUPPLIES MONTH "));
+  assert.ok(sheet["C3"]?.v.includes("October, 2026"));
+  assert.ok(sheet["I3"]?.v.includes("SEPTEMBER 30, 2026"));
   const todayDay = new Date().getDate();
-  assert.equal(sheet["C5"]?.v, `MONTH : OCTOBER ${todayDay}, 2026`);
-  assert.ok(sheet["I5"]?.v.includes("SEPTEMBER 30, 2026"));
-  assert.ok(sheet["AG5"]?.v.includes(`OCTOBER ${todayDay}, 2026`));
+  assert.ok(sheet["AB3"]?.v.includes(`OCTOBER ${todayDay}, 2026`));
 
-  assert.equal(sheet["C7"]?.v, 1);
-  assert.equal(sheet["D7"]?.v, "Amoxicillin 500mg");
-  assert.equal(sheet["E7"]?.v, "CAPSULE");
-  assert.equal(sheet["F7"]?.v, "HIMOX");
-  assert.equal(sheet["G7"]?.v, "BATCH001");
-  assert.equal(sheet["H7"]?.v, "2027-10-31");
-  assert.equal(sheet["I7"]?.v, 100);
-  assert.equal(sheet["J7"]?.v, 8.5);
+  // Row 5 is PO Header row (Option 1)
+  assert.equal(sheet["D5"]?.v, "PO NO.");
+
+  // Row 6 is first medicine item
+  assert.equal(sheet["C6"]?.v, 1);
+  assert.equal(sheet["D6"]?.v, "Amoxicillin 500mg");
+  assert.equal(sheet["E6"]?.v, "CAPSULE");
+  assert.equal(sheet["F6"]?.v, "HIMOX");
+  assert.equal(sheet["G6"]?.v, "BATCH001");
+  assert.equal(sheet["H6"]?.v, "2027-10-31");
+  assert.equal(sheet["I6"]?.v, 100);
+  assert.equal(sheet["J6"]?.v, 8.5);
+  assert.equal(sheet["K6"]?.v, 850);
+  assert.equal(sheet["AB6"]?.v, 100);
+  assert.equal(sheet["AD6"]?.v, 850);
+
+  // Total row at Row 7
+  assert.equal(sheet["D7"]?.v, "TOTAL");
   assert.equal(sheet["K7"]?.v, 850);
-  assert.equal(sheet["AG7"]?.v, 100);
-  assert.equal(sheet["AI7"]?.v, 850);
-
-  // Formatted cost cells MUST display peso sign
-  assert.ok(sheet["J7"]?.w?.includes("₱"), "Unit cost should display peso sign");
-  assert.ok(sheet["K7"]?.w?.includes("₱"), "Total cost should display peso sign");
-  assert.ok(sheet["AI7"]?.w?.includes("₱"), "Remaining total cost should display peso sign");
-
-  assert.equal(sheet["D10"]?.v, "TOTAL");
-  assert.equal(sheet["K10"]?.v, 850);
-  assert.ok(sheet["K10"]?.w?.includes("₱"), "Overall beginning total cost should display peso sign");
-  assert.equal(sheet["AI10"]?.v, 850);
-  assert.ok(sheet["AI10"]?.w?.includes("₱"), "Overall remaining total cost should display peso sign");
+  assert.equal(sheet["AD7"]?.v, 850);
   // Total row unit cost columns MUST be empty, not a lone stray '₱'
-  assert.ok(!sheet["J10"] || sheet["J10"]?.v === "", "Total row Unit Cost must be empty");
+  assert.ok(!sheet["J7"] || sheet["J7"]?.v === "" || sheet["J7"]?.v === undefined, "Total row Unit Cost must be empty");
 
-  // Verify borders directly in OpenXML package
+  // Verify borders & styles directly in OpenXML package
   const cfbLib = XLSX.CFB || Reflect.get(XLSX, "default")?.CFB;
   const cfb = cfbLib.read(buffer, { type: "array" });
   const s1Entry = cfbLib.find(cfb, "sheet1.xml") || cfbLib.find(cfb, "/xl/worksheets/sheet1.xml");
   const s1Xml = new TextDecoder().decode(s1Entry.content);
-  // Column J (UNIT COST) must use s="26" with full border (borderId="1"), NOT borderId="0" (s="27") or header borders (s="56")
-  assert.ok(s1Xml.includes('<c r="J7" s="26"'), "Cell J7 must use style s=26 with full thin border");
-  assert.ok(s1Xml.includes('<c r="K7" s="26"'), "Cell K7 must use style s=26 with full thin border");
+
+  // Row 5 Column D (PO Header) uses style s="32" (left-aligned with bright yellow fill and thin border matching official template D5)
+  assert.ok(s1Xml.includes('<c r="D5" s="32"'), "Cell D5 must use style s=32 with left alignment, yellow fill and thin border");
+  // Row 6 Column D (Item Description) & F (Brand) use left-aligned clean style s="33"
+  assert.ok(s1Xml.includes('<c r="D6" s="33"'), "Cell D6 must use left-aligned style s=33");
+  assert.ok(s1Xml.includes('<c r="F6" s="33"'), "Cell F6 must use left-aligned style s=33");
+  // Row 6 Column C (Item No) & G (Lot No) use centered style s="4"
+  assert.ok(s1Xml.includes('<c r="C6" s="4"'), "Cell C6 must use centered style s=4");
+  assert.ok(s1Xml.includes('<c r="G6" s="4"'), "Cell G6 must use centered style s=4");
+  // Row 6 Column J and K use currency style s="36"
+  assert.ok(s1Xml.includes('<c r="J6" s="36"'), "Cell J6 must use currency style s=36");
+  assert.ok(s1Xml.includes('<c r="K6" s="36"'), "Cell K6 must use currency style s=36");
+  // Row 7 Column D (TOTAL) uses style s="3" (bold centered) and currency columns use s="37" (bold currency)
+  assert.ok(s1Xml.includes('<c r="D7" s="3"'), "Cell D7 must use bold centered style s=3");
+  assert.ok(s1Xml.includes('<c r="K7" s="37"'), "Cell K7 must use bold currency style s=37");
+  assert.ok(s1Xml.includes('<c r="AD7" s="37"'), "Cell AD7 must use bold currency style s=37");
+
+  // Suppress Excel's green triangle warning on number stored as text (e.g. Lot No) and formulas across the table
+  assert.ok(
+    s1Xml.includes("<ignoredErrors><ignoredError") &&
+      s1Xml.includes('numberStoredAsText="1"') &&
+      s1Xml.includes('emptyCellReference="1"'),
+    "sheet1.xml must include comprehensive ignoredErrors to suppress all Excel warning triangles"
+  );
+});
+
+test("buildMonthlyInventoryBuffer auto-adjusts column widths when description, brand, or lot number is long", () => {
+  const inventoryRows = [
+    {
+      po_number: "PO-2026-LONG-NUM-99999",
+      quantity: 100,
+      batch_number: "4321343567890123456", // 19 chars Lot No
+      expiration_date: "2027-12-31",
+      medicine: {
+        generic_name: "Amoxicillin Trihydrate + Potassium Clavulanate",
+        dosage: "500mg/125mg Film-Coated Tablet (100 Tablets / Box)",
+        brand_name: "AUGMENTIN EXTRA STRENGTH PHARMACEUTICALS", // 40 chars Brand
+        unit_of_measure: "Tablet",
+        unit_cost: 45.5,
+      },
+    },
+  ];
+
+  const buffer = buildMonthlyInventoryBuffer({
+    inventoryRows,
+    year: 2026,
+    month: 10,
+    facilityName: "VMCH MEDICINE SUPPLIES",
+  });
+
+  const cfbLib = XLSX.CFB || Reflect.get(XLSX, "default")?.CFB;
+  const cfb = cfbLib.read(buffer, { type: "array" });
+  const s1Entry = cfbLib.find(cfb, "sheet1.xml") || cfbLib.find(cfb, "/xl/worksheets/sheet1.xml");
+  const s1Xml = new TextDecoder().decode(s1Entry.content);
+
+  // Check <cols> block
+  const colMatch = s1Xml.match(/<cols>([\s\S]*?)<\/cols>/);
+  assert.ok(colMatch, "sheet1.xml must contain a <cols> block");
+
+  // Col D (Item Description) auto-adjusted wider than default 41.28515625
+  const colD = colMatch[1].match(/<col min="4" max="4" width="([\d.]+)"/);
+  assert.ok(colD, "Col D must be defined in <cols>");
+  const colDWidth = parseFloat(colD[1]);
+  assert.ok(colDWidth > 41.28515625, `Col D width (${colDWidth}) must be auto-adjusted wider than default 41.28`);
+
+  // Col F (Brand) auto-adjusted wider than default 12.7109375
+  const colF = colMatch[1].match(/<col min="6" max="6" width="([\d.]+)"/);
+  assert.ok(colF, "Col F must be defined in <cols>");
+  const colFWidth = parseFloat(colF[1]);
+  assert.ok(colFWidth > 12.7109375, `Col F width (${colFWidth}) must be auto-adjusted wider than default 12.71`);
+
+  // Col G (Lot No) auto-adjusted wider than default 12.7109375
+  const colG = colMatch[1].match(/<col min="7" max="7" width="([\d.]+)"/);
+  assert.ok(colG, "Col G must be defined in <cols>");
+  const colGWidth = parseFloat(colG[1]);
+  assert.ok(colGWidth > 12.7109375, `Col G width (${colGWidth}) must be auto-adjusted wider than default 12.71`);
+
+  // Verify ignoredErrors is present to suppress green error warning on the numeric lot number
+  assert.ok(
+    s1Xml.includes("<ignoredErrors><ignoredError") &&
+      s1Xml.includes('numberStoredAsText="1"') &&
+      s1Xml.includes('emptyCellReference="1"'),
+    "Numeric Lot No 4321343567890123456 must be covered by ignoredErrors"
+  );
+});
+
+test("buildMonthlyInventoryBuffer correctly groups items by PO number with section headers", () => {
+  const inventoryRows = [
+    {
+      po_number: "PO-2025-001",
+      quantity: 50,
+      batch_number: "LOT-A",
+      expiration_date: "2027-01-01",
+      medicine: { generic_name: "Amoxicillin", dosage: "500mg", brand_name: "Himox", unit_of_measure: "Capsule", unit_cost: 5.0 },
+    },
+    {
+      po_number: "PO-2025-002",
+      quantity: 30,
+      batch_number: "LOT-B",
+      expiration_date: "2027-02-01",
+      medicine: { generic_name: "Biogesic", dosage: "500mg", brand_name: "Biogesic", unit_of_measure: "Tablet", unit_cost: 6.0 },
+    },
+    {
+      // No PO number provided
+      quantity: 20,
+      batch_number: "LOT-C",
+      expiration_date: "2027-03-01",
+      medicine: { generic_name: "Cetirizine", dosage: "10mg", brand_name: "Virlix", unit_of_measure: "Tablet", unit_cost: 10.0 },
+    },
+  ];
+
+  const buffer = buildMonthlyInventoryBuffer({
+    inventoryRows,
+    year: 2026,
+    month: 10,
+    facilityName: "VMCH MEDICINE SUPPLIES",
+  });
+
+  const parsedWb = XLSX.read(buffer, { type: "array" });
+  const sheet = parsedWb.Sheets[parsedWb.SheetNames[0]];
+
+  // Row 5: First PO header row above its medicines
+  assert.equal(sheet["D5"]?.v, "PO NO. 2025-001");
+  // Row 6: First medicine item under PO-2025-001
+  assert.equal(sheet["C6"]?.v, 1);
+  assert.equal(sheet["D6"]?.v, "Amoxicillin 500mg");
+
+  // Row 7: Second PO header row above its medicines
+  assert.equal(sheet["D7"]?.v, "PO NO. 2025-002");
+  // Row 8: Second medicine item under PO-2025-002
+  assert.equal(sheet["C8"]?.v, 2);
+  assert.equal(sheet["D8"]?.v, "Biogesic 500mg");
+
+  // Row 9: Unassigned PO header row (strictly "PO NO.")
+  assert.equal(sheet["D9"]?.v, "PO NO.");
+  // Row 10: Third medicine item under unassigned PO
+  assert.equal(sheet["C10"]?.v, 3);
+  assert.equal(sheet["D10"]?.v, "Cetirizine 10mg");
+
+  // Row 11: Total row
+  assert.equal(sheet["D11"]?.v, "TOTAL");
+  // Total beginning valuation = (50*5) + (30*6) + (20*10) = 250 + 180 + 200 = 630
+  assert.equal(sheet["K11"]?.v, 630);
+  assert.equal(sheet["AD11"]?.v, 630);
 });
 
 

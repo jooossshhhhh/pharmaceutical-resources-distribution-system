@@ -25,9 +25,9 @@ async function checkInternetConnection() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    // Lightweight HEAD or GET to Supabase REST health endpoint
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/`, {
-      method: "HEAD",
+    // Lightweight GET to Supabase Auth health endpoint (returns HTTP 200 without secret key)
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+      method: "GET",
       signal: controller.signal,
       headers: {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
@@ -35,7 +35,7 @@ async function checkInternetConnection() {
     });
 
     clearTimeout(timeoutId);
-    return res.status >= 200 && res.status < 500;
+    return res.ok;
   } catch {
     return false;
   }

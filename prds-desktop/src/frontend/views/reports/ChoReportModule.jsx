@@ -4,6 +4,8 @@ import { getDispensingHistory } from "@backend/services/dispensingService";
 import { getRequestsData } from "@backend/services/requestsService";
 import { supabase } from "@backend/client/supabase";
 import { useAuth } from "../../context/useAuth";
+import { useNetworkStatus } from "@backend/sync/networkStatus";
+import ReportModuleSkeleton from "./components/ReportModuleSkeleton";
 import ReportHeader from "./components/ReportHeader";
 import ReportSummaryCards from "./components/ReportSummaryCards";
 import ReportCalendarWidget from "./components/ReportCalendarWidget";
@@ -135,6 +137,35 @@ export default function ChoReportModule() {
   const [selectedProgramFilter, setSelectedProgramFilter] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  const isOnline = useNetworkStatus();
+  const hasExistingData = useMemo(() => {
+    return (
+      (inventoryRows && inventoryRows.length > 0) ||
+      (dispensingRows && dispensingRows.length > 0) ||
+      (requestRows && requestRows.length > 0) ||
+      (otherProgramsRows && otherProgramsRows.length > 0)
+    );
+  }, [inventoryRows, dispensingRows, requestRows, otherProgramsRows]);
+
+  const [showSkeleton, setShowSkeleton] = useState(false);
+
+  // Skeleton loading screen triggers ONLY when:
+  // 1. Actively loading data from the network (isLoading)
+  // 2. User has an active online internet connection (isOnline)
+  // 3. There is NO data already available to display (!hasExistingData)
+  // 4. Noticeable network lag persists past the debounce threshold (> 150ms)
+  // If offline or data is already present, skeleton will not trigger.
+  useEffect(() => {
+    if (isLoading && isOnline && !hasExistingData) {
+      const timer = setTimeout(() => {
+        setShowSkeleton(true);
+      }, 150);
+      return () => clearTimeout(timer);
+    } else {
+      setShowSkeleton(false);
+    }
+  }, [isLoading, isOnline, hasExistingData]);
 
   // Fetch updated data from services with instant snapshot fallback
   useEffect(() => {
@@ -484,7 +515,7 @@ export default function ChoReportModule() {
         otherProgramsRows,
         year: selectedPeriod.year,
         month: selectedPeriod.month,
-        facilityName: headerFacilityName,
+        facilityName: "VMCH MEDICINE SUPPLIES",
         pharmacistName: profile?.full_name || "ROSEMIE ANN GETUTUA",
         choDoctorName: "DR. CAMILLE F. PENALOSA",
       });
@@ -495,15 +526,8 @@ export default function ChoReportModule() {
     }
   };
 
-  if (isLoading && dispensingRows.length === 0 && inventoryRows.length === 0) {
-    return (
-      <div className="flex h-96 w-full items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-500 border-t-transparent" />
-          <span className="text-xs font-medium text-[#42474e]">Loading reports & analytics...</span>
-        </div>
-      </div>
-    );
+  if (showSkeleton) {
+    return <ReportModuleSkeleton scope={reportScope} />;
   }
 
   return (

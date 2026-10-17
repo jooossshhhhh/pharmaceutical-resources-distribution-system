@@ -66,7 +66,7 @@ export const getActivityLogData = async () => {
           status,
           facility:facilities(id, facility_name, facility_code),
           requester:profiles!medicine_requests_requested_by_fkey(id, first_name, last_name),
-          items:medicine_request_items(id, quantity, medicine:medicines(id, generic_name, brand_name, dosage))
+          items:medicine_request_items(id, quantity, medicine:medicines(id, generic_name, dosage))
         `
         )
         .order("request_date", { ascending: false })

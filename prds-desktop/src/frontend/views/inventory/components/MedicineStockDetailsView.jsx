@@ -114,22 +114,12 @@ export default function MedicineStockDetailsView({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                  isExpired
-                    ? "bg-red-50 text-red-800 border border-red-200"
-                    : "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                }`}
-              >
-                {isExpired ? (
-                  <>
-                    <ShieldAlert className="h-3 w-3" />
-                    Quarantined Expired
-                  </>
-                ) : (
-                  "Commercial Stock"
-                )}
-              </span>
+              {isExpired && (
+                <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-red-50 text-red-800 border border-red-200">
+                  <ShieldAlert className="h-3 w-3" />
+                  Quarantined Expired
+                </span>
+              )}
 
               <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-700">
                 <Building2 className="h-3 w-3 text-neutral-500" />

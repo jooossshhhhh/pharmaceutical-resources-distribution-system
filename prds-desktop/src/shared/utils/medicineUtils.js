@@ -28,10 +28,8 @@ export const CUSTOM_UNIT_VALUE = "__other__";
 
 export const emptyMedicineForm = {
   generic_name: "",
-  brand_name: "",
   unit_of_measure: "",
   dosage: "",
-  unit_cost: "",
   categories: "",
 };
 
@@ -70,10 +68,8 @@ export const formatCurrency = (value) => {
 export const normalizeMedicineText = (medicine) => {
   return [
     medicine.generic_name,
-    medicine.brand_name,
     medicine.dosage,
     medicine.unit_of_measure,
-    medicine.unit_cost,
     ...parseMedicineCategories(medicine.categories),
   ]
     .filter(Boolean)

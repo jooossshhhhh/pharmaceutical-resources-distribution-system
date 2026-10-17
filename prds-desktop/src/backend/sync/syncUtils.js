@@ -341,8 +341,8 @@ export function describeMutation(item = {}) {
     description = num ? `Request #${num}` : "Barangay health station request";
   } else if (target === "stock_returns") {
     label = "Stock Return";
-    const num = payload.returnRecord?.return_slip_no || payload.return_slip_no || payload.id?.slice(0, 8) || "";
-    description = num ? `Return Slip #${num}` : "Barangay stock return";
+    const num = payload.return_id || payload.returnRecord?.return_id || payload.returnRecord?.return_slip_no || payload.return_slip_no || payload.id?.slice(0, 8) || "";
+    description = num ? `Return #${num}` : "Barangay stock return";
   } else if (target === "other_programs") {
     label = "Special Program";
     description = payload.program_name || "Community health program";

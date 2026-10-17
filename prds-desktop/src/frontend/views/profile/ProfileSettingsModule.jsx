@@ -1662,18 +1662,30 @@ export default function ProfileSettingsModule() {
         <ModalShell
           labelledBy="add-phone-modal-title"
           onClose={() => setAddPhoneLogin(emptyAddPhoneLogin)}
-          overlayClassName="bg-white/95 backdrop-blur-sm"
+          overlayClassName="bg-slate-950/40 backdrop-blur-sm"
         >
           <form
             onSubmit={handleAddPhoneLoginSubmit}
             className="w-full max-w-[460px] overflow-hidden rounded-xl bg-white shadow-2xl"
           >
             <div className="border-b border-neutral-100 px-6 py-5">
-              <div>
-                <h3 id="add-phone-modal-title" className="text-lg font-black text-black">Add Phone Number</h3>
-                <p className="mt-1 text-sm font-medium text-neutral-500">
-                  A verification code will be sent before this phone login is saved.
-                </p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 id="add-phone-modal-title" className="text-lg font-black text-black">Add Phone Number</h3>
+                  <p className="mt-1 text-sm font-medium text-neutral-500">
+                    A verification code will be sent before this phone login is saved.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAddPhoneLogin(emptyAddPhoneLogin)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 cursor-pointer"
+                  aria-label="Close add phone modal"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
 

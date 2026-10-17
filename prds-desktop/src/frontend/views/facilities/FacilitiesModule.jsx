@@ -206,7 +206,7 @@ export default function FacilitiesModule() {
             quantity,
             expiration_date,
             threshold,
-            medicine:medicines(generic_name, dosage, unit_cost)
+            medicine:medicines(generic_name, dosage)
           `),
         supabase
           .from("medicine_requests")

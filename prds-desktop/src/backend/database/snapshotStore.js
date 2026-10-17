@@ -35,7 +35,7 @@ const STORAGE_KEYS = {
 const MEDICINE_CATALOG_VERSION_KEY = "prds_medicine_catalog_version";
 const MEDICINE_CATALOG_VERSION = "cho-2026-09-20";
 const SNAPSHOT_LIFECYCLE_VERSION_KEY = "prds_snapshot_lifecycle_version";
-const SNAPSHOT_LIFECYCLE_VERSION = "per-session-cache-2026-09-20";
+const SNAPSHOT_LIFECYCLE_VERSION = "per-session-cache-2026-10-17-operational-reset";
 let snapshotRevision = 0;
 
 export const getSnapshotRevision = () => snapshotRevision;
@@ -114,6 +114,14 @@ function invalidateLegacySharedSnapshots() {
         key !== STORAGE_KEYS.TERMINAL_PASSCODES
     )
     .forEach((key) => localStorage.removeItem(key));
+
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith("prds_watermark_")) {
+      localStorage.removeItem(key);
+    }
+  }
+
   localStorage.setItem(SNAPSHOT_LIFECYCLE_VERSION_KEY, SNAPSHOT_LIFECYCLE_VERSION);
 }
 
@@ -264,7 +272,6 @@ export async function restoreSnapshotsFromSqlite(facilityId = null, role = null)
     const tableMapping = [
       { table: "facilities", key: STORAGE_KEYS.FACILITIES },
       { table: "medicines", key: STORAGE_KEYS.MEDICINES },
-      { table: "suppliers", key: STORAGE_KEYS.SUPPLIERS },
       { table: "inventory", key: STORAGE_KEYS.INVENTORY },
       { table: "patients", key: STORAGE_KEYS.PATIENTS },
       { table: "dispensing_records", key: STORAGE_KEYS.DISPENSING },
@@ -284,10 +291,11 @@ export async function restoreSnapshotsFromSqlite(facilityId = null, role = null)
         const rows = await db.select(`SELECT data_json FROM ${table}`);
         if (rows && rows.length > 0) {
           const parsed = rows.map((r) => (r.data_json ? JSON.parse(r.data_json) : null)).filter(Boolean);
-          if (parsed.length > 0) {
-            localStorage.setItem(key, JSON.stringify(parsed));
-            cachedData[table] = parsed;
-          }
+          localStorage.setItem(key, JSON.stringify(parsed));
+          cachedData[table] = parsed;
+        } else {
+          localStorage.setItem(key, JSON.stringify([]));
+          cachedData[table] = [];
         }
       } catch (tableErr) {
         console.warn(`Failed to restore ${table} from SQLite:`, tableErr);

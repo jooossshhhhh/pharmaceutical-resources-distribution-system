@@ -27,7 +27,7 @@ const DISPENSING_SELECT = `
   dispense_date,
   voided_at,
   void_reason,
-  medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost),
+  medicine:medicines(id, generic_name, dosage, unit_of_measure),
   patient:patients(
     id,
     patient_code,
@@ -59,14 +59,14 @@ export const getWalkInInventory = async (facilityId) => {
           id,
           facility_id,
           medicine_id,
-          supplier_id,
           quantity,
           threshold,
           batch_number,
           date_received,
           expiration_date,
-          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost, categories),
-          supplier:suppliers(id, supplier_name)
+          brand_name,
+          unit_cost,
+          medicine:medicines(id, generic_name, dosage, unit_of_measure, categories)
         `)
         .eq("facility_id", facilityId)
         .order("expiration_date", { ascending: true })
@@ -257,7 +257,7 @@ export const getPatientsMonthlyClaimOverview = async (patientIds) => {
           prescribed_by,
           record_type,
           is_manual_record,
-          medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure),
+          medicine:medicines(id, generic_name, dosage, unit_of_measure),
           referred_facility:facilities!medicine_dispensing_referred_facility_id_fkey(id, facility_name)
         `)
         .in("patient_id", patientIds)

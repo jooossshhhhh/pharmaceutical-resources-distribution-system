@@ -229,10 +229,7 @@ export default function ChoInventoryModule() {
           <h2 className="text-base font-black text-[#0d1117]">
             {inventoryTab === "EXPIRED"
               ? "Expired Stocks List"
-              : "Dispensable Stock List"}{" "}
-            <span className="font-semibold text-neutral-400">
-              ({filteredInventory.length} items)
-            </span>
+              : "Dispensable Stock List"}
           </h2>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="relative block sm:w-80">

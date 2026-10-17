@@ -62,6 +62,37 @@ export function ChoStockModal({
   const transitionLockRef = useRef(0);
   const [step, setStep] = useState("input"); // "input" | "preview"
   const [stepError, setStepError] = useState("");
+  const [itemErrors, setItemErrors] = useState({});
+  const [itemWarnings, setItemWarnings] = useState({});
+  const brandWarningAcknowledgedRef = useRef(false);
+
+  const clearItemError = (itemId, field) => {
+    setItemErrors((prev) => {
+      if (!prev[itemId] || !prev[itemId][field]) return prev;
+      const nextItem = { ...prev[itemId] };
+      delete nextItem[field];
+      if (Object.keys(nextItem).length === 0) {
+        const nextErrors = { ...prev };
+        delete nextErrors[itemId];
+        return nextErrors;
+      }
+      return { ...prev, [itemId]: nextItem };
+    });
+  };
+
+  const clearItemWarning = (itemId, field) => {
+    setItemWarnings((prev) => {
+      if (!prev[itemId] || !prev[itemId][field]) return prev;
+      const nextItem = { ...prev[itemId] };
+      delete nextItem[field];
+      if (Object.keys(nextItem).length === 0) {
+        const nextWarnings = { ...prev };
+        delete nextWarnings[itemId];
+        return nextWarnings;
+      }
+      return { ...prev, [itemId]: nextItem };
+    });
+  };
 
   const isEditing = mode === "edit";
   const isReadOnly = mode === "view";
@@ -71,7 +102,7 @@ export function ChoStockModal({
     mode === "create"
       ? "Add Stock"
       : isEditing
-        ? "Edit Stock Batch"
+        ? "Edit Lot Record"
         : isExpired
           ? "Expired Stock Details"
           : "Stock Details";
@@ -129,8 +160,8 @@ export function ChoStockModal({
       return;
     }
 
-    if (!formValues.supplier_id) {
-      setStepError("Supplier is required for this Purchase Order.");
+    if (!formValues.supplier_name?.trim()) {
+      setStepError("Supplier name is required for this Purchase Order.");
       return;
     }
 
@@ -255,10 +286,10 @@ export function ChoStockModal({
             </h3>
             <p className="text-xs font-medium text-neutral-500">{subtitle}</p>
           </div>
-          {mode === "create" && (
+          {mode === "create" && step === "preview" && (
             <span className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-neutral-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-wider text-neutral-800">
               <Receipt className="h-3.5 w-3.5" />
-              {step === "preview" ? "PO Preview" : "Supplier PO Intake"}
+              PO Preview
             </span>
           )}
         </div>
@@ -335,12 +366,12 @@ export function ChoStockModal({
                           Purchase Order Delivery Receipt
                         </p>
                         <p className="text-[11px] font-semibold text-neutral-500">
-                          Delivery receipt metadata that links all commercial medicine batches in this intake.
+                          Delivery receipt metadata that links all received medicine batches in this intake.
                         </p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <Field
                         label="PO Number"
                         name="po_number"
@@ -350,21 +381,6 @@ export function ChoStockModal({
                         required
                       />
 
-                      <SelectField
-                        label="Supplier"
-                        name="supplier_id"
-                        value={formValues.supplier_id || ""}
-                        onChange={onChange}
-                        required
-                      >
-                        <option value="">Select supplier</option>
-                        {suppliers.map((supplier) => (
-                          <option key={supplier.id} value={supplier.id}>
-                            {supplier.supplier_name}
-                          </option>
-                        ))}
-                      </SelectField>
-
                       <Field
                         label="Date Received"
                         name="date_received"
@@ -372,6 +388,23 @@ export function ChoStockModal({
                         value={formValues.date_received || ""}
                         onChange={onChange}
                         required
+                      />
+
+                      <Field
+                        label="Supplier Name"
+                        name="supplier_name"
+                        placeholder="Enter supplier name"
+                        value={formValues.supplier_name || ""}
+                        onChange={onChange}
+                        required
+                      />
+
+                      <Field
+                        label="Supplier Address"
+                        name="supplier_address"
+                        placeholder="Enter supplier address"
+                        value={formValues.supplier_address || ""}
+                        onChange={onChange}
                       />
                     </div>
                   </section>
@@ -391,19 +424,31 @@ export function ChoStockModal({
 
                     <div className="space-y-3">
                       {(formValues.items || []).map((item, index) => {
+                        const itemId = item.id || `item-${index}`;
                         const qty = Number(item.quantity) || 0;
                         const cost = Number(item.unit_cost) || 0;
                         const subtotal = qty * cost;
                         const selectedMed = medicines.find((m) => m.id === item.medicine_id);
+                        const hasItemError = Boolean(itemErrors[itemId]);
+                        const hasItemWarning = Boolean(itemWarnings[itemId]);
 
                         return (
                           <div
-                            key={item.id || index}
-                            className="rounded-xl border border-neutral-200 bg-[#fbfaf8] p-3.5 transition hover:border-neutral-300"
+                            key={itemId}
+                            id={`po-item-card-${itemId}`}
+                            className={`rounded-xl border p-3.5 transition ${
+                              hasItemError
+                                ? "border-red-300 bg-red-50/15 shadow-2xs"
+                                : hasItemWarning
+                                  ? "border-amber-300 bg-amber-50/15 shadow-2xs"
+                                  : "border-neutral-200 bg-[#fbfaf8] hover:border-neutral-300"
+                            }`}
                           >
                             <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-200/60">
                               <div className="flex items-center gap-2">
-                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800 text-[10px] font-black text-white">
+                                <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black text-white ${
+                                  hasItemError ? "bg-red-600" : hasItemWarning ? "bg-amber-600" : "bg-neutral-800"
+                                }`}>
                                   {index + 1}
                                 </span>
                                 {selectedMed && (
@@ -429,7 +474,15 @@ export function ChoStockModal({
                                 {(formValues.items || []).length > 1 && (
                                   <button
                                     type="button"
-                                    onClick={() => onRemovePoItem(item.id)}
+                                    onClick={() => {
+                                      clearItemError(itemId, "medicine_id");
+                                      clearItemError(itemId, "batch_number");
+                                      clearItemError(itemId, "quantity");
+                                      clearItemError(itemId, "unit_cost");
+                                      clearItemError(itemId, "expiration_date");
+                                      clearItemWarning(itemId, "brand_name");
+                                      onRemovePoItem(item.id);
+                                    }}
                                     title="Remove this medicine line"
                                     className="rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600 transition cursor-pointer"
                                   >
@@ -440,20 +493,78 @@ export function ChoStockModal({
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-start">
-                              <div className="lg:col-span-4">
+                              <div className="lg:col-span-3">
                                 <SearchableMedicinePicker
                                   medicines={medicines}
                                   value={item.medicine_id}
+                                  hasError={Boolean(itemErrors[itemId]?.medicine_id)}
                                   onSelect={(medId) => {
                                     onPoItemChange(item.id, "medicine_id", medId);
-                                    const med = medicines.find((m) => m.id === medId);
-                                    if (med?.unit_cost && !item.unit_cost) {
-                                      onPoItemChange(item.id, "unit_cost", String(med.unit_cost));
-                                    }
+                                    clearItemError(itemId, "medicine_id");
                                   }}
                                   label="Medicine"
                                   required
                                 />
+                                {itemErrors[itemId]?.medicine_id && (
+                                  <div
+                                    role="alert"
+                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                  >
+                                    <div className="flex items-start gap-1.5 leading-snug">
+                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                      <span>{itemErrors[itemId].medicine_id}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearItemError(itemId, "medicine_id")}
+                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                      title="Dismiss error"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="lg:col-span-2">
+                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
+                                  Brand
+                                </label>
+                                <input
+                                  type="text"
+                                  autoComplete="off"
+                                  placeholder="e.g. Biogesic"
+                                  value={item.brand_name || ""}
+                                  onChange={(e) => {
+                                    onPoItemChange(item.id, "brand_name", e.target.value);
+                                    clearItemWarning(itemId, "brand_name");
+                                  }}
+                                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
+                                    itemWarnings[itemId]?.brand_name
+                                      ? "border-amber-400 bg-amber-50/20 focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                  }`}
+                                />
+                                {itemWarnings[itemId]?.brand_name && (
+                                  <div
+                                    role="alert"
+                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-800 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                  >
+                                    <div className="flex items-start gap-1.5 leading-snug">
+                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
+                                      <span>{itemWarnings[itemId].brand_name}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearItemWarning(itemId, "brand_name")}
+                                      className="text-amber-600 hover:text-amber-800 p-0.5 rounded cursor-pointer shrink-0"
+                                      title="Dismiss warning"
+                                      aria-label="Dismiss brand warning"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
                               <div className="lg:col-span-2">
@@ -468,15 +579,41 @@ export function ChoStockModal({
                                   data-form-type="other"
                                   placeholder="e.g. FGOLSA23"
                                   value={item.batch_number}
-                                  onChange={(e) => onPoItemChange(item.id, "batch_number", e.target.value)}
-                                  className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 font-mono text-sm font-bold uppercase tracking-wider text-[#0d1117] outline-none transition placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                  onChange={(e) => {
+                                    onPoItemChange(item.id, "batch_number", e.target.value);
+                                    clearItemError(itemId, "batch_number");
+                                  }}
+                                  className={`h-10 w-full rounded-lg border bg-white px-3 font-mono text-sm font-bold uppercase tracking-wider text-[#0d1117] outline-none transition placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-neutral-400 ${
+                                    itemErrors[itemId]?.batch_number
+                                      ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                  }`}
                                   required
                                 />
+                                {itemErrors[itemId]?.batch_number && (
+                                  <div
+                                    role="alert"
+                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                  >
+                                    <div className="flex items-start gap-1.5 leading-snug">
+                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                      <span>{itemErrors[itemId].batch_number}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearItemError(itemId, "batch_number")}
+                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                      title="Dismiss error"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
-                              <div className="lg:col-span-2">
-                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
-                                  Quantity <span className="text-red-500">*</span>
+                              <div className="lg:col-span-1">
+                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5 truncate" title="Quantity">
+                                  Qty <span className="text-red-500">*</span>
                                 </label>
                                 <input
                                   type="number"
@@ -484,10 +621,36 @@ export function ChoStockModal({
                                   min="1"
                                   placeholder="0"
                                   value={item.quantity}
-                                  onChange={(e) => onPoItemChange(item.id, "quantity", e.target.value)}
-                                  className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                  onChange={(e) => {
+                                    onPoItemChange(item.id, "quantity", e.target.value);
+                                    clearItemError(itemId, "quantity");
+                                  }}
+                                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
+                                    itemErrors[itemId]?.quantity
+                                      ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                  }`}
                                   required
                                 />
+                                {itemErrors[itemId]?.quantity && (
+                                  <div
+                                    role="alert"
+                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                  >
+                                    <div className="flex items-start gap-1.5 leading-snug">
+                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                      <span>{itemErrors[itemId].quantity}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearItemError(itemId, "quantity")}
+                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                      title="Dismiss error"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
                               <div className="lg:col-span-2">
@@ -505,10 +668,36 @@ export function ChoStockModal({
                                     step="0.01"
                                     placeholder="0.00"
                                     value={item.unit_cost}
-                                    onChange={(e) => onPoItemChange(item.id, "unit_cost", e.target.value)}
-                                    className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-7 pr-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                    onChange={(e) => {
+                                      onPoItemChange(item.id, "unit_cost", e.target.value);
+                                      clearItemError(itemId, "unit_cost");
+                                    }}
+                                    className={`h-10 w-full rounded-lg border bg-white pl-7 pr-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
+                                      itemErrors[itemId]?.unit_cost
+                                        ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                        : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                    }`}
                                   />
                                 </div>
+                                {itemErrors[itemId]?.unit_cost && (
+                                  <div
+                                    role="alert"
+                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                  >
+                                    <div className="flex items-start gap-1.5 leading-snug">
+                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                      <span>{itemErrors[itemId].unit_cost}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearItemError(itemId, "unit_cost")}
+                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                      title="Dismiss error"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
                               <div className="lg:col-span-2">
@@ -518,11 +707,38 @@ export function ChoStockModal({
                                 <input
                                   type="date"
                                   min={getTomorrowDateString()}
-                                  value={item.expiration_date}
-                                  onChange={(e) => onPoItemChange(item.id, "expiration_date", e.target.value)}
-                                  className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                  value={item.expiration_date || ""}
+                                  onChange={(e) => {
+                                    onPoItemChange(item.id, "expiration_date", e.target.value);
+                                    clearItemError(itemId, "expiration_date");
+                                  }}
+                                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition ${
+                                    itemErrors[itemId]?.expiration_date
+                                      ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                  }`}
                                   required
                                 />
+                                {itemErrors[itemId]?.expiration_date && (
+                                  <div
+                                    role="alert"
+                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                  >
+                                    <div className="flex items-start gap-1.5 leading-snug">
+                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                      <span>{itemErrors[itemId].expiration_date}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearItemError(itemId, "expiration_date")}
+                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                      title="Dismiss error"
+                                      aria-label="Dismiss expiration date error"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -533,7 +749,10 @@ export function ChoStockModal({
                     <div className="mt-3.5 flex justify-center">
                       <button
                         type="button"
-                        onClick={onAddPoItem}
+                        onClick={() => {
+                          brandWarningAcknowledgedRef.current = false;
+                          onAddPoItem();
+                        }}
                         className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 bg-white px-6 py-2.5 text-xs font-black text-neutral-700 hover:border-black hover:bg-neutral-50 hover:text-black transition cursor-pointer"
                       >
                         <Plus className="h-4 w-4" />
@@ -600,7 +819,7 @@ export function ChoStockModal({
                   title="Medicine Identification"
                   description="Medicine and facility are locked to preserve audit history and dispensing traceability."
                 >
-                  <div className="rounded-xl border border-neutral-100 bg-[#f7f6f3] px-3.5 py-2.5">
+                  <div className="rounded-xl border border-slate-200 bg-slate-100/80 px-3.5 py-2.5">
                     <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
                       Locked Medicine
                     </p>
@@ -608,7 +827,7 @@ export function ChoStockModal({
                       {getMedicineName(selectedItem)}
                     </p>
                     <p className="mt-0.5 text-[11px] font-semibold text-neutral-500">
-                      {selectedItem?.medicine?.brand_name ? `Brand: ${selectedItem.medicine.brand_name} • ` : ""}
+                      {(formValues.brand_name || selectedItem?.brand_name || selectedItem?.medicine?.brand_name) ? `Brand: ${formValues.brand_name || selectedItem?.brand_name || selectedItem?.medicine?.brand_name} • ` : ""}
                       {selectedItem?.medicine?.dosage ? `Dosage: ${selectedItem.medicine.dosage}` : ""}
                     </p>
                   </div>
@@ -619,24 +838,36 @@ export function ChoStockModal({
                   description="Vendor source, manufacturer lot number, and PO tracking identifiers."
                 >
                   <div className="space-y-3">
-                    <SelectField
-                      label="Supplier"
-                      name="supplier_id"
-                      value={formValues.supplier_id}
-                      onChange={onChange}
-                      required
-                    >
-                      <option value="">Select supplier</option>
-                      {suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.supplier_name}
-                        </option>
-                      ))}
-                    </SelectField>
-
-                    <div className="grid grid-cols-2 gap-3 min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Field
-                        label="Lot Number"
+                        label="Supplier Name"
+                        name="supplier_name"
+                        placeholder="Enter supplier name"
+                        value={formValues.supplier_name || ""}
+                        onChange={onChange}
+                        required
+                      />
+
+                      <Field
+                        label="Supplier Address"
+                        name="supplier_address"
+                        placeholder="Enter supplier address"
+                        value={formValues.supplier_address || ""}
+                        onChange={onChange}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0">
+                      <Field
+                        label="Brand"
+                        name="brand_name"
+                        placeholder="e.g. Biogesic"
+                        value={formValues.brand_name || ""}
+                        onChange={onChange}
+                      />
+
+                      <Field
+                        label="Lot No."
                         name="batch_number"
                         placeholder="Enter lot number"
                         value={formValues.batch_number}
@@ -759,9 +990,8 @@ export function ChoStockModal({
                   key="btn-step-review"
                   type="button"
                   onClick={handleProceedToPreview}
-                  className="inline-flex h-9.5 items-center gap-2 rounded-lg bg-black hover:bg-neutral-800 px-5 text-sm font-black text-white shadow-sm transition cursor-pointer"
+                  className="inline-flex h-9.5 items-center justify-center rounded-lg bg-black hover:bg-neutral-800 px-5 text-sm font-black text-white shadow-sm transition cursor-pointer"
                 >
-                  <Receipt className="h-4 w-4" />
                   Review
                 </button>
               ) : (
@@ -849,8 +1079,13 @@ function StockIntakePreview({
           </div>
           <div className="mt-2">
             <p className="text-sm font-black text-neutral-900 truncate">
-              {selectedSupplier?.supplier_name || "Not specified"}
+              {formValues.supplier_name || "Not specified"}
             </p>
+            {formValues.supplier_address ? (
+              <p className="text-[11px] font-medium text-neutral-600 truncate mt-0.5">
+                {formValues.supplier_address}
+              </p>
+            ) : null}
             <p className="mt-1.5 text-[11px] font-medium text-neutral-500">
               Destination: <strong className="text-neutral-800">City Health Office (CHO)</strong>
             </p>
@@ -899,10 +1134,11 @@ function StockIntakePreview({
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="border-b border-neutral-200 bg-neutral-50/80 text-[10px] font-black uppercase tracking-wider text-neutral-600">
+            <thead className="border-b border-neutral-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-3 py-2.5 text-center w-10">#</th>
                 <th className="px-3 py-2.5">Medicine Description</th>
+                <th className="px-3 py-2.5">Brand</th>
                 <th className="px-3 py-2.5">Lot Number</th>
                 <th className="px-3 py-2.5 text-right">Quantity</th>
                 <th className="px-3 py-2.5 text-right">Unit Cost</th>
@@ -927,10 +1163,12 @@ function StockIntakePreview({
                         {med?.generic_name || "Unknown Medicine"}
                       </p>
                       <p className="text-[11px] text-neutral-500">
-                        {med?.brand_name ? `Brand: ${med.brand_name} • ` : ""}
                         {med?.dosage ? `Dosage: ${med.dosage} • ` : ""}
                         {med?.unit_of_measure ? `Unit: ${med.unit_of_measure}` : ""}
                       </p>
+                    </td>
+                    <td className="px-3 py-2.5 font-semibold text-neutral-800">
+                      {item.brand_name || med?.brand_name || "—"}
                     </td>
                     <td className="px-3 py-2.5 font-mono">
                       <span className="inline-block rounded-md bg-neutral-100 border border-neutral-200 px-2 py-0.5 text-[11px] font-bold text-neutral-800">
@@ -1349,13 +1587,13 @@ function StockDetailsHeader({ item, lots = [] }) {
           <p className="mt-0.5 text-xs font-semibold text-neutral-500">
             {isExpired
               ? "Segregated expired batches. Non-dispensable and pending condemnation disposal."
-              : "Commercial supplier procurement stock across registered batches for this facility."}
+              : "Supplier procurement stock across registered batches for this facility."}
           </p>
         </div>
         {supplierLots.length > 0 && (
           <span
             className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-black ${
-              isExpired ? "bg-red-100 text-red-700" : "bg-[#f7f6f3] text-[#0d1117]"
+              isExpired ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-800"
             }`}
           >
             {supplierLots.length} procurement batch{supplierLots.length === 1 ? "" : "es"}
@@ -1367,7 +1605,7 @@ function StockDetailsHeader({ item, lots = [] }) {
         {/* Card 1: Total Physical Stock */}
         <div
           className={`min-w-0 rounded-lg p-2.5 ${
-            isExpired ? "bg-red-50/60 ring-1 ring-red-100" : "bg-[#f7f6f3]"
+            isExpired ? "bg-red-50/60 ring-1 ring-red-100" : "bg-slate-100"
           }`}
         >
           <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
@@ -1395,7 +1633,7 @@ function StockDetailsHeader({ item, lots = [] }) {
           className={`min-w-0 rounded-lg p-2.5 ${
             isExpired
               ? "bg-red-50 text-red-700 ring-1 ring-red-200"
-              : "bg-[#f7f6f3]"
+              : "bg-slate-100"
           }`}
         >
           <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
@@ -1422,7 +1660,7 @@ function StockDetailsHeader({ item, lots = [] }) {
         </div>
 
         {/* Card 3: Brand Name */}
-        <div className="min-w-0 rounded-lg bg-[#f7f6f3] p-2.5">
+        <div className="min-w-0 rounded-lg bg-slate-100 p-2.5">
           <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
             Brand Name
           </dt>
@@ -1441,7 +1679,7 @@ function StockDetailsHeader({ item, lots = [] }) {
         </div>
 
         {/* Card 4: Nearest Expiry */}
-        <div className="min-w-0 rounded-lg bg-[#f7f6f3] p-2.5">
+        <div className="min-w-0 rounded-lg bg-slate-100 p-2.5">
           <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-neutral-500">
             {isExpired ? "Date Expired" : "Nearest Expiry"}
           </dt>

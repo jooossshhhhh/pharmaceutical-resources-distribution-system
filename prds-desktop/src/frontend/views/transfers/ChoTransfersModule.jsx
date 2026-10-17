@@ -182,7 +182,7 @@ function TransferDetailsModal({
 
           <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
             <table className="w-full text-left text-sm">
-              <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+              <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Medicine</th>
                   <th className="px-4 py-3">Details</th>
@@ -246,7 +246,7 @@ function TransferDetailsModal({
         <button
           type="button"
           onClick={onClose}
-          className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+          className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
         >
           Close
         </button>
@@ -470,7 +470,7 @@ function NewTransferModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
           >
             Cancel
           </button>
@@ -686,7 +686,7 @@ const updateCreateForm = (key, value) => {
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <div className="inline-flex rounded-lg border border-[#d8dadc] bg-[#f7f6f3] p-1">
+              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1">
                 <button
                   type="button"
                   onClick={() => setStatusFilter("ACTIVE")}
@@ -799,7 +799,7 @@ const updateCreateForm = (key, value) => {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+              <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Transfer ID</th>
                   <th className="px-4 py-3">Route</th>

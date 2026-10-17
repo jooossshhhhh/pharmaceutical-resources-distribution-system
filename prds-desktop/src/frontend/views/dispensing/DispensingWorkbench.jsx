@@ -4,7 +4,8 @@ import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import { supabase } from "@backend/client/supabase";
-import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { isChoFacility } from "@shared/utils/facilityUtils";
 import {
   calculateAge,
   formatPatientCode,
@@ -35,10 +36,14 @@ import {
   getMedicineLabel,
 } from "@shared/utils/dispensingUtils";
 import {
+  AlertTriangleIcon,
   ArrowRightIcon,
+  BuildingIcon,
+  CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
   DispensingModal,
+  EyeIcon,
   FOCUS_RING,
   Input,
   PatientAvatar,
@@ -148,7 +153,7 @@ function ReceiptModal({ onClose, onExport, receipt }) {
 
         <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+            <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-3">Medicine</th>
                 <th className="px-4 py-3">Batch</th>
@@ -161,7 +166,18 @@ function ReceiptModal({ onClose, onExport, receipt }) {
                 line.preview.allocations.map((allocation, allocationIndex) => (
                   <tr key={`${line.medicine_id}-${allocation.inventory_id}`}>
                     <td className="px-4 py-3 font-bold text-[#0d1117]">
-                      {allocationIndex === 0 ? getMedicineLabel(line.option.medicine) : ""}
+                      {allocationIndex === 0 ? (
+                        <div>
+                          <p>{getMedicineLabel(line.option.medicine)}</p>
+                          {line.follow_up_action && (
+                            <span className="mt-1 inline-block rounded bg-[#ecfff8] px-2 py-0.5 text-[10px] font-semibold text-[#008f68] border border-[#6be9c2]/50">
+                              {getFollowUpDisplay(line)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        ""
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-[#5f6673]">{allocation.batch_number}</td>
                     <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
@@ -203,14 +219,60 @@ function ReceiptModal({ onClose, onExport, receipt }) {
 export default function DispensingWorkbench() {
   const { profile } = useAuth();
   const isBhw = profile?.role === "BHW";
+
+  const [facilities, setFacilities] = useState(() => getSnapshot(STORAGE_KEYS.FACILITIES, []));
+
+  useEffect(() => {
+    let active = true;
+    const cached = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+    if (cached && cached.length > 0) {
+      setFacilities(cached);
+    }
+    supabase
+      .from("facilities")
+      .select("id, facility_name, facility_code, facility_type, status, address")
+      .eq("status", "ACTIVE")
+      .then(({ data, error }) => {
+        if (!error && data && active) {
+          setFacilities(data);
+          saveSnapshot(STORAGE_KEYS.FACILITIES, data);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const choFacility = useMemo(() => {
+    const list = facilities.length > 0 ? facilities : getSnapshot(STORAGE_KEYS.FACILITIES, []);
+    return (
+      list.find(
+        (f) =>
+          f.facility_code === "CHO-NAGA" ||
+          f.facility_code === "CHO" ||
+          f.facility_type === "CHO" ||
+          isChoFacility(f)
+      ) || null
+    );
+  }, [facilities]);
+
   const profileFacilityId = useMemo(() => {
     if (profile?.facility_id) return profile.facility_id;
-    const cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
-    const cho = cachedFacilities.find(
-      (f) => f.facility_code === "CHO-NAGA" || f.facility_type === "CHO"
+    return choFacility?.id || null;
+  }, [profile?.facility_id, choFacility?.id]);
+
+  const currentFacility = useMemo(() => {
+    return (
+      profile?.facility ||
+      facilities.find((f) => f.id === profileFacilityId) ||
+      null
     );
-    return cho?.id || null;
-  }, [profile?.facility_id]);
+  }, [profile?.facility, facilities, profileFacilityId]);
+
+  const isDispensingFromCho = useMemo(() => {
+    if (isBhw) return false;
+    return isChoFacility(currentFacility);
+  }, [isBhw, currentFacility]);
 
   // Wizard step
   const [wizardStep, setWizardStep] = useState(1);
@@ -228,6 +290,22 @@ export default function DispensingWorkbench() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [activePatientClaim, setActivePatientClaim] = useState(null);
 
+  // If dispensing from Barangay Health Center (BHW or HC), refer to City Health Office (CHO).
+  // If dispensing from CHO, refer to the patient's assigned Barangay Health Center.
+  const defaultReferralFacility = useMemo(() => {
+    if (!isDispensingFromCho) {
+      return (
+        choFacility || {
+          id: "CHO",
+          facility_name: "City Health Office",
+          facility_code: "CHO-NAGA",
+          facility_type: "CHO",
+        }
+      );
+    }
+    return selectedPatient?.facility || null;
+  }, [isDispensingFromCho, choFacility, selectedPatient?.facility]);
+
   // Cart & dispensing state
   const [medicineKeyword, setMedicineKeyword] = useState("");
   const [cart, setCart] = useState([]);
@@ -236,6 +314,7 @@ export default function DispensingWorkbench() {
   const [referralStockError, setReferralStockError] = useState("");
   const [isLoadingReferralStock, setIsLoadingReferralStock] = useState(false);
   const [stockModalMedicineId, setStockModalMedicineId] = useState("");
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
 
   const [receipt, setReceipt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -417,18 +496,29 @@ export default function DispensingWorkbench() {
 
   const selectedClaimed = selectedPatient ? claimedIds.has(selectedPatient.id) : false;
 
-  const referralMedicineIds = useMemo(
+  const unreleasedMedicineIds = useMemo(
     () =>
       cart
-        .filter(
-          (line) =>
-            line.follow_up_action === FOLLOW_UP_ACTIONS.refer &&
-            Number(line.needed_quantity || 0) >
-              (Number(line.previous_released || 0) + Number(line.quantity || 0))
-        )
+        .filter((line) => {
+          const needed = Number(line.needed_quantity || line.quantity || 0);
+          const released = Number(line.previous_released || 0) + Number(line.quantity || 0);
+          return needed > released;
+        })
         .map((line) => line.medicine_id),
     [cart]
   );
+
+  const partiallyReleasedLines = useMemo(
+    () =>
+      cartLines.filter((line) => {
+        const needed = Number(line.needed_quantity ?? line.quantity ?? 0);
+        const released = Number(line.previous_released || 0) + Number(line.quantity || 0);
+        return needed > released;
+      }),
+    [cartLines]
+  );
+
+  const hasPartialReleases = partiallyReleasedLines.length > 0;
 
   const referralStockByMedicineId = useMemo(() => {
     const stock = new Map();
@@ -437,6 +527,7 @@ export default function DispensingWorkbench() {
       if (!stock.has(row.medicine_id)) {
         stock.set(row.medicine_id, {
           batchCount: 0,
+          batches: [],
           nearestExpiration: row.expiration_date,
           totalUnits: 0,
         });
@@ -445,6 +536,12 @@ export default function DispensingWorkbench() {
       const entry = stock.get(row.medicine_id);
       entry.batchCount += 1;
       entry.totalUnits += Number(row.quantity || 0);
+      entry.batches.push({
+        id: row.id,
+        batch_number: row.batch_number,
+        expiration_date: row.expiration_date,
+        quantity: Number(row.quantity || 0),
+      });
       entry.nearestExpiration =
         !entry.nearestExpiration || row.expiration_date < entry.nearestExpiration
           ? row.expiration_date
@@ -459,8 +556,10 @@ export default function DispensingWorkbench() {
     [cartLines, stockModalMedicineId]
   );
 
+  const targetReferralFacilityId = defaultReferralFacility?.id;
+
   useEffect(() => {
-    if (wizardStep !== 3 || !selectedPatient?.facility_id || referralMedicineIds.length === 0) {
+    if (wizardStep !== 3 || !targetReferralFacilityId || unreleasedMedicineIds.length === 0) {
       setReferralStockRows([]);
       setReferralStockError("");
       setIsLoadingReferralStock(false);
@@ -471,8 +570,8 @@ export default function DispensingWorkbench() {
 
     setIsLoadingReferralStock(true);
     getFacilityMedicineStockOverview({
-      facilityId: selectedPatient.facility_id,
-      medicineIds: referralMedicineIds,
+      facilityId: targetReferralFacilityId,
+      medicineIds: unreleasedMedicineIds,
     })
       .then((rows) => {
         if (active) {
@@ -483,7 +582,10 @@ export default function DispensingWorkbench() {
       .catch((stockError) => {
         if (active) {
           setReferralStockRows([]);
-          setReferralStockError(stockError.message || "Unable to load barangay stock.");
+          setReferralStockError(
+            stockError.message ||
+              `Unable to load ${isDispensingFromCho ? "barangay" : "City Health Office"} stock.`
+          );
         }
       })
       .finally(() => {
@@ -495,7 +597,7 @@ export default function DispensingWorkbench() {
     return () => {
       active = false;
     };
-  }, [referralMedicineIds, selectedPatient?.facility_id, wizardStep]);
+  }, [unreleasedMedicineIds, targetReferralFacilityId, wizardStep, isDispensingFromCho]);
 
   const canReview = Boolean(
     selectedPatient &&
@@ -739,6 +841,12 @@ export default function DispensingWorkbench() {
     );
   };
 
+  const getPresetDate = (days) => {
+    const target = new Date();
+    target.setDate(target.getDate() + days);
+    return target.toISOString().slice(0, 10);
+  };
+
   const updateFollowUpAction = (medicineId, action) => {
     setCart((current) =>
       current.map((line) =>
@@ -750,8 +858,10 @@ export default function DispensingWorkbench() {
                 action === FOLLOW_UP_ACTIONS.schedule
                   ? line.follow_up_date || getDefaultFollowUpDate()
                   : "",
+              referred_facility:
+                action === FOLLOW_UP_ACTIONS.refer ? defaultReferralFacility : null,
               referred_facility_id:
-                action === FOLLOW_UP_ACTIONS.refer ? selectedPatient?.facility_id || "" : "",
+                action === FOLLOW_UP_ACTIONS.refer ? defaultReferralFacility?.id || "" : "",
             }
           : line
       )
@@ -786,7 +896,9 @@ export default function DispensingWorkbench() {
           medicine_id: line.medicine_id,
           needed_quantity: Number(line.needed_quantity ?? line.quantity),
           quantity: Number(line.quantity),
-          referred_facility_id: line.referred_facility_id || null,
+          referred_facility_id:
+            line.referred_facility_id ||
+            (line.follow_up_action === FOLLOW_UP_ACTIONS.refer ? defaultReferralFacility?.id : null),
         })),
         patientId: selectedPatient.id,
         prescribedBy: prescribedBy.trim(),
@@ -838,7 +950,9 @@ export default function DispensingWorkbench() {
             follow_up_action: line.follow_up_action || null,
             follow_up_date: line.follow_up_date || null,
             referred_facility:
-              line.follow_up_action === FOLLOW_UP_ACTIONS.refer ? receipt.patient.facility : null,
+              line.follow_up_action === FOLLOW_UP_ACTIONS.refer
+                ? (line.referred_facility || defaultReferralFacility)
+                : null,
           }))
         ),
         totalQuantity: receipt.lines.reduce((total, line) => total + Number(line.quantity || 0), 0),
@@ -854,108 +968,311 @@ export default function DispensingWorkbench() {
   };
 
   const renderReferralStockOverview = (line) => {
+    const destinationShortName = isDispensingFromCho ? "Barangay Health Center" : "City Health Office (CHO)";
+    const destinationFullName =
+      defaultReferralFacility?.facility_name || destinationShortName;
+
     if (isLoadingReferralStock) {
-      return <p className="text-sm text-[#5f6673]">Checking barangay stock...</p>;
-    }
-
-    if (referralStockError) {
-      return <p className="text-sm font-bold text-red-600">{referralStockError}</p>;
-    }
-
-    const stock = referralStockByMedicineId.get(line.medicine_id);
-
-    if (!stock || stock.totalUnits <= 0) {
       return (
-        <p className="rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] p-4 text-sm text-[#5f6673]">
-          No available stock recorded.
-        </p>
+        <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] p-5 text-sm text-[#5f6673]">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#00a36c] border-t-transparent" />
+          <span>Checking stock availability at {destinationFullName}...</span>
+        </div>
       );
     }
 
+    if (referralStockError) {
+      return (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700">
+          {referralStockError}
+        </div>
+      );
+    }
+
+    const totalReleasedSoFar = Number(line.previous_released || 0) + Number(line.quantity || 0);
+    const needed = Number(line.needed_quantity ?? line.quantity ?? 0);
+    const remainingAfterThisRelease = Math.max(0, needed - totalReleasedSoFar);
+
+    const stock = referralStockByMedicineId.get(line.medicine_id);
+    const totalUnits = stock ? stock.totalUnits : 0;
+    const isFullyCovered = totalUnits >= remainingAfterThisRelease;
+    const hasBatches = stock?.batches && stock.batches.length > 0;
+
     return (
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Available quantity</p>
-          <p className="mt-1 text-lg font-bold text-[#0d1117] tabular-nums">{stock.totalUnits.toLocaleString()}</p>
+      <div className="space-y-3.5">
+        {/* Medicine & Balance Card */}
+        <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-3.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Medicine</p>
+              <p className="mt-0.5 text-sm font-bold text-[#0d1117] leading-snug">
+                {line.option ? getMedicineLabel(line.option.medicine) : "Unavailable"}
+              </p>
+              {line.option && (
+                <p className="mt-0.5 text-xs text-[#5f6673]">
+                  {getMedicineFullLabel(line.option.medicine)}
+                </p>
+              )}
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Unreleased</p>
+              <span className="mt-0.5 inline-flex items-center rounded-lg bg-amber-100/90 px-2.5 py-1 text-xs font-black text-amber-900 border border-amber-200">
+                {remainingAfterThisRelease} {remainingAfterThisRelease === 1 ? "unit" : "units"}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Batch count</p>
-          <p className="mt-1 text-lg font-bold text-[#0d1117] tabular-nums">{stock.batchCount.toLocaleString()}</p>
+
+        {/* Compact Stock Status Banner */}
+        <div
+          className={`flex items-center justify-between gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs ${
+            totalUnits <= 0
+              ? "border-rose-200 bg-rose-50 text-rose-900"
+              : isFullyCovered
+              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${
+                totalUnits <= 0
+                  ? "bg-rose-600"
+                  : isFullyCovered
+                  ? "bg-[#00a36c]"
+                  : "bg-amber-600"
+              }`}
+            >
+              {totalUnits <= 0 ? "✕" : isFullyCovered ? "✓" : "!"}
+            </span>
+            <span className="font-semibold">
+              {totalUnits <= 0
+                ? `0 units available at ${destinationShortName}`
+                : isFullyCovered
+                ? `Stock available (${totalUnits.toLocaleString()} units available)`
+                : `Partial stock: ${totalUnits.toLocaleString()} of ${remainingAfterThisRelease} units available`}
+            </span>
+          </div>
+
+          {stock?.nearestExpiration && totalUnits > 0 && (
+            <span className="shrink-0 text-[11px] font-medium text-[#5f6673]">
+              Exp: {stock.nearestExpiration}
+            </span>
+          )}
         </div>
-        <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Nearest expiration</p>
-          <p className="mt-1 text-sm font-bold text-[#0d1117]">{stock.nearestExpiration || "No date"}</p>
+
+        {/* Batch Breakdown Table */}
+        {hasBatches ? (
+          <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+            <div className="border-b border-[#e5e7eb] bg-[#f8f9ff] px-3.5 py-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#6b7280]">
+                Active Batches ({destinationShortName})
+              </p>
+            </div>
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-3.5 py-2">Batch / Lot #</th>
+                  <th className="px-3.5 py-2 text-right">Available Qty</th>
+                  <th className="px-3.5 py-2 text-right">Expiration</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#edf0f2]">
+                {stock.batches.map((batch) => (
+                  <tr key={batch.id || batch.batch_number}>
+                    <td className="px-3.5 py-2 font-mono font-bold text-[#0d1117]">
+                      {batch.batch_number || "No Batch #"}
+                    </td>
+                    <td className="px-3.5 py-2 text-right font-bold text-[#0d1117] tabular-nums">
+                      {batch.quantity.toLocaleString()}
+                    </td>
+                    <td className="px-3.5 py-2 text-right text-[#5f6673]">
+                      {batch.expiration_date || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : totalUnits <= 0 ? (
+          <div className="rounded-xl border border-dashed border-[#d8dadc] p-4 text-center text-xs text-[#5f6673]">
+            No batches available at {destinationFullName}. Consider scheduling a return date instead.
+          </div>
+        ) : null}
+
+        {/* Modal Action Footer */}
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={() => setStockModalMedicineId("")}
+            className={`h-9 rounded-lg bg-[#00a36c] px-5 text-xs font-bold text-white shadow-xs transition hover:bg-[#008f68] ${FOCUS_RING}`}
+          >
+            Got It
+          </button>
         </div>
       </div>
     );
   };
 
-  const renderFollowUpControl = (line) => {
-    const totalReleasedSoFar = Number(line.previous_released || 0) + Number(line.quantity || 0);
-    const needed = Number(line.needed_quantity || line.quantity || 0);
-    const remainingAfterThisRelease = Math.max(0, needed - totalReleasedSoFar);
-    const isPartialRelease = remainingAfterThisRelease > 0;
+  const renderFollowUpOptions = (line, remainingAfterThisRelease) => {
+    const destinationName =
+      defaultReferralFacility?.facility_name ||
+      (isDispensingFromCho ? "Barangay Health Center" : "City Health Office (CHO)");
+    const destinationShortName = isDispensingFromCho ? "Barangay" : "CHO";
+    const referralActionLabel = isDispensingFromCho
+      ? `Refer to barangay${defaultReferralFacility?.facility_name ? ` - ${defaultReferralFacility.facility_name}` : ""}`
+      : "Refer to City Health Office (CHO)";
 
-    if (!isPartialRelease) {
-      return (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#008f68]">
-          <CheckIcon /> All {needed} units released
-        </span>
-      );
-    }
+    const stock = referralStockByMedicineId.get(line.medicine_id);
+    const hasStock = Boolean(stock);
+    const availableUnits = stock ? stock.totalUnits : 0;
 
     return (
-      <div className="min-w-[240px] space-y-2">
-        <p className="text-[11px] font-bold text-amber-800">
-          {remainingAfterThisRelease} unit{remainingAfterThisRelease === 1 ? "" : "s"} left to release:
-        </p>
-        <label className="flex items-center gap-2 text-xs font-semibold text-[#42474e]">
+      <div className="space-y-2">
+        {/* Option 1: No Follow-Up */}
+        <label
+          className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 transition ${
+            !line.follow_up_action
+              ? "border-[#00a36c] bg-[#ecfff8]/50 ring-1 ring-[#00a36c]"
+              : "border-[#e5e7eb] bg-white hover:border-[#cfd5dc] hover:bg-[#fafafa]"
+          }`}
+        >
           <input
             name={`follow-up-${line.medicine_id}`}
             type="radio"
             checked={!line.follow_up_action}
             onChange={() => updateFollowUpAction(line.medicine_id, "")}
+            className="mt-0.5 text-[#00a36c] focus:ring-[#00a36c]"
           />
-          No follow-up recorded
+          <div className="min-w-0 flex-1">
+            <span className="block text-xs font-bold text-[#0d1117]">No follow-up recorded</span>
+            <span className="block text-[11px] text-[#5f6673]">
+              Close claim without scheduling or referral
+            </span>
+          </div>
         </label>
-        <label className="flex items-center gap-2 text-xs font-semibold text-[#42474e]">
-          <input
-            name={`follow-up-${line.medicine_id}`}
-            type="radio"
-            checked={line.follow_up_action === FOLLOW_UP_ACTIONS.schedule}
-            onChange={() => updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.schedule)}
-          />
-          Schedule next release
-        </label>
-        {line.follow_up_action === FOLLOW_UP_ACTIONS.schedule && (
-          <Input
-            type="date"
-            value={line.follow_up_date || ""}
-            onChange={(event) => updateFollowUpDate(line.medicine_id, event.target.value)}
-          />
-        )}
-        <label className="flex items-center gap-2 text-xs font-semibold text-[#42474e]">
-          <input
-            name={`follow-up-${line.medicine_id}`}
-            type="radio"
-            checked={line.follow_up_action === FOLLOW_UP_ACTIONS.refer}
-            onChange={() => {
-              updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.refer);
-              setIsLoadingReferralStock(true);
-              setStockModalMedicineId(line.medicine_id);
-            }}
-          />
-          Refer to barangay
-        </label>
-        {line.follow_up_action === FOLLOW_UP_ACTIONS.refer && (
-          <button
-            type="button"
-            onClick={() => setStockModalMedicineId(line.medicine_id)}
-            className={`h-9 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
-          >
-            View barangay stock
-          </button>
-        )}
+
+        {/* Option 2: Schedule Return Release */}
+        <div
+          className={`rounded-lg border p-2.5 transition ${
+            line.follow_up_action === FOLLOW_UP_ACTIONS.schedule
+              ? "border-[#00a36c] bg-[#ecfff8]/50 ring-1 ring-[#00a36c]"
+              : "border-[#e5e7eb] bg-white hover:border-[#cfd5dc] hover:bg-[#fafafa]"
+          }`}
+        >
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              name={`follow-up-${line.medicine_id}`}
+              type="radio"
+              checked={line.follow_up_action === FOLLOW_UP_ACTIONS.schedule}
+              onChange={() => updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.schedule)}
+              className="mt-0.5 text-[#00a36c] focus:ring-[#00a36c]"
+            />
+            <div className="min-w-0 flex-1">
+              <span className="block text-xs font-bold text-[#0d1117]">Schedule next release</span>
+              <span className="block text-[11px] text-[#5f6673]">
+                Patient returns to this health center on a set date
+              </span>
+            </div>
+          </label>
+
+          {line.follow_up_action === FOLLOW_UP_ACTIONS.schedule && (
+            <div className="mt-2.5 space-y-2 border-t border-[#e5e7eb] pt-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  min={new Date().toISOString().slice(0, 10)}
+                  value={line.follow_up_date || ""}
+                  onChange={(event) => updateFollowUpDate(line.medicine_id, event.target.value)}
+                  className="h-8 text-xs font-medium"
+                />
+              </div>
+              {/* Date Quick Preset Buttons */}
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => updateFollowUpDate(line.medicine_id, getPresetDate(7))}
+                  className="rounded-md border border-[#d8dadc] bg-white px-2 py-0.5 text-[10px] font-bold text-[#42474e] transition hover:border-[#00a36c] hover:bg-[#eff4ff]"
+                >
+                  +7 Days (Next week)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateFollowUpDate(line.medicine_id, getPresetDate(14))}
+                  className="rounded-md border border-[#d8dadc] bg-white px-2 py-0.5 text-[10px] font-bold text-[#42474e] transition hover:border-[#00a36c] hover:bg-[#eff4ff]"
+                >
+                  +14 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateFollowUpDate(line.medicine_id, getPresetDate(30))}
+                  className="rounded-md border border-[#d8dadc] bg-white px-2 py-0.5 text-[10px] font-bold text-[#42474e] transition hover:border-[#00a36c] hover:bg-[#eff4ff]"
+                >
+                  +30 Days
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Option 3: Refer to Facility (City Health Office or Barangay) */}
+        <div
+          className={`rounded-lg border p-2.5 transition ${
+            line.follow_up_action === FOLLOW_UP_ACTIONS.refer
+              ? "border-[#00a36c] bg-[#ecfff8]/50 ring-1 ring-[#00a36c]"
+              : "border-[#e5e7eb] bg-white hover:border-[#cfd5dc] hover:bg-[#fafafa]"
+          }`}
+        >
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              name={`follow-up-${line.medicine_id}`}
+              type="radio"
+              checked={line.follow_up_action === FOLLOW_UP_ACTIONS.refer}
+              onChange={() => updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.refer)}
+              className="mt-0.5 text-[#00a36c] focus:ring-[#00a36c]"
+            />
+            <div className="min-w-0 flex-1">
+              <span className="block text-xs font-bold text-[#0d1117]">{referralActionLabel}</span>
+              <span className="block text-[11px] text-[#5f6673]">
+                {destinationName}
+              </span>
+            </div>
+          </label>
+
+          {/* Live Stock Availability Preview & Details Link */}
+          <div className="mt-2 space-y-1.5 border-t border-[#e5e7eb] pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
+              {isLoadingReferralStock ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#5f6673] animate-pulse">
+                  <span className="h-2 w-2 rounded-full bg-slate-400"></span>
+                  Checking {destinationShortName} stock...
+                </span>
+              ) : hasStock && availableUnits >= remainingAfterThisRelease ? (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100/80 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                  <CheckIcon /> {availableUnits.toLocaleString()} units available at {destinationShortName}
+                </span>
+              ) : hasStock && availableUnits > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-100/80 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                  ⚠ Only {availableUnits.toLocaleString()} units at {destinationShortName} (Partial)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md bg-rose-100/80 px-2 py-0.5 text-[11px] font-bold text-rose-800">
+                  ✕ 0 units available at {destinationShortName}
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setStockModalMedicineId(line.medicine_id)}
+                className="inline-flex items-center gap-1 rounded border border-[#d8dadc] bg-white px-2 py-1 text-[11px] font-bold text-[#0d1117] shadow-xs transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+                title={`View detailed batch list and expiration dates at ${destinationName}`}
+              >
+                <EyeIcon /> View {destinationShortName} Stock
+              </button>
+            </div>
+          </div>
+        </div>
+
         {line.error && <p className="text-xs font-bold text-red-600">{line.error}</p>}
       </div>
     );
@@ -977,7 +1294,7 @@ export default function DispensingWorkbench() {
               Dispensing Management
             </p>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#6be9c2] px-3 py-1 text-xs font-bold text-[#0d1117]">
-              <PillIcon /> CHO Medicine Release
+              <PillIcon /> {isDispensingFromCho ? "CHO Medicine Release" : "Barangay Health Center Release"}
             </span>
           </div>
           <h1 className="mt-2 text-xl font-bold text-[#0d1117]">Dispensing</h1>
@@ -1117,7 +1434,7 @@ export default function DispensingWorkbench() {
                                     onClick={() => selectPatient(patient)}
                                     className={`h-9 rounded-lg px-4 text-xs font-bold shadow-sm transition ${FOCUS_RING} ${
                                       isSelectedCard
-                                        ? "border border-[#d8dadc] bg-white text-[#0d1117] hover:bg-[#f7f6f3]"
+                                        ? "border border-slate-200 bg-white text-[#0d1117] hover:bg-slate-100"
                                         : "bg-black text-white hover:bg-[#0d1117]"
                                     }`}
                                   >
@@ -1275,7 +1592,7 @@ export default function DispensingWorkbench() {
                         <h3 className="text-sm font-bold text-[#0d1117]">Available medicines</h3>
                         <p className="mt-0.5 text-xs text-[#5f6673]">Select from current facility stock.</p>
                       </div>
-                      <span className="rounded-full bg-[#f7f6f3] border border-[#d8dadc] px-2.5 py-1 text-xs font-semibold text-[#5f6673] tabular-nums">
+                      <span className="rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 tabular-nums">
                         {isSearchActive
                           ? `${displayedMedicineOptions.length.toLocaleString()} matching`
                           : `${allAvailableMedicines.length.toLocaleString()} in stock`}
@@ -1365,7 +1682,7 @@ export default function DispensingWorkbench() {
                                 isCompletedForMonth
                                   ? "cursor-not-allowed border-[#e5e7eb] bg-[#f4f5f7] opacity-60"
                                   : inCart
-                                    ? "cursor-default border-[#d8dadc] bg-[#f7f6f3]"
+                                    ? "cursor-default border-slate-200 bg-slate-100"
                                     : "border-[#e5e7eb] bg-[#f8f9ff] hover:border-[#c7ccd3] hover:bg-white hover:shadow-sm"
                               }`}
                             >
@@ -1387,7 +1704,7 @@ export default function DispensingWorkbench() {
                                   className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ${
                                     lowStock
                                       ? "bg-amber-100 text-amber-700"
-                                      : "bg-[#f7f6f3] text-[#42474e]"
+                                      : "bg-slate-100 text-slate-700"
                                   }`}
                                 >
                                   {option.total_quantity.toLocaleString()} units
@@ -1469,8 +1786,8 @@ export default function DispensingWorkbench() {
                     </div>
 
                     {cartLines.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-[#d8dadc] bg-white px-4 py-10 text-center">
-                        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#f7f6f3] text-[#9aa1ad]">
+                      <div className="rounded-xl border border-dashed border-slate-200/90 bg-slate-50/80 px-4 py-10 text-center">
+                        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
                           <PillIcon />
                         </span>
                         <p className="mt-3 text-sm font-bold text-[#0d1117]">No medicines added yet</p>
@@ -1618,7 +1935,7 @@ export default function DispensingWorkbench() {
                   <button
                     type="button"
                     onClick={() => setWizardStep(1)}
-                    className={`h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
+                    className={`h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80 ${FOCUS_RING}`}
                   >
                     Back to Patient
                   </button>
@@ -1696,12 +2013,11 @@ export default function DispensingWorkbench() {
 
                 <div className="overflow-x-auto rounded-xl border border-[#e5e7eb]">
                   <table className="w-full min-w-[720px] text-left text-sm">
-                    <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                    <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                       <tr>
                         <th className="px-4 py-3">Medicine</th>
                         <th className="px-4 py-3 text-right">Needed quantity</th>
                         <th className="px-4 py-3 text-right">Release quantity</th>
-                        <th className="px-4 py-3">Follow-up</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#edf0f2]">
@@ -1728,7 +2044,6 @@ export default function DispensingWorkbench() {
                           <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
                             {Number(line.quantity).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 align-top">{renderFollowUpControl(line)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1740,46 +2055,121 @@ export default function DispensingWorkbench() {
                 <button
                   type="button"
                   onClick={() => setWizardStep(2)}
-                  className={`h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff] ${FOCUS_RING}`}
+                  className={`h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80 ${FOCUS_RING}`}
                 >
                   Back to Medicines
                 </button>
-                <button
-                  type="button"
-                  onClick={handleComplete}
-                  disabled={!canComplete || isSaving}
-                  title={stepBlockers(3) || undefined}
-                  className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
-                >
-                  <CheckIcon /> Release
-                </button>
+                <div className="flex items-center gap-2.5">
+                  {hasPartialReleases && (
+                    <button
+                      type="button"
+                      onClick={() => setIsFollowUpModalOpen(true)}
+                      className={`inline-flex h-10 items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-bold text-amber-900 shadow-sm transition hover:bg-amber-100 ${FOCUS_RING}`}
+                      title="Configure follow-up action for partially released medicines"
+                    >
+                      <AlertTriangleIcon className="h-4 w-4 text-amber-600" />
+                      Follow-up
+                      <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-black text-amber-900">
+                        {partiallyReleasedLines.length}
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleComplete}
+                    disabled={!canComplete || isSaving}
+                    title={stepBlockers(3) || undefined}
+                    className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+                  >
+                    <CheckIcon /> Release
+                  </button>
+                </div>
               </div>
             </section>
           </div>
         )}
       </div>
 
-      {stockModalLine && (
+      {isFollowUpModalOpen && hasPartialReleases && (
         <DispensingModal
-          title="Barangay Stock Overview"
-          subtitle={selectedPatient?.facility?.facility_name || "Patient barangay facility"}
-          onClose={() => setStockModalMedicineId("")}
-          widthClass="max-w-xl"
+          title="Follow-up Action Setup"
+          subtitle={`Review follow-up actions for ${partiallyReleasedLines.length} partially released ${partiallyReleasedLines.length === 1 ? "medicine" : "medicines"} (${selectedPatient ? formatPatientName(selectedPatient) : "patient"})`}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          widthClass="max-w-2xl"
         >
           <div className="space-y-4">
-            <section className="rounded-xl border border-[#e5e7eb] bg-white p-4">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Medicine</p>
-              <p className="mt-1 text-base font-bold text-[#0d1117]">
-                {stockModalLine.option ? getMedicineLabel(stockModalLine.option.medicine) : "Unavailable"}
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
+              <p className="font-bold">Unreleased Balances Detected</p>
+              <p className="mt-0.5 text-amber-800">
+                The current release does not fulfill the total needed quantity for the medicines below. Choose whether to schedule a return date, refer the patient to {isDispensingFromCho ? "their barangay health center" : "the City Health Office (CHO)"}, or record no follow-up.
               </p>
-              {stockModalLine.option && (
-                <p className="mt-1 text-xs text-[#5f6673]">
-                  {getMedicineFullLabel(stockModalLine.option.medicine)}
-                </p>
-              )}
-            </section>
-            {renderReferralStockOverview(stockModalLine)}
+            </div>
+
+            <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+              {partiallyReleasedLines.map((line) => {
+                const totalReleasedSoFar = Number(line.previous_released || 0) + Number(line.quantity || 0);
+                const needed = Number(line.needed_quantity ?? line.quantity ?? 0);
+                const remainingAfterThisRelease = Math.max(0, needed - totalReleasedSoFar);
+
+                return (
+                  <div
+                    key={line.medicine_id}
+                    className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-xs space-y-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e5e7eb] pb-3">
+                      <div>
+                        <p className="text-sm font-bold text-[#0d1117]">
+                          {line.option ? getMedicineLabel(line.option.medicine) : "Medicine"}
+                        </p>
+                        {line.option && (
+                          <p className="mt-0.5 text-xs text-[#5f6673]">
+                            {getMedicineFullLabel(line.option.medicine)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-[#42474e]">
+                          Needed: {needed}
+                        </span>
+                        <span className="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-[#42474e]">
+                          Releasing: {line.quantity}
+                        </span>
+                        <span className="rounded-md bg-amber-100 px-2 py-0.5 font-bold text-amber-900">
+                          Remaining: {remainingAfterThisRelease}
+                        </span>
+                      </div>
+                    </div>
+
+                    {renderFollowUpOptions(line, remainingAfterThisRelease)}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end border-t border-[#e5e7eb] pt-3">
+              <button
+                type="button"
+                onClick={() => setIsFollowUpModalOpen(false)}
+                className={`h-10 rounded-lg bg-[#00a36c] px-6 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] ${FOCUS_RING}`}
+              >
+                Done
+              </button>
+            </div>
           </div>
+        </DispensingModal>
+      )}
+
+      {stockModalLine && (
+        <DispensingModal
+          title={isDispensingFromCho ? "Barangay Stock Availability" : "City Health Office (CHO) Stock Availability"}
+          subtitle={
+            defaultReferralFacility?.facility_name ||
+            (isDispensingFromCho ? "Patient's Barangay Health Station" : "City Health Office Central Pharmacy")
+          }
+          onClose={() => setStockModalMedicineId("")}
+          widthClass="max-w-lg"
+        >
+          {renderReferralStockOverview(stockModalLine)}
         </DispensingModal>
       )}
 

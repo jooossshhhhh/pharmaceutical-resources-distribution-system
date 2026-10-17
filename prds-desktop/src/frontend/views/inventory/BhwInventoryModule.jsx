@@ -13,7 +13,7 @@ import {
   RequestIcon,
   SearchIcon,
 } from "./inventoryComponents";
-import { formatCurrency, formatNumber } from "@shared/utils/inventoryUtils";
+import { formatNumber } from "@shared/utils/inventoryUtils";
 import { BhwStockModal } from "./components/BhwStockModal";
 
 export default function BhwInventoryModule() {
@@ -92,9 +92,9 @@ export default function BhwInventoryModule() {
               compact
             />
             <MetricCard
-              label="Estimated Loss Value"
-              value={formatCurrency(expiredSummary.totalLossValue)}
-              sub="based on unit acquisition cost"
+              label="Quarantined Batches"
+              value={formatNumber(expiredSummary.totalLots ?? expiredSummary.totalItems)}
+              sub="batches requiring return"
               compact
             />
             <MetricCard
@@ -148,10 +148,7 @@ export default function BhwInventoryModule() {
       <section className="mt-3.5 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xs">
         <div className="flex flex-col gap-2.5 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
           <h2 className="text-base font-black text-[#0d1117]">
-            {inventoryTab === "EXPIRED" ? "Expired Stocks List" : "Dispensable Stock List"}{" "}
-            <span className="font-semibold text-neutral-400">
-              ({filteredInventory.length} items)
-            </span>
+            {inventoryTab === "EXPIRED" ? "Expired Stocks List" : "Dispensable Stock List"}
           </h2>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="relative block sm:w-80">

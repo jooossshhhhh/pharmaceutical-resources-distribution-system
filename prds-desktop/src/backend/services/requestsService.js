@@ -84,7 +84,7 @@ const buildRequestSelect = (withReceiptFields, withSourceFields) => `
         request_id,
         medicine_id,
         quantity,
-        medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost)
+        medicine:medicines(id, generic_name, dosage, unit_of_measure)
       )
 `;
 
@@ -188,14 +188,27 @@ export const getRequestsData = async ({ facilityId = null } = {}) => {
         .order("facility_name", { ascending: true }),
       supabase
         .from("inventory")
-        .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date"),
+        .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date, po_number, unit_cost, date_received")
+        .then(async (res) => {
+          if (
+            res.error &&
+            (res.error.code === "42703" ||
+              String(res.error.message || "").toLowerCase().includes("does not exist") ||
+              String(res.error.message || "").toLowerCase().includes("could not find the"))
+          ) {
+            return supabase
+              .from("inventory")
+              .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date");
+          }
+          return res;
+        }),
       supabase
         .from("forecasting")
         .select("id, facility_id, medicine_id, forecast_month, predicted_quantity")
         .order("forecast_month", { ascending: false }),
       supabase
         .from("medicines")
-        .select("id, generic_name, brand_name, dosage, unit_of_measure, unit_cost")
+        .select("id, generic_name, dosage, unit_of_measure")
         .order("generic_name", { ascending: true }),
       supabase
         .from("medicine_request_fulfillments")
@@ -284,7 +297,7 @@ export const reviewMedicineRequest = async ({
     if (!targetRequest) {
       targetRequest = {
         id: data || requestId,
-        status: "COMPLETED",
+        status: "APPROVED",
       };
     }
   } else {
@@ -346,10 +359,36 @@ export const getBhwRequestsData = async ({ facilityId }) => {
     throw firstError;
   }
 
+  const requestIds = (requestsResult || []).map((r) => r.id);
+  let fulfillmentsResult = { data: [] };
+
+  if (requestIds.length > 0) {
+    try {
+      fulfillmentsResult = await supabase
+        .from("medicine_request_fulfillments")
+        .select("id, request_id, request_item_id, source_inventory_id, quantity, fulfilled_by, fulfilled_at")
+        .in("request_id", requestIds);
+    } catch {
+      fulfillmentsResult = { data: [] };
+    }
+  }
+
+  const fulfillmentsByRequest = (fulfillmentsResult.data || []).reduce((requestMap, row) => {
+    const list = requestMap.get(row.request_id) || [];
+    list.push(row);
+    requestMap.set(row.request_id, list);
+    return requestMap;
+  }, new Map());
+
+  const requests = (requestsResult || []).map((request) => ({
+    ...request,
+    fulfillments: fulfillmentsByRequest.get(request.id) || [],
+  }));
+
   return {
     inventoryRows: inventoryResult.data || [],
     medicines: medicinesResult.data || [],
-    requests: requestsResult,
+    requests,
   };
 };
 

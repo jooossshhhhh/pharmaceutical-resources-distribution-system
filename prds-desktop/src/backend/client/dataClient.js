@@ -104,20 +104,14 @@ export const dataClient = {
             break;
           case "medicines":
             await db.execute(
-              "INSERT OR REPLACE INTO medicines (id, generic_name, brand_name, dosage, unit_of_measure, unit_cost, categories_json, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.generic_name, record.brand_name, record.dosage, record.unit_of_measure, record.unit_cost, JSON.stringify(record.categories || []), jsonStr]
-            );
-            break;
-          case "suppliers":
-            await db.execute(
-              "INSERT OR REPLACE INTO suppliers (id, supplier_name, status, data_json) VALUES (?, ?, ?, ?)",
-              [record.id, record.supplier_name, record.status, jsonStr]
+              "INSERT OR REPLACE INTO medicines (id, generic_name, dosage, unit_of_measure, categories_json, data_json) VALUES (?, ?, ?, ?, ?, ?)",
+              [record.id, record.generic_name, record.dosage, record.unit_of_measure, JSON.stringify(record.categories || []), jsonStr]
             );
             break;
           case "inventory":
             await db.execute(
-              "INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, threshold, batch_number, date_received, expiration_date, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.facility_id, record.medicine_id, record.supplier_id, record.quantity, record.threshold, record.batch_number, record.date_received, record.expiration_date, jsonStr]
+              "INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, date_received, expiration_date, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [record.id, record.facility_id, record.medicine_id, record.quantity, record.threshold, record.batch_number, record.date_received, record.expiration_date, jsonStr]
             );
             break;
           case "patients":
@@ -143,30 +137,34 @@ export const dataClient = {
           case "stock_returns":
             await db.execute(
               `INSERT OR REPLACE INTO stock_returns (
-                id, lot_no, medicine_id, medicine_name, brand_name, quantity, unit_cost,
-                expiration_date, reason, facility_id, status, submitted_by_id, verified_by_id,
-                submitted_at, verified_at, data_json, created_at, updated_at, is_synced
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                id, return_id, facility_id, source_inventory_id, medicine_id, medicine_name,
+                brand_name, lot_no, quantity, unit_cost, expiration_date, reason, status,
+                remarks, submitted_by_id, submitted_at, confirmed_by_id, confirmed_at,
+                created_at, updated_at, is_synced, data_json
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 record.id,
-                record.lot_no,
+                record.return_id || record.id,
+                record.facility_id,
+                record.source_inventory_id || null,
                 record.medicine_id,
                 record.medicine_name,
-                record.brand_name,
+                record.brand_name || null,
+                record.lot_no,
                 record.quantity,
                 record.unit_cost,
                 record.expiration_date,
                 record.reason,
-                record.facility_id,
-                record.status,
+                record.status || "PENDING",
+                record.remarks || null,
                 record.submitted_by_id,
-                record.verified_by_id,
                 record.submitted_at,
-                record.verified_at,
-                jsonStr,
+                record.confirmed_by_id || null,
+                record.confirmed_at || null,
                 record.created_at || new Date().toISOString(),
                 record.updated_at || new Date().toISOString(),
                 record.is_synced ?? 1,
+                jsonStr,
               ]
             );
             break;
@@ -212,7 +210,6 @@ export const dataClient = {
     const tableToSnapshotKey = {
       facilities: STORAGE_KEYS.FACILITIES,
       medicines: STORAGE_KEYS.MEDICINES,
-      suppliers: STORAGE_KEYS.SUPPLIERS,
       inventory: STORAGE_KEYS.INVENTORY,
       patients: STORAGE_KEYS.PATIENTS,
       dispensing_records: STORAGE_KEYS.DISPENSING,

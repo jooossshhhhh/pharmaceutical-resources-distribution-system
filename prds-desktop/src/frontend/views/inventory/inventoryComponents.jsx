@@ -558,7 +558,7 @@ export function InventoryTable({
     <>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[920px] text-left text-sm">
-          <thead className="sticky top-0 z-10 border-y border-neutral-100 bg-[#f7f6f3] text-[11px] font-black uppercase tracking-[0.14em] text-[#42474e]">
+          <thead className="sticky top-0 z-10 border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
             <tr>
               <th className="w-[32%] px-4 py-2.5">Medicine name</th>
               <th className="w-[18%] px-4 py-2.5">Brand name</th>
@@ -567,7 +567,7 @@ export function InventoryTable({
                 <button
                   type="button"
                   onClick={() => onSort("quantity")}
-                  className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
+                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-emerald-700"
                 >
                   {isExpiredTab ? "Expired Qty" : "Stock Level"}
                   <SortArrowIcon
@@ -579,7 +579,7 @@ export function InventoryTable({
                 <button
                   type="button"
                   onClick={() => onSort("expiration_date")}
-                  className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-emerald-700"
+                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-emerald-700"
                 >
                   {isExpiredTab ? "Date Expired" : "Expiration Date"}
                   <SortArrowIcon
@@ -790,7 +790,7 @@ export function InventoryLotTable({
       <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-[#fafaf9] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <p className="text-xs font-black uppercase tracking-wider text-[#0d1117]">
-            Batch &amp; Lot Records
+            Lot Records
           </p>
           <span className="inline-flex items-center rounded-full bg-neutral-200/80 px-2 py-0.5 text-[10px] font-bold text-neutral-700">
             {displayedLots.length}
@@ -798,17 +798,17 @@ export function InventoryLotTable({
         </div>
         {onSelectLot && (
           <p className="text-[11px] font-semibold text-neutral-400">
-            Click any batch to view details or edit
+            Click any lot record to view details or edit
           </p>
         )}
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-[#f7f6f3] text-[10px] font-black uppercase tracking-[0.14em] text-[#42474e] border-b border-neutral-100">
+          <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
             <tr>
               <th className="px-4 py-2.5">PO #</th>
-              <th className="px-4 py-2.5">Batch / Lot</th>
+              <th className="px-4 py-2.5">Lot No.</th>
               <th className="px-4 py-2.5">Supplier</th>
               <th className="px-4 py-2.5">Quantity</th>
               <th className="px-4 py-2.5">Received</th>
@@ -863,7 +863,7 @@ export function InventoryLotTable({
                         </span>
                       </td>
 
-                      {/* Column 2: Batch / Lot # */}
+                      {/* Column 2: Lot No. */}
                       <td className="px-4 py-3 align-top whitespace-nowrap">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono text-xs font-black text-[#0d1117] group-hover:text-emerald-700 tracking-wider">

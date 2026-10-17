@@ -92,14 +92,14 @@ export const getOwnFacilityInventory = async (facilityId) => {
     .select(`
       id,
       medicine_id,
-      supplier_id,
       quantity,
       threshold,
       batch_number,
       date_received,
       expiration_date,
-      medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost),
-      supplier:suppliers(id, supplier_name)
+      brand_name,
+      unit_cost,
+      medicine:medicines(id, generic_name, dosage, unit_of_measure)
     `)
     .eq("facility_id", facilityId)
     .order("expiration_date", { ascending: true })

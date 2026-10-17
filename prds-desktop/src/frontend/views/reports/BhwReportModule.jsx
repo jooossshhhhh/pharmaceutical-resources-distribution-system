@@ -3,6 +3,8 @@ import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
 import { getDispensingHistory } from "@backend/services/dispensingService";
 import { getRequestsData } from "@backend/services/requestsService";
 import { useAuth } from "../../context/useAuth";
+import { useNetworkStatus } from "@backend/sync/networkStatus";
+import ReportModuleSkeleton from "./components/ReportModuleSkeleton";
 import ReportHeader from "./components/ReportHeader";
 import ReportSummaryCards from "./components/ReportSummaryCards";
 import ReportCalendarWidget from "./components/ReportCalendarWidget";
@@ -97,6 +99,34 @@ export default function BhwReportModule() {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  const isOnline = useNetworkStatus();
+  const hasExistingData = useMemo(() => {
+    return (
+      (inventoryRows && inventoryRows.length > 0) ||
+      (dispensingRows && dispensingRows.length > 0) ||
+      (requestRows && requestRows.length > 0)
+    );
+  }, [inventoryRows, dispensingRows, requestRows]);
+
+  const [showSkeleton, setShowSkeleton] = useState(false);
+
+  // Skeleton loading screen triggers ONLY when:
+  // 1. Actively loading data from the network (isLoading)
+  // 2. User has an active online internet connection (isOnline)
+  // 3. There is NO data already available to display (!hasExistingData)
+  // 4. Noticeable network lag persists past the debounce threshold (> 150ms)
+  // If offline or data is already present, skeleton will not trigger.
+  useEffect(() => {
+    if (isLoading && isOnline && !hasExistingData) {
+      const timer = setTimeout(() => {
+        setShowSkeleton(true);
+      }, 150);
+      return () => clearTimeout(timer);
+    } else {
+      setShowSkeleton(false);
+    }
+  }, [isLoading, isOnline, hasExistingData]);
 
   useEffect(() => {
     let isMounted = true;
@@ -255,6 +285,10 @@ export default function BhwReportModule() {
     }
   };
 
+  if (showSkeleton) {
+    return <ReportModuleSkeleton scope="daily" />;
+  }
+
   return (
     <div className="space-y-4.5 p-1 max-w-[1400px] mx-auto">
       <ReportHeader
@@ -266,7 +300,7 @@ export default function BhwReportModule() {
       />
 
       <div className="flex flex-col lg:flex-row gap-3.5 items-stretch">
-        <ReportSummaryCards kpis={kpis} />
+        <ReportSummaryCards kpis={kpis} isBhw={true} />
         <ReportCalendarWidget
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}

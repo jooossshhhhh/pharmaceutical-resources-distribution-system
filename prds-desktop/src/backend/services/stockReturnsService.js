@@ -2,6 +2,8 @@
  * PRDS Stock Returns Service
  * Handles returned medicine stock from Barangay Health Centers as a separate
  * ledger from supplier procurement inventory.
+ * 
+ * Uses simplified, user-friendly terminology: "Return ID" and "Confirm".
  */
 
 import { supabase } from "../client/supabase.js";
@@ -20,9 +22,8 @@ export const RETURN_REASON_OPTIONS = [
 ];
 
 export const RETURN_STATUS_OPTIONS = [
-  { value: "PENDING", label: "Sent to CHO", tone: "bg-amber-100 text-amber-800 border-amber-200" },
-  { value: "RECEIVED", label: "Received at CHO", tone: "bg-amber-100 text-amber-800 border-amber-200" },
-  { value: "VERIFIED", label: "Verified", tone: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  { value: "PENDING", label: "Pending", tone: "bg-amber-100 text-amber-800 border-amber-200" },
+  { value: "CONFIRMED", label: "Confirmed", tone: "bg-emerald-100 text-emerald-800 border-emerald-200" },
   { value: "CANCELLED", label: "Cancelled", tone: "bg-rose-100 text-rose-800 border-rose-200" },
 ];
 
@@ -54,11 +55,24 @@ export const getReturnReasonTone = (reason) => {
 };
 
 export const getReturnStatusBadge = (status) => {
-  const found = RETURN_STATUS_OPTIONS.find((opt) => opt.value === status);
-  return found || { value: status, label: status || "Unknown", tone: "bg-slate-100 text-slate-700 border-slate-200" };
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "CONFIRMED" || normalized === "VERIFIED" || normalized === "RECEIVED") {
+    return { value: "CONFIRMED", label: "Confirmed", tone: "bg-emerald-100 text-emerald-800 border-emerald-200" };
+  }
+  if (normalized === "CANCELLED") {
+    return { value: "CANCELLED", label: "Cancelled", tone: "bg-rose-100 text-rose-800 border-rose-200" };
+  }
+  if (normalized === "PENDING") {
+    return { value: "PENDING", label: "Pending", tone: "bg-amber-100 text-amber-800 border-amber-200" };
+  }
+  return { value: status || "PENDING", label: status || "Pending", tone: "bg-slate-100 text-slate-700 border-slate-200" };
 };
 
-export const generateReturnSlipNo = (facilityCode = "BHW") => {
+/**
+ * Generates a clean human-friendly Return ID.
+ * Example: RET-TIN-20261013-A8F2
+ */
+export const generateReturnId = (facilityCode = "BHW") => {
   const today = new Date();
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, "0");
@@ -68,10 +82,14 @@ export const generateReturnSlipNo = (facilityCode = "BHW") => {
   return `RET-${cleanCode}-${year}${month}${day}-${randomSuffix}`;
 };
 
+// Backward-compatible alias
+export const generateReturnSlipNo = generateReturnId;
+
 export function buildStockReturnPayload({
   formValues = {},
   medicine = null,
   userProfile = null,
+  facilityCode = "",
   nowIso = new Date().toISOString(),
 } = {}) {
   const isBhw = userProfile?.role === "BHW";
@@ -98,22 +116,35 @@ export function buildStockReturnPayload({
     throw new Error("Expiration date is required.");
   }
 
+  const returnId =
+    formValues.return_id ||
+    formValues.return_slip_no ||
+    generateReturnId(facilityCode || (isBhw ? "BHW" : "CHO"));
+
+  const isCho = userProfile?.role === "PHARMA_I" || userProfile?.role === "PHARMA_II";
+  const rawStatus = formValues.status ? String(formValues.status).toUpperCase() : "";
+  const status = rawStatus || (isCho ? "CONFIRMED" : "PENDING");
+  const isConfirmed = status === "CONFIRMED" || status === "VERIFIED";
+
   return {
     id: formValues.id || createId(),
-    lot_no: lotNo,
+    return_id: returnId,
+    facility_id: facilityId,
+    source_inventory_id: formValues.source_inventory_id || null,
     medicine_id: formValues.medicine_id || medicine?.id || null,
     medicine_name: medicineName,
     brand_name: brandName,
+    lot_no: lotNo,
     quantity,
     unit_cost: toMoneyNumber(formValues.unit_cost),
     expiration_date: formValues.expiration_date,
     reason: formValues.reason || formValues.return_reason || "EXCESS_STOCK",
-    facility_id: facilityId,
-    status: formValues.status || "PENDING",
+    status: isConfirmed ? "CONFIRMED" : "PENDING",
+    remarks: formValues.remarks || null,
     submitted_by_id: formValues.submitted_by_id || userProfile?.id || null,
-    verified_by_id: formValues.verified_by_id || null,
     submitted_at: formValues.submitted_at || nowIso,
-    verified_at: formValues.verified_at || null,
+    confirmed_by_id: isConfirmed ? (formValues.confirmed_by_id || userProfile?.id || null) : null,
+    confirmed_at: isConfirmed ? (formValues.confirmed_at || nowIso) : null,
     created_at: formValues.created_at || nowIso,
     updated_at: nowIso,
   };
@@ -125,10 +156,17 @@ export function flattenStockReturnRows(rows = []) {
   for (const row of rows || []) {
     if (!row) continue;
 
+    const returnId =
+      row.return_id ||
+      row.return_slip_no ||
+      (row.id ? (String(row.id).startsWith("ret") ? row.id : `RET-${String(row.id).slice(0, 8).toUpperCase()}`) : "-");
+
     if (Array.isArray(row.items) && row.items.length > 0) {
       for (const item of row.items) {
         flattened.push({
           id: item.id,
+          return_id: returnId,
+          return_slip_no: returnId,
           lot_no: item.lot_no || item.batch_number || "",
           medicine_id: item.medicine_id || null,
           medicine_name: item.medicine_name || item.medicine?.generic_name || "",
@@ -148,6 +186,8 @@ export function flattenStockReturnRows(rows = []) {
     const medicine = row.medicine || {};
     flattened.push({
       ...row,
+      return_id: returnId,
+      return_slip_no: returnId,
       lot_no: row.lot_no || row.batch_number || "",
       medicine_name: row.medicine_name || medicine.generic_name || "",
       brand_name: row.brand_name || medicine.brand_name || "",
@@ -162,6 +202,96 @@ export function flattenStockReturnRows(rows = []) {
   }
 
   return flattened;
+}
+
+/**
+ * Deducts returned stock from the source facility's inventory ledger.
+ * Updates local cache, SQLite, and Supabase.
+ */
+export async function deductFacilityStockForReturn({
+  facilityId,
+  medicineId,
+  lotNo,
+  sourceInventoryId = null,
+  quantity = 0,
+}) {
+  if (!facilityId || quantity <= 0) return false;
+
+  const currentInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+  let targetRow = null;
+
+  if (sourceInventoryId) {
+    targetRow = currentInventory.find((item) => item.id === sourceInventoryId);
+  }
+  if (!targetRow) {
+    const cleanLot = normalizeLotNo(lotNo);
+    targetRow = currentInventory.find(
+      (item) =>
+        item.facility_id === facilityId &&
+        normalizeLotNo(item.batch_number || item.lot_no) === cleanLot &&
+        (!medicineId || item.medicine_id === medicineId)
+    );
+  }
+
+  if (targetRow) {
+    const currentQty = parseInt(targetRow.quantity, 10) || 0;
+    const newQty = Math.max(0, currentQty - quantity);
+    const nowIso = new Date().toISOString();
+
+    // 1. Update snapshot
+    const updatedInventory = currentInventory.map((item) =>
+      item.id === targetRow.id ? { ...item, quantity: newQty, updated_at: nowIso } : item
+    );
+    saveSnapshot(STORAGE_KEYS.INVENTORY, updatedInventory);
+
+    // 2. Update local SQLite if Tauri
+    if (isTauriEnvironment()) {
+      try {
+        const db = await getSqliteDb();
+        await db.execute(
+          "UPDATE inventory SET quantity = ?, updated_at = ? WHERE id = ?",
+          [newQty, nowIso, targetRow.id]
+        );
+      } catch (err) {
+        console.warn("[stockReturnsService] SQLite inventory deduct error:", err);
+      }
+    }
+
+    // 3. Update Supabase if online
+    if (isOnline()) {
+      try {
+        await supabase
+          .from("inventory")
+          .update({ quantity: newQty, updated_at: nowIso })
+          .eq("id", targetRow.id);
+      } catch (cloudErr) {
+        console.warn("[stockReturnsService] Remote inventory deduct error, enqueuing:", cloudErr);
+        await enqueueMutation({
+          mutationType: "UPDATE",
+          target: "inventory",
+          payload: { id: targetRow.id, quantity: newQty, updated_at: nowIso },
+        });
+      }
+    } else {
+      await enqueueMutation({
+        mutationType: "UPDATE",
+        target: "inventory",
+        payload: { id: targetRow.id, quantity: newQty, updated_at: nowIso },
+      });
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("prds:inventory-changed", {
+          detail: { inventoryId: targetRow.id, newQuantity: newQty },
+        })
+      );
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 export async function fetchStockReturns(filters = {}) {
@@ -196,60 +326,33 @@ export async function fetchStockReturns(filters = {}) {
 
   if (isOnline()) {
     try {
-      let result = await supabase
+      const result = await supabase
         .from("stock_returns")
         .select(`
           id,
-          lot_no,
+          return_id,
+          facility_id,
+          source_inventory_id,
           medicine_id,
           medicine_name,
           brand_name,
+          lot_no,
           quantity,
           unit_cost,
           expiration_date,
           reason,
-          facility_id,
           status,
+          remarks,
           submitted_by_id,
-          verified_by_id,
           submitted_at,
-          verified_at,
+          confirmed_by_id,
+          confirmed_at,
           created_at,
           updated_at,
           facility:facilities!stock_returns_facility_id_fkey(id, facility_name, facility_code)
         `)
         .order("submitted_at", { ascending: false })
         .order("created_at", { ascending: false });
-
-      if (
-        result.error &&
-        (result.error.code === "42703" ||
-          String(result.error.message || "").toLowerCase().includes("could not find") ||
-          String(result.error.message || "").toLowerCase().includes("column"))
-      ) {
-        result = await supabase
-          .from("stock_returns")
-          .select(`
-            id,
-            return_slip_no,
-            source_facility_id,
-            return_reason,
-            status,
-            created_at,
-            updated_at,
-            source_facility:facilities!stock_returns_source_facility_id_fkey(id, facility_name, facility_code),
-            items:stock_return_items(
-              id,
-              medicine_id,
-              batch_number,
-              quantity,
-              expiration_date,
-              unit_cost,
-              medicine:medicines(id, generic_name, brand_name)
-            )
-          `)
-          .order("created_at", { ascending: false });
-      }
 
       if (!result.error && Array.isArray(result.data)) {
         returnsData = flattenStockReturnRows(result.data);
@@ -285,6 +388,8 @@ export async function fetchStockReturns(filters = {}) {
     filtered = filtered.filter((row) => {
       const searchable = [
         row.id,
+        row.return_id,
+        row.return_slip_no,
         row.lot_no,
         row.medicine_name,
         row.brand_name,
@@ -306,87 +411,154 @@ export async function createStockReturn({
   medicine = null,
   userProfile,
 } = {}) {
-  const firstItem = items[0] || {};
-  const formValues = stockReturnData || {
-    ...returnData,
-    ...firstItem,
-    lot_no: firstItem.lot_no || firstItem.batch_number,
-    reason: returnData.reason || returnData.return_reason,
-    facility_id: returnData.facility_id || returnData.source_facility_id,
-    medicine_name: firstItem.medicine_name,
-    brand_name: firstItem.brand_name,
-  };
-  const payload = buildStockReturnPayload({ formValues, medicine: medicine || firstItem.medicine, userProfile });
+  const isBhw = userProfile?.role === "BHW";
+  const facilityCode = stockReturnData?.facility_code || returnData?.facility_code || (isBhw ? "BHW" : "CHO");
+  const sharedReturnId =
+    stockReturnData?.return_id ||
+    stockReturnData?.return_slip_no ||
+    returnData?.return_id ||
+    generateReturnId(facilityCode);
 
-  if (isTauriEnvironment()) {
-    try {
-      const db = await getSqliteDb();
-      await db.execute(
-        `INSERT OR REPLACE INTO stock_returns (
-          id, lot_no, medicine_id, medicine_name, brand_name, quantity, unit_cost,
-          expiration_date, reason, facility_id, status, submitted_by_id, verified_by_id,
-          submitted_at, verified_at, created_at, updated_at, is_synced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          payload.id,
-          payload.lot_no,
-          payload.medicine_id,
-          payload.medicine_name,
-          payload.brand_name,
-          payload.quantity,
-          payload.unit_cost,
-          payload.expiration_date,
-          payload.reason,
-          payload.facility_id,
-          payload.status,
-          payload.submitted_by_id,
-          payload.verified_by_id,
-          payload.submitted_at,
-          payload.verified_at,
-          payload.created_at,
-          payload.updated_at,
-          isOnline() ? 1 : 0,
-        ]
-      );
-    } catch (localWriteErr) {
-      console.warn("[stockReturnsService] SQLite write error:", localWriteErr);
+  const sharedReason = stockReturnData?.reason || returnData?.reason || "EXCESS_STOCK";
+  const sharedRemarks = stockReturnData?.remarks || returnData?.remarks || null;
+  const sharedFacilityId = isBhw
+    ? userProfile?.facility_id
+    : (stockReturnData?.facility_id || returnData?.facility_id);
+
+  // Collect all items to process
+  const rawItems = (Array.isArray(stockReturnData?.items) && stockReturnData.items.length > 0)
+    ? stockReturnData.items
+    : (Array.isArray(items) && items.length > 0)
+    ? items
+    : [stockReturnData || returnData];
+
+  const createdPayloads = [];
+
+  for (const item of rawItems) {
+    if (!item) continue;
+    const formValues = {
+      ...(stockReturnData || returnData),
+      ...item,
+      return_id: sharedReturnId,
+      facility_id: sharedFacilityId,
+      reason: item.reason || sharedReason,
+      remarks: item.remarks || sharedRemarks,
+      lot_no: item.lot_no || item.batch_number,
+      medicine_name: item.medicine_name,
+      brand_name: item.brand_name,
+    };
+
+    const payload = buildStockReturnPayload({
+      formValues,
+      medicine: medicine || item.medicine,
+      userProfile,
+      facilityCode,
+    });
+
+    // 1. Automatically deduct stock from source facility inventory
+    await deductFacilityStockForReturn({
+      facilityId: payload.facility_id,
+      medicineId: payload.medicine_id,
+      lotNo: payload.lot_no,
+      sourceInventoryId: payload.source_inventory_id,
+      quantity: payload.quantity,
+    });
+
+    // 2. Persist to SQLite if Tauri
+    if (isTauriEnvironment()) {
+      try {
+        const db = await getSqliteDb();
+        await db.execute(
+          `INSERT OR REPLACE INTO stock_returns (
+            id, return_id, facility_id, source_inventory_id, medicine_id, medicine_name, brand_name,
+            lot_no, quantity, unit_cost, expiration_date, reason, status, remarks,
+            submitted_by_id, submitted_at, confirmed_by_id, confirmed_at, created_at, updated_at, is_synced
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            payload.id,
+            payload.return_id,
+            payload.facility_id,
+            payload.source_inventory_id || null,
+            payload.medicine_id,
+            payload.medicine_name,
+            payload.brand_name,
+            payload.lot_no,
+            payload.quantity,
+            payload.unit_cost,
+            payload.expiration_date,
+            payload.reason,
+            payload.status,
+            payload.remarks || null,
+            payload.submitted_by_id,
+            payload.submitted_at,
+            payload.confirmed_by_id,
+            payload.confirmed_at,
+            payload.created_at,
+            payload.updated_at,
+            isOnline() ? 1 : 0,
+          ]
+        );
+      } catch (localWriteErr) {
+        console.warn("[stockReturnsService] SQLite write error:", localWriteErr);
+      }
     }
+
+    // 3. Persist to Supabase if online
+    if (isOnline()) {
+      try {
+        const { error } = await supabase.from("stock_returns").insert(payload);
+        if (error) throw error;
+      } catch (cloudErr) {
+        console.warn("[stockReturnsService] Supabase insert failed, enqueuing to outbox:", cloudErr);
+        await enqueueMutation({ mutationType: "INSERT", target: "stock_returns", payload });
+      }
+    } else {
+      await enqueueMutation({ mutationType: "INSERT", target: "stock_returns", payload });
+    }
+
+    createdPayloads.push(payload);
   }
 
-  if (isOnline()) {
-    try {
-      const { error } = await supabase.from("stock_returns").insert(payload);
-      if (error) throw error;
+  // 4. Activity log for return batch
+  if (createdPayloads.length > 0) {
+    const totalUnits = createdPayloads.reduce((sum, p) => sum + p.quantity, 0);
+    const itemSummary = createdPayloads
+      .map((p) => `${p.quantity}x ${p.medicine_name || "medicine"} (Lot: ${p.lot_no})`)
+      .join(", ");
+    const primaryStatus = createdPayloads[0].status;
 
+    if (isOnline()) {
       try {
         await supabase.from("activity_logs").insert({
           user_id: userProfile?.id,
-          action: "Stock Return Sent",
+          action: primaryStatus === "CONFIRMED" ? "Stock Return Confirmed" : "Stock Return Submitted",
           module: "Stock Returns",
-          details: `Returned ${payload.quantity} unit(s) of ${payload.medicine_name || "medicine"} from barangay stock. Reason: ${getReturnReasonLabel(payload.reason)}`,
+          details: `Return ${sharedReturnId}: ${totalUnits} total unit(s) [${itemSummary}]. Reason: ${getReturnReasonLabel(sharedReason)}`,
         });
       } catch {}
-    } catch (cloudErr) {
-      console.warn("[stockReturnsService] Supabase insert failed, enqueuing to outbox:", cloudErr);
-      await enqueueMutation({ mutationType: "INSERT", target: "stock_returns", payload });
     }
-  } else {
-    await enqueueMutation({ mutationType: "INSERT", target: "stock_returns", payload });
+
+    const currentSnapshot = flattenStockReturnRows(getSnapshot(STORAGE_KEYS.STOCK_RETURNS) || []);
+    const newIds = new Set(createdPayloads.map((p) => p.id));
+    saveSnapshot(STORAGE_KEYS.STOCK_RETURNS, [
+      ...createdPayloads,
+      ...currentSnapshot.filter((row) => !newIds.has(row.id)),
+    ]);
   }
 
-  const currentSnapshot = flattenStockReturnRows(getSnapshot(STORAGE_KEYS.STOCK_RETURNS) || []);
-  saveSnapshot(STORAGE_KEYS.STOCK_RETURNS, [payload, ...currentSnapshot.filter((row) => row.id !== payload.id)]);
-
-  return payload;
+  return createdPayloads.length === 1 ? createdPayloads[0] : createdPayloads;
 }
 
-export async function verifyStockReturn(returnId, verifiedByUserId = null) {
+/**
+ * Confirms receipt and acceptance of a stock return by CHO.
+ */
+export async function confirmStockReturn(returnId, confirmedByUserId = null) {
   const nowIso = new Date().toISOString();
   const updatePayload = {
     id: returnId,
-    status: "VERIFIED",
-    verified_by_id: verifiedByUserId,
-    verified_at: nowIso,
+    status: "CONFIRMED",
+    confirmed_by_id: confirmedByUserId,
+    confirmed_at: nowIso,
     updated_at: nowIso,
   };
 
@@ -395,12 +567,14 @@ export async function verifyStockReturn(returnId, verifiedByUserId = null) {
       const db = await getSqliteDb();
       await db.execute(
         `UPDATE stock_returns
-         SET status = 'VERIFIED', verified_by_id = ?, verified_at = ?, updated_at = ?
+         SET status = 'CONFIRMED',
+             confirmed_by_id = ?, confirmed_at = ?,
+             updated_at = ?
          WHERE id = ?`,
-        [verifiedByUserId, nowIso, nowIso, returnId]
+        [confirmedByUserId, nowIso, nowIso, returnId]
       );
     } catch (err) {
-      console.warn("[stockReturnsService] SQLite verify error:", err);
+      console.warn("[stockReturnsService] SQLite confirm error:", err);
     }
   }
 
@@ -409,9 +583,9 @@ export async function verifyStockReturn(returnId, verifiedByUserId = null) {
       const { error } = await supabase
         .from("stock_returns")
         .update({
-          status: "VERIFIED",
-          verified_by_id: verifiedByUserId,
-          verified_at: nowIso,
+          status: "CONFIRMED",
+          confirmed_by_id: confirmedByUserId,
+          confirmed_at: nowIso,
           updated_at: nowIso,
         })
         .eq("id", returnId);
@@ -432,18 +606,26 @@ export async function verifyStockReturn(returnId, verifiedByUserId = null) {
   return true;
 }
 
+// Backward-compatible alias
+export const verifyStockReturn = confirmStockReturn;
+
 export function calculateStockReturnKpis(returns = []) {
   const rows = flattenStockReturnRows(returns);
   const totalReturns = rows.length;
   let totalUnitsReturned = 0;
-  let verifiedCount = 0;
+  let confirmedCount = 0;
+  let pendingConfirmationCount = 0;
   let activeThisMonth = 0;
 
   const currentMonthPrefix = new Date().toISOString().slice(0, 7);
   const stationCounts = new Map();
 
   for (const row of rows) {
-    if (row.status === "VERIFIED") verifiedCount++;
+    if (row.status === "CONFIRMED" || row.status === "VERIFIED") {
+      confirmedCount++;
+    } else if (row.status === "PENDING" || !row.status) {
+      pendingConfirmationCount++;
+    }
     const activityDate = row.submitted_at || row.created_at || row.return_date;
     if (activityDate && String(activityDate).startsWith(currentMonthPrefix)) activeThisMonth++;
 
@@ -460,8 +642,10 @@ export function calculateStockReturnKpis(returns = []) {
   return {
     totalReturns,
     totalUnitsReturned,
-    verifiedCount,
-    pendingVerificationCount: totalReturns - verifiedCount,
+    confirmedCount,
+    pendingConfirmationCount,
+    verifiedCount: confirmedCount, // backward compat
+    pendingVerificationCount: pendingConfirmationCount, // backward compat
     activeThisMonth,
     topStations,
   };

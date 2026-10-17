@@ -1,7 +1,7 @@
 export const emptyInventoryForm = {
   facility_id: "",
   medicine_id: "",
-  supplier_id: "",
+  brand_name: "",
   quantity: "",
   threshold: "",
   batch_number: "",
@@ -22,6 +22,7 @@ export const createEmptyPoItem = (
 ) => ({
   id,
   medicine_id: "",
+  brand_name: "",
   batch_number: "",
   quantity: "",
   unit_cost: "",
@@ -47,7 +48,6 @@ export const DISPOSAL_METHODS = [
 export const emptyPoReceiptForm = {
   facility_id: "",
   po_number: "",
-  supplier_id: "",
   intake_type: "PO",
   origin_facility_id: "",
   return_reason: "",
@@ -58,7 +58,6 @@ export const emptyPoReceiptForm = {
 export const emptyReturnReceiptForm = {
   facility_id: "",
   po_number: "",
-  supplier_id: "",
   intake_type: "RETURN",
   origin_facility_id: "",
   return_reason: "EXCESS",
@@ -238,7 +237,7 @@ export const parseInventoryCsv = (text) => {
 
 export const buildInventoryImportPayloads = (
   rows,
-  { medicines, suppliers, facilityId }
+  { medicines, suppliers = [], facilityId }
 ) => {
   if (!facilityId) {
     return { payloads: [], errors: [{ row: 0, message: "No facility selected for import." }] };
@@ -248,7 +247,7 @@ export const buildInventoryImportPayloads = (
     medicines.map((medicine) => [medicine.generic_name.toLowerCase(), medicine])
   );
   const supplierByName = new Map(
-    suppliers.map((supplier) => [supplier.supplier_name.toLowerCase(), supplier])
+    (suppliers || []).map((supplier) => [supplier.supplier_name.toLowerCase(), supplier])
   );
 
   const payloads = [];
@@ -265,10 +264,6 @@ export const buildInventoryImportPayloads = (
     }
 
     const supplier = supplierByName.get((row.supplier || "").toLowerCase());
-    if (!supplier) {
-      fail(`Unknown supplier: "${row.supplier}".`);
-      return;
-    }
 
     const lotNumber = normalizeLotNumber(row.lot_number || row.batch);
     if (!lotNumber) {
@@ -314,7 +309,7 @@ export const buildInventoryImportPayloads = (
     payloads.push({
       facility_id: facilityId,
       medicine_id: medicine.id,
-      supplier_id: supplier.id,
+      brand_name: row.brand_name || row.brand || supplier?.supplier_name || row.supplier || null,
       quantity,
       threshold,
       batch_number: lotNumber,

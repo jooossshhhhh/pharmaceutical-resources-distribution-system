@@ -816,6 +816,14 @@ export const getDailyDispensingTransactions = ({
       const qty = Number(item.quantity) || 0;
       const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
 
+      const reqNumber = req.request_number || (req.id ? `RQ-${String(req.id).slice(0, 8).toUpperCase()}` : "RIS Request");
+      const requesterName = req.requester
+        ? [req.requester.first_name, req.requester.last_name].filter(Boolean).join(" ")
+        : req.manual_requested_by || "Requisition Slip";
+      const approverName = req.approver
+        ? [req.approver.first_name, req.approver.last_name].filter(Boolean).join(" ")
+        : "CHO Pharmacist";
+
       transactions.push({
         id: `bhw-${req.id}-${item.id || idx}`,
         rawTime,
@@ -823,15 +831,17 @@ export const getDailyDispensingTransactions = ({
         channel: "Barangay Request",
         channelType: "requests",
         recipient: facilityName,
-        recipientSub: req.request_number || "RIS Request",
+        recipientSub: reqNumber,
         medicineName: desc,
         brandName: brand,
         quantity: qty,
         unit: med.unit_of_measure || item.unit_of_measure || "units",
         unitCost,
         totalCost: qty * unitCost,
-        prescribedBy: "Requisition Slip",
-        dispensedBy: "CHO Supply Center",
+        prescribedBy: requesterName || "Requisition Slip",
+        dispensedBy: approverName || "CHO Supply Center",
+        requestedBy: requesterName || "Requisition Slip",
+        releasedBy: approverName || "CHO Supply Center",
         batchNumber: "Warehouse Batch",
         facility: facilityName,
       });

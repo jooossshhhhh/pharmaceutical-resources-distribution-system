@@ -7,7 +7,7 @@ import { Calendar, FileSpreadsheet } from "lucide-react";
  */
 export default function ReportScopeToggle({ scope = "daily", onScopeChange }) {
   return (
-    <div className="inline-flex items-center bg-[#f7f6f3] border border-[#d8dadc] p-1 rounded-xl shadow-xs">
+    <div className="inline-flex items-center bg-slate-100 border border-slate-200 p-1 rounded-xl shadow-xs">
       <button
         type="button"
         onClick={() => onScopeChange?.("daily")}

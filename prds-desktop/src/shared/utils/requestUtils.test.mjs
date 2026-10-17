@@ -551,10 +551,12 @@ test("derives BHW request tracking steps from request status", () => {
     [
       ["requested", "complete"],
       ["approved", "complete"],
-      ["in_transit", "current"],
-      ["received", "pending"],
+      ["ready_to_pickup", "current"],
+      ["completed", "pending"],
     ]
   );
+  assert.equal(steps[2].label, "Ready to Pickup");
+  assert.equal(steps[3].label, "Completed");
 
   assert.deepEqual(
     getRequestTrackingSteps({
@@ -564,8 +566,8 @@ test("derives BHW request tracking steps from request status", () => {
     [
       ["requested", "complete"],
       ["approved", "rejected"],
-      ["in_transit", "pending"],
-      ["received", "pending"],
+      ["ready_to_pickup", "pending"],
+      ["completed", "pending"],
     ]
   );
 
@@ -580,8 +582,8 @@ test("derives BHW request tracking steps from request status", () => {
     [
       ["requested", "complete"],
       ["approved", "complete"],
-      ["in_transit", "complete"],
-      ["received", "complete"],
+      ["ready_to_pickup", "complete"],
+      ["completed", "complete"],
     ]
   );
   assert.match(completedSteps[3].detail, /Jul 27, 2026/);

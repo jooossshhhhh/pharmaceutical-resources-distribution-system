@@ -311,7 +311,7 @@ export default function SuppliersModule() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-wide text-slate-500">
+            <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-3">Supplier Name</th>
                 <th className="px-4 py-3">Contact Number</th>

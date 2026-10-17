@@ -116,7 +116,7 @@ export default function ForecastingModule() {
                 forecast_month,
                 predicted_quantity,
                 facility:facilities(facility_name),
-                medicine:medicines(generic_name, brand_name, dosage, unit_of_measure, categories)
+                medicine:medicines(generic_name, dosage, unit_of_measure, categories)
               `)
               .order("forecast_month", { ascending: true })
           ),
@@ -135,13 +135,13 @@ export default function ForecastingModule() {
                 quantity,
                 threshold,
                 facility:facilities!inventory_facility_id_fkey(facility_name),
-                medicine:medicines(generic_name, brand_name, dosage, unit_of_measure, categories)
+                medicine:medicines(generic_name, dosage, unit_of_measure, categories)
               `)
               .order("quantity", { ascending: true })
           ),
           supabase
             .from("medicines")
-            .select("id, generic_name, brand_name, dosage, unit_of_measure, categories")
+            .select("id, generic_name, dosage, unit_of_measure, categories")
             .order("generic_name", { ascending: true }),
         ]);
 

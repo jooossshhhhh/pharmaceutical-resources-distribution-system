@@ -145,6 +145,7 @@ test("sortFacilities keeps facility name order deterministic", () => {
 test("isChoFacility accurately distinguishes the City Health Office central hub", () => {
   assert.equal(isChoFacility({ facility_code: "CHO-NAGA" }), true);
   assert.equal(isChoFacility({ facility_code: "cho" }), true);
+  assert.equal(isChoFacility({ facility_type: "CHO" }), true);
   assert.equal(isChoFacility({ facility_type: "MAIN_HEALTH_CENTER" }), true);
   assert.equal(isChoFacility({ facility_name: "City Health Office - City of Naga" }), true);
   assert.equal(isChoFacility({ facility_name: "Central Health Office - City of Naga" }), true);

@@ -338,7 +338,7 @@ function RequestTransferModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
           >
             Cancel
           </button>
@@ -404,7 +404,7 @@ function TrackingModal({
 
         <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+            <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-3">Medicine</th>
                 <th className="px-4 py-3">Full Details</th>
@@ -436,7 +436,7 @@ function TrackingModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
           >
             Close
           </button>
@@ -541,7 +541,7 @@ function IncomingTransferModal({
 
         <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+            <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-3">Medicine</th>
                 <th className="px-4 py-3">Full Details</th>
@@ -585,11 +585,11 @@ function IncomingTransferModal({
           {showInventory && (
             <div className="overflow-x-auto border-t border-[#e5e7eb]">
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Medicine</th>
                     <th className="px-4 py-3">Batch #</th>
-                    <th className="px-4 py-3">Supplier</th>
+                    <th className="px-4 py-3">Brand</th>
                     <th className="px-4 py-3">Date Received</th>
                     <th className="px-4 py-3">Expiration</th>
                     <th className="px-4 py-3 text-right">Qty</th>
@@ -606,13 +606,13 @@ function IncomingTransferModal({
                         <td className="px-4 py-3">
                           <p className="font-bold text-[#0d1117]">{getMedicineName(row)}</p>
                           <p className="text-xs text-[#5f6673]">
-                            {row.medicine?.brand_name || "Generic"} - {row.medicine?.unit_of_measure || "No unit"}
+                            {row.brand_name || row.medicine?.brand_name || "Generic"} - {row.medicine?.unit_of_measure || "No unit"}
                           </p>
                         </td>
                         <td className="px-4 py-3 font-medium text-[#0d1117]">
                           {row.batch_number || "No batch"}
                         </td>
-                        <td className="px-4 py-3 text-[#5f6673]">{row.supplier?.supplier_name || "No supplier"}</td>
+                        <td className="px-4 py-3 text-[#5f6673]">{row.brand_name || "Generic"}</td>
                         <td className="px-4 py-3 text-[#5f6673]">{formatTransferDate(row.date_received)}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${expiry.badgeClass}`}>
@@ -674,11 +674,11 @@ function IncomingTransferModal({
 
             <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
               <table className="w-full min-w-[820px] text-left text-sm">
-                <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Medicine</th>
                     <th className="px-4 py-3">Batch</th>
-                    <th className="px-4 py-3">Supplier</th>
+                    <th className="px-4 py-3">Brand</th>
                     <th className="px-4 py-3">Date Received</th>
                     <th className="px-4 py-3">Expiry</th>
                     <th className="px-4 py-3">Available</th>
@@ -706,7 +706,7 @@ function IncomingTransferModal({
                         <td className="px-4 py-3 font-medium text-[#0d1117]">
                           {batch.batch_number || "No batch"}
                         </td>
-                        <td className="px-4 py-3 text-[#5f6673]">{batch.supplier_name || "No supplier"}</td>
+                        <td className="px-4 py-3 text-[#5f6673]">{batch.brand_name || "Generic"}</td>
                         <td className="px-4 py-3 text-[#5f6673]">{formatTransferDate(batch.date_received)}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${expiry.badgeClass}`}>
@@ -768,7 +768,7 @@ function IncomingTransferModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-[#f7f6f3] px-5 text-sm font-bold text-[#0d1117] transition hover:bg-[#eff4ff]"
+            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
           >
             Close
           </button>
@@ -1182,7 +1182,7 @@ export default function BhwTransfersModule() {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
-              <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+              <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Transfer ID</th>

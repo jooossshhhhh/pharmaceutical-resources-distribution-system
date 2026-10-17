@@ -511,7 +511,7 @@ export default function PatientRegistry({
 
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
-              <thead className="bg-[#f8f9ff] text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+              <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Gender</th>

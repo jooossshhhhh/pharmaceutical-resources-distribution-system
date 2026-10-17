@@ -463,39 +463,30 @@ export const restorePatient = async (patientId) => {
 
 export const getPatientReferenceCounts = async (patientId) => {
   if (!isCurrentNetworkOnline()) {
-    return { dispensing: 0, patientRecords: 0 };
+    return { dispensing: 0 };
   }
 
   try {
-    const [dispensingResult, patientRecordsResult] = await Promise.all([
-      supabase
-        .from("medicine_dispensing")
-        .select("id", { count: "exact", head: true })
-        .eq("patient_id", patientId),
-      supabase
-        .from("patient_medicine_records")
-        .select("id", { count: "exact", head: true })
-        .eq("patient_id", patientId),
-    ]);
+    const dispensingResult = await supabase
+      .from("medicine_dispensing")
+      .select("id", { count: "exact", head: true })
+      .eq("patient_id", patientId);
 
-    const firstError = dispensingResult.error || patientRecordsResult.error;
-
-    if (firstError) {
-      return { dispensing: 0, patientRecords: 0 };
+    if (dispensingResult.error) {
+      return { dispensing: 0 };
     }
 
     return {
       dispensing: dispensingResult.count || 0,
-      patientRecords: patientRecordsResult.count || 0,
     };
   } catch {
-    return { dispensing: 0, patientRecords: 0 };
+    return { dispensing: 0 };
   }
 };
 
 export const deleteArchivedPatient = async (patientId) => {
   const referenceCounts = await getPatientReferenceCounts(patientId);
-  const hasHistory = referenceCounts.dispensing > 0 || referenceCounts.patientRecords > 0;
+  const hasHistory = referenceCounts.dispensing > 0;
 
   if (hasHistory) {
     throw new Error(
@@ -561,7 +552,7 @@ export const getManualRecordMedicines = async () => {
   try {
     const { data, error } = await supabase
       .from("medicines")
-      .select("id, generic_name, brand_name, dosage, unit_of_measure")
+      .select("id, generic_name, dosage, unit_of_measure")
       .order("generic_name", { ascending: true });
 
     if (error) {

@@ -1,4 +1,5 @@
 import { formatPatientName } from "./patientUtils.js";
+import { isChoFacility } from "./facilityUtils.js";
 
 export const formatDispensingDateTime = (value) => {
   if (!value) {
@@ -346,8 +347,8 @@ export const getCartLineError = ({ line, medicineOptions, patientClaim = null })
   const quantity = Number(line.quantity);
   const neededQuantity = Number(line.needed_quantity ?? line.quantity);
 
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    return "Release quantity must be a whole number greater than zero.";
+  if (!Number.isInteger(quantity)) {
+    return "Release quantity must be a whole number.";
   }
 
   if (!Number.isInteger(neededQuantity) || neededQuantity <= 0) {
@@ -731,6 +732,13 @@ export const getFollowUpDisplay = (line) => {
   }
 
   if (action === FOLLOW_UP_ACTIONS.refer) {
+    if (isChoFacility(facility)) {
+      const name = facility?.facility_name;
+      if (name && !name.toLowerCase().includes("city health office")) {
+        return `Refer to City Health Office - ${name}`;
+      }
+      return "Refer to City Health Office";
+    }
     return `Refer to barangay${facility?.facility_name ? ` - ${facility.facility_name}` : ""}`;
   }
 
@@ -797,6 +805,125 @@ export const sortTransactions = (transactions, sort = "newest") => {
   });
 
   return sorted;
+};
+
+export const getDispensedByName = (row, transaction) => {
+  if (row?.manual_dispensed_by) {
+    return row.manual_dispensed_by;
+  }
+
+  if (transaction?.dispenser) {
+    const firstName = transaction.dispenser.first_name || "";
+    const lastName = transaction.dispenser.last_name || "";
+    const fullName = `${firstName} ${lastName}`.trim();
+    if (fullName) return fullName;
+  }
+
+  return "Unknown user";
+};
+
+export const buildPatientHistoryRows = (transactions = []) => {
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    return [];
+  }
+
+  // 1. Sort transactions chronologically (oldest to newest) to track prescription cycles and remaining balance accurately.
+  const chronologicalTransactions = [...transactions].sort((a, b) => {
+    const timeA = new Date(a.dispenseDate).getTime() || 0;
+    const timeB = new Date(b.dispenseDate).getTime() || 0;
+    if (timeA !== timeB) return timeA - timeB;
+    return String(a.transactionId || a.key || "").localeCompare(String(b.transactionId || b.key || ""));
+  });
+
+  // activeCycles tracks open partial balances per medicine ID:
+  // key: medicineId -> { originalNeeded: number, remaining: number, lastDate: string }
+  const activeCycles = new Map();
+  const chronologicalRows = [];
+
+  for (const transaction of chronologicalTransactions) {
+    const isVoided = Boolean(transaction.voidedAt);
+    const lines = transaction.medicineLines || (transaction.rows ? [transaction] : []);
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const firstRow = line.rows?.[0] || line || {};
+      const medicineId = String(line.medicine?.id || firstRow.medicine_id || firstRow.id || `med-${index}`);
+      const lineNeeded = Number(line.neededQuantity ?? firstRow.needed_quantity ?? line.releasedQuantity ?? firstRow.quantity ?? 0);
+      const lineReleased = Number(line.releasedQuantity ?? firstRow.quantity ?? 0);
+
+      let isFollowUp = false;
+      let displayNeeded = lineNeeded;
+      let balanceQuantity = 0;
+      let status = "COMPLETED";
+
+      if (isVoided) {
+        status = "VOIDED";
+        balanceQuantity = Math.max(0, lineNeeded - lineReleased);
+      } else {
+        const cycle = activeCycles.get(medicineId);
+        // If an open cycle exists with an unfulfilled balance for this medicine:
+        if (cycle && cycle.remaining > 0) {
+          isFollowUp = true;
+          displayNeeded = null; // Dash in UI: avoid double counting doctor's prescribed needed quantity
+          const newRemaining = Math.max(0, cycle.remaining - lineReleased);
+          balanceQuantity = newRemaining;
+          cycle.remaining = newRemaining;
+          cycle.lastDate = transaction.dispenseDate || cycle.lastDate;
+
+          if (newRemaining === 0) {
+            status = "COMPLETED";
+            activeCycles.delete(medicineId);
+          } else {
+            status = "PARTIAL";
+          }
+        } else {
+          // Fresh prescription or initial dispensing
+          const remaining = Math.max(0, lineNeeded - lineReleased);
+          balanceQuantity = remaining;
+
+          if (remaining === 0) {
+            status = "COMPLETED";
+          } else {
+            status = "PARTIAL";
+            activeCycles.set(medicineId, {
+              originalNeeded: lineNeeded,
+              remaining,
+              lastDate: transaction.dispenseDate || "",
+            });
+          }
+        }
+      }
+
+      chronologicalRows.push({
+        balanceQuantity,
+        date: transaction.dispenseDate,
+        dispenseDate: transaction.dispenseDate,
+        dispenseId: transaction.transactionId || transaction.key,
+        dispensedBy: getDispensedByName(firstRow, transaction),
+        dispensingFacility: firstRow.dispensing_facility || transaction.dispensingFacility,
+        followUp: getFollowUpDisplay(line) || "None",
+        isFollowUp,
+        isManual: line.rows?.some((row) => row.is_manual_record) ?? Boolean(firstRow.is_manual_record),
+        key: `${transaction.key || transaction.transactionId}-${firstRow.medicine_id || firstRow.id || medicineId}-${index}`,
+        medicine: line.medicine,
+        neededQuantity: displayNeeded,
+        prescribedBy: firstRow.prescribed_by || "Not recorded",
+        recordType: firstRow.record_type || (firstRow.is_manual_record ? "HISTORY_ONLY" : "LIVE_DISPENSING"),
+        releasedQuantity: lineReleased,
+        status,
+        voidedAt: transaction.voidedAt || null,
+        voidReason: transaction.voidReason || null,
+      });
+    }
+  }
+
+  // 2. Return rows in reverse chronological order (newest first) for clinical display.
+  return chronologicalRows.sort((a, b) => {
+    const timeA = new Date(a.dispenseDate).getTime() || 0;
+    const timeB = new Date(b.dispenseDate).getTime() || 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return String(b.dispenseId || b.key || "").localeCompare(String(a.dispenseId || a.key || ""));
+  });
 };
 
 const csvEscape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;

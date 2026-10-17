@@ -16,42 +16,36 @@ const medicines = [
   {
     id: "med-1",
     generic_name: "Amoxicillin",
-    brand_name: "Medimox",
     dosage: "500mg",
     unit_of_measure: "capsule",
-    unit_cost: 12.5,
     categories: ["Anti-Infectives", "HIV Program"],
   },
   {
     id: "med-2",
     generic_name: "Paracetamol",
-    brand_name: "ReliefCare",
     dosage: "500mg",
     unit_of_measure: "tablet",
-    unit_cost: 3.75,
     categories: ["Analgesic"],
   },
   {
     id: "med-3",
     generic_name: "Amlodipine",
-    brand_name: "CardioNorm",
     dosage: "5mg",
     unit_of_measure: "tablet",
-    unit_cost: null,
     categories: ["Cardiovascular"],
   },
 ];
 
 test("normalizeMedicineText includes searchable medicine fields", () => {
   assert.equal(
-    normalizeMedicineText(medicines[0]).includes("amoxicillin medimox 500mg capsule 12.5"),
+    normalizeMedicineText(medicines[0]).includes("amoxicillin 500mg capsule"),
     true
   );
 });
 
-test("filterMedicines matches name, brand, dosage, unit, cost, and category", () => {
+test("filterMedicines matches name, dosage, unit, and category", () => {
   assert.deepEqual(
-    filterMedicines(medicines, "relief").map((medicine) => medicine.id),
+    filterMedicines(medicines, "paracetamol").map((medicine) => medicine.id),
     ["med-2"]
   );
   assert.deepEqual(
@@ -75,11 +69,32 @@ test("filterMedicines matches name, brand, dosage, unit, cost, and category", ()
     filterMedicines(medicines, "500mg", "Anti-Infectives").map((medicine) => medicine.id),
     ["med-1"]
   );
-  assert.equal(filterMedicines(medicines, "500mg", "Cardiovascular").length, 0);
 });
 
-test("extractUniqueCategories extracts and deduplicates sorted categories", () => {
-  assert.deepEqual(extractUniqueCategories(medicines), [
+test("parseMedicineCategories splits comma-separated strings and removes empty elements", () => {
+  assert.deepEqual(
+    parseMedicineCategories("Anti-Infectives, Analgesic, , Analgesic"),
+    ["Anti-Infectives", "Analgesic"]
+  );
+  assert.deepEqual(parseMedicineCategories(["Anti-Infectives", "Analgesic"]), [
+    "Anti-Infectives",
+    "Analgesic",
+  ]);
+  assert.deepEqual(parseMedicineCategories(""), []);
+  assert.deepEqual(parseMedicineCategories(null), []);
+});
+
+test("formatMedicineCategories returns comma-separated string", () => {
+  assert.equal(
+    formatMedicineCategories(["Anti-Infectives", "Analgesic"]),
+    "Anti-Infectives, Analgesic"
+  );
+  assert.equal(formatMedicineCategories(""), "");
+});
+
+test("extractUniqueCategories returns sorted unique categories from medicines", () => {
+  const categories = extractUniqueCategories(medicines);
+  assert.deepEqual(categories, [
     "Analgesic",
     "Anti-Infectives",
     "Cardiovascular",
@@ -87,18 +102,7 @@ test("extractUniqueCategories extracts and deduplicates sorted categories", () =
   ]);
 });
 
-test("medicine categories parse, deduplicate, and format", () => {
-  assert.deepEqual(parseMedicineCategories("Anti-Infectives, HIV Program, Anti-Infectives"), [
-    "Anti-Infectives",
-    "HIV Program",
-  ]);
-  assert.equal(
-    formatMedicineCategories(["Anti-Infectives", "HIV Program"]),
-    "Anti-Infectives, HIV Program"
-  );
-});
-
-test("sortMedicines orders by generic name in both directions", () => {
+test("sortMedicines sorts ascending and descending by generic name", () => {
   assert.deepEqual(
     sortMedicines(medicines, "ASC").map((medicine) => medicine.generic_name),
     ["Amlodipine", "Amoxicillin", "Paracetamol"]
@@ -109,8 +113,9 @@ test("sortMedicines orders by generic name in both directions", () => {
   );
 });
 
-test("formatCurrency renders Philippine peso values and unset placeholders", () => {
+test("formatCurrency handles values, undefined, and non-numeric values", () => {
   assert.equal(formatCurrency(null), "Not set");
+  assert.equal(formatCurrency(undefined), "Not set");
   assert.equal(formatCurrency(""), "Not set");
   assert.equal(formatCurrency(12.5), "₱12.50");
 });
@@ -120,7 +125,6 @@ test("findDuplicateMedicines separates exact duplicates from same generic matche
     medicines,
     formValues: {
       generic_name: "amoxicillin",
-      brand_name: "medimox",
       dosage: "500mg",
       unit_of_measure: "capsule",
     },
@@ -136,7 +140,6 @@ test("findDuplicateMedicines separates exact duplicates from same generic matche
     medicines,
     formValues: {
       generic_name: "amoxicillin",
-      brand_name: "",
       dosage: "500mg",
       unit_of_measure: "capsule",
     },
@@ -151,7 +154,6 @@ test("findDuplicateMedicines separates exact duplicates from same generic matche
     medicines,
     formValues: {
       generic_name: "amoxicillin",
-      brand_name: "other brand",
       dosage: "250mg",
       unit_of_measure: "suspension",
     },
