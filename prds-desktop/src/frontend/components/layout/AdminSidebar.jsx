@@ -57,7 +57,7 @@ const navItems = [
 
 const navGroupOrder = ["Overview", "Operations", "Analytics & Catalog", "Administration", "System"];
 
-const SidebarIcon = ({ label, isActive, isSystem = false }) => {
+const SidebarIcon = ({ label, isActive }) => {
   const IconComponent = navIcons[label];
   if (!IconComponent) return null;
 
@@ -66,9 +66,7 @@ const SidebarIcon = ({ label, isActive, isSystem = false }) => {
       className={`relative flex h-5 w-5 shrink-0 items-center justify-center transition-all duration-300 ease-out ${
         isActive
           ? "scale-110 text-[#0d1117]"
-          : isSystem
-            ? "text-slate-400 group-hover:scale-110 group-hover:text-amber-300"
-            : "text-slate-400 group-hover:scale-110 group-hover:text-white"
+          : "text-slate-400 group-hover:scale-110 group-hover:text-white"
       }`}
     >
       <IconComponent
@@ -230,127 +228,103 @@ export default function AdminSidebar({
           isCollapsed ? "px-2" : "px-2.5"
         }`}
       >
-        {navGroups.map((group, groupIndex) => {
-          const isSystemGroup = group.category === "System";
+        {navGroups.map((group, groupIndex) => (
+          <div key={group.category}>
+            {!isCollapsed && (
+              <div
+                className={`px-3 pb-1.5 ${
+                  groupIndex === 0 ? "pt-1.5" : "pt-4"
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  {group.category}
+                </p>
+              </div>
+            )}
+            <div className="space-y-1">
+              {group.items.map((item) => {
+                const isActive = isActiveNavItem(item.path, location.pathname);
+                const hasChildren = item.children?.length > 0;
 
-          return (
-            <div key={group.category}>
-              {!isCollapsed && (
-                <div
-                  className={`flex items-center gap-1.5 px-3 pb-1.5 ${
-                    groupIndex === 0 ? "pt-1.5" : "pt-4"
-                  }`}
-                >
-                  <p
-                    className={`text-[10px] font-black uppercase tracking-wider ${
-                      isSystemGroup
-                        ? "text-amber-400"
-                        : "text-slate-400"
-                    }`}
+                const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition-all duration-300 ease-out ${
+                  isActive
+                    ? "bg-[#6be9c2] text-[#0d1117] shadow-sm shadow-[#6be9c2]/25 font-black"
+                    : "text-slate-300 hover:bg-[#16233b] hover:text-white"
+                } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
+
+                const label = (
+                  <>
+                    <SidebarIcon label={item.label} isActive={isActive} />
+                    <span
+                      className={`truncate transition-all duration-300 ease-out ${
+                        isCollapsed ? "sr-only" : ""
+                      } ${
+                        isActive
+                          ? "translate-x-0.5 font-black text-[#0d1117]"
+                          : "font-semibold text-slate-300 group-hover:translate-x-0.5 group-hover:text-white"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  </>
+                );
+
+                return (
+                  <div
+                    key={item.label}
+                    onMouseEnter={(event) => handleMouseEnter(event, item.label)}
+                    onMouseLeave={handleMouseLeave}
                   >
-                    {group.category}
-                  </p>
-                  {isSystemGroup && (
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 shadow-xs shadow-amber-400/60" />
-                  )}
-                </div>
-              )}
-              <div className="space-y-1">
-                {group.items.map((item) => {
-                  const isActive = isActiveNavItem(item.path, location.pathname);
-                  const hasChildren = item.children?.length > 0;
-                  const isSystem = isSystemGroup;
+                    {item.path ? (
+                      <Link
+                        to={item.path}
+                        className={itemClass}
+                        aria-label={item.label}
+                      >
+                        {label}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${itemClass} cursor-default`}
+                        aria-label={item.label}
+                      >
+                        {label}
+                      </button>
+                    )}
 
-                  const itemClass = `group relative flex h-10 w-full items-center rounded-lg text-left text-sm font-bold transition-all duration-300 ease-out ${
-                    isActive
-                      ? isSystem
-                        ? "bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-sm shadow-amber-500/25 font-black"
-                        : "bg-[#6be9c2] text-[#0d1117] shadow-sm shadow-[#6be9c2]/25 font-black"
-                      : isSystem
-                        ? "text-slate-300 hover:bg-amber-500/10 hover:text-amber-200"
-                        : "text-slate-300 hover:bg-[#16233b] hover:text-white"
-                  } ${isCollapsed ? "justify-center px-0" : "gap-3 px-3"}`;
-
-                  const label = (
-                    <>
-                      <SidebarIcon label={item.label} isActive={isActive} isSystem={isSystem} />
-                      <span
-                        className={`truncate transition-all duration-300 ease-out ${
-                          isCollapsed ? "sr-only" : ""
-                        } ${
-                          isActive
-                            ? isSystem
-                              ? "translate-x-0.5 font-black text-slate-950"
-                              : "translate-x-0.5 font-black text-[#0d1117]"
-                            : isSystem
-                              ? "font-semibold text-slate-300 group-hover:translate-x-0.5 group-hover:text-amber-100"
-                              : "font-semibold text-slate-300 group-hover:translate-x-0.5 group-hover:text-white"
+                    {hasChildren && !isCollapsed && isActive ? (
+                      <div
+                        className={`ml-4 mt-1 grid gap-1 border-l border-slate-700/80 pl-3 transition-opacity duration-200 ${
+                          isActive ? "opacity-100" : "opacity-70"
                         }`}
                       >
-                        {item.label}
-                      </span>
-                    </>
-                  );
+                        {item.children.map((child) => {
+                          const isChildActive = isExactActiveNavItem(child.path, location.pathname);
 
-                  return (
-                    <div
-                      key={item.label}
-                      onMouseEnter={(event) => handleMouseEnter(event, item.label)}
-                      onMouseLeave={handleMouseLeave}
-                    >
-                      {item.path ? (
-                        <Link
-                          to={item.path}
-                          className={itemClass}
-                          aria-label={item.label}
-                        >
-                          {label}
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`${itemClass} cursor-default`}
-                          aria-label={item.label}
-                        >
-                          {label}
-                        </button>
-                      )}
-
-                      {hasChildren && !isCollapsed && isActive ? (
-                        <div
-                          className={`ml-4 mt-1 grid gap-1 border-l border-slate-700/80 pl-3 transition-opacity duration-200 ${
-                            isActive ? "opacity-100" : "opacity-70"
-                          }`}
-                        >
-                          {item.children.map((child) => {
-                            const isChildActive = isExactActiveNavItem(child.path, location.pathname);
-
-                            return (
-                              <Link
-                                key={child.path}
-                                to={child.path}
-                                className={`flex h-8 items-center rounded-md px-3 text-xs font-bold transition ${
-                                  isChildActive
-                                    ? isSystem
-                                      ? "bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/40"
-                                      : "bg-[#6be9c2]/20 text-[#6be9c2] ring-1 ring-[#6be9c2]/40"
-                                    : "text-slate-400 hover:bg-[#16233b]/70 hover:text-white"
-                                }`}
-                                title={child.label}
-                              >
-                                <span className="truncate">{child.label}</span>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
+                          return (
+                            <Link
+                              key={child.path}
+                              to={child.path}
+                              className={`flex h-8 items-center rounded-md px-3 text-xs font-bold transition ${
+                                isChildActive
+                                  ? "bg-[#6be9c2]/20 text-[#6be9c2] ring-1 ring-[#6be9c2]/40"
+                                  : "text-slate-400 hover:bg-[#16233b]/70 hover:text-white"
+                              }`}
+                              title={child.label}
+                            >
+                              <span className="truncate">{child.label}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </nav>
 
       <div

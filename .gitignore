@@ -14,6 +14,10 @@ opencode.jsonc
 .gemini/
 skills-lock.json
 
+# Internal planning, client data, and sensitive documentation
+documentation/
+**/documentation/
+
 # Dependencies
 node_modules/
 **/node_modules/

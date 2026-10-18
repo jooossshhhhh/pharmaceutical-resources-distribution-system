@@ -69,21 +69,22 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+#variable_conflict use_column
 BEGIN
   RETURN QUERY
-  WITH cho_facility AS (
-    SELECT f.id
-      FROM public.facilities f
-     WHERE f.facility_type = 'CHO'
-       AND f.status = 'ACTIVE'
-     LIMIT 1
-  ),
-  physical_stock AS (
-    SELECT i.medicine_id, SUM(i.quantity)::bigint AS quantity
-      FROM public.inventory i
-     WHERE i.facility_id = (SELECT id FROM cho_facility)
-       AND COALESCE(i.status, 'ACTIVE') = 'ACTIVE'
-     GROUP BY i.medicine_id
+  WITH physical_stock AS (
+    SELECT
+      i.medicine_id,
+      SUM(i.quantity)::bigint AS quantity
+    FROM public.inventory i
+    JOIN public.facilities f ON f.id = i.facility_id
+    WHERE f.facility_type = 'CHO'
+      AND f.status = 'ACTIVE'
+      AND COALESCE(i.status, 'ACTIVE') = 'ACTIVE'
+      AND i.quantity > 0
+      AND (i.expiration_date IS NULL OR i.expiration_date > CURRENT_DATE)
+    GROUP BY i.medicine_id
+    HAVING SUM(i.quantity) > 0
   ),
   reserved_stock AS (
     SELECT ri.medicine_id, SUM(ri.quantity)::bigint AS quantity

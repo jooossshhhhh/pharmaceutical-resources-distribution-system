@@ -30,6 +30,7 @@ stable
 security definer
 set search_path = ''
 as $$
+#variable_conflict use_column
 begin
   if not exists (
     select 1
@@ -51,8 +52,9 @@ begin
     join public.facilities f on f.id = i.facility_id
     where f.facility_type = 'CHO'
       and f.status = 'ACTIVE'
+      and coalesce(i.status, 'ACTIVE') = 'ACTIVE'
       and i.quantity > 0
-      and i.expiration_date > current_date
+      and (i.expiration_date is null or i.expiration_date > current_date)
     group by i.medicine_id
     having sum(i.quantity) > 0
   ),
@@ -62,21 +64,18 @@ begin
       sum(ri.quantity)::bigint as quantity
     from public.medicine_request_items ri
     join public.medicine_requests r on r.id = ri.request_id
-    where r.status = 'PENDING'
-       or (
-         r.status = 'APPROVED'
-         and not exists (
-           select 1
-             from public.medicine_request_fulfillments mf
-            where mf.request_item_id = ri.id
-         )
-       )
+    where r.status in ('PENDING', 'APPROVED')
+      and not exists (
+        select 1
+          from public.medicine_request_fulfillments mf
+         where mf.request_item_id = ri.id
+      )
     group by ri.medicine_id
   )
   select
     m.id,
     m.generic_name,
-    m.brand_name,
+    null::text as brand_name,
     m.dosage,
     m.unit_of_measure,
     ps.quantity as physical_quantity,
@@ -85,7 +84,7 @@ begin
   from physical_stock ps
   join public.medicines m on m.id = ps.medicine_id
   left join reserved_stock rs on rs.medicine_id = ps.medicine_id
-  order by m.generic_name, m.brand_name, m.dosage;
+  order by m.generic_name, m.dosage;
 end;
 $$;
 

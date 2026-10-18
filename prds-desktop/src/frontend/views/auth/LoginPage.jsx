@@ -416,12 +416,13 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-white">
-        <div className="flex min-h-0 flex-1 items-center justify-center px-5 py-5 md:px-12">
-          <form
-            className="w-full max-w-md rounded-2xl border border-[#e5e7eb] bg-white p-5 shadow-xl shadow-slate-200/70 md:p-6"
-            onSubmit={(e) => (loginMode === "passcode" ? handlePasscodeLogin(e) : handleLogin(e))}
-          >
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-slate-50/60">
+        <div className="flex min-h-full flex-1 flex-col justify-between">
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-6 md:px-12">
+            <form
+              className="my-auto w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xl shadow-slate-200/50 sm:p-7 md:p-8"
+              onSubmit={(e) => (loginMode === "passcode" ? handlePasscodeLogin(e) : handleLogin(e))}
+            >
             <div className="mb-4 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-[#e5e7eb] bg-white p-2 shadow-sm lg:hidden">
                 <img src={prdsLogo} alt="PRDS Logo" className="h-full w-full object-contain" />
@@ -764,12 +765,12 @@ export default function LoginPage() {
               </>
             )}
 
-            <div className="mt-5 text-center text-sm font-medium text-gray-500">
+            <div className="mt-5 text-center text-sm font-medium text-slate-500">
               Don't have an account?{" "}
               <button
                 type="button"
                 onClick={() => navigate("/register")}
-                className="border-0 bg-transparent p-0 font-bold text-[#1d3f8c] transition hover:text-[#008f68] hover:underline"
+                className="border-0 bg-transparent p-0 font-bold text-[#1d3f8c] transition hover:text-[#008f68] hover:underline cursor-pointer"
               >
                 Register here
               </button>
@@ -777,8 +778,8 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <div className="relative flex w-full select-none items-center justify-between border-t border-gray-100 bg-white px-8 py-3 md:px-12">
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-px bg-gray-200 hidden md:block"></div>
+        <div className="relative flex shrink-0 w-full select-none items-center justify-between border-t border-slate-200/70 bg-white px-8 py-3.5 md:px-12">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-px bg-slate-200 hidden md:block"></div>
 
           <div className="h-8 w-8 opacity-60 grayscale filter transition-all duration-200 hover:opacity-100 hover:grayscale-0">
             <img
@@ -797,6 +798,7 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+    </div>
 
       {accountAccessStatus && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-xs" role="presentation">
