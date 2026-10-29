@@ -65,38 +65,38 @@ export const getHealthMeta = (health) => {
   const meta = {
     HEALTHY: {
       label: "Healthy",
-      barClass: "bg-emerald-500",
-      badgeClass: "bg-emerald-100 text-emerald-700",
-      iconClass: "bg-emerald-100 text-emerald-700",
-      topBorderClass: "border-t-emerald-500",
+      barClass: "bg-[#4C9F80]",
+      badgeClass: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+      iconClass: "bg-[#E2F3EC] text-[#226048]",
+      topBorderClass: "border-t-[#4C9F80]",
     },
     WATCH: {
       label: "Warning",
-      barClass: "bg-amber-500",
-      badgeClass: "bg-amber-100 text-amber-700",
-      iconClass: "bg-amber-100 text-amber-700",
-      topBorderClass: "border-t-amber-500",
+      barClass: "bg-[#34769B]",
+      badgeClass: "bg-[#E3EEF5] text-[#1F4A66] border border-[#34769B]/25",
+      iconClass: "bg-[#E3EEF5] text-[#1F4A66]",
+      topBorderClass: "border-t-[#34769B]",
     },
     LOW: {
       label: "Low Stock",
-      barClass: "bg-orange-500",
-      badgeClass: "bg-orange-100 text-orange-700",
-      iconClass: "bg-orange-100 text-orange-700",
-      topBorderClass: "border-t-orange-500",
+      barClass: "bg-[#D9826B]",
+      badgeClass: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25",
+      iconClass: "bg-[#FBE9E3] text-[#8F3F2B]",
+      topBorderClass: "border-t-[#D9826B]",
     },
     CRITICAL: {
       label: "Critical",
-      barClass: "bg-red-500",
-      badgeClass: "bg-red-100 text-red-700",
-      iconClass: "bg-red-100 text-red-700",
-      topBorderClass: "border-t-red-500",
+      barClass: "bg-[#D9826B]",
+      badgeClass: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30",
+      iconClass: "bg-[#FBE9E3] text-[#8F3F2B]",
+      topBorderClass: "border-t-[#D9826B]",
     },
     NO_DATA: {
       label: "No stock data",
-      barClass: "bg-neutral-300",
-      badgeClass: "bg-neutral-100 text-neutral-600",
-      iconClass: "bg-neutral-100 text-neutral-600",
-      topBorderClass: "border-t-neutral-300",
+      barClass: "bg-[#CFDDE0]",
+      badgeClass: "bg-[#E5EFF1] text-[#5B7077]",
+      iconClass: "bg-[#E5EFF1] text-[#5B7077]",
+      topBorderClass: "border-t-[#CFDDE0]",
     },
   };
 
@@ -111,18 +111,18 @@ export const getExpiryMeta = (expirationDate) => {
   const days = Math.ceil((new Date(expirationDate).getTime() - Date.now()) / 86400000);
 
   if (days < 0) {
-    return { label: "Expired", badgeClass: "bg-red-100 text-red-700" };
+    return { label: "Expired", badgeClass: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30" };
   }
 
   if (days <= 30) {
     return {
       label: days === 0 ? "Expires today" : `Exp. in ${days}d`,
-      badgeClass: "bg-red-100 text-red-700",
+      badgeClass: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25",
     };
   }
 
   if (days <= 90) {
-    return { label: `Exp. in ${days}d`, badgeClass: "bg-amber-100 text-amber-700" };
+    return { label: `Exp. in ${days}d`, badgeClass: "bg-[#E3EEF5] text-[#1F4A66] border border-[#34769B]/25" };
   }
 
   return null;
@@ -136,10 +136,10 @@ export const getMedicineName = (item) => {
 };
 
 export const requestStatusMeta = {
-  PENDING: "bg-amber-100 text-amber-700",
-  APPROVED: "bg-emerald-100 text-emerald-700",
-  COMPLETED: "bg-blue-100 text-blue-700",
-  REJECTED: "bg-red-100 text-red-700",
+  PENDING: "bg-[#FBE9E3] text-[#8F3F2B]",
+  APPROVED: "bg-[#E2F3EC] text-[#226048]",
+  COMPLETED: "bg-[#E2F3EC] text-[#226048]",
+  REJECTED: "bg-[#FBE9E3] text-[#8F3F2B]",
 };
 
 export const getRequestStatusMeta = (status) => {

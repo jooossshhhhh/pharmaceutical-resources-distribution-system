@@ -1,18 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import {
   AlertTriangle,
   Building2,
+  Calendar,
   Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   FileSpreadsheet,
   FileText,
   Package,
   Pill,
   Plus,
+  Search,
   Trash2,
   X,
+  Zap,
 } from "lucide-react";
 
 import AdminShell from "../../components/layout/AdminShell";
@@ -155,12 +160,35 @@ export default function ChoRequestsModule() {
   const [isManualRequestOpen, setIsManualRequestOpen] = useState(false);
   const [manualRequestForm, setManualRequestForm] = useState({
     facility_id: "",
-    items: [{ medicine_id: "", quantity: "" }],
+    request_date: new Date().toISOString().split("T")[0],
+    paper_slip_reference: "",
     manual_requested_by: "",
     remarks: "",
+    items: [{ medicine_id: "", quantity: "", consumed_quantity: "" }],
   });
   const [manualRequestError, setManualRequestError] = useState("");
   const [isSavingManualRequest, setIsSavingManualRequest] = useState(false);
+
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.openNewRequest) {
+      setIsManualRequestOpen(true);
+      if (location.state.prefillMedicineId) {
+        setManualRequestForm((current) => ({
+          ...current,
+          items: [
+            {
+              medicine_id: location.state.prefillMedicineId,
+              quantity: String(location.state.prefillQuantity || ""),
+              consumed_quantity: "",
+            },
+          ],
+        }));
+      }
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const stockMap = useMemo(() => getStockMap(inventoryRows), [inventoryRows]);
@@ -285,8 +313,10 @@ export default function ChoRequestsModule() {
       setInventoryRows(data.inventoryRows);
       setMedicines(data.medicines);
       setRequests(data.requests);
+      return data;
     } catch (loadError) {
       setError(loadError.message);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -313,17 +343,28 @@ export default function ChoRequestsModule() {
   const updateManualRequestItem = (index, field, value) => {
     setManualRequestForm((current) => ({
       ...current,
-      items: current.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
-      ),
+      items: current.items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const updated = { ...item, [field]: value };
+        if (
+          field === "quantity" &&
+          (item.consumed_quantity === "" || item.consumed_quantity === undefined)
+        ) {
+          updated.consumed_quantity = value;
+        }
+        return updated;
+      }),
     }));
   };
 
-  const saveManualRequest = async (event) => {
-    event.preventDefault();
+  const saveManualRequest = async (event, options = {}) => {
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
     const validationError = validateManualPaperRequest({
       facilityId: manualRequestForm.facility_id,
       items: manualRequestForm.items,
+      requestDate: manualRequestForm.request_date,
     });
 
     if (validationError) {
@@ -340,21 +381,39 @@ export default function ChoRequestsModule() {
         items: manualRequestForm.items,
         manualRequestedBy: manualRequestForm.manual_requested_by.trim(),
         remarks: manualRequestForm.remarks.trim(),
+        requestDate: manualRequestForm.request_date || null,
+        paperSlipReference: manualRequestForm.paper_slip_reference?.trim() || null,
       });
+
+      const newRequestId = typeof result === "string" ? result : result?.id || result?.result_id;
+
       setIsManualRequestOpen(false);
       setManualRequestForm({
         facility_id: "",
-        items: [{ medicine_id: "", quantity: "" }],
+        request_date: new Date().toISOString().split("T")[0],
+        paper_slip_reference: "",
         manual_requested_by: "",
         remarks: "",
+        items: [{ medicine_id: "", quantity: "", consumed_quantity: "" }],
       });
       if (result?.queued) {
         setNotice("Paper request queued offline. It will be recorded when connection returns.");
       } else {
-        setNotice("Paper requisition encoded and saved to pending requests successfully.");
+        setNotice(
+          options.proceedToRelease
+            ? "Paper requisition encoded. Proceeding directly to batch allocation and release."
+            : "Paper requisition encoded and saved to pending requests successfully."
+        );
         setStatusFilter("PENDING");
       }
-      await loadRequests();
+      const updatedData = await loadRequests();
+
+      if (options.proceedToRelease && newRequestId && updatedData?.requests) {
+        const newlyCreated = updatedData.requests.find((r) => r.id === newRequestId);
+        if (newlyCreated) {
+          openRequest(newlyCreated);
+        }
+      }
     } catch (saveError) {
       setManualRequestError(saveError.message || "Unable to encode paper request.");
     } finally {
@@ -651,7 +710,7 @@ export default function ChoRequestsModule() {
       {isManualRequestOpen && (
         <ManualPaperRequestModal
           error={manualRequestError}
-          facilities={facilities.filter((facility) => facility.facility_type === "HEALTH_CENTER")}
+          facilities={facilities}
           form={manualRequestForm}
           inventoryRows={inventoryRows}
           isSaving={isSavingManualRequest}
@@ -659,7 +718,7 @@ export default function ChoRequestsModule() {
           onAddItem={() =>
             setManualRequestForm((current) => ({
               ...current,
-              items: [...current.items, { medicine_id: "", quantity: "" }],
+              items: [...current.items, { medicine_id: "", quantity: "", consumed_quantity: "" }],
             }))
           }
           onChange={(field, value) =>
@@ -726,16 +785,16 @@ function RequestSummaryCards({ onSelectStatus, statusFilter, summary }) {
           key={card.id}
           type="button"
           onClick={card.onClick}
-          className={`group rounded-xl border bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${
-            card.active ? "border-[#00a36c] ring-2 ring-emerald-100" : "border-[#d8dadc] hover:border-slate-300"
+          className={`group rounded-xl border bg-[#F9FBFB] p-4 text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm cursor-pointer ${
+            card.active ? "border-[#34769B] ring-2 ring-[#34769B]/20" : "border-[#CFDDE0] hover:border-[#34769B]/40"
           }`}
         >
           <div className="flex items-start justify-between gap-2">
-            <p className="text-2xl font-black tracking-tight text-[#0d1117] leading-none">
+            <p className="text-2xl font-black tracking-tight text-[#1B2B30] leading-none">
               {card.value}
             </p>
             {card.active && (
-              <span className="rounded-full bg-[#6be9c2]/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#0d1117]">
+              <span className="rounded-full bg-[#E3EEF5] px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#1F4A66]">
                 Selected
               </span>
             )}
@@ -799,7 +858,7 @@ function RequestListView({
               <button
                 type="button"
                 onClick={onAddRequest}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#0d1117] px-4 text-xs font-black text-white shadow-sm transition hover:bg-neutral-800"
+                className="btn-primary inline-flex h-10 items-center gap-1.5 rounded-lg px-4 text-xs font-bold text-white shadow-xs transition active:scale-[0.99] cursor-pointer"
               >
                 <PlusIcon />
                 Add Request
@@ -1044,14 +1103,6 @@ function ChoReviewModal({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 transition"
-            aria-label="Close modal"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </header>
 
         {/* Modal Body */}
@@ -1183,7 +1234,7 @@ function ChoReviewModal({
 
             {isLoadingBatches ? (
               <div className="rounded-xl border border-neutral-200 bg-neutral-50/70 py-8 text-center text-xs font-bold text-neutral-500">
-                Loading central stock inventory...
+                Loading CHO stock inventory...
               </div>
             ) : items.length === 0 ? (
               <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-center text-xs font-semibold text-neutral-500">
@@ -1293,11 +1344,11 @@ function ChoReviewModal({
                           </p>
                         </div>
 
-                        {/* Central Stock (for Pending) or Fulfillment Status */}
+                        {/* CHO Stock (for Pending) or Fulfillment Status */}
                         {isPending ? (
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-                              Central Stock
+                              CHO Stock
                             </p>
                             <p className="mt-1 text-sm font-black text-neutral-900">
                               {availableQuantity.toLocaleString()}{" "}
@@ -1338,23 +1389,6 @@ function ChoReviewModal({
                               />
                               <span className="text-xs font-bold text-neutral-600">{unit}</span>
                             </div>
-                            <div className="mt-1 flex items-center gap-1 sm:justify-end">
-                              <button
-                                type="button"
-                                onClick={() => onReleaseQuantityChange(item, maxAllowed)}
-                                disabled={maxAllowed === 0}
-                                className="rounded bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-600 hover:bg-neutral-200 transition disabled:opacity-40 cursor-pointer"
-                              >
-                                Full ({maxAllowed})
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onReleaseQuantityChange(item, 0)}
-                                className="rounded bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-600 hover:bg-neutral-200 transition cursor-pointer"
-                              >
-                                0
-                              </button>
-                            </div>
                           </div>
                         ) : (
                           <div className="sm:text-right">
@@ -1385,6 +1419,24 @@ function ChoReviewModal({
             <div className="flex items-start gap-2.5 rounded-xl border border-orange-200 bg-orange-50 p-3 text-xs font-bold text-orange-700">
               <AlertTriangle className="h-4 w-4 shrink-0 text-orange-600 mt-0.5" />
               <p>{allocationError}</p>
+            </div>
+          )}
+
+          {/* Releasing Units Summary Bar */}
+          {isPending ? (
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3.5 py-2.5 text-xs font-bold text-neutral-700">
+              <Package className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>
+                Releasing: <strong className="text-emerald-700">{totalAllocatedQty.toLocaleString()}</strong> of{" "}
+                <strong className="text-neutral-900">{totalRequestedQty.toLocaleString()} units</strong>
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-3.5 py-2.5 text-xs font-bold text-neutral-700">
+              <Package className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>
+                Total Released Units: <strong className="text-emerald-700">{totalAllocatedQty.toLocaleString()} units</strong>
+              </span>
             </div>
           )}
 
@@ -1422,26 +1474,7 @@ function ChoReviewModal({
         {/* Modal Footer */}
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-6 py-3.5 bg-neutral-50/50">
           <div>
-            {isPending ? (
-              <div className="flex items-center gap-2 text-xs font-bold text-neutral-700">
-                <Package className="h-4 w-4 text-emerald-600" />
-                <span>
-                  Releasing: <strong className="text-emerald-700">{totalAllocatedQty.toLocaleString()}</strong> of{" "}
-                  <strong className="text-neutral-900">{totalRequestedQty.toLocaleString()} units</strong>
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-xs font-bold text-neutral-700">
-                <Package className="h-4 w-4 text-emerald-600" />
-                <span>
-                  Total Released Units: <strong className="text-emerald-700">{totalAllocatedQty.toLocaleString()} units</strong>
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div>
-            {isPending ? (
+            {isPending && (
               isConfirmingReject ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-red-700">Reject this requisition?</span>
@@ -1450,7 +1483,7 @@ function ChoReviewModal({
                     onClick={() => setIsConfirmingReject(false)}
                     className="h-8.5 rounded-lg bg-neutral-100 px-3 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
                   >
-                    Cancel
+                    No, Cancel
                   </button>
                   <button
                     type="button"
@@ -1462,41 +1495,46 @@ function ChoReviewModal({
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="h-8.5 rounded-lg bg-neutral-100 px-3.5 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSaving}
-                    onClick={() => setIsConfirmingReject(true)}
-                    className="h-8.5 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100 transition disabled:opacity-50 cursor-pointer"
-                  >
-                    Reject Request
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving || isLoadingBatches || Boolean(allocationError)}
-                    onClick={onRelease}
-                    className="inline-flex items-center gap-1.5 h-8.5 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition disabled:cursor-not-allowed disabled:bg-neutral-300 cursor-pointer"
-                  >
-                    <Check className="h-4 w-4" />
-                    {isSaving ? "Releasing..." : "Approve & Release"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => setIsConfirmingReject(true)}
+                  className="h-8.5 rounded-lg border border-red-200 bg-red-50 px-3.5 text-xs font-bold text-red-700 hover:bg-red-100 transition disabled:opacity-50 cursor-pointer"
+                >
+                  Reject Request
+                </button>
               )
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isPending ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-8.5 rounded-lg bg-neutral-100 px-3.5 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving || isLoadingBatches || Boolean(allocationError)}
+                  onClick={onRelease}
+                  className="inline-flex items-center gap-1.5 h-8.5 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition disabled:cursor-not-allowed disabled:bg-neutral-300 cursor-pointer"
+                >
+                  <Check className="h-4 w-4" />
+                  {isSaving ? "Releasing..." : "Approve & Release"}
+                </button>
+              </>
             ) : request.status === "APPROVED" ? (
-              <div className="flex items-center gap-2">
+              <>
                 <button
                   type="button"
                   onClick={onClose}
                   className="h-8.5 rounded-lg bg-neutral-100 px-4 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
                 >
-                  Close
+                  Cancel
                 </button>
                 <button
                   type="button"
@@ -1507,20 +1545,277 @@ function ChoReviewModal({
                   <Check className="h-4 w-4 stroke-[2.5]" />
                   <span>{isSaving ? "Completing..." : "Mark as Completed"}</span>
                 </button>
-              </div>
+              </>
             ) : (
               <button
                 type="button"
                 onClick={onClose}
                 className="h-8.5 rounded-lg bg-neutral-100 px-4 text-xs font-bold text-neutral-700 hover:bg-neutral-200 transition cursor-pointer"
               >
-                Close
+                Cancel
               </button>
             )}
           </div>
         </footer>
       </div>
     </ModalShell>
+  );
+}
+
+function ManualMedicineSearchDropdown({
+  bhsStockMap,
+  disabled = false,
+  medicines = [],
+  onChange,
+  otherSelectedIds = new Set(),
+  placeholder = "Search medicine generic name, dosage, or brand...",
+  stationName,
+  value,
+  warehouseStockMap,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const dropdownRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selectedMedicine = useMemo(
+    () => medicines.find((m) => m.id === value) || null,
+    [medicines, value]
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setSearchQuery("");
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  const filteredMedicines = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return medicines;
+
+    return medicines.filter((m) => {
+      const generic = (m.generic_name || "").toLowerCase();
+      const brand = (m.brand_name || "").toLowerCase();
+      const dosage = (m.dosage || "").toLowerCase();
+      const unit = (m.unit_of_measure || "").toLowerCase();
+      return (
+        generic.includes(q) ||
+        brand.includes(q) ||
+        dosage.includes(q) ||
+        unit.includes(q)
+      );
+    });
+  }, [medicines, searchQuery]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setSearchQuery("");
+      e.preventDefault();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const firstValid = filteredMedicines.find((m) => !otherSelectedIds.has(m.id) || m.id === value);
+      if (firstValid) {
+        onChange(firstValid.id);
+        setIsOpen(false);
+        setSearchQuery("");
+      }
+    } else if (e.key === "ArrowDown" && !isOpen) {
+      setIsOpen(true);
+      e.preventDefault();
+    }
+  };
+
+  return (
+    <div ref={dropdownRef} className="relative w-full">
+      {!selectedMedicine || isOpen ? (
+        <div
+          className={`relative flex h-9.5 w-full items-center rounded-lg border bg-white px-3 transition ${
+            isOpen
+              ? "border-emerald-500 ring-2 ring-emerald-100"
+              : "border-neutral-200 hover:border-neutral-300"
+          } ${disabled ? "cursor-not-allowed bg-neutral-100 opacity-70" : ""}`}
+        >
+          <Search
+            className={`mr-2 h-3.5 w-3.5 shrink-0 transition-colors ${
+              isOpen ? "text-emerald-600" : "text-neutral-400"
+            }`}
+          />
+          <input
+            ref={inputRef}
+            type="text"
+            disabled={disabled}
+            value={searchQuery}
+            onFocus={() => {
+              if (!disabled) setIsOpen(true);
+            }}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (!isOpen) setIsOpen(true);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              selectedMedicine
+                ? `Change: ${selectedMedicine.generic_name}...`
+                : placeholder
+            }
+            className="h-full w-full bg-transparent text-xs font-bold text-neutral-900 outline-none placeholder:text-neutral-400 placeholder:font-normal"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                inputRef.current?.focus();
+              }}
+              className="mr-1 rounded p-0.5 text-neutral-400 hover:text-neutral-600 cursor-pointer"
+              title="Clear search"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              if (isOpen) {
+                setIsOpen(false);
+                setSearchQuery("");
+              } else {
+                setIsOpen(true);
+                inputRef.current?.focus();
+              }
+            }}
+            className="rounded p-0.5 text-neutral-400 hover:text-neutral-600 cursor-pointer"
+            title={isOpen ? "Close dropdown" : "Open list"}
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                isOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        </div>
+      ) : (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (!disabled) {
+              setIsOpen(true);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setIsOpen(true);
+            }
+          }}
+          className="flex h-9.5 w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 hover:border-neutral-300 transition cursor-pointer"
+        >
+          <div className="flex items-center gap-2 truncate">
+            <span className="text-xs font-bold text-neutral-900 truncate">
+              {selectedMedicine.generic_name}
+            </span>
+            {selectedMedicine.dosage && (
+              <span className="text-[10px] font-semibold text-neutral-500 shrink-0">
+                ({selectedMedicine.dosage})
+              </span>
+            )}
+            {selectedMedicine.brand_name && selectedMedicine.brand_name !== "-" && (
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 shrink-0">
+                {selectedMedicine.brand_name}
+              </span>
+            )}
+          </div>
+          <span className="text-[10.5px] font-semibold text-emerald-600 hover:text-emerald-700 shrink-0 ml-2">
+            Change
+          </span>
+        </div>
+      )}
+
+      {/* Dropdown menu */}
+      {isOpen && (
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+          {filteredMedicines.length === 0 ? (
+            <div className="px-3 py-4 text-center text-xs text-neutral-500">
+              No matching medicines found for "{searchQuery}".
+            </div>
+          ) : (
+            filteredMedicines.map((medicine) => {
+              const isAlreadySelected = otherSelectedIds.has(medicine.id) && medicine.id !== value;
+              const choStock = warehouseStockMap?.get(medicine.id) ?? 0;
+              const bhsStock = bhsStockMap?.get(medicine.id) ?? 0;
+              const isCurrent = medicine.id === value;
+
+              return (
+                <button
+                  key={medicine.id}
+                  type="button"
+                  disabled={isAlreadySelected}
+                  onClick={() => {
+                    onChange(medicine.id);
+                    setIsOpen(false);
+                    setSearchQuery("");
+                  }}
+                  className={`w-full flex flex-col text-left rounded-lg p-2 transition cursor-pointer mb-1 last:mb-0 ${
+                    isCurrent
+                      ? "bg-emerald-50 border border-emerald-200/80"
+                      : isAlreadySelected
+                      ? "opacity-40 cursor-not-allowed bg-neutral-50"
+                      : "hover:bg-neutral-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-neutral-900 truncate">
+                      {medicine.generic_name}
+                    </span>
+                    {isAlreadySelected && (
+                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                        Already Added
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[10.5px]">
+                    {medicine.dosage && (
+                      <span className="text-neutral-600 font-medium">
+                        {medicine.dosage}
+                      </span>
+                    )}
+                    {medicine.brand_name && medicine.brand_name !== "-" && (
+                      <span className="text-emerald-700 font-semibold">
+                        • {medicine.brand_name}
+                      </span>
+                    )}
+                    <span className="text-neutral-400">•</span>
+                    <span className="text-neutral-600 font-semibold">
+                      CHO: <strong className={choStock > 0 ? "text-emerald-700" : "text-amber-700"}>{choStock.toLocaleString()}</strong>
+                    </span>
+                    {stationName && (
+                      <>
+                        <span className="text-neutral-400">•</span>
+                        <span className="text-purple-700 font-semibold">
+                          BHS: <strong>{bhsStock.toLocaleString()}</strong>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1543,15 +1838,42 @@ function ManualPaperRequestModal({
     [medicines]
   );
 
-  const warehouseStockMap = useMemo(() => {
+  const selectedFacility = useMemo(
+    () => facilities.find((facility) => facility.id === form.facility_id),
+    [facilities, form.facility_id]
+  );
+
+  const choFacility = useMemo(
+    () => facilities.find((facility) => facility.facility_type === "CHO"),
+    [facilities]
+  );
+
+  const healthCenterFacilities = useMemo(
+    () => facilities.filter((facility) => facility.facility_type === "HEALTH_CENTER"),
+    [facilities]
+  );
+
+  const bhsStockMap = useMemo(() => {
     const map = new Map();
+    if (!form.facility_id) return map;
     for (const row of inventoryRows) {
-      if (!form.facility_id || row.facility_id !== form.facility_id) {
+      if (row.facility_id === form.facility_id) {
         map.set(row.medicine_id, (map.get(row.medicine_id) || 0) + Number(row.quantity || 0));
       }
     }
     return map;
   }, [inventoryRows, form.facility_id]);
+
+  const warehouseStockMap = useMemo(() => {
+    const map = new Map();
+    const choId = choFacility?.id;
+    for (const row of inventoryRows) {
+      if (choId ? row.facility_id === choId : row.facility_id !== form.facility_id) {
+        map.set(row.medicine_id, (map.get(row.medicine_id) || 0) + Number(row.quantity || 0));
+      }
+    }
+    return map;
+  }, [inventoryRows, choFacility?.id, form.facility_id]);
 
   const selectedMedicineIds = useMemo(() => {
     return new Set(form.items.map((item) => item.medicine_id).filter(Boolean));
@@ -1561,6 +1883,12 @@ function ManualPaperRequestModal({
     return form.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   }, [form.items]);
 
+  const totalConsumedUnits = useMemo(() => {
+    return form.items.reduce((sum, item) => sum + (Number(item.consumed_quantity) || 0), 0);
+  }, [form.items]);
+
+  const todayDateString = useMemo(() => new Date().toISOString().split("T")[0], []);
+
   return (
     <ModalShell
       labelledBy="paper-request-title"
@@ -1568,20 +1896,25 @@ function ManualPaperRequestModal({
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName="max-w-3xl w-full p-0 overflow-hidden rounded-2xl bg-white shadow-2xl border border-neutral-100"
     >
-      <form onSubmit={onSubmit} className="w-full flex max-h-[90vh] flex-col overflow-hidden">
+      <form onSubmit={(e) => onSubmit(e, { proceedToRelease: false })} className="w-full flex max-h-[90vh] flex-col overflow-hidden">
         {/* Modal Header */}
         <header className="flex items-center justify-between border-b border-neutral-100 px-6 py-4 bg-neutral-50/50">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
               <FileSpreadsheet className="h-5 w-5" />
             </span>
-            <div className="flex items-center gap-2">
-              <h2 id="paper-request-title" className="text-base font-black text-neutral-900 tracking-tight">
-                Record Manual Requisition
-              </h2>
-              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
-                Paper Slip Entry
-              </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 id="paper-request-title" className="text-base font-black text-neutral-900 tracking-tight">
+                  Record Manual Requisition
+                </h2>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                  Paper Slip Entry
+                </span>
+              </div>
+              <p className="text-[11px] font-medium text-neutral-500 mt-0.5">
+                Record paper requests from health stations and update their stock.
+              </p>
             </div>
           </div>
         </header>
@@ -1599,7 +1932,7 @@ function ManualPaperRequestModal({
           <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-4 space-y-3">
             <div className="flex items-center gap-2 text-xs font-bold text-neutral-800 uppercase tracking-wider">
               <Building2 className="h-4 w-4 text-emerald-600" />
-              <span>Requisition Source & Reference</span>
+              <span>Requisition Details</span>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1613,7 +1946,7 @@ function ManualPaperRequestModal({
                   className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
                 >
                   <option value="">Select barangay station...</option>
-                  {facilities.map((facility) => (
+                  {healthCenterFacilities.map((facility) => (
                     <option key={facility.id} value={facility.id}>
                       {facility.facility_name} ({facility.facility_code || "BHC"})
                     </option>
@@ -1623,7 +1956,35 @@ function ManualPaperRequestModal({
 
               <div>
                 <label className="block text-xs font-bold text-neutral-700 mb-1">
-                  BHW/Barangay Representative
+                  RIS No.
+                </label>
+                <input
+                  type="text"
+                  value={form.paper_slip_reference || ""}
+                  onChange={(event) => onChange("paper_slip_reference", event.target.value)}
+                  placeholder="e.g. RIS-2026-10-042"
+                  className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Date <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    max={todayDateString}
+                    value={form.request_date || todayDateString}
+                    onChange={(event) => onChange("request_date", event.target.value)}
+                    className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  BHW / Midwife Representative
                 </label>
                 <input
                   type="text"
@@ -1642,7 +2003,7 @@ function ManualPaperRequestModal({
               <div className="flex items-center gap-2">
                 <Pill className="h-4 w-4 text-emerald-600" />
                 <h3 className="text-xs font-black uppercase tracking-wider text-neutral-800">
-                  Requested Medicines List
+                  Requested Medicines
                 </h3>
                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10.5px] font-bold text-neutral-600">
                   {form.items.length} {form.items.length === 1 ? "item line" : "item lines"}
@@ -1651,102 +2012,84 @@ function ManualPaperRequestModal({
               <button
                 type="button"
                 onClick={onAddItem}
-                className="inline-flex items-center gap-1.5 h-8 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white px-3 text-xs font-bold transition shadow-xs cursor-pointer"
+                className="btn-primary inline-flex items-center gap-1.5 h-8 rounded-lg px-3 text-xs font-bold text-white transition shadow-xs cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Add Medicine Line</span>
               </button>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {form.items.map((item, index) => {
                 const selectedMed = medicinesMap.get(item.medicine_id);
-                const warehouseStock = item.medicine_id ? warehouseStockMap.get(item.medicine_id) ?? null : null;
+                const bhsStock = item.medicine_id ? bhsStockMap.get(item.medicine_id) ?? 0 : 0;
+                const warehouseStock = item.medicine_id ? warehouseStockMap.get(item.medicine_id) ?? 0 : 0;
+                const requestedQty = Number(item.quantity) || 0;
+                const consumedQty = Number(item.consumed_quantity) || 0;
+                const stationName = selectedFacility?.facility_name || "BHS Station";
+
+                const remainingBeforeRelease = Math.max(0, bhsStock - consumedQty);
+                const postReleaseStock = remainingBeforeRelease + requestedQty;
 
                 return (
                   <div
                     key={index}
-                    className="rounded-xl border border-neutral-200/90 bg-[#fafbfc] hover:border-neutral-300 p-3 transition"
+                    className="rounded-xl border border-neutral-200/90 bg-[#fafbfc] hover:border-neutral-300 p-3.5 transition space-y-3"
                   >
                     <div className="flex items-start gap-2.5">
-                      {/* Item index */}
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-neutral-200/80 text-[11px] font-black text-neutral-700 mt-1">
                         #{index + 1}
                       </span>
 
-                      {/* Medicine selection */}
+                      {/* Medicine Search Dropdown */}
                       <div className="flex-1 min-w-0">
                         <label className="block text-[11px] font-bold text-neutral-600 mb-1">
                           Medicine <span className="text-red-500">*</span>
                         </label>
-                        <select
+                        <ManualMedicineSearchDropdown
+                          medicines={medicines}
                           value={item.medicine_id}
-                          onChange={(event) => onUpdateItem(index, "medicine_id", event.target.value)}
-                          className="w-full h-9.5 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition truncate"
-                        >
-                          <option value="">Select medicine from catalog...</option>
-                          {medicines.map((medicine) => {
-                            const isAlreadySelected =
-                              selectedMedicineIds.has(medicine.id) && item.medicine_id !== medicine.id;
-                            return (
-                              <option
-                                key={medicine.id}
-                                value={medicine.id}
-                                disabled={isAlreadySelected}
-                              >
-                                {medicine.generic_name} {medicine.dosage ? `(${medicine.dosage})` : ""}{" "}
-                                {medicine.brand_name && medicine.brand_name !== "-" ? `• ${medicine.brand_name}` : ""}{" "}
-                                {isAlreadySelected ? "— (Already Added)" : ""}
-                              </option>
-                            );
-                          })}
-                        </select>
+                          onChange={(medId) => onUpdateItem(index, "medicine_id", medId)}
+                          otherSelectedIds={selectedMedicineIds}
+                          bhsStockMap={bhsStockMap}
+                          warehouseStockMap={warehouseStockMap}
+                          stationName={stationName}
+                        />
 
                         {/* Medicine details badge */}
                         {selectedMed && (
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10.5px]">
                             <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200/80 px-2 py-0.5 font-bold text-blue-700">
                               Unit: {selectedMed.unit_of_measure || "units"}
                             </span>
-                            {warehouseStock !== null && (
+                            {form.facility_id && (
                               <span
                                 className={`inline-flex items-center rounded-md px-2 py-0.5 font-bold border ${
-                                  warehouseStock > 0
-                                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                                    : "bg-amber-50 border-amber-200 text-amber-800"
+                                  bhsStock > 0
+                                    ? "bg-purple-50 border-purple-200 text-purple-800"
+                                    : "bg-neutral-100 border-neutral-200 text-neutral-600"
                                 }`}
                               >
-                                {warehouseStock > 0
-                                  ? `CHO Central Stock: ${warehouseStock.toLocaleString()} ${selectedMed.unit_of_measure || "units"}`
-                                  : "Zero Stock in Central Warehouse"}
+                                Station Stock: {bhsStock.toLocaleString()} {selectedMed.unit_of_measure || "units"}
                               </span>
                             )}
+                            <span
+                              className={`inline-flex items-center rounded-md px-2 py-0.5 font-bold border ${
+                                warehouseStock > 0
+                                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                  : "bg-amber-50 border-amber-200 text-amber-800"
+                              }`}
+                            >
+                              {warehouseStock > 0
+                                ? `CHO Stock: ${warehouseStock.toLocaleString()} ${selectedMed.unit_of_measure || "units"}`
+                                : "Zero Stock in CHO Warehouse"}
+                            </span>
                           </div>
                         )}
                       </div>
 
-                      {/* Quantity input */}
-                      <div className="w-28 sm:w-36 shrink-0">
-                        <label className="block text-[11px] font-bold text-neutral-600 mb-1">
-                          Quantity <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(event) => onUpdateItem(index, "quantity", event.target.value)}
-                            placeholder="0"
-                            className="w-full h-9.5 rounded-lg border border-neutral-200 bg-white pl-3 pr-9 text-xs font-bold text-neutral-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
-                          />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-neutral-400 pointer-events-none truncate max-w-[32px]">
-                            {selectedMed?.unit_of_measure || "qty"}
-                          </span>
-                        </div>
-                      </div>
-
                       {/* Remove button */}
-                      <div className="pt-5.5">
+                      <div className="pt-6">
                         <button
                           type="button"
                           onClick={() => onRemoveItem(index)}
@@ -1759,52 +2102,133 @@ function ManualPaperRequestModal({
                         </button>
                       </div>
                     </div>
+
+                    {/* Quantities Row */}
+                    {selectedMed && (
+                      <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-neutral-200/60">
+                        {/* Consumed Quantity */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                            Quantity Consumed
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.consumed_quantity ?? ""}
+                              onChange={(event) => onUpdateItem(index, "consumed_quantity", event.target.value)}
+                              placeholder="0"
+                              className="w-full h-9 rounded-lg border border-neutral-200 bg-white pl-3 pr-12 text-xs font-bold text-neutral-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition"
+                            />
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-neutral-400 pointer-events-none truncate max-w-[36px]">
+                              {selectedMed?.unit_of_measure || "units"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Requested Quantity */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                            Quantity Requested <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(event) => onUpdateItem(index, "quantity", event.target.value)}
+                              placeholder="0"
+                              className="w-full h-9 rounded-lg border border-neutral-200 bg-white pl-3 pr-12 text-xs font-bold text-neutral-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
+                            />
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-neutral-400 pointer-events-none truncate max-w-[36px]">
+                              {selectedMed?.unit_of_measure || "qty"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Alpaco Inventory Tracking Live Calculation Banner */}
+                        {form.facility_id && (requestedQty > 0 || consumedQty > 0) && (
+                          <div className="sm:col-span-2 rounded-lg bg-emerald-50/70 border border-emerald-200/80 px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                            <div className="flex flex-wrap items-center gap-1.5 text-emerald-900 font-semibold text-[11px]">
+                              <span className="font-bold text-emerald-700">💡 Stock Calculation:</span>
+                              <span>Previous ({bhsStock})</span>
+                              <span>-</span>
+                              <span>Consumed ({consumedQty})</span>
+                              <span>=</span>
+                              <span className="font-bold text-purple-800">{remainingBeforeRelease} remaining</span>
+                              <span>➔</span>
+                              <span className="font-black text-emerald-800">Post-Release Stock: {postReleaseStock} {selectedMed.unit_of_measure || "units"}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Section 3: Remarks & Documentation Notes */}
+          {/* Total Requested & Summary above Remarks */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-4 py-2.5 text-xs font-bold text-neutral-700">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-emerald-600" />
+              <span>
+                Total Requested: <strong className="text-emerald-700 font-black">{totalRequestedUnits.toLocaleString()} units</strong>
+              </span>
+            </div>
+            {totalConsumedUnits > 0 && (
+              <div className="flex items-center gap-1.5 text-purple-800">
+                <span>
+                  Total Consumed: <strong className="font-bold">{totalConsumedUnits.toLocaleString()} units</strong>
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Section 3: Remarks */}
           <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-4 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-neutral-800 uppercase tracking-wider">
               <FileText className="h-4 w-4 text-neutral-600" />
-              <span>Remarks & Paper Notes</span>
+              <span>Remarks</span>
             </div>
             <textarea
               value={form.remarks}
               onChange={(event) => onChange("remarks", event.target.value)}
               rows="2"
-              placeholder="Optional notes, urgency instructions, or delivery specifications from the paper slip..."
+              placeholder="Optional notes or delivery specifications..."
               className="w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
             />
           </div>
         </div>
 
         {/* Modal Footer */}
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-6 py-3.5 bg-neutral-50/60">
-          <div className="flex items-center gap-2 text-xs font-bold text-neutral-700">
-            <Package className="h-4 w-4 text-emerald-600" />
-            <span>
-              Total Requested Units: <strong className="text-emerald-700">{totalRequestedUnits.toLocaleString()} units</strong>
-            </span>
-          </div>
+        <footer className="flex items-center justify-between border-t border-neutral-100 px-6 py-3.5 bg-neutral-50/60">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="h-9 rounded-lg border border-neutral-200 bg-white px-4 text-xs font-bold text-neutral-700 hover:bg-neutral-100 transition cursor-pointer"
+          >
+            Cancel
+          </button>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="h-9 rounded-lg border border-neutral-200 bg-white px-4 text-xs font-bold text-neutral-700 hover:bg-neutral-100 transition cursor-pointer"
+              disabled={isSaving}
+              onClick={(e) => onSubmit(e, { proceedToRelease: false })}
+              className="h-9 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 px-4 text-xs font-bold transition cursor-pointer disabled:opacity-50"
             >
-              Cancel
+              {isSaving ? "Saving..." : "Save as Pending"}
             </button>
             <button
-              type="submit"
+              type="button"
               disabled={isSaving}
-              className="h-9 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 text-xs font-bold text-white transition shadow-sm disabled:opacity-50 cursor-pointer"
+              onClick={(e) => onSubmit(e, { proceedToRelease: true })}
+              className="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 text-xs font-bold text-white transition shadow-sm disabled:opacity-50 cursor-pointer"
             >
-              <Check className="h-4 w-4" />
-              <span>{isSaving ? "Adding..." : "Add Medicine Request"}</span>
+              {isSaving ? "Processing..." : "Save & Release Now"}
             </button>
           </div>
         </footer>

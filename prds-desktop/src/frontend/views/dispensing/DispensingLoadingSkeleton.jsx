@@ -13,7 +13,7 @@ function LoadingStepper() {
   return (
     <nav
       aria-label="Dispensing progress"
-      className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm"
+      className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-4 py-3 shadow-sm"
     >
       <ol className="flex items-center">
         {steps.map((label, index) => {
@@ -28,22 +28,22 @@ function LoadingStepper() {
                 <span
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
                     active
-                      ? "bg-[#00a36c] text-white shadow-sm"
-                      : "border border-[#d8dadc] bg-white text-[#9aa1ad]"
+                      ? "bg-[#34769B] text-white shadow-sm"
+                      : "border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077]"
                   }`}
                 >
                   {index + 1}
                 </span>
                 <span
                   className={`hidden whitespace-nowrap text-sm font-bold sm:block ${
-                    active ? "text-[#0d1117]" : "text-[#9aa1ad]"
+                    active ? "text-[#1B2B30]" : "text-[#5B7077]"
                   }`}
                 >
                   {label}
                 </span>
               </div>
               {index < steps.length - 1 && (
-                <span aria-hidden="true" className="relative mx-3 h-0.5 min-w-6 flex-1 overflow-hidden rounded-full bg-[#e5e7eb]" />
+                <span aria-hidden="true" className="relative mx-3 h-0.5 min-w-6 flex-1 overflow-hidden rounded-full bg-[#CFDDE0]" />
               )}
             </li>
           );
@@ -63,21 +63,21 @@ export default function DispensingLoadingSkeleton({ error = "" }) {
   return (
     <AdminShell currentDateTime={currentDateTime} profile={profile} onSignOut={logoutUser}>
       <div className="space-y-4">
-        <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-4 shadow-sm">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-4 py-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#008f68]">Walk-in service</p>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#6be9c2] px-3 py-1 text-xs font-bold text-[#0d1117]">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#34769B]">Walk-in service</p>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E3EEF5] px-3 py-1 text-xs font-bold text-[#1F4A66]">
               <PillIcon /> Active workflow
             </span>
           </div>
-          <h1 className="mt-2 text-xl font-bold text-[#0d1117]">Dispensing</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[#5f6673]">
+          <h1 className="mt-2 text-xl font-bold text-[#1B2B30]">Dispensing</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[#5B7077]">
             Find a patient, check their monthly medicine status, select available medicines, then complete the claim.
           </p>
         </section>
 
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+          <div className="rounded-xl border border-[#D9826B]/30 bg-[#FBE9E3] px-4 py-3 text-sm font-bold text-[#8F3F2B]">
             {error}
           </div>
         )}
@@ -86,22 +86,22 @@ export default function DispensingLoadingSkeleton({ error = "" }) {
           <>
             <LoadingStepper />
 
-            <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-3">
+            <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#CFDDE0] px-4 py-3">
                 <div>
-                  <p className="text-base font-bold text-[#0d1117]">Search Patient</p>
-                  <p className="mt-1 text-sm text-[#5f6673]">
+                  <p className="text-base font-bold text-[#1B2B30]">Search Patient</p>
+                  <p className="mt-1 text-sm text-[#5B7077]">
                     Search by patient name or code, then select the patient for this walk-in claim.
                   </p>
                 </div>
               </div>
 
               <div className="space-y-3 p-4">
-                <div className="relative h-10 rounded-lg border border-[#d8dadc] bg-white">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
+                <div className="relative h-10 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB]">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
                     <SearchIcon />
                   </span>
-                  <span className="absolute left-9 top-1/2 -translate-y-1/2 text-sm text-[#9aa1ad]">
+                  <span className="absolute left-9 top-1/2 -translate-y-1/2 text-sm text-[#5B7077]">
                     Search patient name or code...
                   </span>
                 </div>
@@ -109,7 +109,7 @@ export default function DispensingLoadingSkeleton({ error = "" }) {
                 {[0, 1, 2, 3, 4].map((key) => (
                   <div
                     key={key}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-3"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-[#CFDDE0] bg-[#E5EFF1]/40 p-3"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <SkeletonBlock className="h-10 w-10 shrink-0 rounded-full" />

@@ -83,17 +83,17 @@ function DispensingSkeleton() {
   return (
     <div className="space-y-4">
       {/* 1. Header Card */}
-      <section className="rounded-xl border border-[#d8dadc] bg-white px-5 py-4 shadow-sm">
+      <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-5 py-4 shadow-xs">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-[11px] font-black uppercase tracking-[0.18em] text-[#008f68]">
+          <span className="text-[11px] font-black uppercase tracking-[0.18em] text-[#2D7A5D]">
             Walk-in service
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#6be9c2]/50 px-3 py-1 text-xs font-bold text-[#0d1117]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E8F5F1] px-3 py-1 text-xs font-bold text-[#2D7A5D]">
             Active workflow
           </span>
         </div>
-        <h1 className="mt-2 text-xl font-bold text-[#0d1117]">Dispensing</h1>
-        <p className="mt-1 max-w-3xl text-sm text-[#5f6673]">
+        <h1 className="mt-2 text-xl font-bold text-[#1B2B30]">Dispensing</h1>
+        <p className="mt-1 max-w-3xl text-sm text-[#5B7077]">
           Find a patient, check their monthly medicine status, select available medicines, then complete the claim.
         </p>
       </section>
@@ -101,7 +101,7 @@ function DispensingSkeleton() {
       {/* 2. Loading Stepper */}
       <nav
         aria-label="Dispensing progress"
-        className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-sm"
+        className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-4 py-3 shadow-xs"
       >
         <ol className="flex items-center">
           {steps.map((label, index) => {
@@ -115,8 +115,8 @@ function DispensingSkeleton() {
                   <span
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
                       active
-                        ? "bg-[#00a36c] text-white shadow-sm"
-                        : "border border-[#d8dadc] bg-white text-[#9aa1ad]"
+                        ? "bg-linear-to-r from-[#1F4E5A] to-[#286575] text-white shadow-xs"
+                        : "border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077]"
                     }`}
                   >
                     {index + 1}
@@ -347,14 +347,14 @@ export default function WorkspaceModuleSkeleton({ path = "" }) {
   return (
     <div className="space-y-5">
       {/* 1. Module Header Card */}
-      <section className="rounded-xl border border-[#d8dadc] bg-white px-5 py-4 shadow-sm">
+      <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-5 py-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#008f68]">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#2D7A5D]">
               {meta.tag}
             </p>
-            <h1 className="mt-1 text-xl font-bold text-[#0d1117]">{meta.title}</h1>
-            <p className="mt-1 text-sm text-[#5f6673]">{meta.subtitle}</p>
+            <h1 className="mt-1 text-xl font-bold text-[#1B2B30]">{meta.title}</h1>
+            <p className="mt-1 text-sm text-[#5B7077]">{meta.subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
             <SkeletonBlock className="h-9 w-28 rounded-lg" />

@@ -35,10 +35,10 @@ export const requestStatusLabels = {
 };
 
 export const requestStatusTones = {
-  APPROVED: "bg-blue-50 text-blue-700",
-  COMPLETED: "bg-emerald-100 text-emerald-700",
-  PENDING: "bg-orange-50 text-orange-700",
-  REJECTED: "bg-red-50 text-red-700",
+  APPROVED: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+  COMPLETED: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+  PENDING: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25",
+  REJECTED: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30",
 };
 
 export const getRequestNumber = (requestId = "") => {
@@ -526,9 +526,13 @@ export const normalizeRequestErrorMessage = (message = "") => {
   return message;
 };
 
-export const validateManualPaperRequest = ({ facilityId = "", items = [] } = {}) => {
+export const validateManualPaperRequest = ({ facilityId = "", items = [], requestDate = "" } = {}) => {
   if (!facilityId || facilityId === "ALL") {
     return "Choose the requesting barangay facility.";
+  }
+
+  if (requestDate && isNaN(new Date(requestDate).getTime())) {
+    return "Enter a valid requisition date.";
   }
 
   if (!items.length) {
@@ -537,6 +541,10 @@ export const validateManualPaperRequest = ({ facilityId = "", items = [] } = {})
 
   if (items.some((item) => !item.medicine_id || Number(item.quantity || 0) <= 0)) {
     return "Every paper request line needs a medicine and positive quantity.";
+  }
+
+  if (items.some((item) => Number(item.consumed_quantity || 0) < 0)) {
+    return "Consumed quantity cannot be negative.";
   }
 
   if (getDuplicateRequestMedicineIds(items).length > 0) {

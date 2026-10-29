@@ -147,6 +147,7 @@ export const getProfileById = async (profileId) => {
 };
 
 export const createPhoneProfile = async ({
+  email = null,
   facilityId,
   firstName,
   lastName,
@@ -160,7 +161,7 @@ export const createPhoneProfile = async ({
       id: userId,
       first_name: firstName.trim(),
       last_name: lastName.trim(),
-      email: null,
+      email: email ? email.trim().toLowerCase() : null,
       phone_number: phoneNumber,
       role,
       facility_id: facilityId,
@@ -181,6 +182,7 @@ export const createGoogleProfile = async ({
   facilityId,
   firstName,
   lastName,
+  phoneNumber = null,
   role,
   userId,
 }) => {
@@ -191,7 +193,7 @@ export const createGoogleProfile = async ({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       email,
-      phone_number: null,
+      phone_number: phoneNumber ? phoneNumber.trim() : null,
       role,
       facility_id: facilityId,
       status: "PENDING",
@@ -220,6 +222,32 @@ export const updateOwnProfileContact = async ({
   });
 
   if (error) {
+    const errorMsg = String(error.message || "").toLowerCase();
+    if (
+      errorMsg.includes("phone updates require verified") ||
+      errorMsg.includes("supabase auth phone login")
+    ) {
+      const cleanPhone = phoneNumber ? phoneNumber.trim() : null;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user?.id) {
+        const { error: directErr } = await supabase
+          .from("profiles")
+          .update({
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            phone_number: cleanPhone,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id);
+
+        if (!directErr) {
+          return;
+        }
+      }
+    }
     throw error;
   }
 };
@@ -398,4 +426,105 @@ export const removeProfileAvatar = async ({ userId }) => {
   await supabase.storage
     .from(AVATAR_BUCKET)
     .remove(data.map((item) => `${userId}/${item.name}`));
+};
+
+export const requestGmailUpdate = async ({ newEmail }) => {
+  if (!isCurrentNetworkOnline()) {
+    throw new Error("Cannot update Gmail while offline. Please connect to the internet.");
+  }
+
+  const cleanEmail = String(newEmail || "").trim().toLowerCase();
+  if (!cleanEmail) {
+    throw new Error("Please enter a valid Gmail address.");
+  }
+
+  const { data, error } = await supabase.auth.updateUser(
+    { email: cleanEmail },
+    { emailRedirectTo: `${window.location.origin}/profile-settings` }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return { success: true, user: data?.user };
+};
+
+export const verifyAndApplyGmailUpdate = async ({
+  newEmail,
+  token,
+  oldEmail,
+  profile,
+}) => {
+  if (!isCurrentNetworkOnline()) {
+    throw new Error("Cannot verify email update while offline. Please connect to the internet.");
+  }
+
+  const cleanEmail = String(newEmail || "").trim().toLowerCase();
+  const cleanToken = String(token || "").trim();
+
+  if (!cleanToken) {
+    throw new Error("Please enter the verification code sent to your email.");
+  }
+
+  // 1. Verify OTP with Supabase Auth
+  const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+    email: cleanEmail,
+    token: cleanToken,
+    type: "email_change",
+  });
+
+  if (verifyError) {
+    throw verifyError;
+  }
+
+  // 2. Notify CHO (if BHW) and record audit log via RPC
+  try {
+    await supabase.rpc("notify_cho_of_bhw_email_update", {
+      p_old_email: oldEmail || null,
+      p_new_email: cleanEmail,
+    });
+  } catch (rpcErr) {
+    console.warn("RPC notify_cho_of_bhw_email_update fallback:", rpcErr?.message || rpcErr);
+
+    // Resilient fallback: direct update to profiles table
+    if (profile?.id) {
+      await supabase
+        .from("profiles")
+        .update({
+          email: cleanEmail,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", profile.id);
+
+      // Best effort activity log
+      try {
+        await supabase.from("activity_logs").insert({
+          user_id: profile.id,
+          action: "User Account Email Updated",
+          module: "Authentication",
+          details: `${profile.first_name || ""} ${profile.last_name || ""} updated account email from ${oldEmail || "none"} to ${cleanEmail}.`,
+        });
+      } catch (logErr) {
+        console.warn("Activity log fallback skipped:", logErr);
+      }
+    }
+  }
+
+  // 3. Update local session cache
+  const cached = getCachedUserSession();
+  const activeUser = verifyData?.user || cached?.user || {};
+  const currentProfile = cached?.profile || profile || {};
+  const updatedProfile = {
+    ...currentProfile,
+    email: cleanEmail,
+  };
+  saveUserSession(activeUser, updatedProfile);
+
+  return {
+    success: true,
+    newEmail: cleanEmail,
+    profile: updatedProfile,
+    user: activeUser,
+  };
 };

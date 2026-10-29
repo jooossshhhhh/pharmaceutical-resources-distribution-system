@@ -44,7 +44,7 @@ export default function MedicineToolbar({
           <button
             type="button"
             onClick={onAdd}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-px hover:bg-neutral-800"
+            className="btn-primary inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-xs transition hover:-translate-y-px cursor-pointer"
           >
             <PlusIcon />
             Add Medicine

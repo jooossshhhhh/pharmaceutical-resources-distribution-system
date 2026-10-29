@@ -1,7 +1,7 @@
 export const CHANNEL_META = {
-  WALK_IN: { label: "Walk-In", color: "#0f9f94" },
-  PROGRAM: { label: "Program", color: "#6be9c2" },
-  REQUEST: { label: "Request", color: "#f59e0b" },
+  WALK_IN: { label: "Walk-In", color: "#4C9F80" },
+  PROGRAM: { label: "Program", color: "#34769B" },
+  REQUEST: { label: "Request", color: "#1F4E5A" },
 };
 
 export const CHANNEL_ORDER = ["WALK_IN", "PROGRAM", "REQUEST"];

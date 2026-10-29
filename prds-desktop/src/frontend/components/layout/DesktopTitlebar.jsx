@@ -6,6 +6,10 @@ import { getCachedUserSession, clearUserSession } from "@backend/database/snapsh
 const REMEMBER_SESSION_KEY = "prds_remember_session_on_exit";
 
 export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin }) {
+  if (!isTauriEnvironment()) {
+    return null;
+  }
+
   const { isAuthenticated, profile, signOut } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
   const [internalPinned, setInternalPinned] = useState(() => {
@@ -21,7 +25,9 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
   const [isExiting, setIsExiting] = useState(false);
   const hideTimeoutRef = useRef(null);
   const unlistenCloseRef = useRef(null);
+  const unlistenResizeRef = useRef(null);
   const [appWindow, setAppWindow] = useState(null);
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const isPinned = propIsPinned !== undefined ? propIsPinned : internalPinned;
 
@@ -47,11 +53,39 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
   };
 
   useEffect(() => {
+    let removeWindowResize = null;
+
     if (isTauriEnvironment()) {
       import("@tauri-apps/api/window")
         .then(async ({ getCurrentWindow }) => {
           const win = getCurrentWindow();
           setAppWindow(win);
+
+          const updateMaximized = async () => {
+            try {
+              const max = await win.isMaximized();
+              setIsMaximized(Boolean(max));
+            } catch (err) {
+              console.warn("isMaximized check failed:", err);
+            }
+          };
+
+          await updateMaximized();
+
+          try {
+            const unlistenResize = await win.onResized(() => {
+              updateMaximized();
+            });
+            unlistenResizeRef.current = unlistenResize;
+          } catch (e) {
+            console.warn("onResized setup error:", e);
+          }
+
+          const handleBrowserResize = () => {
+            updateMaximized();
+          };
+          window.addEventListener("resize", handleBrowserResize);
+          removeWindowResize = () => window.removeEventListener("resize", handleBrowserResize);
 
           try {
             const unlisten = await win.onCloseRequested((event) => {
@@ -67,9 +101,16 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
     }
 
     return () => {
+      if (removeWindowResize) {
+        removeWindowResize();
+      }
       if (unlistenCloseRef.current) {
         unlistenCloseRef.current();
         unlistenCloseRef.current = null;
+      }
+      if (unlistenResizeRef.current) {
+        unlistenResizeRef.current();
+        unlistenResizeRef.current = null;
       }
     };
   }, [isAuthenticated]);
@@ -99,6 +140,10 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
     e?.stopPropagation();
     if (appWindow) {
       await appWindow.toggleMaximize();
+      try {
+        const max = await appWindow.isMaximized();
+        setIsMaximized(Boolean(max));
+      } catch {}
     }
   };
 
@@ -172,6 +217,10 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
   const handleDoubleClick = async (e) => {
     if (e.target.tagName !== "BUTTON" && appWindow) {
       await appWindow.toggleMaximize();
+      try {
+        const max = await appWindow.isMaximized();
+        setIsMaximized(Boolean(max));
+      } catch {}
     }
   };
 
@@ -275,12 +324,37 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
               type="button"
               onClick={handleToggleMaximize}
               className="flex items-center justify-center w-7 h-7 rounded text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="Maximize / Restore"
-              aria-label="Maximize or restore window"
+              title={isMaximized ? "Restore Down" : "Maximize"}
+              aria-label={isMaximized ? "Restore window" : "Maximize window"}
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                <rect x="5" y="5" width="14" height="14" rx="2" />
-              </svg>
+              {isMaximized ? (
+                // Restore Down Icon (Overlapping rounded squares matching Image 3)
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="5" y="8" width="11" height="11" rx="2" />
+                  <path d="M8 8V7a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-1" />
+                </svg>
+              ) : (
+                // Maximize Icon (Single square)
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="5" y="5" width="14" height="14" rx="2" />
+                </svg>
+              )}
             </button>
 
             {/* Close */}
@@ -344,7 +418,7 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
                   <span className="mt-1 block text-[11.5px] leading-4 text-neutral-500">
                     {rememberSession
                       ? "Keep me signed in when PRDS opens again. You will automatically be logged in to your account."
-                      : "Clear session on exit. You will need to sign in with your phone number or Google verification code when PRDS opens again."}
+                      : "Clear session on exit. You will need to sign in with your Gmail account or passcode when PRDS opens again."}
                   </span>
                 </span>
               </label>
@@ -370,7 +444,7 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
                 type="button"
                 onClick={handleConfirmExit}
                 disabled={isExiting}
-                className="rounded-lg bg-black px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#0d1117] disabled:opacity-60 cursor-pointer flex items-center gap-1.5"
+                className="btn-primary rounded-lg px-4 py-2 text-xs font-bold text-white transition-colors disabled:opacity-60 cursor-pointer flex items-center gap-1.5 shadow-xs"
               >
                 {isExiting ? (
                   <>

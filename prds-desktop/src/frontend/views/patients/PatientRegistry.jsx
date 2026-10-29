@@ -418,11 +418,11 @@ export default function PatientRegistry({
       )}
 
       <div>
-        <section className="min-w-0 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] px-5 py-4">
+        <section className="min-w-0 overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#CFDDE0] px-5 py-4">
             <div>
-              <h2 className="text-base font-bold text-[#0d1117]">Patient Logbook</h2>
-              <p className="mt-0.5 text-xs text-[#5f6673]">
+              <h2 className="text-base font-bold text-[#1B2B30]">Patient Logbook</h2>
+              <p className="mt-0.5 text-xs text-[#5B7077]">
                 Showing {sortedPatients.length} of {visiblePatients.length} {archiveMode} patients
               </p>
             </div>
@@ -431,10 +431,10 @@ export default function PatientRegistry({
                 <button
                   type="button"
                   onClick={toggleArchiveMode}
-                  className={`inline-flex h-9 items-center rounded-lg border px-3 text-xs font-bold shadow-sm transition ${
+                  className={`inline-flex h-9 items-center rounded-lg border px-3 text-xs font-bold shadow-xs transition ${
                     archiveMode === PATIENT_ARCHIVE_MODES.archived
-                      ? "border-black bg-black text-white"
-                      : "border-[#d8dadc] bg-white text-[#0d1117] hover:bg-[#eff4ff]"
+                      ? "border-[#1F4E5A] bg-[#1F4E5A] text-white"
+                      : "border-[#CFDDE0] bg-[#F9FBFB] text-[#1B2B30] hover:bg-[#EBF3F5]"
                   }`}
                   aria-pressed={archiveMode === PATIENT_ARCHIVE_MODES.archived}
                 >
@@ -445,7 +445,7 @@ export default function PatientRegistry({
                 type="button"
                 onClick={handleRefreshPatients}
                 disabled={isRefreshing}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] shadow-xs transition hover:bg-[#EBF3F5] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className={isRefreshing ? "animate-spin" : ""}>
                   <RefreshIcon />
@@ -456,7 +456,7 @@ export default function PatientRegistry({
                 <button
                   type="button"
                   onClick={handleExportExcel}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] shadow-xs transition hover:bg-[#EBF3F5]"
                 >
                   <ExportIcon />
                   Export
@@ -466,7 +466,7 @@ export default function PatientRegistry({
                 <button
                   type="button"
                   onClick={openCreateModal}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-4 text-sm font-bold text-white shadow-xs transition-all"
                 >
                   <PlusIcon />
                   Register Patient
@@ -476,12 +476,12 @@ export default function PatientRegistry({
           </div>
 
           <div
-            className={`grid items-center gap-3 border-b border-[#e5e7eb] px-5 py-3 ${
+            className={`grid items-center gap-3 border-b border-[#CFDDE0] px-5 py-3 ${
               isCho ? "lg:grid-cols-[1fr_200px_auto]" : "lg:grid-cols-[1fr_auto]"
             }`}
           >
             <label className="relative min-w-0">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
                 <SearchIcon />
               </span>
               <Input
@@ -511,7 +511,7 @@ export default function PatientRegistry({
 
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
-              <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <thead className="border-b border-[#CFDDE0] bg-[#F4F8F8] text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
                 <tr>
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Gender</th>

@@ -5,6 +5,7 @@ import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "../database/snapshotSto
 import {
   buildWalkInRpcPayload,
   deductWalkInInventoryFefo,
+  FOLLOW_UP_ACTIONS,
   getBlockedPatientIdsFromClaimRows,
   getMonthRangeIso,
   getPatientDispensingStatus,
@@ -14,9 +15,13 @@ import {
 const DISPENSING_SELECT = `
   id,
   dispensing_transaction_id,
+  facility_id,
   medicine_id,
+  inventory_id,
   quantity,
   needed_quantity,
+  unit_cost_at_dispense,
+  total_cost_at_dispense,
   prescribed_by,
   follow_up_action,
   follow_up_date,
@@ -37,12 +42,14 @@ const DISPENSING_SELECT = `
     suffix,
     gender,
     date_of_birth,
+    contact_number,
+    address,
     facility:facilities!patients_facility_id_fkey(id, facility_name, facility_code)
   ),
   dispenser:profiles!medicine_dispensing_dispensed_by_fkey(id, first_name, last_name, role),
   dispensing_facility:facilities!medicine_dispensing_facility_id_fkey(id, facility_name, facility_code),
   referred_facility:facilities!medicine_dispensing_referred_facility_id_fkey(id, facility_name, facility_code),
-  batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date)
+  batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date, unit_cost, brand_name)
 `;
 
 export const getWalkInInventory = async (facilityId) => {
@@ -231,7 +238,10 @@ export const getPatientClaimStatus = async (patientId) => {
   return claimed;
 };
 
-export const getPatientsMonthlyClaimOverview = async (patientIds) => {
+export const getPatientsMonthlyClaimOverview = async (
+  patientIds,
+  { currentFacilityId = null, isBhw = false, today = new Date().toISOString().slice(0, 10) } = {}
+) => {
   if (!patientIds || patientIds.length === 0) {
     return new Map();
   }
@@ -247,12 +257,14 @@ export const getPatientsMonthlyClaimOverview = async (patientIds) => {
         .select(`
           id,
           patient_id,
+          facility_id,
           medicine_id,
           dispensing_transaction_id,
           quantity,
           needed_quantity,
           follow_up_action,
           follow_up_date,
+          referred_facility_id,
           dispense_date,
           prescribed_by,
           record_type,
@@ -285,7 +297,12 @@ export const getPatientsMonthlyClaimOverview = async (patientIds) => {
   const overviewMap = new Map();
   patientIds.forEach((pid) => {
     const breakdown = getPatientMonthlyClaimsBreakdown(claimRows, pid);
-    const status = getPatientDispensingStatus({ claimsBreakdown: breakdown });
+    const status = getPatientDispensingStatus({
+      claimsBreakdown: breakdown,
+      today,
+      currentFacilityId,
+      isBhw,
+    });
     overviewMap.set(pid, {
       breakdown,
       status,
@@ -297,7 +314,7 @@ export const getPatientsMonthlyClaimOverview = async (patientIds) => {
   return overviewMap;
 };
 
-export const getPatientActiveMonthlyClaims = async (patientId) => {
+export const getPatientActiveMonthlyClaims = async (patientId, options = {}) => {
   if (!patientId) {
     return {
       breakdown: [],
@@ -307,7 +324,7 @@ export const getPatientActiveMonthlyClaims = async (patientId) => {
     };
   }
 
-  const overview = await getPatientsMonthlyClaimOverview([patientId]);
+  const overview = await getPatientsMonthlyClaimOverview([patientId], options);
   return (
     overview.get(patientId) || {
       breakdown: [],
@@ -318,12 +335,12 @@ export const getPatientActiveMonthlyClaims = async (patientId) => {
   );
 };
 
-export const getClaimedPatientIds = async (patientIds) => {
+export const getClaimedPatientIds = async (patientIds, options = {}) => {
   if (!patientIds || patientIds.length === 0) {
     return [];
   }
 
-  const overview = await getPatientsMonthlyClaimOverview(patientIds);
+  const overview = await getPatientsMonthlyClaimOverview(patientIds, options);
   const blockedIds = [];
   overview.forEach((value, pid) => {
     if (value.isBlocked) {
@@ -333,7 +350,122 @@ export const getClaimedPatientIds = async (patientIds) => {
   return blockedIds;
 };
 
+export const updateDispensingFollowUp = async ({
+  dispensingIds = [],
+  patientId,
+  followUpAction,
+  followUpDate = null,
+  referredFacilityId = null,
+}) => {
+  if (!followUpAction) {
+    throw new Error("Follow-up action is required.");
+  }
+
+  if (followUpAction === FOLLOW_UP_ACTIONS.schedule && !followUpDate) {
+    throw new Error("Follow-up date is required when scheduling a return to CHO.");
+  }
+
+  if (followUpAction === FOLLOW_UP_ACTIONS.refer && !referredFacilityId) {
+    throw new Error("Please select a Barangay Health Center to refer the patient to.");
+  }
+
+  const isOnline = isCurrentNetworkOnline();
+  const updatePayload = {
+    follow_up_action: followUpAction,
+    follow_up_date: followUpAction === FOLLOW_UP_ACTIONS.schedule ? followUpDate : null,
+    referred_facility_id: followUpAction === FOLLOW_UP_ACTIONS.refer ? referredFacilityId : null,
+  };
+
+  if (isOnline) {
+    let query = supabase.from("medicine_dispensing").update(updatePayload);
+    if (dispensingIds.length > 0) {
+      query = query.in("id", dispensingIds);
+    } else if (patientId) {
+      const { start } = getMonthRangeIso();
+      query = query
+        .eq("patient_id", patientId)
+        .is("voided_at", null)
+        .gte("dispense_date", start);
+    } else {
+      throw new Error("No dispensing record or patient identified to update.");
+    }
+
+    const { error } = await query;
+    if (error) {
+      throw error;
+    }
+  }
+
+  // Optimistically update local snapshot store
+  try {
+    const cachedDispensing = getSnapshot(STORAGE_KEYS.DISPENSING, []);
+    const cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+    const facilityMap = new Map(cachedFacilities.map((f) => [String(f.id), f]));
+
+    const targetFacility = referredFacilityId ? facilityMap.get(String(referredFacilityId)) : null;
+
+    const updatedDispensing = cachedDispensing.map((record) => {
+      const matchesId = dispensingIds.length > 0 && dispensingIds.includes(record.id);
+      const matchesPatient =
+        !dispensingIds.length &&
+        patientId &&
+        String(record.patient_id || record.patient?.id) === String(patientId);
+
+      if (matchesId || matchesPatient) {
+        return {
+          ...record,
+          follow_up_action: updatePayload.follow_up_action,
+          follow_up_date: updatePayload.follow_up_date,
+          referred_facility_id: updatePayload.referred_facility_id,
+          referred_facility: targetFacility
+            ? { id: targetFacility.id, facility_name: targetFacility.facility_name }
+            : null,
+        };
+      }
+      return record;
+    });
+
+    saveSnapshot(STORAGE_KEYS.DISPENSING, updatedDispensing);
+  } catch (snapErr) {
+    console.warn("Failed to update snapshot store for follow-up update:", snapErr);
+  }
+
+  return { success: true };
+};
+
 export const getDispensingHistory = async ({ facilityId, patientId } = {}) => {
+  const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+  const invMap = new Map(cachedInventory.map((i) => [String(i.id), i]));
+  const enrichRow = (r) => {
+    if (!r) return r;
+    const inv = r.inventory_id
+      ? invMap.get(String(r.inventory_id))
+      : r.batch?.id
+      ? invMap.get(String(r.batch.id))
+      : null;
+    const resolvedBrand =
+      r.batch?.brand_name ||
+      r.medicine?.brand_name ||
+      r.brand_name ||
+      inv?.brand_name ||
+      null;
+
+    return {
+      ...r,
+      brand_name: resolvedBrand,
+      batch: r.batch
+        ? { ...r.batch, brand_name: resolvedBrand || r.batch.brand_name || null }
+        : inv
+        ? {
+            batch_number: inv.batch_number,
+            expiration_date: inv.expiration_date,
+            unit_cost: inv.unit_cost,
+            brand_name: resolvedBrand,
+          }
+        : null,
+    };
+  };
+
   const isOnline = isCurrentNetworkOnline();
   if (isOnline) {
     try {
@@ -352,7 +484,7 @@ export const getDispensingHistory = async ({ facilityId, patientId } = {}) => {
 
       const { data, error } = await query;
       if (!error && data) {
-        return data;
+        return data.map(enrichRow);
       }
     } catch (err) {
       console.warn("Online dispensing history fetch failed, falling back to snapshot:", err);
@@ -371,7 +503,7 @@ export const getDispensingHistory = async ({ facilityId, patientId } = {}) => {
       (d) => String(d.patient_id || d.patient?.id) === String(patientId)
     );
   }
-  return filtered;
+  return filtered.map(enrichRow);
 };
 
 export const completeWalkInDispensing = async ({ facilityId, items, patientId, prescribedBy }) => {
@@ -428,6 +560,9 @@ export const completeWalkInDispensing = async ({ facilityId, items, patientId, p
         quantity: Number(item.quantity),
         dispense_date: new Date().toISOString(),
         prescribed_by: prescribedBy,
+        follow_up_action: item.follow_up_action || null,
+        follow_up_date: item.follow_up_date || null,
+        referred_facility_id: item.referred_facility_id || null,
         record_type: "LIVE_DISPENSING",
         generic_name: generic,
         brand_name: brand,

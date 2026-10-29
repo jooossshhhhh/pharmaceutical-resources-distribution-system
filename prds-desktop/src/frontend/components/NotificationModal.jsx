@@ -23,7 +23,7 @@ function FormattedNoticeMessage({ text }) {
           return (
             <span
               key={index}
-              className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-xs font-black tracking-wide bg-emerald-100/90 text-emerald-900 border border-emerald-200"
+              className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-xs font-black tracking-wide bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/30"
             >
               {part}
             </span>
@@ -37,37 +37,37 @@ function FormattedNoticeMessage({ text }) {
 
 const TYPE_CONFIG = {
   success: {
-    accentGradient: "from-emerald-500 via-teal-500 to-emerald-600",
-    iconBg: "bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/70 border border-emerald-200/80 shadow-emerald-500/10",
-    eyebrowColor: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
-    buttonBg: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-emerald-600/25",
+    accentGradient: "from-[#1F4E5A] via-[#286575] to-[#1F4E5A]",
+    iconBg: "bg-[#E8F5F1] text-[#2D7A5D] ring-8 ring-[#E8F5F1]/70 border border-[#4C9F80]/30 shadow-[#4C9F80]/10",
+    eyebrowColor: "bg-[#E8F5F1] text-[#2D7A5D] border-[#4C9F80]/30",
+    buttonBg: "bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] hover:brightness-105 active:scale-[0.99] text-white shadow-xs",
     defaultEyebrow: "Success Notification",
     defaultTitle: "Action Completed",
     Icon: CheckCircle2,
   },
   info: {
-    accentGradient: "from-blue-500 via-cyan-500 to-blue-600",
-    iconBg: "bg-blue-50 text-blue-600 ring-8 ring-blue-50/70 border border-blue-200/80 shadow-blue-500/10",
-    eyebrowColor: "bg-blue-50 text-blue-700 border-blue-200/80",
-    buttonBg: "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-600/25",
+    accentGradient: "from-[#1F4E5A] via-[#34769B] to-[#1F4E5A]",
+    iconBg: "bg-[#E5EFF1] text-[#1F4E5A] ring-8 ring-[#E5EFF1]/70 border border-[#34769B]/30 shadow-[#1F4E5A]/10",
+    eyebrowColor: "bg-[#E5EFF1] text-[#1F4E5A] border-[#34769B]/30",
+    buttonBg: "bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] hover:brightness-105 active:scale-[0.99] text-white shadow-xs",
     defaultEyebrow: "Information",
     defaultTitle: "Notice",
     Icon: Info,
   },
   warning: {
-    accentGradient: "from-amber-500 via-orange-500 to-amber-600",
-    iconBg: "bg-amber-50 text-amber-600 ring-8 ring-amber-50/70 border border-amber-200/80 shadow-amber-500/10",
-    eyebrowColor: "bg-amber-50 text-amber-700 border-amber-200/80",
-    buttonBg: "bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-amber-600/25",
+    accentGradient: "from-[#D9826B] via-[#c2725d] to-[#D9826B]",
+    iconBg: "bg-[#faedf0] text-[#D9826B] ring-8 ring-[#faedf0]/70 border border-[#D9826B]/30 shadow-[#D9826B]/10",
+    eyebrowColor: "bg-[#faedf0] text-[#D9826B] border-[#D9826B]/30",
+    buttonBg: "bg-[#D9826B] hover:brightness-105 active:scale-[0.99] text-white shadow-xs",
     defaultEyebrow: "Attention Required",
     defaultTitle: "Notice Update",
     Icon: AlertTriangle,
   },
   error: {
-    accentGradient: "from-rose-500 via-red-500 to-rose-600",
-    iconBg: "bg-rose-50 text-rose-600 ring-8 ring-rose-50/70 border border-rose-200/80 shadow-rose-500/10",
-    eyebrowColor: "bg-rose-50 text-rose-700 border-rose-200/80",
-    buttonBg: "bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white shadow-rose-600/25",
+    accentGradient: "from-[#D9826B] via-[#c2725d] to-[#D9826B]",
+    iconBg: "bg-[#faedf0] text-[#D9826B] ring-8 ring-[#faedf0]/70 border border-[#D9826B]/30 shadow-[#D9826B]/10",
+    eyebrowColor: "bg-[#faedf0] text-[#D9826B] border-[#D9826B]/30",
+    buttonBg: "bg-[#D9826B] hover:brightness-105 active:scale-[0.99] text-white shadow-xs",
     defaultEyebrow: "System Alert",
     defaultTitle: "Action Failed",
     Icon: AlertCircle,
@@ -199,7 +199,7 @@ export default function NotificationModal({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descId}
-        className="relative w-full overflow-hidden rounded-2xl bg-white shadow-2xl border border-neutral-100 text-center transition-all animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full overflow-hidden rounded-2xl bg-[#F9FBFB] shadow-2xl border border-[#CFDDE0] text-center transition-all animate-in fade-in zoom-in-95 duration-200"
       >
         <div className="px-6 pt-7 pb-6 sm:px-8">
           {/* Centered Hero Icon */}
@@ -217,7 +217,7 @@ export default function NotificationModal({
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10.5px] font-black uppercase tracking-wider border ${config.eyebrowColor}`}
               >
-                {data.type === "success" && <Sparkles className="h-3 w-3 text-emerald-500" />}
+                {data.type === "success" && <Sparkles className="h-3 w-3 text-[#2D7A5D]" />}
                 {data.eyebrow}
               </span>
             </div>
@@ -226,7 +226,7 @@ export default function NotificationModal({
           {/* Title */}
           <h3
             id={titleId}
-            className="text-lg sm:text-xl font-black text-neutral-900 tracking-tight leading-tight"
+            className="text-lg sm:text-xl font-black text-[#1B2B30] tracking-tight leading-tight"
           >
             {data.title}
           </h3>

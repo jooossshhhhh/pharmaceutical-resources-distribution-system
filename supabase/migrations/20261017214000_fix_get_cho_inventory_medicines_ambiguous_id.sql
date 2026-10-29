@@ -26,7 +26,8 @@ BEGIN
   WITH physical_stock AS (
     SELECT
       i.medicine_id,
-      SUM(i.quantity)::bigint AS quantity
+      SUM(i.quantity)::bigint AS quantity,
+      STRING_AGG(DISTINCT NULLIF(TRIM(i.brand_name), ''), ', ') AS brand_name
     FROM public.inventory i
     JOIN public.facilities f ON f.id = i.facility_id
     WHERE f.facility_type = 'CHO'
@@ -52,7 +53,7 @@ BEGIN
   SELECT
     m.id,
     m.generic_name,
-    NULL::text AS brand_name,
+    ps.brand_name AS brand_name,
     m.dosage,
     m.unit_of_measure,
     ps.quantity AS physical_quantity,

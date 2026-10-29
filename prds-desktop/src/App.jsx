@@ -33,13 +33,17 @@ function App() {
     });
   };
 
+  const isDesktop = isTauriEnvironment();
+
   return (
     <div
       className={`flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#f5f7fb] transition-[padding-top] duration-300 ease-in-out ${
-        isPinned ? "pt-10" : "pt-0"
+        isPinned && isDesktop ? "pt-10" : "pt-0"
       }`}
     >
-      <DesktopTitlebar isPinned={isPinned} onTogglePin={handleTogglePin} />
+      {isDesktop && (
+        <DesktopTitlebar isPinned={isPinned} onTogglePin={handleTogglePin} />
+      )}
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden relative">
         <AppRoutes />
       </div>

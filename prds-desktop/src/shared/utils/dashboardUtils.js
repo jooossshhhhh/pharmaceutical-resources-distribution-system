@@ -135,13 +135,36 @@ export const getStockStatus = (item) => {
 
 export const getDashboardInventoryMetrics = (inventoryRows = []) => {
   const metrics = { stockedBatches: 0, criticalStock: 0, lowStock: 0 };
+  const medicineTotals = new Map();
+  let hasFacilityMedicineKeys = false;
+
   for (const row of inventoryRows) {
     const quantity = Number(row.quantity || 0);
     if (quantity > 0) metrics.stockedBatches += 1;
-    const status = getStockStatus(row);
-    if (status === "CRITICAL") metrics.criticalStock += 1;
-    if (status === "LOW") metrics.lowStock += 1;
+
+    if (row.facility_id && row.medicine_id) {
+      hasFacilityMedicineKeys = true;
+      const key = `${row.facility_id}:${row.medicine_id}`;
+      const current = medicineTotals.get(key) || { quantity: 0, threshold: 0 };
+      medicineTotals.set(key, {
+        quantity: current.quantity + quantity,
+        threshold: Math.max(current.threshold, Number(row.threshold || 0)),
+      });
+    } else {
+      const status = getStockStatus(row);
+      if (status === "CRITICAL") metrics.criticalStock += 1;
+      if (status === "LOW") metrics.lowStock += 1;
+    }
   }
+
+  if (hasFacilityMedicineKeys) {
+    for (const med of medicineTotals.values()) {
+      const status = getStockStatus(med);
+      if (status === "CRITICAL") metrics.criticalStock += 1;
+      if (status === "LOW") metrics.lowStock += 1;
+    }
+  }
+
   return metrics;
 };
 
@@ -170,6 +193,40 @@ const stockStatusRank = {
 };
 
 export const buildFacilityStockStatus = (inventoryRows) => {
+  const facilityMeds = new Map();
+  let hasFacilityMedicineKeys = false;
+
+  for (const row of inventoryRows || []) {
+    const facilityId = row.facility_id;
+    if (!facilityId) continue;
+    if (row.medicine_id) {
+      hasFacilityMedicineKeys = true;
+      const key = `${facilityId}:${row.medicine_id}`;
+      const current = facilityMeds.get(key) || { facilityId, quantity: 0, threshold: 0 };
+      facilityMeds.set(key, {
+        facilityId,
+        quantity: current.quantity + Number(row.quantity || 0),
+        threshold: Math.max(current.threshold, Number(row.threshold || 0)),
+      });
+    }
+  }
+
+  if (hasFacilityMedicineKeys) {
+    const statusByFacility = {};
+    for (const med of facilityMeds.values()) {
+      const currentRank = statusByFacility[med.facilityId]
+        ? stockStatusRank[statusByFacility[med.facilityId]]
+        : -1;
+      const medStatus = getStockStatus(med);
+      const medRank = stockStatusRank[medStatus];
+
+      if (medRank > currentRank) {
+        statusByFacility[med.facilityId] = medStatus;
+      }
+    }
+    return statusByFacility;
+  }
+
   return (inventoryRows || []).reduce((statusByFacility, row) => {
     const facilityId = row.facility_id;
     if (!facilityId) {
@@ -205,10 +262,10 @@ export const buildFacilityDemand = (forecastRows) => {
 
 export const getFacilityStockTone = (status) => {
   const toneMap = {
-    CRITICAL: { color: "#ef4444", className: "bg-red-100 text-red-700" },
-    LOW: { color: "#f97316", className: "bg-orange-100 text-orange-700" },
-    WATCH: { color: "#f59e0b", className: "bg-amber-100 text-amber-700" },
-    HEALTHY: { color: "#00a36c", className: "bg-emerald-100 text-emerald-700" },
+    CRITICAL: { color: "#D9826B", className: "bg-[#faedf0] text-[#D9826B] border border-[#D9826B]/25" },
+    LOW: { color: "#dc8939", className: "bg-[#fdf3e9] text-[#965315] border border-[#dc8939]/25" },
+    WATCH: { color: "#f3f029", className: "bg-[#fefee6] text-[#716006] border border-[#f3f029]/60" },
+    HEALTHY: { color: "#4C9F80", className: "bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/25" },
   };
 
   return toneMap[status] || toneMap.HEALTHY;

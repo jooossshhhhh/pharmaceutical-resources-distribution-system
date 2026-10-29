@@ -167,36 +167,36 @@ function TransferDetailsModal({
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-xl border border-[#e5e7eb] bg-white p-4">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
                 Transfer Request
               </p>
-              <h3 className="mt-1 text-lg font-bold text-[#0d1117]">
+              <h3 className="mt-1 text-lg font-bold text-[#1B2B30]">
                 {formatTransferNumber(transfer.id)}
               </h3>
             </div>
             <StatusBadge status={transfer.status} />
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+          <div className="overflow-hidden rounded-xl border border-[#CFDDE0]">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <thead className="border-b border-[#CFDDE0] bg-[#E5EFF1]/60 text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
                 <tr>
                   <th className="px-4 py-3">Medicine</th>
                   <th className="px-4 py-3">Details</th>
                   <th className="px-4 py-3 text-right">Quantity</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#edf0f2]">
+              <tbody className="divide-y divide-[#CFDDE0]/50">
                 {(transfer.items || []).map((item) => (
                   <tr key={item.id}>
-                    <td className="px-4 py-3 font-bold text-[#0d1117]">{getTransferItemLabel(item)}</td>
-                    <td className="px-4 py-3 text-xs text-[#5f6673]">
+                    <td className="px-4 py-3 font-bold text-[#1B2B30]">{getTransferItemLabel(item)}</td>
+                    <td className="px-4 py-3 text-xs text-[#5B7077]">
                       {getTransferMedicineFullLabel(item.medicine)}
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-[#0d1117]">
+                    <td className="px-4 py-3 text-right font-bold text-[#1B2B30]">
                       {Number(item.quantity || 0).toLocaleString()} units
                     </td>
                   </tr>
@@ -206,8 +206,8 @@ function TransferDetailsModal({
           </div>
         </section>
 
-        <section className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
             Activity Timeline
           </p>
           <div className="mt-4 space-y-3">
@@ -215,14 +215,14 @@ function TransferDetailsModal({
               <TimelineItem key={step.key} label={step.label} state={step.state} value={step.detail} />
             ))}
           </div>
-          <div className="mt-4 rounded-lg bg-white p-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Requester</p>
-            <p className="mt-1 text-sm font-bold text-[#0d1117]">{getProfileName(transfer.requester)}</p>
-            <p className="mt-1 text-xs text-[#5f6673]">{transfer.requester?.role || "No role"}</p>
+          <div className="mt-4 rounded-lg border border-[#CFDDE0] bg-[#E5EFF1]/40 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">Requester</p>
+            <p className="mt-1 text-sm font-bold text-[#1B2B30]">{getProfileName(transfer.requester)}</p>
+            <p className="mt-1 text-xs text-[#5B7077]">{transfer.requester?.role || "No role"}</p>
           </div>
-          <div className="mt-3 rounded-lg bg-white p-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Remarks</p>
-            <p className="mt-1 text-sm text-[#0d1117]">{transfer.remarks || "No remarks yet."}</p>
+          <div className="mt-3 rounded-lg border border-[#CFDDE0] bg-[#E5EFF1]/40 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">Remarks</p>
+            <p className="mt-1 text-sm text-[#1B2B30]">{transfer.remarks || "No remarks yet."}</p>
           </div>
         </section>
       </div>
@@ -264,7 +264,7 @@ function TransferDetailsModal({
               type="button"
               onClick={onApprove}
               disabled={isSaving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
             >
               <CheckIcon /> Approve
             </button>
@@ -277,10 +277,10 @@ function TransferDetailsModal({
 
 function TimelineItem({ label, state, value }) {
   const stateClasses = {
-    complete: "border-[#00a36c] bg-[#00a36c]",
-    current: "border-[#0ea5e9] bg-white ring-4 ring-blue-100",
-    pending: "border-[#d8dadc] bg-white",
-    rejected: "border-red-500 bg-red-500",
+    complete: "border-[#4C9F80] bg-[#4C9F80]",
+    current: "border-[#34769B] bg-white ring-4 ring-[#34769B]/20",
+    pending: "border-[#CFDDE0] bg-[#F9FBFB]",
+    rejected: "border-[#D9826B] bg-[#D9826B]",
   };
 
   return (
@@ -289,8 +289,8 @@ function TimelineItem({ label, state, value }) {
         className={`mt-1 h-3 w-3 rounded-full border-2 ${stateClasses[state] || stateClasses.pending}`}
       />
       <div>
-        <p className="text-sm font-bold text-[#0d1117]">{label}</p>
-        <p className="text-xs text-[#5f6673]">{value}</p>
+        <p className="text-sm font-bold text-[#1B2B30]">{label}</p>
+        <p className="text-xs text-[#5B7077]">{value}</p>
       </div>
     </div>
   );
@@ -335,12 +335,12 @@ function NewTransferModal({
             {error}
           </div>
         )}
-        <section className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
           <div className="mb-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
               Route
             </p>
-            <p className="mt-1 text-xs text-[#5f6673]">
+            <p className="mt-1 text-xs text-[#5B7077]">
               Choose where stock will come from and which facility will receive it.
             </p>
           </div>
@@ -389,7 +389,7 @@ function NewTransferModal({
             <button
               type="button"
               onClick={onAddItem}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-black px-3 text-xs font-bold text-white transition hover:bg-[#0d1117]"
+              className="btn-primary inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold text-white shadow-xs transition cursor-pointer"
             >
               <PlusIcon /> Add item
             </button>
@@ -423,7 +423,7 @@ function NewTransferModal({
                         <span className="rounded-lg bg-white px-2.5 py-1.5 font-bold text-[#42474e]">
                           Reserved {Number(row.reserved_quantity || 0).toLocaleString()}
                         </span>
-                        <span className="rounded-lg bg-[#dffbf2] px-2.5 py-1.5 font-bold text-[#008f68]">
+                        <span className="rounded-lg bg-[#E2F3EC] px-2.5 py-1.5 font-bold text-[#4C9F80] border border-[#4C9F80]/20">
                           Available {Number(row.available_quantity || 0).toLocaleString()}
                         </span>
                       </div>
@@ -466,18 +466,18 @@ function NewTransferModal({
           />
         </Field>
 
-        <div className="flex justify-end gap-3 border-t border-[#e5e7eb] pt-4">
+        <div className="flex justify-end gap-3 border-t border-[#CFDDE0] pt-4">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
+            className="btn-secondary h-10 px-5 text-sm font-bold transition cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving || Boolean(validationError) || getDuplicateTransferMedicineIds(form.items).length > 0}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
           >
             <PlusIcon /> Create Transfer
           </button>
@@ -667,33 +667,33 @@ const updateCreateForm = (key, value) => {
   return (
     <AdminShell profile={profile} currentDateTime={currentDateTime} onSignOut={logoutUser}>
       <div className="space-y-4">
-        {notice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{notice}</div>}
+        {notice && <div role="status" className="rounded-xl border border-[#4C9F80]/25 bg-[#E2F3EC] px-4 py-3 text-sm font-semibold text-[#1F4E5A]">{notice}</div>}
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
             {error}
           </div>
         )}
 
-        <section className="rounded-2xl border border-[#d8dadc] bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
                 CHO command center
               </p>
-              <h2 className="mt-1 text-xl font-bold text-[#0d1117]">Stock Transfer</h2>
-              <p className="mt-1 text-sm text-[#5f6673]">
+              <h2 className="mt-1 text-xl font-bold text-[#1B2B30]">Stock Transfer</h2>
+              <p className="mt-1 text-sm text-[#5B7077]">
                 Review, approve, and monitor facility-to-facility stock transfers.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1">
+              <div className="inline-flex rounded-lg border border-[#CFDDE0] bg-[#E5EFF1] p-1">
                 <button
                   type="button"
                   onClick={() => setStatusFilter("ACTIVE")}
                   className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-bold transition ${
                     !isHistoryView
-                      ? "bg-black text-white shadow-sm"
-                      : "text-[#42474e] hover:bg-white"
+                      ? "bg-[#1F4E5A] text-white shadow-sm"
+                      : "text-[#5B7077] hover:bg-[#F9FBFB]"
                   }`}
                   aria-pressed={!isHistoryView}
                 >
@@ -704,8 +704,8 @@ const updateCreateForm = (key, value) => {
                   onClick={() => setStatusFilter("HISTORY")}
                   className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-bold transition ${
                     isHistoryView
-                      ? "bg-black text-white shadow-sm"
-                      : "text-[#42474e] hover:bg-white"
+                      ? "bg-[#1F4E5A] text-white shadow-sm"
+                      : "text-[#5B7077] hover:bg-[#F9FBFB]"
                   }`}
                   aria-pressed={isHistoryView}
                 >
@@ -715,7 +715,7 @@ const updateCreateForm = (key, value) => {
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#0d1117]"
+                className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 cursor-pointer"
               >
                 <PlusIcon /> New Transfer
               </button>
@@ -731,10 +731,10 @@ const updateCreateForm = (key, value) => {
                     key={card.value}
                     type="button"
                     onClick={() => setStatusFilter(card.value)}
-                    className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-[#6be9c2] ${
+                    className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-[#34769B] ${
                       active
-                        ? "border-[#6be9c2] bg-[#dffbf2] text-[#0d1117] shadow-sm"
-                        : "border-[#e5e7eb] bg-[#f8f9ff] text-[#42474e]"
+                        ? "border-[#34769B] bg-[#E5EFF1]/60 text-[#1B2B30] ring-1 ring-[#34769B]/30 shadow-sm"
+                        : "border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077]"
                     }`}
                     aria-pressed={active}
                   >
@@ -742,11 +742,11 @@ const updateCreateForm = (key, value) => {
                       <span className="text-[11px] font-bold uppercase tracking-[0.18em]">
                         {card.label}
                       </span>
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#0d1117]">
+                      <span className="rounded-full bg-[#E5EFF1] px-2.5 py-1 text-xs font-bold text-[#1B2B30]">
                         {getStageCardCount(summary, card.value).toLocaleString()}
                       </span>
                     </div>
-                    <p className="mt-2 text-xs leading-relaxed text-[#5f6673]">{card.detail}</p>
+                    <p className="mt-2 text-xs leading-relaxed text-[#5B7077]">{card.detail}</p>
                   </button>
                 );
               })}
@@ -859,7 +859,7 @@ const updateCreateForm = (key, value) => {
                           setSelectedTransfer(transfer);
                           setReviewRemarks(transfer.remarks || "");
                         }}
-                        className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#008f68] transition hover:bg-[#dffbf2]"
+                        className="btn-secondary rounded-lg px-3 py-1.5 text-xs font-bold transition cursor-pointer"
                       >
                         {transfer.status === "PENDING" ? "Review" : "View"}
                       </button>

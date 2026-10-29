@@ -36,16 +36,16 @@ export default function ForecastDemandBars({ rows = [] }) {
 
         return (
           <div key={row.label} className="grid grid-cols-[38px_1fr_58px] items-center gap-2.5">
-            <span className="text-[11px] font-black uppercase tracking-wide text-neutral-500">
+            <span className="text-[11px] font-black uppercase tracking-wide text-[#5B7077]">
               {row.label}
             </span>
-            <div className="h-2.5 overflow-hidden rounded-full bg-[#eff4ff]">
+            <div className="h-2.5 overflow-hidden rounded-full bg-[#E3EEF5]">
               <div
-                className="h-full rounded-full bg-[#6be9c2]"
+                className="h-full rounded-full bg-[#34769B]"
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <span className="text-right text-[11px] font-black text-[#0d1117]">
+            <span className="text-right text-[11px] font-black text-[#1B2B30]">
               {formatNumber(row.value)}
             </span>
           </div>

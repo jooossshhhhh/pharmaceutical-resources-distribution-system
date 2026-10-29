@@ -1,7 +1,7 @@
 import ModalShell from "../../components/ModalShell";
 
 export const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a36c] focus-visible:ring-offset-1";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#34769B] focus-visible:ring-offset-1";
 
 export function PatientAvatar({ name, sizeClass = "h-9 w-9 text-xs" }) {
   const initials =
@@ -15,7 +15,7 @@ export function PatientAvatar({ name, sizeClass = "h-9 w-9 text-xs" }) {
   return (
     <span
       aria-hidden="true"
-      className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full border border-[#6be9c2]/50 bg-[#ecfff8] font-bold text-[#008f68]`}
+      className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full border border-[#4C9F80]/30 bg-[#E2F3EC] font-bold text-[#226048]`}
     >
       {initials}
     </span>
@@ -146,16 +146,16 @@ export const AlertTriangleIcon = ({ className = "h-4 w-4" }) => (
 
 export function VoidedBadge() {
   return (
-    <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-red-700">
-      Cancelled
+    <span className="inline-flex rounded-full bg-[#FBE9E3] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#8F3F2B]">
+      ✕ Cancelled
     </span>
   );
 }
 
 export function ActiveBadge() {
   return (
-    <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
-      Active
+    <span className="inline-flex rounded-full bg-[#E2F3EC] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#226048]">
+      ● Active
     </span>
   );
 }
@@ -165,10 +165,10 @@ export function FilterChip({ active, children, icon, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 ${FOCUS_RING} ${
+      className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 cursor-pointer ${FOCUS_RING} ${
         active
-          ? "bg-black text-white shadow-md shadow-black/10"
-          : "bg-slate-100 text-slate-700 hover:bg-slate-200/80"
+          ? "bg-[#34769B] text-white shadow-sm"
+          : "bg-[#E5EFF1] text-[#1B2B30] hover:bg-[#E3EEF5]"
       }`}
     >
       {icon}
@@ -182,7 +182,7 @@ export function SortToggleButton({ onClick, sort }) {
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] hover:bg-[#eff4ff] ${FOCUS_RING}`}
+      className={`btn-secondary inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-bold shadow-xs transition-all duration-200 hover:-translate-y-0.5 cursor-pointer ${FOCUS_RING}`}
       title={sort === "newest" ? "Newest first" : "Oldest first"}
       aria-label={sort === "newest" ? "Sort newest first" : "Sort oldest first"}
     >
@@ -195,7 +195,7 @@ export function SortToggleButton({ onClick, sort }) {
 export function Field({ children, label }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">
         {label}
       </span>
       {children}
@@ -207,7 +207,7 @@ export function Input(props) {
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+      className={`h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 ${props.className || ""}`}
     />
   );
 }
@@ -216,7 +216,7 @@ export function Select(props) {
   return (
     <select
       {...props}
-      className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-medium text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+      className={`h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-medium text-[#1B2B30] outline-none transition focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 ${props.className || ""}`}
     />
   );
 }
@@ -225,12 +225,20 @@ export function Textarea(props) {
   return (
     <textarea
       {...props}
-      className={`min-h-24 w-full resize-none rounded-lg border border-[#d8dadc] bg-white px-3 py-2 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+      className={`min-h-24 w-full resize-none rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 py-2 text-sm text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 ${props.className || ""}`}
     />
   );
 }
 
-export function DispensingModal({ children, closeLabel, onClose, subtitle, title, widthClass = "max-w-4xl" }) {
+export function DispensingModal({
+  children,
+  closeLabel,
+  onClose,
+  subtitle,
+  title,
+  widthClass = "max-w-4xl",
+  showCloseButton = true,
+}) {
   return (
     <ModalShell
       labelledBy="dispensing-modal-title"
@@ -238,31 +246,33 @@ export function DispensingModal({ children, closeLabel, onClose, subtitle, title
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName={widthClass}
     >
-      <div className="max-h-[86vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] px-5 py-4">
+      <div className="max-h-[86vh] w-full overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#CFDDE0] px-5 py-4">
           <div>
-            <h2 id="dispensing-modal-title" className="text-lg font-bold text-[#0d1117]">
+            <h2 id="dispensing-modal-title" className="text-lg font-bold text-[#1B2B30]">
               {title}
             </h2>
-            {subtitle && <p className="mt-1 text-sm text-[#5f6673]">{subtitle}</p>}
+            {subtitle && <p className="mt-1 text-sm text-[#5B7077]">{subtitle}</p>}
           </div>
-          {closeLabel ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className={`inline-flex h-9 shrink-0 items-center rounded-lg border border-[#d8dadc] bg-white px-4 text-sm font-bold text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff] ${FOCUS_RING}`}
-            >
-              {closeLabel}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onClose}
-              className={`flex h-9 w-9 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117] ${FOCUS_RING}`}
-              aria-label="Close modal"
-            >
-              <XIcon />
-            </button>
+          {showCloseButton && (
+            closeLabel ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className={`btn-secondary inline-flex h-9 shrink-0 items-center rounded-lg px-4 text-sm font-bold shadow-xs transition cursor-pointer ${FOCUS_RING}`}
+              >
+                {closeLabel}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onClose}
+                className={`flex h-9 w-9 items-center justify-center rounded-lg text-[#5B7077] transition hover:bg-[#E5EFF1] hover:text-[#1B2B30] cursor-pointer ${FOCUS_RING}`}
+                aria-label="Close modal"
+              >
+                <XIcon />
+              </button>
+            )
           )}
         </div>
         <div className="max-h-[calc(86vh-76px)] overflow-auto p-5">{children}</div>

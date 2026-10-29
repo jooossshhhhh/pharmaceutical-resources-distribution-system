@@ -21,6 +21,7 @@ import {
   getExpiredDays,
   getExpiryStatus,
   getMedicineName,
+  getStockStatus,
   isLotExpired,
   normalizeLotNumber,
   normalizePoNumber,
@@ -32,12 +33,14 @@ export default function BatchDetailsModal({
   medicine,
   facilityName = "City Health Office - City of Naga",
   canEdit = false,
+  isBhw = false,
   onClose,
   onEditLot,
   onDisposeLot,
 }) {
   if (!isOpen || !lot) return null;
 
+  const shouldShowProcurement = !isBhw;
   const isExpired = isLotExpired(lot);
   const expiry = getExpiryStatus(lot);
   const expiredDays = getExpiredDays(lot.expiration_date);
@@ -101,7 +104,7 @@ export default function BatchDetailsModal({
         <div className="p-6 max-h-[75vh] overflow-y-auto">
           <div className="rounded-xl bg-[#f8f9fa] p-5 space-y-5">
             {/* Top Key Identifiers */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-4 border-b border-neutral-200/70">
+            <div className={`grid grid-cols-1 ${shouldShowProcurement ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-4 pb-4 border-b border-neutral-200/70`}>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400">
                   Lot No.
@@ -111,15 +114,17 @@ export default function BatchDetailsModal({
                 </p>
               </div>
 
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400">
-                  Purchase Order (PO #)
-                </p>
-                <div className="flex items-center gap-1 font-mono text-sm font-bold text-neutral-800 mt-0.5">
-                  <Receipt className="h-3.5 w-3.5 text-neutral-400" />
-                  <span>{poDisplay || "—"}</span>
+              {shouldShowProcurement && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400">
+                    Purchase Order (PO #)
+                  </p>
+                  <div className="flex items-center gap-1 font-mono text-sm font-bold text-neutral-800 mt-0.5">
+                    <Receipt className="h-3.5 w-3.5 text-neutral-400" />
+                    <span>{poDisplay || "—"}</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-400">
@@ -150,9 +155,9 @@ export default function BatchDetailsModal({
             <div className="space-y-2 pb-4 border-b border-neutral-200/70">
               <h3 className="text-xs font-black uppercase tracking-[0.14em] text-neutral-700 flex items-center gap-2">
                 <Package className="h-3.5 w-3.5 text-emerald-600" />
-                Stock Quantity &amp; Valuation (Philippine Peso)
+                {shouldShowProcurement ? "Stock Quantity & Valuation (Philippine Peso)" : "Stock Quantity"}
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+              <div className={`grid ${shouldShowProcurement ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-2"} gap-4 pt-1`}>
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
                     Quantity Available
@@ -163,52 +168,82 @@ export default function BatchDetailsModal({
                   </p>
                 </div>
 
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-                    Unit Cost (PHP)
-                  </span>
-                  <p className="text-xl font-black text-[#0d1117] mt-0.5">
-                    {lotCost !== null ? formatCurrency(lotCost) : "—"}
-                  </p>
-                </div>
+                {shouldShowProcurement && (
+                  <>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                        Minimum Threshold
+                      </span>
+                      <p className="text-xl font-black text-[#0d1117] mt-0.5">
+                        {formatNumber(lot.threshold || 0)}{" "}
+                        <span className="text-xs font-bold text-neutral-500 lowercase">{unit}</span>
+                      </p>
+                      <div className="mt-1">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${getStockStatus(lot).badgeClass}`}>
+                          {getStockStatus(lot).label}
+                        </span>
+                      </div>
+                    </div>
 
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
-                    Total Value
-                  </span>
-                  <p className="text-xl font-black text-emerald-800 mt-0.5">
-                    {totalValue !== null ? formatCurrency(totalValue) : "—"}
-                  </p>
-                </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                        Unit Cost (PHP)
+                      </span>
+                      <p className="text-xl font-black text-[#0d1117] mt-0.5">
+                        {lotCost !== null ? formatCurrency(lotCost) : "—"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                        Total Value
+                      </span>
+                      <p className="text-xl font-black text-emerald-800 mt-0.5">
+                        {totalValue !== null ? formatCurrency(totalValue) : "—"}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Section 2: Procurement & Supplier Information */}
-            <div className="space-y-2 pb-4 border-b border-neutral-200/70">
-              <h3 className="text-xs font-black uppercase tracking-[0.14em] text-neutral-700 flex items-center gap-2">
-                <Truck className="h-3.5 w-3.5 text-emerald-600" />
-                Procurement &amp; Supplier Information
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 text-xs">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-                    Supplier Name
-                  </span>
-                  <p className="font-bold text-[#0d1117] text-sm mt-0.5">
-                    {supplierName}
-                  </p>
-                </div>
+            {/* Section 2: Procurement & Supplier Information (CHO only) */}
+            {shouldShowProcurement && (
+              <div className="space-y-2 pb-4 border-b border-neutral-200/70">
+                <h3 className="text-xs font-black uppercase tracking-[0.14em] text-neutral-700 flex items-center gap-2">
+                  <Truck className="h-3.5 w-3.5 text-emerald-600" />
+                  Procurement &amp; Supplier Information
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 text-xs">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                      Supplier Name
+                    </span>
+                    <p className="font-bold text-[#0d1117] text-sm mt-0.5">
+                      {supplierName}
+                    </p>
+                  </div>
 
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-                    Address
-                  </span>
-                  <p className="font-bold text-[#0d1117] text-sm mt-0.5">
-                    {lot.supplier_address || lot.supplier?.address || "—"}
-                  </p>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                      Contact Number
+                    </span>
+                    <p className="font-bold text-[#0d1117] text-sm mt-0.5">
+                      {lot.supplier_contact || lot.contact_number || lot.supplier?.contact_number || "—"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                      Address
+                    </span>
+                    <p className="font-bold text-[#0d1117] text-sm mt-0.5">
+                      {lot.supplier_address || lot.address || lot.supplier?.address || "—"}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Section 3: Dates & Shelf Life */}
             <div className="space-y-2">
@@ -282,7 +317,7 @@ export default function BatchDetailsModal({
               <button
                 type="button"
                 onClick={handleEdit}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0d1117] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-neutral-800 active:scale-[0.98] transition cursor-pointer"
+                className="btn-primary inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white shadow-xs hover:brightness-105 active:scale-[0.98] transition cursor-pointer"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Edit Lot Record

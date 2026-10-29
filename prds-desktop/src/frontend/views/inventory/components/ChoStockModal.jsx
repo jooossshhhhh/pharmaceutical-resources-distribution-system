@@ -331,7 +331,7 @@ export function ChoStockModal({
                   onClick={() => setStep("input")}
                   className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-black transition cursor-pointer ${
                     step === "input"
-                      ? "bg-black text-white shadow-xs"
+                      ? "btn-primary text-white shadow-xs"
                       : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
                   }`}
                 >
@@ -344,7 +344,7 @@ export function ChoStockModal({
                   onClick={handleProceedToPreview}
                   className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-black transition cursor-pointer ${
                     step === "preview"
-                      ? "bg-black text-white shadow-xs"
+                      ? "btn-primary text-white shadow-xs"
                       : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
                   }`}
                 >
@@ -358,7 +358,7 @@ export function ChoStockModal({
                   {/* Purchase Order Header Section */}
                   <section className="rounded-xl border border-neutral-200 bg-[#fbfaf8] p-4 shadow-2xs">
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-black text-white shadow-xs">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1F4E5A] text-white shadow-xs">
                         <Receipt className="h-4 w-4" />
                       </div>
                       <div>
@@ -400,12 +400,22 @@ export function ChoStockModal({
                       />
 
                       <Field
-                        label="Supplier Address"
-                        name="supplier_address"
-                        placeholder="Enter supplier address"
-                        value={formValues.supplier_address || ""}
+                        label="Supplier Contact Number"
+                        name="supplier_contact"
+                        placeholder="e.g. 0912 345 6789 / (032) 272-1234"
+                        value={formValues.supplier_contact || ""}
                         onChange={onChange}
                       />
+
+                      <div className="md:col-span-2">
+                        <Field
+                          label="Supplier Address"
+                          name="supplier_address"
+                          placeholder="Enter supplier address"
+                          value={formValues.supplier_address || ""}
+                          onChange={onChange}
+                        />
+                      </div>
                     </div>
                   </section>
 
@@ -447,7 +457,7 @@ export function ChoStockModal({
                             <div className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-200/60">
                               <div className="flex items-center gap-2">
                                 <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black text-white ${
-                                  hasItemError ? "bg-red-600" : hasItemWarning ? "bg-amber-600" : "bg-neutral-800"
+                                  hasItemError ? "bg-red-600" : hasItemWarning ? "bg-amber-600" : "bg-[#1F4E5A]"
                                 }`}>
                                   {index + 1}
                                 </span>
@@ -753,7 +763,7 @@ export function ChoStockModal({
                           brandWarningAcknowledgedRef.current = false;
                           onAddPoItem();
                         }}
-                        className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 bg-white px-6 py-2.5 text-xs font-black text-neutral-700 hover:border-black hover:bg-neutral-50 hover:text-black transition cursor-pointer"
+                        className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 bg-white px-6 py-2.5 text-xs font-black text-neutral-700 hover:border-[#1F4E5A] hover:bg-[#E5EFF1]/40 hover:text-[#1F4E5A] transition cursor-pointer"
                       >
                         <Plus className="h-4 w-4" />
                         Add Another Medicine to this {formValues.intake_type === "RETURN" ? "Return Batch" : "PO"}
@@ -762,7 +772,7 @@ export function ChoStockModal({
                   </section>
 
                   {/* Purchase Order Total Valuation Bar */}
-                  <div className="rounded-xl border border-neutral-800 bg-[#0d1117] p-4 text-white shadow-md">
+                  <div className="rounded-xl border border-[#1F4E5A] bg-[#1F4E5A] p-4 text-white shadow-md">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div>
                         <p className="text-[11px] font-black uppercase tracking-[0.16em] text-neutral-400">
@@ -838,7 +848,7 @@ export function ChoStockModal({
                   description="Vendor source, manufacturer lot number, and PO tracking identifiers."
                 >
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <Field
                         label="Supplier Name"
                         name="supplier_name"
@@ -846,6 +856,14 @@ export function ChoStockModal({
                         value={formValues.supplier_name || ""}
                         onChange={onChange}
                         required
+                      />
+
+                      <Field
+                        label="Contact Number"
+                        name="supplier_contact"
+                        placeholder="e.g. 0912 345 6789"
+                        value={formValues.supplier_contact || ""}
+                        onChange={onChange}
                       />
 
                       <Field
@@ -914,6 +932,7 @@ export function ChoStockModal({
                         placeholder="0"
                         value={formValues.threshold}
                         onChange={onChange}
+                        hint="Safety buffer before low-stock alert triggers (e.g. 50–100 for high-volume tablets, 5–20 for specialized vials/creams)."
                         required
                       />
                     </div>
@@ -990,7 +1009,7 @@ export function ChoStockModal({
                   key="btn-step-review"
                   type="button"
                   onClick={handleProceedToPreview}
-                  className="inline-flex h-9.5 items-center justify-center rounded-lg bg-black hover:bg-neutral-800 px-5 text-sm font-black text-white shadow-sm transition cursor-pointer"
+                  className="btn-primary inline-flex h-9.5 items-center justify-center rounded-lg px-5 text-sm font-bold text-white shadow-xs transition cursor-pointer"
                 >
                   Review
                 </button>
@@ -1000,7 +1019,7 @@ export function ChoStockModal({
                   type="button"
                   onClick={handleConfirmSubmit}
                   disabled={isSaving}
-                  className="inline-flex h-9.5 items-center gap-2 rounded-lg bg-[#0d1117] hover:bg-neutral-800 disabled:opacity-50 px-6 text-sm font-black text-white shadow-sm transition cursor-pointer"
+                  className="btn-primary inline-flex h-9.5 items-center gap-2 rounded-lg disabled:opacity-50 px-6 text-sm font-bold text-white shadow-xs transition cursor-pointer"
                 >
                   <Check className="h-4 w-4" />
                   {isSaving ? "Confirming..." : "Confirm"}
@@ -1081,6 +1100,11 @@ function StockIntakePreview({
             <p className="text-sm font-black text-neutral-900 truncate">
               {formValues.supplier_name || "Not specified"}
             </p>
+            {formValues.supplier_contact ? (
+              <p className="text-[11px] font-medium text-neutral-600 truncate mt-0.5">
+                Contact: {formValues.supplier_contact}
+              </p>
+            ) : null}
             {formValues.supplier_address ? (
               <p className="text-[11px] font-medium text-neutral-600 truncate mt-0.5">
                 {formValues.supplier_address}

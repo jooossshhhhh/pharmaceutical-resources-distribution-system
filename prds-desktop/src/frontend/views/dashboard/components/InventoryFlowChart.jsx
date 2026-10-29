@@ -41,11 +41,11 @@ export default function MonthlyDispensingChart({ rows = [] }) {
   return (
     <div className="w-full">
       <div className="relative h-56 overflow-hidden">
-        <div className="absolute inset-0 grid grid-rows-4 border-b border-l border-dashed border-neutral-200">
+        <div className="absolute inset-0 grid grid-rows-4 border-b border-l border-dashed border-[#CFDDE0]">
           {[maxValue, maxValue * 0.75, maxValue * 0.5, maxValue * 0.25].map(
             (label, index) => (
-              <div key={index} className="relative border-t border-dashed border-neutral-100">
-                <span className="absolute -left-1 top-0 -translate-y-1/2 text-xs font-medium text-neutral-400">
+              <div key={index} className="relative border-t border-dashed border-[#CFDDE0]/50">
+                <span className="absolute -left-1 top-0 -translate-y-1/2 text-xs font-medium text-[#5B7077]">
                   {Math.round(label)}
                 </span>
               </div>
@@ -64,17 +64,17 @@ export default function MonthlyDispensingChart({ rows = [] }) {
             fill="url(#dispensedFill)"
             opacity="0.5"
           />
-          <path d={dispensedPath} fill="none" stroke="#0f9f94" strokeWidth="4" />
+          <path d={dispensedPath} fill="none" stroke="#4C9F80" strokeWidth="3.5" />
           <defs>
             <linearGradient id="dispensedFill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#0f9f94" stopOpacity="0.18" />
-              <stop offset="100%" stopColor="#0f9f94" stopOpacity="0.02" />
+              <stop offset="0%" stopColor="#4C9F80" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#4C9F80" stopOpacity="0.02" />
             </linearGradient>
           </defs>
         </svg>
 
         <div
-          className="absolute bottom-0 left-9 right-0 grid text-xs font-medium text-neutral-400"
+          className="absolute bottom-0 left-9 right-0 grid text-xs font-medium text-[#5B7077]"
           style={{ gridTemplateColumns: `repeat(${chartRows.length}, minmax(0, 1fr))` }}
         >
           {chartRows.map((row) => (
@@ -84,8 +84,8 @@ export default function MonthlyDispensingChart({ rows = [] }) {
       </div>
 
       <div className="mt-3 flex justify-center gap-6 text-xs font-semibold">
-        <span className="flex items-center gap-1 text-teal-600">
-          <span className="h-1.5 w-4 rounded-full bg-teal-600" />
+        <span className="flex items-center gap-1.5 text-[#226048]">
+          <span className="h-1.5 w-4 rounded-full bg-[#4C9F80]" />
           Dispensed
         </span>
       </div>

@@ -137,12 +137,14 @@ export function saveDownloadPreferences(nextPreferences) {
 export function buildExportPayload({
   filename = "prds-export",
   csv = "",
+  data = "",
   headers = [],
   rows = [],
   buffer = null,
   blob = null,
   format,
 } = {}) {
+  const rawCsv = csv || (typeof data === "string" ? data : "");
   const cleanBase = filename.replace(/\.(csv|xlsx|xls)$/i, "");
   const finalFilename = `${cleanBase}.xlsx`;
 
@@ -174,8 +176,8 @@ export function buildExportPayload({
     const worksheet = XLSX.utils.aoa_to_sheet(data);
     workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "PRDS Export");
-  } else if (csv) {
-    workbook = XLSX.read(csv, { type: "string" });
+  } else if (rawCsv) {
+    workbook = XLSX.read(rawCsv, { type: "string" });
   } else {
     const worksheet = XLSX.utils.aoa_to_sheet([["No data"]]);
     workbook = XLSX.utils.book_new();
@@ -250,6 +252,7 @@ export async function saveExportToDisk({ filename, arrayBuffer = null, blob = nu
 export function downloadExportFile({
   filename = "prds-export",
   csv = "",
+  data = "",
   headers = [],
   rows = [],
   buffer = null,
@@ -257,7 +260,17 @@ export function downloadExportFile({
   format,
   recordCount = null,
 } = {}) {
-  const payload = buildExportPayload({ filename, csv, headers, rows, buffer, blob, format });
+  const resolvedCsv = csv || (typeof data === "string" ? data : "");
+  const payload = buildExportPayload({
+    filename,
+    csv: resolvedCsv,
+    data: resolvedCsv,
+    headers,
+    rows,
+    buffer,
+    blob,
+    format,
+  });
 
   const existingNames = recentExports.map((e) => e.filename);
   const uniqueFilename = getNextAvailableFilename(payload.filename, existingNames);

@@ -130,7 +130,7 @@ export default function MedicineFormModal({
             <button
               type="button"
               onClick={handleEditClick}
-              className="h-10 rounded-lg bg-black px-6 text-sm font-black text-white transition hover:bg-neutral-800"
+              className="btn-primary h-10 rounded-lg px-6 text-sm font-bold text-white shadow-xs transition cursor-pointer"
             >
               Edit
             </button>
@@ -138,7 +138,7 @@ export default function MedicineFormModal({
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-6 text-sm font-black text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400"
+              className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-6 text-sm font-bold text-white shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
             >
               <PlusIcon />
               {isSaving ? "Saving..." : mode === "create" ? "Add Medicine" : "Save Changes"}

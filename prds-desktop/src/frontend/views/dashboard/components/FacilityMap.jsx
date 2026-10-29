@@ -31,17 +31,17 @@ const MIN_ZOOM = 12;
 const MAX_ZOOM = 18;
 
 const STOCK_TIERS = [
-  { key: "CRITICAL", label: "Critical", color: "#ef4444" },
-  { key: "LOW", label: "Low Stock", color: "#f97316" },
-  { key: "WATCH", label: "Monitor Stock", color: "#f59e0b" },
-  { key: "HEALTHY", label: "Healthy", color: "#00a36c" },
+  { key: "CRITICAL", label: "Critical", color: "#D9826B" },
+  { key: "LOW", label: "Low Stock", color: "#dc8939" },
+  { key: "WATCH", label: "Monitor Stock", color: "#f3f029" },
+  { key: "HEALTHY", label: "Healthy", color: "#4C9F80" },
 ];
 
 const DEMAND_TIERS = [
   { key: "none", label: "No demand", color: "#cbd5e1" },
-  { key: "low", label: "1 – 99", color: "#00a36c" },
-  { key: "medium", label: "100 – 499", color: "#f59e0b" },
-  { key: "high", label: "500+", color: "#ef4444" },
+  { key: "low", label: "1 – 99", color: "#4C9F80" },
+  { key: "medium", label: "100 – 499", color: "#dc8939" },
+  { key: "high", label: "500+", color: "#D9826B" },
 ];
 
 import { isChoFacility } from "@shared/utils/facilityUtils";
@@ -541,14 +541,14 @@ export default function FacilityMap({
         {visibleFacilities.map((facility) => {
           const status = (stockStatusByFacility || {})[facility.id] || "HEALTHY";
           const demand = (demandByFacility || {})[facility.id] ?? 0;
-          const color = STOCK_TIERS.find((tier) => tier.key === status)?.color || "#00a36c";
+          const color = STOCK_TIERS.find((tier) => tier.key === status)?.color || "#4C9F80";
           const tone = getFacilityStockTone(status);
           const isSelected = inspectorFacility?.id === facility.id;
           const highlighted = isSelected || highlightedIds.has(facility.id);
           const alerts = (stockAlertsByFacility || {})[facility.id] || [];
           const isHub = isChoFacility(facility);
           const isPulsing = status === "CRITICAL" || status === "LOW";
-          const pulseColor = status === "CRITICAL" ? "rgba(239, 68, 68, 0.65)" : "rgba(249, 115, 22, 0.65)";
+          const pulseColor = status === "CRITICAL" ? "rgba(217, 130, 107, 0.65)" : "rgba(220, 137, 57, 0.65)";
 
           return (
             <Marker
@@ -879,7 +879,7 @@ export default function FacilityMap({
                       backgroundColor:
                         STOCK_TIERS.find(
                           (t) => t.key === ((stockStatusByFacility || {})[inspectorFacility.id] || "HEALTHY")
-                        )?.color || "#00a36c",
+                        )?.color || "#4C9F80",
                     }}
                   />
                   <span className="text-xs font-black text-neutral-800">
@@ -985,7 +985,7 @@ export default function FacilityMap({
                 onClick={() => {
                   onSelectFacility(inspectorFacility);
                 }}
-                className="w-full rounded-lg bg-emerald-700 py-2 text-xs font-black text-white shadow-xs transition hover:bg-emerald-800"
+                className="w-full rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] py-2 text-xs font-black text-white shadow-xs transition hover:brightness-105 active:scale-[0.99] cursor-pointer"
               >
                 Open Facility Details
               </button>
@@ -997,12 +997,12 @@ export default function FacilityMap({
       {isFullscreen &&
         createPortal(
           <div className="fixed inset-0 z-[2000] flex flex-col bg-white">
-            <div className="border-b border-neutral-100 px-5 py-3 flex items-center justify-between">
+            <div className="border-b border-[#CFDDE0] px-5 py-3 flex items-center justify-between bg-[#F9FBFB]">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#1F4E5A]">
                   City of Naga
                 </p>
-                <h2 className="text-base font-black text-[#0d1117]">Facility & Stock Map</h2>
+                <h2 className="text-base font-black text-[#1B2B30]">Facility & Stock Map</h2>
               </div>
               <button
                 type="button"

@@ -39,11 +39,11 @@ export const transferStatusLabels = {
 };
 
 export const transferStatusTones = {
-  APPROVED: "bg-blue-50 text-blue-700",
-  COMPLETED: "bg-emerald-100 text-emerald-700",
-  PENDING: "bg-orange-50 text-orange-700",
-  READY_FOR_PICKUP: "bg-teal-50 text-teal-700",
-  REJECTED: "bg-red-50 text-red-700",
+  APPROVED: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+  COMPLETED: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+  PENDING: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25",
+  READY_FOR_PICKUP: "bg-[#E3EEF5] text-[#1F4A66] border border-[#34769B]/25",
+  REJECTED: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30",
 };
 
 export const formatTransferNumber = (transferId = "") => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildDispensingClaimCycles,
   buildDispensingCsv,
   buildFefoPreview,
   buildMedicineOptions,
@@ -389,7 +390,7 @@ test("follow-up helpers format defaults and labels", () => {
   assert.equal(getDefaultFollowUpDate(new Date("2026-08-10T00:00:00Z")), "2026-08-17");
   assert.equal(
     getFollowUpDisplay({ followUpAction: FOLLOW_UP_ACTIONS.schedule, followUpDate: "2026-08-17" }),
-    "Schedule next week - 2026-08-17"
+    "Partial"
   );
   assert.equal(
     getFollowUpDisplay({
@@ -601,6 +602,122 @@ test("getPatientDispensingStatus returns simple, non-jargon status across all ph
   assert.equal(completed.code, "COMPLETED");
   assert.equal(completed.label, "Already received all medicines for this month");
   assert.equal(completed.isBlocked, true);
+
+  // 6. BHW viewer: Patient scheduled at CHO is blocked for BHW
+  const bhwScheduledAtCho = getPatientDispensingStatus({
+    claimsBreakdown: [
+      {
+        medicine_id: "m2",
+        is_completed: false,
+        remaining_quantity: 20,
+        needed_quantity: 60,
+        released_quantity: 40,
+        follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+        follow_up_date: "2026-11-03",
+      },
+    ],
+    today: "2026-10-27",
+    isBhw: true,
+    currentFacilityId: "fac-inayagan",
+  });
+  assert.equal(bhwScheduledAtCho.code, "SCHEDULED_AT_CHO");
+  assert.equal(bhwScheduledAtCho.isBlocked, true);
+  assert.equal(bhwScheduledAtCho.label, "Scheduled at CHO (2026-11-03)");
+  assert.match(bhwScheduledAtCho.description, /Cannot dispense at Barangay/);
+
+  // 7. BHW viewer: CHO updated follow-up to refer to Inayagan Barangay Health Center
+  const bhwReferredToOwnBarangay = getPatientDispensingStatus({
+    claimsBreakdown: [
+      {
+        medicine_id: "m2",
+        is_completed: false,
+        remaining_quantity: 20,
+        needed_quantity: 60,
+        released_quantity: 40,
+        follow_up_action: FOLLOW_UP_ACTIONS.refer,
+        referred_facility_id: "fac-inayagan",
+        referred_facility: { id: "fac-inayagan", facility_name: "Inayagan Barangay Health Center" },
+      },
+    ],
+    today: "2026-10-27",
+    isBhw: true,
+    currentFacilityId: "fac-inayagan",
+  });
+  assert.equal(bhwReferredToOwnBarangay.code, "PARTIAL_REFERRED");
+  assert.equal(bhwReferredToOwnBarangay.isBlocked, false);
+  assert.equal(bhwReferredToOwnBarangay.label, "Referred from CHO");
+  assert.match(bhwReferredToOwnBarangay.description, /Ready to dispense remaining balance/);
+
+  // 8. BHW viewer: CHO referred to a DIFFERENT barangay (e.g. Colon instead of Inayagan)
+  const bhwReferredOtherBarangay = getPatientDispensingStatus({
+    claimsBreakdown: [
+      {
+        medicine_id: "m2",
+        is_completed: false,
+        remaining_quantity: 20,
+        needed_quantity: 60,
+        released_quantity: 40,
+        follow_up_action: FOLLOW_UP_ACTIONS.refer,
+        referred_facility_id: "fac-colon",
+        referred_facility: { id: "fac-colon", facility_name: "Colon Barangay Health Center" },
+      },
+    ],
+    today: "2026-10-27",
+    isBhw: true,
+    currentFacilityId: "fac-inayagan",
+  });
+  assert.equal(bhwReferredOtherBarangay.code, "REFERRED_OTHER_BARANGAY");
+  assert.equal(bhwReferredOtherBarangay.isBlocked, true);
+  assert.match(bhwReferredOtherBarangay.label, /Colon Barangay Health Center/);
+
+  // 9. Full cycle: CHO dispensed 40 of 60, referred to Barangay, Barangay dispensed remaining 20 -> status is COMPLETED
+  const multiFacilityClaimRows = [
+    // CHO partial dispense: 40 released of 60
+    {
+      id: "disp-cho-1",
+      patient_id: "patient-1",
+      medicine_id: "med-1",
+      facility_id: "fac-cho",
+      dispense_date: "2026-10-20",
+      needed_quantity: 60,
+      quantity: 40,
+      follow_up_action: FOLLOW_UP_ACTIONS.refer,
+      referred_facility_id: "fac-inayagan",
+      referred_facility: { id: "fac-inayagan", facility_name: "Inayagan Barangay Health Center" },
+    },
+    // Barangay dispense: remaining 20 released of 60
+    {
+      id: "disp-bhw-2",
+      patient_id: "patient-1",
+      medicine_id: "med-1",
+      facility_id: "fac-inayagan",
+      dispense_date: "2026-10-27",
+      needed_quantity: 60,
+      quantity: 20,
+      follow_up_action: null,
+    },
+  ];
+
+  const breakdownAfterBhwDispense = getPatientMonthlyClaimsBreakdown(
+    multiFacilityClaimRows,
+    "patient-1",
+    { start: "2026-10-01", end: "2026-11-01" }
+  );
+  assert.equal(breakdownAfterBhwDispense.length, 1);
+  assert.equal(breakdownAfterBhwDispense[0].needed_quantity, 60);
+  assert.equal(breakdownAfterBhwDispense[0].released_quantity, 60);
+  assert.equal(breakdownAfterBhwDispense[0].remaining_quantity, 0);
+  assert.equal(breakdownAfterBhwDispense[0].is_completed, true);
+
+  const statusAfterCompletion = getPatientDispensingStatus({
+    claimsBreakdown: breakdownAfterBhwDispense,
+    today: "2026-10-27",
+    isBhw: true,
+    currentFacilityId: "fac-inayagan",
+  });
+  assert.equal(statusAfterCompletion.code, "COMPLETED");
+  assert.equal(statusAfterCompletion.isBlocked, true);
+  assert.equal(statusAfterCompletion.label, "Already received all medicines for this month");
 });
 
 test("getCartLineError caps quantity to remaining balance for active claims", () => {
@@ -644,7 +761,7 @@ test("getCartLineError caps quantity to remaining balance for active claims", ()
   );
 });
 
-test("groupHistoryByTransaction assigns SCHEDULED, REFERRED, and COMPLETED statuses", () => {
+test("groupHistoryByTransaction assigns PARTIAL, REFERRED, and COMPLETED statuses", () => {
   const rows = [
     {
       dispensing_transaction_id: "tx-sched",
@@ -674,14 +791,45 @@ test("groupHistoryByTransaction assigns SCHEDULED, REFERRED, and COMPLETED statu
   const refTx = grouped.find((g) => g.transactionId === "tx-ref");
   const doneTx = grouped.find((g) => g.transactionId === "tx-done");
 
-  assert.equal(schedTx.status, "SCHEDULED");
+  assert.equal(schedTx.status, "PARTIAL");
   assert.equal(refTx.status, "REFERRED");
   assert.equal(doneTx.status, "COMPLETED");
 
-  assert.equal(matchesHistoryFilters({ status: "SCHEDULED", transaction: schedTx }), true);
-  assert.equal(matchesHistoryFilters({ status: "SCHEDULED", transaction: doneTx }), false);
+  assert.equal(matchesHistoryFilters({ status: "PARTIAL", transaction: schedTx }), true);
+  assert.equal(matchesHistoryFilters({ status: "PARTIAL", transaction: doneTx }), false);
   assert.equal(matchesHistoryFilters({ status: "COMPLETED", transaction: doneTx }), true);
   assert.equal(matchesHistoryFilters({ status: "REFERRED", transaction: refTx }), true);
+});
+
+test("groupHistoryByTransaction assigns COMPLETED to follow-up claim when remaining balance is fulfilled", () => {
+  const patient = { id: "pat-1", first_name: "Josh", last_name: "Sinugbuhan" };
+  const rows = [
+    {
+      dispensing_transaction_id: "tx-initial",
+      patient,
+      dispense_date: "2026-10-18T09:00:00Z",
+      medicine_id: "med-ors",
+      needed_quantity: 30,
+      quantity: 10,
+      follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+      follow_up_date: "2026-10-25",
+    },
+    {
+      dispensing_transaction_id: "tx-followup",
+      patient,
+      dispense_date: "2026-10-27T10:00:00Z",
+      medicine_id: "med-ors",
+      needed_quantity: 30,
+      quantity: 20,
+    },
+  ];
+
+  const grouped = groupHistoryByTransaction(rows);
+  const initial = grouped.find((g) => g.transactionId === "tx-initial");
+  const followup = grouped.find((g) => g.transactionId === "tx-followup");
+
+  assert.equal(initial.status, "PARTIAL");
+  assert.equal(followup.status, "COMPLETED");
 });
 
 test("filterAndSortMedicineOptions filters by keyword, form, stock level, and sorts properly", () => {
@@ -799,7 +947,7 @@ test("buildPatientHistoryRows tracks partial dispensing and balance fulfillment 
   assert.equal(initialRow.neededQuantity, 10); // Declared initial need
   assert.equal(initialRow.releasedQuantity, 5);
   assert.equal(initialRow.balanceQuantity, 5); // 10 - 5 = 5 remaining
-  assert.equal(initialRow.status, "PARTIAL");
+  assert.equal(initialRow.status, "SCHEDULED");
   assert.equal(initialRow.isFollowUp, false);
 });
 
@@ -849,5 +997,190 @@ test("buildPatientHistoryRows handles immediate full completion and voided trans
   assert.equal(completeRow.status, "COMPLETED");
   assert.equal(completeRow.isFollowUp, false);
 });
+
+test("multi-medicine workflow correctly aggregates completed prior claim and new pending claim", () => {
+  const multiMedRows = [
+    // Transaction 1: Med 1 partially claimed (10 of 30)
+    {
+      id: "disp-1",
+      patient_id: "patient-multi",
+      medicine_id: "med-multi-1",
+      medicine: { id: "med-multi-1", generic_name: "Multivitamins" },
+      facility_id: "fac-cho",
+      dispense_date: "2026-10-15T08:00:00Z",
+      needed_quantity: 30,
+      quantity: 10,
+      follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+      follow_up_date: "2026-10-22",
+    },
+    // Transaction 2: Med 1 completed (remaining 20 of 30 released)
+    {
+      id: "disp-2",
+      patient_id: "patient-multi",
+      medicine_id: "med-multi-1",
+      medicine: { id: "med-multi-1", generic_name: "Multivitamins" },
+      facility_id: "fac-cho",
+      dispense_date: "2026-10-22T08:00:00Z",
+      needed_quantity: 30,
+      quantity: 20,
+      follow_up_action: null,
+    },
+    // Transaction 2: Med 2 newly claimed (10 of 20 needed released, referred to Barangay)
+    {
+      id: "disp-3",
+      patient_id: "patient-multi",
+      medicine_id: "med-multi-2",
+      medicine: { id: "med-multi-2", generic_name: "Vitamin B Complex" },
+      facility_id: "fac-cho",
+      dispense_date: "2026-10-22T08:00:00Z",
+      needed_quantity: 20,
+      quantity: 10,
+      follow_up_action: FOLLOW_UP_ACTIONS.refer,
+      referred_facility_id: "fac-inayagan",
+      referred_facility: { id: "fac-inayagan", facility_name: "Inayagan Barangay Health Center" },
+    },
+  ];
+
+  const breakdown = getPatientMonthlyClaimsBreakdown(
+    multiMedRows,
+    "patient-multi",
+    { start: "2026-10-01", end: "2026-11-01" }
+  );
+
+  assert.equal(breakdown.length, 2);
+
+  const med1 = breakdown.find((b) => b.medicine_id === "med-multi-1");
+  assert.equal(med1.needed_quantity, 30);
+  assert.equal(med1.released_quantity, 30);
+  assert.equal(med1.remaining_quantity, 0);
+  assert.equal(med1.is_completed, true);
+
+  const med2 = breakdown.find((b) => b.medicine_id === "med-multi-2");
+  assert.equal(med2.needed_quantity, 20);
+  assert.equal(med2.released_quantity, 10);
+  assert.equal(med2.remaining_quantity, 10);
+  assert.equal(med2.is_completed, false);
+  assert.equal(med2.follow_up_action, FOLLOW_UP_ACTIONS.refer);
+
+  // Status for CHO viewer: med2 is referred to Barangay, so patient is not blocked
+  const statusCho = getPatientDispensingStatus({
+    claimsBreakdown: breakdown,
+    today: "2026-10-22",
+    isBhw: false,
+    currentFacilityId: "fac-cho",
+  });
+  assert.equal(statusCho.code, "PARTIAL_REFERRED");
+  assert.equal(statusCho.isBlocked, false);
+  assert.equal(statusCho.pendingMedicines.length, 1);
+  assert.equal(statusCho.completedMedicines.length, 1);
+
+  // Transaction 3: Barangay dispenses remaining 10 of Med 2
+  const multiMedRowsAfterBhw = [
+    ...multiMedRows,
+    {
+      id: "disp-4",
+      patient_id: "patient-multi",
+      medicine_id: "med-multi-2",
+      medicine: { id: "med-multi-2", generic_name: "Vitamin B Complex" },
+      facility_id: "fac-inayagan",
+      dispense_date: "2026-10-25T08:00:00Z",
+      needed_quantity: 20,
+      quantity: 10,
+      follow_up_action: null,
+    },
+  ];
+
+  const breakdownAfterBhw = getPatientMonthlyClaimsBreakdown(
+    multiMedRowsAfterBhw,
+    "patient-multi",
+    { start: "2026-10-01", end: "2026-11-01" }
+  );
+
+  const med2AfterBhw = breakdownAfterBhw.find((b) => b.medicine_id === "med-multi-2");
+  assert.equal(med2AfterBhw.released_quantity, 20);
+  assert.equal(med2AfterBhw.remaining_quantity, 0);
+  assert.equal(med2AfterBhw.is_completed, true);
+
+  // Status is now COMPLETED across all medicines
+  const finalStatus = getPatientDispensingStatus({
+    claimsBreakdown: breakdownAfterBhw,
+    today: "2026-10-25",
+    isBhw: true,
+    currentFacilityId: "fac-inayagan",
+  });
+  assert.equal(finalStatus.code, "COMPLETED");
+  assert.equal(finalStatus.isBlocked, true);
+  assert.equal(finalStatus.label, "Already received all medicines for this month");
+});
+
+test("groupHistoryByTransaction accurately links prescription claim lifecycles and marks fulfillment", () => {
+  const ianRows = [
+    {
+      id: "row-1",
+      dispensing_transaction_id: "tx-ian-1",
+      patient_id: "patient-ian",
+      patient: { id: "patient-ian", patient_code: "PRD-0013", first_name: "Ian", last_name: "Geraldez" },
+      medicine_id: "med-paracetamol",
+      medicine: { id: "med-paracetamol", generic_name: "Paracetamol", dosage: "500mg" },
+      needed_quantity: 30,
+      quantity: 10,
+      dispense_date: "2026-10-27T15:06:00Z",
+      follow_up_action: FOLLOW_UP_ACTIONS.schedule,
+      follow_up_date: "2026-11-03",
+    },
+    {
+      id: "row-2",
+      dispensing_transaction_id: "tx-ian-2",
+      patient_id: "patient-ian",
+      patient: { id: "patient-ian", patient_code: "PRD-0013", first_name: "Ian", last_name: "Geraldez" },
+      medicine_id: "med-paracetamol",
+      medicine: { id: "med-paracetamol", generic_name: "Paracetamol", dosage: "500mg" },
+      needed_quantity: 30,
+      quantity: 20,
+      dispense_date: "2026-10-27T17:36:00Z",
+      follow_up_action: null,
+      follow_up_date: null,
+    },
+  ];
+
+  const transactions = groupHistoryByTransaction(ianRows);
+  assert.equal(transactions.length, 2);
+
+  const tx1 = transactions.find((t) => t.transactionId === "tx-ian-1");
+  const tx2 = transactions.find((t) => t.transactionId === "tx-ian-2");
+
+  // Tx1 was a partial dispense, fulfilled by Tx2
+  assert.equal(tx1.status, "PARTIAL");
+  assert.equal(tx1.isFulfilledByLater, true);
+  assert.equal(tx1.fulfillingTransactionId, "tx-ian-2");
+  assert.equal(tx1.medicineLines[0].prescribedNeeded, 30);
+  assert.equal(tx1.medicineLines[0].previouslyClaimed, 0);
+  assert.equal(tx1.medicineLines[0].releasedThisVisit, 10);
+  assert.equal(tx1.medicineLines[0].balanceRemaining, 20);
+
+  // Tx2 is a follow-up that completes the cycle
+  assert.equal(tx2.status, "COMPLETED");
+  assert.equal(tx2.isFollowUp, true);
+  assert.equal(tx2.followUpOfTransactionId, "tx-ian-1");
+  assert.equal(tx2.medicineLines[0].isFollowUp, true);
+  assert.equal(tx2.medicineLines[0].prescribedNeeded, 30);
+  assert.equal(tx2.medicineLines[0].previouslyClaimed, 10);
+  assert.equal(tx2.medicineLines[0].releasedThisVisit, 20);
+  assert.equal(tx2.medicineLines[0].balanceRemaining, 0);
+
+  // Verify buildDispensingClaimCycles aggregates both visits under 1 claim journey
+  const claimCycles = buildDispensingClaimCycles(transactions);
+  assert.equal(claimCycles.length, 1);
+  const cycle = claimCycles[0];
+  assert.equal(cycle.patientId, "patient-ian");
+  assert.equal(cycle.prescribedNeeded, 30);
+  assert.equal(cycle.totalReleased, 30);
+  assert.equal(cycle.balanceRemaining, 0);
+  assert.equal(cycle.status, "COMPLETED");
+  assert.equal(cycle.visits.length, 2);
+  assert.equal(cycle.visits[0].quantity, 10);
+  assert.equal(cycle.visits[1].quantity, 20);
+});
+
 
 

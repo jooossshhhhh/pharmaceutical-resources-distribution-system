@@ -7,50 +7,37 @@ import {
   getCurrentAuthUser,
   getUserIdentities,
   isPhilippineMobileNumber,
-  logOwnPasswordChange,
   linkGoogleIdentity,
   normalizePhoneNumber,
-  resendPhoneChangeOtp,
   sendPasswordResetEmail,
-  sendPhoneOtp,
-  signInWithEmailPassword,
-  signInWithPhonePassword,
   signOutOtherSessions,
-  toPhilippineE164PhoneNumber,
-  unlinkUserIdentity,
-  updateUserPassword,
-  updateUserPhone,
-  verifyPhoneChangeOtp,
-  verifyPhoneOtp,
   logoutUser,
 } from "@backend/services/auth/authService";
 import {
   getProfileAvatarUrl,
   removeProfileAvatar,
+  requestGmailUpdate,
   updateOwnProfileAvatar,
   updateOwnProfileContact,
   uploadProfileAvatar,
+  verifyAndApplyGmailUpdate,
 } from "@backend/services/auth/profileService";
 import { isCurrentNetworkOnline } from "@backend/sync/networkStatus";
 import { supabase } from "@backend/client/supabase";
 import { formatDateTime } from "@shared/utils/dashboardUtils";
 import { getLastLoginTimestamp } from "@backend/database/snapshotStore";
 import ModalShell from "../../components/ModalShell";
-import OtpModal from "./OtpModal";
 import PasswordModal from "./PasswordModal";
 import PasscodeModal from "./PasscodeModal";
-import { LoginMethod } from "./ProfileCards";
+import UpdateGmailModal from "./UpdateGmailModal";
 import { ModalField, ProfileField } from "./ProfileFields";
-import RemoveLoginMethodModal from "./RemoveLoginMethodModal";
 import {
-  canRemoveLoginMethod,
   canUpdateAvatar,
   emptyForm,
+  emptyGmailUpdate,
   emptyPasswordVerification,
-  emptyPhoneVerification,
   formatRequestDate,
   getAuthCallbackParams,
-  getAuthLinkedPhoneNumber,
   getFullName,
   getGoogleIdentityEmail,
   getGoogleLinkErrorMessage,
@@ -58,9 +45,6 @@ import {
   getIdentityByProvider,
   getLinkedGmailEmail,
   getLoginMethodAction,
-  getPhoneChangeState,
-  getPendingAuthPhoneNumber,
-  getPhoneNumberErrorMessage,
   getRoleLabel,
   getStatusLabel,
   maskPhoneNumber,
@@ -70,21 +54,6 @@ import { compressAvatarImage } from "@shared/utils/imageCompressionUtils";
 
 const cleanAuthCallbackUrl = () => {
   window.history.replaceState({}, document.title, window.location.pathname);
-};
-
-const emptyRemoveLoginMethod = {
-  error: "",
-  isOpen: false,
-  isRemoving: false,
-  method: "",
-  password: "",
-};
-
-const emptyAddPhoneLogin = {
-  error: "",
-  isOpen: false,
-  isSending: false,
-  phoneNumber: "",
 };
 
 export default function ProfileSettingsModule() {
@@ -111,46 +80,23 @@ export default function ProfileSettingsModule() {
   const [modalError, setModalError] = useState("");
   const [profileError, setProfileError] = useState("");
   const [form, setForm] = useState(emptyForm);
-  const [addPhoneLogin, setAddPhoneLogin] = useState(emptyAddPhoneLogin);
-  const [phoneVerification, setPhoneVerification] = useState(emptyPhoneVerification);
   const [passwordVerification, setPasswordVerification] = useState(emptyPasswordVerification);
+  const [gmailUpdate, setGmailUpdate] = useState(emptyGmailUpdate);
   const [passcodeModal, setPasscodeModal] = useState({
     isOpen: false,
     mode: "setup",
   });
-  const [removeLoginMethod, setRemoveLoginMethod] = useState(emptyRemoveLoginMethod);
   const [processedUrl, setProcessedUrl] = useState("");
 
   const today = useMemo(() => formatDateTime(new Date()), []);
   const googleIdentity = getIdentityByProvider(authIdentities, "google");
-  const phoneIdentity = getIdentityByProvider(authIdentities, "phone");
   const googleIdentityEmail = getGoogleIdentityEmail(authIdentities);
   const linkedGmailEmail = getLinkedGmailEmail({
     identities: authIdentities,
     profileEmail: profile?.email || "",
   });
   const hasGmailLogin = !!googleIdentity && !!linkedGmailEmail;
-  const authLinkedPhoneNumber = getAuthLinkedPhoneNumber({
-    authUser,
-    identities: authIdentities,
-    normalizePhoneNumber,
-  });
-  const profilePhoneNumber = profile?.phone_number
-    ? normalizePhoneNumber(profile.phone_number)
-    : "";
-  const linkedPhoneNumber = profilePhoneNumber || authLinkedPhoneNumber;
-  const hasPhoneLogin = !!authLinkedPhoneNumber || (!!phoneIdentity && !!linkedPhoneNumber);
-  const loginMethodAction = getLoginMethodAction({ hasGmailLogin, hasPhoneLogin });
-  const canRemoveGmail = canRemoveLoginMethod({
-    hasGmailLogin,
-    hasPhoneLogin,
-    method: "gmail",
-  });
-  const canRemovePhone = canRemoveLoginMethod({
-    hasGmailLogin,
-    hasPhoneLogin,
-    method: "phone",
-  });
+  const loginMethodAction = getLoginMethodAction({ hasGmailLogin });
   const hasPasscodeActive = Boolean(
     profile?.has_passcode ||
     authUser?.user_metadata?.has_passcode
@@ -209,38 +155,10 @@ export default function ProfileSettingsModule() {
     return true;
   }, [googleIdentityEmail, profile, refreshProfile]);
 
-  const syncProfilePhone = useCallback(async (
-    phoneNumberOverride,
-    emailOverride = linkedGmailEmail
-  ) => {
-    const nextPhoneNumber = normalizePhoneNumber(phoneNumberOverride || "");
-    const currentPhoneNumber = profile?.phone_number
-      ? normalizePhoneNumber(profile.phone_number)
-      : "";
-
-    if (!profile?.id || !nextPhoneNumber || currentPhoneNumber === nextPhoneNumber) {
-      return false;
-    }
-
-    await updateOwnProfileContact({
-      email: emailOverride || profile.email || null,
-      firstName: profile.first_name,
-      lastName: profile.last_name,
-      phoneNumber: nextPhoneNumber,
-    });
-    await refreshProfile?.();
-    return true;
-  }, [linkedGmailEmail, profile, refreshProfile]);
-
   const loadAuthIdentitiesAndSyncEmail = useCallback(async () => {
     const currentAuthUser = await getCurrentAuthUser();
     const identities = await getUserIdentities();
     const linkedGoogleEmail = getGoogleIdentityEmail(identities);
-    const linkedAuthPhoneNumber = getAuthLinkedPhoneNumber({
-      authUser: currentAuthUser,
-      identities,
-      normalizePhoneNumber,
-    });
 
     setAuthIdentities(identities);
     setAuthUser(currentAuthUser);
@@ -250,14 +168,8 @@ export default function ProfileSettingsModule() {
       didSync = await syncProfileEmail(linkedGoogleEmail);
     }
 
-    if (linkedAuthPhoneNumber) {
-      didSync =
-        (await syncProfilePhone(linkedAuthPhoneNumber, linkedGoogleEmail || profile?.email)) ||
-        didSync;
-    }
-
     return didSync;
-  }, [profile?.email, syncProfileEmail, syncProfilePhone]);
+  }, [syncProfileEmail]);
 
   useEffect(() => {
     let isMounted = true;
@@ -297,22 +209,14 @@ export default function ProfileSettingsModule() {
         }
 
         const linkedGoogleEmail = getGoogleIdentityEmail(identities);
-        const linkedAuthPhoneNumber = getAuthLinkedPhoneNumber({
-          authUser: currentAuthUser,
-          identities,
-          normalizePhoneNumber,
-        });
         const shouldSyncEmail = linkedGoogleEmail && profile.email !== linkedGoogleEmail;
-        const shouldSyncPhone =
-          linkedAuthPhoneNumber &&
-          normalizePhoneNumber(profile.phone_number || "") !== linkedAuthPhoneNumber;
 
-        if (shouldSyncEmail || shouldSyncPhone) {
+        if (shouldSyncEmail) {
           await updateOwnProfileContact({
             email: linkedGoogleEmail || profile.email,
             firstName: profile.first_name,
             lastName: profile.last_name,
-            phoneNumber: shouldSyncPhone ? linkedAuthPhoneNumber : profile.phone_number,
+            phoneNumber: profile.phone_number,
           });
           await refreshProfile?.();
         }
@@ -389,7 +293,7 @@ export default function ProfileSettingsModule() {
       facility_reason: "",
       first_name: profile?.first_name || "",
       last_name: profile?.last_name || "",
-      phone_number: linkedPhoneNumber || "",
+      phone_number: profile?.phone_number || "",
     });
     setMessage("");
     setModalError("");
@@ -404,7 +308,7 @@ export default function ProfileSettingsModule() {
 
   const saveEditableProfileFields = async (phoneNumberOverride = form.phone_number) => {
     await updateOwnProfileContact({
-      email: linkedGmailEmail,
+      email: linkedGmailEmail || profile?.email || null,
       firstName: form.first_name.trim(),
       lastName: form.last_name.trim(),
       phoneNumber: phoneNumberOverride || "",
@@ -423,19 +327,9 @@ export default function ProfileSettingsModule() {
       return "First name and last name are required.";
     }
 
-    const phoneChangeState = getPhoneChangeState({
-      currentPhoneNumber: linkedPhoneNumber || "",
-      formPhoneNumber: form.phone_number,
-      normalizePhoneNumber,
-    });
-    const nextPhoneNumber = phoneChangeState.nextPhoneNumber;
-
-    if (nextPhoneNumber && !isPhilippineMobileNumber(nextPhoneNumber)) {
+    const rawPhone = form.phone_number ? normalizePhoneNumber(form.phone_number) : "";
+    if (rawPhone && !isPhilippineMobileNumber(rawPhone)) {
       return "Phone number must use the 09XXXXXXXXX format.";
-    }
-
-    if (!linkedGmailEmail && !nextPhoneNumber) {
-      return "Add either a Gmail login or a phone number before saving.";
     }
 
     return "";
@@ -451,17 +345,7 @@ export default function ProfileSettingsModule() {
       return;
     }
 
-    const phoneChangeState = getPhoneChangeState({
-      currentPhoneNumber: linkedPhoneNumber || "",
-      formPhoneNumber: form.phone_number,
-      normalizePhoneNumber,
-    });
-    const nextPhoneNumber = phoneChangeState.nextPhoneNumber;
-
-    if (phoneChangeState.requiresVerification) {
-      await handleStartPhoneChange(nextPhoneNumber);
-      return;
-    }
+    const nextPhoneNumber = form.phone_number ? normalizePhoneNumber(form.phone_number) : "";
 
     setIsSaving(true);
     setModalError("");
@@ -473,218 +357,6 @@ export default function ProfileSettingsModule() {
       setModalError(getAuthErrorMessage(error));
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleStartPhoneChange = async (phoneNumber, source = "profile-edit") => {
-    const nextPhoneNumber = normalizePhoneNumber(phoneNumber || "");
-
-    setIsSaving(true);
-    setModalError("");
-
-    try {
-      const currentAuthUser = await getCurrentAuthUser();
-      const identities = await getUserIdentities();
-      const currentAuthPhoneNumber = getAuthLinkedPhoneNumber({
-        authUser: currentAuthUser,
-        identities,
-        normalizePhoneNumber,
-      });
-      const pendingAuthPhoneNumber = getPendingAuthPhoneNumber({
-        authUser: currentAuthUser,
-        normalizePhoneNumber,
-      });
-
-      setAuthUser(currentAuthUser);
-      setAuthIdentities(identities);
-
-      if (currentAuthPhoneNumber && currentAuthPhoneNumber === nextPhoneNumber) {
-        if (source === "login-method") {
-          await syncProfilePhone(nextPhoneNumber);
-          setAddPhoneLogin(emptyAddPhoneLogin);
-          setMessage("Phone login was already linked in Supabase Auth and has been synced to your profile.");
-        } else {
-          await saveEditableProfileFields(nextPhoneNumber);
-          setIsEditing(false);
-        }
-
-        return true;
-      }
-
-      if (pendingAuthPhoneNumber && pendingAuthPhoneNumber === nextPhoneNumber) {
-        setIsEditing(false);
-        setAddPhoneLogin(emptyAddPhoneLogin);
-        setPhoneVerification({
-          ...emptyPhoneVerification,
-          isOpen: true,
-          phoneNumber: nextPhoneNumber,
-          source,
-        });
-        return true;
-      }
-
-      await updateUserPhone(nextPhoneNumber);
-      setIsEditing(false);
-      setAddPhoneLogin(emptyAddPhoneLogin);
-      setPhoneVerification({
-        ...emptyPhoneVerification,
-        isOpen: true,
-        phoneNumber: nextPhoneNumber,
-        source,
-      });
-      return true;
-    } catch (error) {
-      const currentAuthUser = await getCurrentAuthUser().catch(() => null);
-      const identities = await getUserIdentities().catch(() => []);
-      const currentAuthPhoneNumber = getAuthLinkedPhoneNumber({
-        authUser: currentAuthUser,
-        identities,
-        normalizePhoneNumber,
-      });
-      const pendingAuthPhoneNumber = getPendingAuthPhoneNumber({
-        authUser: currentAuthUser,
-        normalizePhoneNumber,
-      });
-
-      setAuthUser(currentAuthUser);
-      setAuthIdentities(identities);
-
-      if (currentAuthPhoneNumber && currentAuthPhoneNumber === nextPhoneNumber) {
-        if (source === "login-method") {
-          await syncProfilePhone(nextPhoneNumber);
-          setAddPhoneLogin(emptyAddPhoneLogin);
-          setMessage("Phone login was already linked in Supabase Auth and has been synced to your profile.");
-        } else {
-          await saveEditableProfileFields(nextPhoneNumber);
-          setIsEditing(false);
-        }
-
-        return true;
-      }
-
-      if (pendingAuthPhoneNumber && pendingAuthPhoneNumber === nextPhoneNumber) {
-        setIsEditing(false);
-        setAddPhoneLogin(emptyAddPhoneLogin);
-        setPhoneVerification({
-          ...emptyPhoneVerification,
-          isOpen: true,
-          phoneNumber: nextPhoneNumber,
-          source,
-        });
-        return true;
-      }
-
-      const errorMessage = getPhoneNumberErrorMessage(error);
-      if (source === "login-method") {
-        setAddPhoneLogin((current) => ({
-          ...current,
-          error: errorMessage,
-        }));
-      } else {
-        setModalError(errorMessage);
-      }
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAddPhoneLoginSubmit = async (event) => {
-    event.preventDefault();
-    const nextPhoneNumber = normalizePhoneNumber(addPhoneLogin.phoneNumber);
-
-    if (!isPhilippineMobileNumber(nextPhoneNumber)) {
-      setAddPhoneLogin((current) => ({
-        ...current,
-        error: "Phone number must use the 09XXXXXXXXX format.",
-      }));
-      return;
-    }
-
-    if (linkedPhoneNumber && nextPhoneNumber === linkedPhoneNumber) {
-      setAddPhoneLogin((current) => ({
-        ...current,
-        error: "This phone number is already linked to your profile.",
-      }));
-      return;
-    }
-
-    setAddPhoneLogin((current) => ({
-      ...current,
-      error: "",
-      isSending: true,
-    }));
-
-    const didStartVerification = await handleStartPhoneChange(nextPhoneNumber, "login-method");
-
-    if (!didStartVerification) {
-      setAddPhoneLogin((current) => ({
-        ...current,
-        isSending: false,
-      }));
-    }
-  };
-
-  const handleVerifyPhoneChange = async (event) => {
-    event.preventDefault();
-
-    setPhoneVerification((current) => ({
-      ...current,
-      error: "",
-      isVerifying: true,
-    }));
-
-    try {
-      await verifyPhoneChangeOtp({
-        phoneNumber: phoneVerification.phoneNumber,
-        verificationCode: phoneVerification.code,
-      });
-
-      if (phoneVerification.source === "login-method") {
-        await updateOwnProfileContact({
-          email: linkedGmailEmail,
-          firstName: profile.first_name,
-          lastName: profile.last_name,
-          phoneNumber: phoneVerification.phoneNumber,
-        });
-        await refreshProfile?.();
-      } else {
-        await saveEditableProfileFields(phoneVerification.phoneNumber);
-      }
-
-      const identities = await getUserIdentities();
-      setAuthIdentities(identities);
-      setPhoneVerification(emptyPhoneVerification);
-      setIsEditing(false);
-      setMessage("Phone number verified and profile updated.");
-    } catch (error) {
-      setPhoneVerification((current) => ({
-        ...current,
-        error: getAuthErrorMessage(error),
-        isVerifying: false,
-      }));
-    }
-  };
-
-  const handleResendPhoneChangeOtp = async () => {
-    setPhoneVerification((current) => ({
-      ...current,
-      error: "",
-      isResending: true,
-    }));
-
-    try {
-      await resendPhoneChangeOtp(phoneVerification.phoneNumber);
-      setPhoneVerification((current) => ({
-        ...current,
-        isResending: false,
-      }));
-    } catch (error) {
-      setPhoneVerification((current) => ({
-        ...current,
-        error: getAuthErrorMessage(error),
-        isResending: false,
-      }));
     }
   };
 
@@ -894,15 +566,72 @@ export default function ProfileSettingsModule() {
       return;
     }
 
-    if (loginMethodAction?.kind === "phone") {
-      setAddPhoneLogin({
-        ...emptyAddPhoneLogin,
-        isOpen: true,
-        phoneNumber: profile?.phone_number || "",
+    if (loginMethodAction?.kind === "gmail") {
+      handleLinkGoogle();
+    }
+  };
+
+  const openUpdateGmailModal = () => {
+    setGmailUpdate({
+      ...emptyGmailUpdate,
+      isOpen: true,
+      step: "input",
+    });
+    setProfileError("");
+    setMessage("");
+  };
+
+  const closeUpdateGmailModal = () => {
+    setGmailUpdate(emptyGmailUpdate);
+  };
+
+  const handleInitiateGmailUpdate = async (targetEmail) => {
+    setGmailUpdate((prev) => ({ ...prev, isSending: true, error: "" }));
+    try {
+      await requestGmailUpdate({ newEmail: targetEmail });
+      setGmailUpdate((prev) => ({
+        ...prev,
+        isSending: false,
+        newEmail: targetEmail,
+        step: "verify",
+        error: "",
+      }));
+      return true;
+    } catch (err) {
+      setGmailUpdate((prev) => ({
+        ...prev,
+        isSending: false,
+        error: getAuthErrorMessage(err),
+      }));
+      return false;
+    }
+  };
+
+  const handleVerifyGmailUpdate = async ({ newEmail, code }) => {
+    setGmailUpdate((prev) => ({ ...prev, isVerifying: true, error: "" }));
+    try {
+      const currentEmail = linkedGmailEmail || profile?.email || "";
+      await verifyAndApplyGmailUpdate({
+        newEmail,
+        token: code,
+        oldEmail: currentEmail,
+        profile,
       });
-      setMessage("");
-      setModalError("");
-      setProfileError("");
+
+      await refreshProfile?.();
+      setGmailUpdate(emptyGmailUpdate);
+      const isBhw = profile?.role === "BHW";
+      setMessage(
+        isBhw
+          ? "Primary Gmail updated successfully! City Health Office (CHO) has been notified."
+          : "Primary Gmail updated successfully!"
+      );
+    } catch (err) {
+      setGmailUpdate((prev) => ({
+        ...prev,
+        isVerifying: false,
+        error: getAuthErrorMessage(err) || "Failed to verify code. Please check the code and try again.",
+      }));
     }
   };
 
@@ -945,14 +674,23 @@ export default function ProfileSettingsModule() {
     setPasswordVerification({
       ...emptyPasswordVerification,
       isOpen: true,
-      method: profile?.phone_number ? "phone" : "email",
+      method: "email",
     });
     setMessage("");
     setProfileError("");
   };
 
   const handleSendPasswordVerification = async (event) => {
-    event.preventDefault();
+    event?.preventDefault?.();
+    const targetEmail = linkedGmailEmail || profile?.email || authUser?.email;
+    if (!targetEmail) {
+      setPasswordVerification((current) => ({
+        ...current,
+        error: "No Gmail is linked to this account.",
+      }));
+      return;
+    }
+
     setPasswordVerification((current) => ({
       ...current,
       error: "",
@@ -960,195 +698,16 @@ export default function ProfileSettingsModule() {
     }));
 
     try {
-      if (passwordVerification.method === "phone") {
-        if (!profile?.phone_number) {
-          throw new Error("No phone number is linked to this account.");
-        }
-
-        await sendPhoneOtp(profile.phone_number, { shouldCreateUser: false });
-      } else {
-        if (!linkedGmailEmail) {
-          throw new Error("No Gmail is linked to this account.");
-        }
-
-        await sendPasswordResetEmail(linkedGmailEmail);
-        setPasswordVerification(emptyPasswordVerification);
-        setMessage(
-          "Password reset link sent to your Gmail. Open the email to set a new password."
-        );
-        return;
-      }
-
-      setPasswordVerification((current) => ({
-        ...current,
-        isSending: false,
-        step: "verify",
-      }));
-    } catch (error) {
-      setPasswordVerification((current) => ({
-        ...current,
-        error: getAuthErrorMessage(error),
-        isSending: false,
-      }));
-    }
-  };
-
-  const handleVerifyPasswordAndSave = async (event) => {
-    event.preventDefault();
-
-    const passwordError = getPasswordValidationError(
-      passwordVerification.newPassword,
-      passwordVerification.confirmPassword
-    );
-    if (passwordError) {
-      setPasswordVerification((current) => ({
-        ...current,
-        error: passwordError,
-      }));
-      return;
-    }
-
-    setPasswordVerification((current) => ({
-      ...current,
-      error: "",
-      isVerifying: true,
-    }));
-
-    try {
-      if (passwordVerification.method === "phone") {
-        await verifyPhoneOtp({
-          phoneNumber: profile.phone_number,
-          verificationCode: passwordVerification.code,
-        });
-      }
-
-      await updateUserPassword(passwordVerification.newPassword);
-      await logOwnPasswordChange();
+      await sendPasswordResetEmail(targetEmail);
       setPasswordVerification(emptyPasswordVerification);
-      setMessage("Password changed successfully.");
+      setMessage(
+        "Password reset link sent to your Gmail. For security, please open the link within 3 minutes before it expires."
+      );
     } catch (error) {
       setPasswordVerification((current) => ({
         ...current,
         error: getAuthErrorMessage(error),
-        isVerifying: false,
-      }));
-    }
-  };
-
-  const openRemoveLoginMethod = (method) => {
-    const methodLabel = method === "gmail" ? "Gmail Login" : "Phone Login";
-
-    setRemoveLoginMethod({
-      ...emptyRemoveLoginMethod,
-      isOpen: true,
-      method,
-    });
-    setMessage("");
-    setProfileError("");
-
-    if (
-      !canRemoveLoginMethod({
-        hasGmailLogin,
-        hasPhoneLogin,
-        method,
-      })
-    ) {
-      setRemoveLoginMethod({
-        ...emptyRemoveLoginMethod,
-        error: `${methodLabel} cannot be removed because it is the only connected login method.`,
-        isOpen: true,
-        method,
-      });
-    }
-  };
-
-  const verifyCurrentPassword = async (password) => {
-    if (profile?.phone_number) {
-      const result = await signInWithPhonePassword({
-        phoneNumber: profile.phone_number,
-        password,
-      });
-
-      if (result.user?.id !== profile.id) {
-        throw new Error("Password verification did not match the current account.");
-      }
-
-      return result;
-    }
-
-    if (linkedGmailEmail) {
-      const result = await signInWithEmailPassword({
-        email: linkedGmailEmail,
-        password,
-      });
-
-      if (result.user?.id !== profile.id) {
-        throw new Error("Password verification did not match the current account.");
-      }
-
-      return result;
-    }
-
-    throw new Error("No password login method is available for verification.");
-  };
-
-  const handleRemoveLoginMethod = async (event) => {
-    event.preventDefault();
-
-    if (!removeLoginMethod.password) {
-      setRemoveLoginMethod((current) => ({
-        ...current,
-        error: "Current password is required.",
-      }));
-      return;
-    }
-
-    setRemoveLoginMethod((current) => ({
-      ...current,
-      error: "",
-      isRemoving: true,
-    }));
-
-    try {
-      await verifyCurrentPassword(removeLoginMethod.password);
-
-      const latestIdentities = await getUserIdentities();
-      const identity = getIdentityByProvider(
-        latestIdentities,
-        removeLoginMethod.method === "gmail" ? "google" : "phone"
-      );
-
-      if (!identity) {
-        throw new Error("This login method is not linked in Supabase Auth.");
-      }
-
-      await unlinkUserIdentity(identity);
-
-      const remainingIdentities = await getUserIdentities();
-      const remainingGoogleEmail = getGoogleIdentityEmail(remainingIdentities);
-      const nextEmail =
-        removeLoginMethod.method === "gmail" ? remainingGoogleEmail : linkedGmailEmail;
-      const nextPhoneNumber =
-        removeLoginMethod.method === "phone" ? "" : profile?.phone_number || "";
-
-      await updateOwnProfileContact({
-        email: nextEmail || null,
-        firstName: profile.first_name,
-        lastName: profile.last_name,
-        phoneNumber: nextPhoneNumber,
-      });
-
-      setAuthIdentities(remainingIdentities);
-      await refreshProfile?.();
-      setRemoveLoginMethod(emptyRemoveLoginMethod);
-      setMessage(
-        `${removeLoginMethod.method === "gmail" ? "Gmail" : "Phone"} login removed.`
-      );
-    } catch (error) {
-      setRemoveLoginMethod((current) => ({
-        ...current,
-        error: getAuthErrorMessage(error),
-        isRemoving: false,
+        isSending: false,
       }));
     }
   };
@@ -1319,32 +878,41 @@ export default function ProfileSettingsModule() {
                     />
                   </div>
 
-                  <div className="grid gap-1.5">
-                    <label className="text-xs font-black uppercase tracking-wider text-[#5f6673]">
-                      Mobile Phone Number
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      name="phone_number"
-                      value={form.phone_number}
-                      onChange={handleFieldChange}
-                      placeholder="09XXXXXXXXX"
-                      className="h-10.5 w-full rounded-xl border border-[#d8dadc] bg-white px-3.5 text-xs font-bold text-[#0d1117] outline-none transition focus:border-[#007f5f] focus:ring-2 focus:ring-[#007f5f]/15"
-                    />
-                    {phoneInputFeedback.message && (
-                      <span
-                        className={`text-xs font-bold ${phoneInputFeedback.tone === "valid"
-                          ? "text-emerald-700"
-                          : "text-red-600"
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <label className="text-xs font-black uppercase tracking-wider text-[#5f6673]">
+                        Primary Gmail
+                      </label>
+                      <div className="flex h-10.5 w-full items-center rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 text-xs font-medium text-slate-600">
+                        <span className="truncate">{linkedGmailEmail || profile?.email || "No email linked"}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-1.5">
+                      <label className="text-xs font-black uppercase tracking-wider text-[#5f6673]">
+                        Mobile Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        name="phone_number"
+                        value={form.phone_number}
+                        onChange={handleFieldChange}
+                        placeholder="09XXXXXXXXX"
+                        className="h-10.5 w-full rounded-xl border border-[#d8dadc] bg-white px-3.5 text-xs font-bold text-[#0d1117] outline-none transition focus:border-[#007f5f] focus:ring-2 focus:ring-[#007f5f]/15"
+                      />
+                      {phoneInputFeedback.message && (
+                        <span
+                          className={`text-xs font-bold ${
+                            phoneInputFeedback.tone === "valid"
+                              ? "text-emerald-700"
+                              : "text-red-600"
                           }`}
-                      >
-                        {phoneInputFeedback.message}
-                      </span>
-                    )}
-                    <p className="text-[11px] font-medium text-slate-500">
-                      Changing your phone number will send a 6-digit SMS verification code to verify the device.
-                    </p>
+                        >
+                          {phoneInputFeedback.message}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-end gap-3 pt-2">
@@ -1369,7 +937,7 @@ export default function ProfileSettingsModule() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <ProfileField icon="user" label="First Name" value={profile?.first_name || "—"} />
                     <ProfileField icon="user" label="Last Name" value={profile?.last_name || "—"} />
-                    <ProfileField icon="phone" label="Mobile Phone" value={hasPhoneLogin ? maskPhoneNumber(linkedPhoneNumber) : (profile?.phone_number ? maskPhoneNumber(profile.phone_number) : "No phone linked")} />
+                    <ProfileField icon="phone" label="Mobile Phone" value={profile?.phone_number ? maskPhoneNumber(profile.phone_number) : "No contact number recorded"} />
                     <ProfileField icon="mail" label="Primary Email" value={linkedGmailEmail || profile?.email || "No email linked"} />
                   </div>
                 </div>
@@ -1377,22 +945,22 @@ export default function ProfileSettingsModule() {
             </section>
 
             {/* CARD 2: HEALTH & POSITION */}
-            <section className="rounded-xl border border-[#d8dadc] bg-white p-6 shadow-sm shadow-neutral-200/40">
-              <div className="mb-5 flex items-center justify-between border-b border-neutral-100 pb-4">
+            <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-6 shadow-xs">
+              <div className="mb-5 flex items-center justify-between border-b border-[#CFDDE0] pb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E8F5F1] text-[#2D7A5D]">
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
                       <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-slate-900">Health Center & Role Assignment</h3>
-                    <p className="text-xs font-semibold text-slate-500">Official health center and permissions</p>
+                    <h3 className="text-base font-black text-[#1B2B30]">Health Center & Role Assignment</h3>
+                    <p className="text-xs font-semibold text-[#5B7077]">Official health center and permissions</p>
                   </div>
                 </div>
 
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E8F5F1] border border-[#4C9F80]/30 px-2.5 py-0.5 text-xs font-bold text-[#2D7A5D]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#4C9F80]" />
                   {statusLabel}
                 </span>
               </div>
@@ -1430,56 +998,9 @@ export default function ProfileSettingsModule() {
 
           {/* ================= RIGHT COLUMN ================= */}
           <div className="space-y-6">
-            {/* CARD 3: CONNECTED LOGIN METHODS */}
+            {/* UNIFIED CARD: ACCOUNT SECURITY & AUTHENTICATION */}
             <section className="rounded-xl border border-[#d8dadc] bg-white p-6 shadow-sm shadow-neutral-200/40">
-              <div className="mb-5 flex items-center justify-between border-b border-neutral-100 pb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M15 7a2 2 0 0 1 2 2m4 0a6 6 0 0 1-7.743 5.743L11 17H9v2H7v2H4a1 1 0 0 1-1-1v-2.586a1 1 0 0 1 .293-.707l5.964-5.964A6 6 0 1 1 21 9Z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900">Connected Login Methods</h3>
-                    <p className="text-xs font-semibold text-slate-500">Authentication channels linked to your account</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <LoginMethod
-                  label="Gmail Login"
-                  value={hasGmailLogin ? linkedGmailEmail : "Not connected"}
-                  active={hasGmailLogin}
-                  canRemove={canRemoveGmail}
-                  isRemoving={removeLoginMethod.isRemoving && removeLoginMethod.method === "gmail"}
-                  onRemove={() => openRemoveLoginMethod("gmail")}
-                />
-                <LoginMethod
-                  label="Phone Login"
-                  value={hasPhoneLogin ? maskPhoneNumber(linkedPhoneNumber) : "Not connected"}
-                  active={hasPhoneLogin}
-                  canRemove={canRemovePhone}
-                  isRemoving={removeLoginMethod.isRemoving && removeLoginMethod.method === "phone"}
-                  onRemove={() => openRemoveLoginMethod("phone")}
-                />
-              </div>
-
-              {loginMethodAction && (
-                <button
-                  type="button"
-                  onClick={handleLoginMethodAction}
-                  disabled={isLinkingGoogle}
-                  className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#d8dadc] bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer shadow-sm"
-                >
-                  {isLinkingGoogle ? "Opening Google..." : loginMethodAction.label}
-                </button>
-              )}
-            </section>
-
-            {/* CARD 4: ACCOUNT SECURITY & SESSIONS */}
-            <section className="rounded-xl border border-[#d8dadc] bg-white p-6 shadow-sm shadow-neutral-200/40">
-              <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
+              <div className="mb-5 flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-neutral-100 pb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
@@ -1487,12 +1008,12 @@ export default function ProfileSettingsModule() {
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-slate-900">Account Security & Sessions</h3>
-                    <p className="text-xs font-semibold text-slate-500">Password management and active desktop sessions</p>
+                    <h3 className="text-base font-black text-slate-900 leading-tight">Account Security & Authentication</h3>
+                    <p className="text-xs font-semibold text-slate-500">Sign-in credentials, passcode, and active desktop sessions</p>
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1.5 self-start sm:self-auto rounded-lg border border-slate-200/90 bg-slate-50 px-2.5 py-1 text-slate-600 shadow-2xs">
+                <div className="flex shrink-0 items-center gap-1.5 self-start xl:self-auto rounded-lg border border-slate-200/90 bg-slate-50 px-2.5 py-1 text-slate-600 shadow-2xs">
                   <svg className="h-3.5 w-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
@@ -1507,7 +1028,7 @@ export default function ProfileSettingsModule() {
               </div>
 
               {sessionActionMessage && (
-                <div className="mb-3.5 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-bold text-emerald-800">
+                <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-bold text-emerald-800">
                   <div className="flex items-center gap-2">
                     <svg className="h-4 w-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
                       <path d="M20 6 9 17l-5-5" />
@@ -1524,133 +1045,223 @@ export default function ProfileSettingsModule() {
                 </div>
               )}
 
-              <div className="space-y-3">
-                {/* 6-Digit Quick Passcode row */}
-                <div className="flex items-center justify-between rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                        <rect width="18" height="18" x="3" y="3" rx="2" />
-                        <path d="M7 8h.01M12 8h.01M17 8h.01M7 12h.01M12 12h.01M17 12h.01M7 16h.01M12 16h.01M17 16h.01" />
-                      </svg>
+              <div className="space-y-5">
+                {/* ── SECTION 1: PRIMARY LOGIN IDENTITY ── */}
+                <div>
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Primary Login Method
+                    </span>
+                    <div className="h-px flex-1 bg-slate-100" />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-xl border border-blue-100 bg-blue-50/40 p-4 transition hover:border-blue-200">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-blue-200/80 shadow-2xs">
+                        <svg className="h-5 w-5" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-slate-900">Google Account (Gmail)</h4>
+                          {hasGmailLogin ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              Verified & Linked
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                              Not Linked
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-semibold text-slate-800 truncate mt-0.5">
+                          {linkedGmailEmail || profile?.email || "No email linked"}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Used for sign-in, verification, and account recovery
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-bold text-slate-900">6-Digit Passcode</h4>
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                      {hasGmailLogin ? (
+                        <button
+                          type="button"
+                          onClick={openUpdateGmailModal}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50 transition cursor-pointer shadow-xs"
+                        >
+                          Update Gmail
+                        </button>
+                      ) : loginMethodAction ? (
+                        <button
+                          type="button"
+                          onClick={handleLoginMethodAction}
+                          disabled={isLinkingGoogle}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50 transition cursor-pointer shadow-xs disabled:opacity-60"
+                        >
+                          {isLinkingGoogle ? "Opening Google..." : loginMethodAction.label}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── SECTION 2: STATION ACCESS & CREDENTIALS ── */}
+                <div>
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Station Access & Passcode
+                    </span>
+                    <div className="h-px flex-1 bg-slate-100" />
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {/* 6-Digit Quick Passcode */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+                            <rect width="18" height="18" x="3" y="3" rx="2" />
+                            <path d="M7 8h.01M12 8h.01M17 8h.01M7 12h.01M12 12h.01M17 12h.01M7 16h.01M12 16h.01M17 16h.01" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-slate-900">6-Digit Passcode</h4>
+                            {hasPasscodeActive ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 border border-slate-200">
+                                Not configured
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500">
+                            {hasPasscodeActive
+                              ? "Fast login enabled with your 6-digit PIN"
+                              : "Set up a 6-digit PIN for quick workstation unlock"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                         {hasPasscodeActive ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                            Active
-                          </span>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openPasscodeModal("change")}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:border-emerald-600 hover:bg-emerald-50/50 transition cursor-pointer shadow-sm"
+                            >
+                              Change Passcode
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openPasscodeModal("remove")}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-red-600 hover:border-red-400 hover:bg-red-50/50 transition cursor-pointer shadow-sm"
+                            >
+                              Remove
+                            </button>
+                          </>
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 border border-slate-200">
-                            Not configured
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openPasscodeModal("setup")}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:border-emerald-600 hover:bg-emerald-50/50 transition cursor-pointer shadow-sm"
+                          >
+                            Set Up Passcode
+                          </button>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate">
-                        {hasPasscodeActive
-                          ? "Fast login enabled with your 6-digit PIN"
-                          : "Set up a 6-digit PIN for quick login with OTP verification"}
-                      </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {hasPasscodeActive ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => openPasscodeModal("change")}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:border-emerald-600 hover:bg-emerald-50/50 transition cursor-pointer shadow-sm"
-                        >
-                          Change Passcode
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openPasscodeModal("remove")}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-red-600 hover:border-red-400 hover:bg-red-50/50 transition cursor-pointer shadow-sm"
-                        >
-                          Remove
-                        </button>
-                      </>
-                    ) : (
+
+                    {/* Account Password */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-slate-900">Account Password</h4>
+                          <p className="text-[11px] text-slate-500">
+                            Send a password reset link to your verified Gmail
+                          </p>
+                        </div>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => openPasscodeModal("setup")}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:border-emerald-600 hover:bg-emerald-50/50 transition cursor-pointer shadow-sm"
+                        onClick={openPasswordModal}
+                        className="inline-flex shrink-0 items-center gap-1 self-end sm:self-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:border-emerald-600 hover:bg-emerald-50/50 transition cursor-pointer shadow-sm"
                       >
-                        Set Up Passcode
+                        Change Password
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Change Password row */}
-                <div className="flex items-center justify-between rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                      </svg>
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-xs font-bold text-slate-900">Account Password</h4>
-                      <p className="text-[11px] text-slate-500 truncate">Change your login password with OTP verification</p>
-                    </div>
+                {/* ── SECTION 3: SESSIONS & PRIVACY ── */}
+                <div>
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Sessions & Data Privacy
+                    </span>
+                    <div className="h-px flex-1 bg-slate-100" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={openPasswordModal}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:border-emerald-600 hover:bg-emerald-50/50 transition cursor-pointer shadow-sm"
-                  >
-                    Change Password
-                  </button>
-                </div>
 
-                {/* Sign Out Other Devices row */}
-                <div className="flex items-center justify-between rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" />
-                      </svg>
+                  <div className="space-y-2.5">
+                    {/* Sign Out Other Devices */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-slate-900">Active Sessions</h4>
+                          <p className="text-[11px] text-slate-500">Sign out of all other web and desktop instances</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleOpenSignOutOthersModal}
+                        disabled={isSigningOutOthers}
+                        className="inline-flex shrink-0 items-center gap-1 self-end sm:self-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-slate-400 hover:bg-slate-50 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 shadow-sm"
+                      >
+                        {isSigningOutOthers ? "Signing out..." : "Sign Out Others"}
+                      </button>
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="text-xs font-bold text-slate-900">Active Sessions</h4>
-                      <p className="text-[11px] text-slate-500 truncate">Sign out of all other web and desktop instances</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleOpenSignOutOthersModal}
-                    disabled={isSigningOutOthers}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-slate-400 hover:bg-slate-50 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 shadow-sm"
-                  >
-                    {isSigningOutOthers ? "Signing out..." : "Sign Out Others"}
-                  </button>
-                </div>
 
-                {/* Export Activity Logs row */}
-                <div className="flex items-center justify-between rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                      </svg>
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-xs font-bold text-slate-900">Export Activity Logs</h4>
-                      <p className="text-[11px] text-slate-500 truncate">Download personal profile and sign-in record history</p>
+                    {/* Export Activity Logs */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[#eef0f3] bg-[#f8f9fc] p-3.5 transition hover:border-[#d8dadc]">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-700">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-slate-900">Export Activity Logs</h4>
+                          <p className="text-[11px] text-slate-500">Download personal profile and sign-in record history</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleExportMyData}
+                        disabled={isExporting}
+                        className="inline-flex shrink-0 items-center gap-1 self-end sm:self-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-slate-400 hover:bg-slate-50 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 shadow-sm"
+                      >
+                        {isExporting ? "Exporting..." : "Export Data"}
+                      </button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleExportMyData}
-                    disabled={isExporting}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-slate-400 hover:bg-slate-50 transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 shadow-sm"
-                  >
-                    {isExporting ? "Exporting..." : "Export Data"}
-                  </button>
                 </div>
               </div>
             </section>
@@ -1658,162 +1269,25 @@ export default function ProfileSettingsModule() {
         </div>
       </div>
 
-      {addPhoneLogin.isOpen && (
-        <ModalShell
-          labelledBy="add-phone-modal-title"
-          onClose={() => setAddPhoneLogin(emptyAddPhoneLogin)}
-          overlayClassName="bg-slate-950/40 backdrop-blur-sm"
-        >
-          <form
-            onSubmit={handleAddPhoneLoginSubmit}
-            className="w-full max-w-[460px] overflow-hidden rounded-xl bg-white shadow-2xl"
-          >
-            <div className="border-b border-neutral-100 px-6 py-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 id="add-phone-modal-title" className="text-lg font-black text-black">Add Phone Number</h3>
-                  <p className="mt-1 text-sm font-medium text-neutral-500">
-                    A verification code will be sent before this phone login is saved.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAddPhoneLogin(emptyAddPhoneLogin)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 cursor-pointer"
-                  aria-label="Close add phone modal"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="px-6 py-5">
-              <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-slate-600">
-                Phone Number
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  name="add_phone_number"
-                  value={addPhoneLogin.phoneNumber}
-                  onChange={(event) =>
-                    setAddPhoneLogin((current) => ({
-                      ...current,
-                      error: "",
-                      phoneNumber: event.target.value,
-                    }))
-                  }
-                  placeholder="09XXXXXXXXX"
-                  className="h-11 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-black outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                />
-                {(() => {
-                  const raw = addPhoneLogin.phoneNumber || "";
-                  const normalized = raw ? normalizePhoneNumber(raw) : "";
-
-                  if (!normalized) {
-                    return null;
-                  }
-
-                  const isValid = isPhilippineMobileNumber(normalized);
-
-                  return (
-                    <span
-                      className={`text-xs font-bold normal-case tracking-normal ${isValid ? "text-emerald-700" : "text-red-700"
-                        }`}
-                    >
-                      {isValid
-                        ? "Valid phone number."
-                        : "Phone number must use the 09XXXXXXXXX format."}
-                    </span>
-                  );
-                })()}
-              </label>
-              <p className="mt-2 text-xs font-semibold text-neutral-500">
-                Use your raw local mobile number format.
-              </p>
-
-              {addPhoneLogin.error && (
-                <p className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                  {addPhoneLogin.error}
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-neutral-100 px-6 py-5">
-              <button
-                type="button"
-                onClick={() => setAddPhoneLogin(emptyAddPhoneLogin)}
-                className="rounded-lg bg-neutral-50 px-5 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={addPhoneLogin.isSending || isSaving}
-                className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-              >
-                {addPhoneLogin.isSending || isSaving ? "Sending OTP..." : "Send OTP"}
-              </button>
-            </div>
-          </form>
-        </ModalShell>
-      )}
-
-      {phoneVerification.isOpen && (
-        <OtpModal
-          code={phoneVerification.code}
-          error={phoneVerification.error}
-          isBusy={phoneVerification.isVerifying}
-          isResending={phoneVerification.isResending}
-          onBack={() => {
-            const previousPhoneNumber = phoneVerification.phoneNumber;
-            const source = phoneVerification.source;
-            setPhoneVerification(emptyPhoneVerification);
-            if (source === "login-method") {
-              setAddPhoneLogin({
-                ...emptyAddPhoneLogin,
-                isOpen: true,
-                phoneNumber: previousPhoneNumber,
-              });
-            } else {
-              setIsEditing(true);
-            }
-          }}
-          onChange={(code) =>
-            setPhoneVerification((current) => ({ ...current, code }))
-          }
-          onResend={handleResendPhoneChangeOtp}
-          onSubmit={handleVerifyPhoneChange}
-          subtitle={`Enter the verification code sent to ${toPhilippineE164PhoneNumber(phoneVerification.phoneNumber)}.`}
-          submitLabel="Verify OTP and Save"
-          title="Verify Phone Number"
-        />
-      )}
+      <UpdateGmailModal
+        currentEmail={linkedGmailEmail || profile?.email || authUser?.email || ""}
+        isBhw={profile?.role === "BHW"}
+        isOpen={gmailUpdate.isOpen}
+        onClose={closeUpdateGmailModal}
+        onInitiate={handleInitiateGmailUpdate}
+        onVerify={handleVerifyGmailUpdate}
+        state={{
+          ...gmailUpdate,
+          setStep: (step) => setGmailUpdate((prev) => ({ ...prev, step, error: "" })),
+        }}
+      />
 
       {passwordVerification.isOpen && (
         <PasswordModal
-          authEmail={linkedGmailEmail}
-          onChange={setPasswordVerification}
+          authEmail={linkedGmailEmail || profile?.email || authUser?.email || ""}
           onClose={() => setPasswordVerification(emptyPasswordVerification)}
           onSend={handleSendPasswordVerification}
-          onSubmit={handleVerifyPasswordAndSave}
-          phoneNumber={profile?.phone_number || ""}
           state={passwordVerification}
-        />
-      )}
-
-      {removeLoginMethod.isOpen && (
-        <RemoveLoginMethodModal
-          error={removeLoginMethod.error}
-          isRemoving={removeLoginMethod.isRemoving}
-          methodLabel={removeLoginMethod.method === "gmail" ? "Gmail Login" : "Phone Login"}
-          onClose={() => setRemoveLoginMethod(emptyRemoveLoginMethod)}
-          onPasswordChange={(password) =>
-            setRemoveLoginMethod((current) => ({ ...current, password }))
-          }
-          onSubmit={handleRemoveLoginMethod}
-          password={removeLoginMethod.password}
         />
       )}
 
@@ -1829,7 +1303,6 @@ export default function ProfileSettingsModule() {
         mode={passcodeModal.mode}
         onClose={closePasscodeModal}
         onSuccess={handlePasscodeSuccess}
-        phoneNumber={linkedPhoneNumber || profile?.phone_number || ""}
       />
 
       {isSignOutOthersModalOpen && (
@@ -1895,7 +1368,7 @@ export default function ProfileSettingsModule() {
                 type="button"
                 onClick={handleConfirmSignOutOthers}
                 disabled={isSigningOutOthers}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-black transition cursor-pointer disabled:opacity-50 shadow-sm"
+                className="btn-primary inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition cursor-pointer disabled:opacity-50 shadow-xs"
               >
                 {isSigningOutOthers ? (
                   <>

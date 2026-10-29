@@ -20,14 +20,14 @@ export default function MedicineTrendTable({
   const canSelect = typeof onSelectMedicine === "function";
 
   return (
-    <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-slate-200/40">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+    <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#CFDDE0] px-5 py-4">
         <div className="flex items-center gap-2.5">
-          <Layers className="h-4 w-4 text-slate-400" />
-          <h2 className="text-xs font-black uppercase tracking-wider text-[#0d1117]">
+          <Layers className="h-4 w-4 text-[#5B7077]" />
+          <h2 className="text-xs font-black uppercase tracking-wider text-[#1B2B30]">
             Medicine Trends
           </h2>
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+          <span className="rounded-full bg-[#E5EFF1] px-2.5 py-0.5 text-xs font-bold text-[#5B7077]">
             {totalCount} items
           </span>
         </div>
@@ -35,7 +35,7 @@ export default function MedicineTrendTable({
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[960px] text-left text-sm">
-          <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <thead className="border-b border-[#CFDDE0] bg-[#F4F8F8] text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
             <tr>
               <th className="px-5 py-3">Medicine</th>
               <th className="px-4 py-3">Category</th>
@@ -48,7 +48,7 @@ export default function MedicineTrendTable({
               <th className="px-5 py-3 text-center">Risk Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[#CFDDE0]">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-4 py-12 text-center text-sm font-semibold text-slate-400">
@@ -67,12 +67,12 @@ export default function MedicineTrendTable({
                     key={row.medicineId}
                     onClick={() => canSelect && onSelectMedicine(row.medicineId)}
                     className={`transition duration-150 ${isSelected
-                        ? "bg-[#e6fbf4]/80 font-medium"
-                        : "hover:bg-slate-50/80"
+                        ? "bg-[#EBF3F5] font-medium"
+                        : "hover:bg-[#F4F8F8]"
                       } ${canSelect ? "cursor-pointer" : ""}`}
                   >
                     <td className="px-5 py-3.5">
-                      <p className="font-bold text-[#0d1117]">{fullName}</p>
+                      <p className="font-bold text-[#1B2B30]">{fullName}</p>
                       {row.brandName && (
                         <p className="text-[11px] font-medium text-slate-400">{row.brandName}</p>
                       )}
@@ -152,8 +152,8 @@ export default function MedicineTrendTable({
       </div>
 
       {/* Pagination Footer matching mockup */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3.5">
-        <p className="text-xs font-medium text-slate-500">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#CFDDE0] bg-[#F9FBFB] px-5 py-3.5">
+        <p className="text-xs font-medium text-[#5B7077]">
           Page {currentPage} of {totalPages || 1} - {totalCount} items
         </p>
 
@@ -163,7 +163,7 @@ export default function MedicineTrendTable({
               type="button"
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077] transition hover:bg-[#EBF3F5] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
               aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -174,9 +174,9 @@ export default function MedicineTrendTable({
                 key={pageNum}
                 type="button"
                 onClick={() => setCurrentPage(pageNum)}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold transition ${pageNum === currentPage
-                    ? "bg-[#00a36c] text-white shadow-xs"
-                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold transition cursor-pointer ${pageNum === currentPage
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077] hover:bg-[#EBF3F5]"
                   }`}
               >
                 {pageNum}
@@ -187,7 +187,7 @@ export default function MedicineTrendTable({
               type="button"
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077] transition hover:bg-[#EBF3F5] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
               aria-label="Next page"
             >
               <ChevronRight className="h-4 w-4" />

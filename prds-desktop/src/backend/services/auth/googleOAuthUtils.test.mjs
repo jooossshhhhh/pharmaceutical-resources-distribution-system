@@ -14,10 +14,14 @@ test("normalizes OAuth return paths to supported auth routes", () => {
   assert.equal(normalizeGoogleOAuthReturnPath("/dashboard"), "/");
 });
 
-test("accepts only the PRDS callback URL and parses its code", () => {
+test("accepts only the PRDS callback URL and parses its code or tokens", () => {
   assert.deepEqual(
     parseGoogleOAuthCallback("prds://auth/callback?code=pkce-code"),
     { code: "pkce-code" }
+  );
+  assert.deepEqual(
+    parseGoogleOAuthCallback("prds://auth/callback#access_token=token-abc&refresh_token=refresh-xyz"),
+    { accessToken: "token-abc", refreshToken: "refresh-xyz" }
   );
   assert.equal(parseGoogleOAuthCallback("https://example.com/callback?code=x"), null);
   assert.equal(parseGoogleOAuthCallback("prds://auth/other?code=x"), null);
@@ -78,12 +82,24 @@ test("completes the PKCE exchange for the originating route and handles cancella
     null
   );
 
-  values.set(GOOGLE_OAUTH_RETURN_PATH_KEY, "/");
+  values.set(GOOGLE_OAUTH_RETURN_PATH_KEY, "/register");
+  let restoredSession;
   assert.deepEqual(
-    await completeGoogleOAuthCallback("prds://auth/callback?code=expired-code", {
-      storage,
-      exchangeCode: async () => ({ error: new Error("expired") }),
-    }),
-    { returnPath: "/", notice: "Google sign-in could not be completed. Please try again." }
+    await completeGoogleOAuthCallback(
+      "prds://auth/callback#access_token=valid-tok&refresh_token=valid-ref",
+      {
+        storage,
+        setSession: async (session) => {
+          restoredSession = session;
+          return { error: null };
+        },
+      }
+    ),
+    { returnPath: "/register", notice: "" }
   );
+  assert.deepEqual(restoredSession, {
+    access_token: "valid-tok",
+    refresh_token: "valid-ref",
+  });
 });
+

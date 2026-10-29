@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
@@ -78,6 +79,15 @@ export default function ChoInventoryModule() {
     handleDisposeStock,
   } = data;
 
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.filterMedicineName) {
+      setSearchTerm(location.state.filterMedicineName);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, setSearchTerm]);
+
   const headerTitle =
     inventoryTab === "EXPIRED"
       ? "Expired Stocks Quarantine"
@@ -127,6 +137,7 @@ export default function ChoInventoryModule() {
         <MedicineStockDetailsView
           item={activeViewingItem}
           canManage={canManage}
+          isBhw={false}
           facilityName={activeViewingItem?.facility?.facility_name || selectedFacility?.facility_name || "City Health Office - City of Naga"}
           onBack={() => setViewingMedicine(null)}
           onEditLot={(lot) => openItemModal(lot, "edit")}
@@ -135,11 +146,11 @@ export default function ChoInventoryModule() {
         />
       ) : (
         <>
-          <section className="rounded-xl border border-[#d8dadc] bg-white px-4 py-3 shadow-xs">
+          <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-4 py-3 shadow-xs">
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-black leading-none text-[#0d1117]">{headerTitle}</h2>
-                <p className="mt-1 text-xs font-semibold text-neutral-500">
+                <h2 className="text-lg font-black leading-none text-[#1B2B30]">{headerTitle}</h2>
+                <p className="mt-1 text-xs font-semibold text-[#5B7077]">
                   {headerDescription}
                 </p>
               </div>
@@ -224,16 +235,16 @@ export default function ChoInventoryModule() {
         </div>
       )}
 
-      <section className="mt-3.5 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xs">
+      <section className="mt-3.5 overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs">
         <div className="flex flex-col gap-2.5 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
-          <h2 className="text-base font-black text-[#0d1117]">
+          <h2 className="text-base font-black text-[#1B2B30]">
             {inventoryTab === "EXPIRED"
               ? "Expired Stocks List"
               : "Dispensable Stock List"}
           </h2>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="relative block sm:w-80">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
                 <SearchIcon />
               </span>
               <input
@@ -244,7 +255,7 @@ export default function ChoInventoryModule() {
                   setCurrentPage(1);
                 }}
                 placeholder="Search medicine, brand, lot number..."
-                className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                className="h-9 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] pl-9 pr-3 text-sm font-medium text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20"
               />
             </label>
             <div className="flex items-center gap-2">
@@ -256,7 +267,7 @@ export default function ChoInventoryModule() {
                 <button
                   type="button"
                   onClick={handleExportExcel}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-4 text-sm font-bold text-neutral-700 shadow-xs hover:bg-neutral-50 hover:border-neutral-300 transition cursor-pointer"
+                  className="btn-secondary inline-flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-bold shadow-xs transition cursor-pointer"
                 >
                   <DownloadIcon />
                   Export
@@ -268,7 +279,7 @@ export default function ChoInventoryModule() {
                     type="button"
                     onClick={handleExportExcel}
                     title="Export official quarantine list of expired medicines for COA and DOH condemnation"
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700 shadow-xs hover:bg-red-100 transition cursor-pointer"
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#D9826B]/40 bg-[#FBE9E3] px-4 text-sm font-bold text-[#8F3F2B] shadow-xs hover:bg-[#FBE9E3]/80 transition cursor-pointer"
                   >
                     <DownloadIcon />
                     Condemnation Report
@@ -278,7 +289,7 @@ export default function ChoInventoryModule() {
                     <button
                       type="button"
                       onClick={() => openCreateModal("PROCUREMENT")}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0d1117] hover:bg-neutral-800 px-4 text-xs font-black text-white shadow-sm transition active:scale-[0.99] cursor-pointer"
+                      className="btn-primary inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-bold text-white shadow-sm transition active:scale-[0.99] cursor-pointer"
                     >
                       <PlusIcon />
                       Add Stock

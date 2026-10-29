@@ -139,15 +139,15 @@ function RequestTransferModal({
                 key={step.label}
                 className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold ${
                   step.done
-                    ? "bg-[#ecfff8] text-[#008f68]"
+                    ? "bg-[#E2F3EC] text-[#4C9F80]"
                     : isActive
-                      ? "bg-white text-[#0d1117] shadow-sm"
-                      : "text-[#5f6673]"
+                      ? "bg-[#F9FBFB] text-[#1B2B30] shadow-sm border border-[#34769B]/30"
+                      : "text-[#5B7077]"
                 }`}
               >
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                    step.done ? "bg-[#6be9c2] text-[#0d1117]" : "bg-white text-[#5f6673]"
+                    step.done ? "bg-[#4C9F80] text-white" : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {step.done ? <CheckIcon /> : index + 1}
@@ -188,10 +188,10 @@ function RequestTransferModal({
                     onChange("medicineId", medicine.medicine_id);
                     onChange("sourceFacilityId", "");
                   }}
-                  className={`w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] ${
+                  className={`w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#34769B] ${
                     form.medicineId === medicine.medicine_id
-                      ? "border-[#6be9c2] bg-[#ecfff8] shadow-sm"
-                      : "border-[#e5e7eb] bg-[#f8f9ff]"
+                      ? "border-[#34769B] bg-[#E5EFF1]/60 ring-1 ring-[#34769B]/30 shadow-sm"
+                      : "border-[#CFDDE0] bg-[#F9FBFB]"
                   }`}
                 >
                   <p className="text-sm font-bold text-[#0d1117]">
@@ -235,54 +235,54 @@ function RequestTransferModal({
                       type="button"
                       key={source.source_facility_id}
                       onClick={() => onChange("sourceFacilityId", source.source_facility_id)}
-                      className={`w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] ${
+                      className={`w-full rounded-xl border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#34769B] ${
                         isSelected
-                          ? "border-[#6be9c2] bg-[#ecfff8] shadow-sm"
-                          : "border-[#e5e7eb] bg-[#f8f9ff]"
+                          ? "border-[#34769B] bg-[#E5EFF1]/60 shadow-sm ring-1 ring-[#34769B]/30"
+                          : "border-[#CFDDE0] bg-[#F9FBFB]"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="break-words text-sm font-bold text-[#0d1117]">
+                            <p className="break-words text-sm font-bold text-[#1B2B30]">
                               {source.source_facility_name}
                             </p>
                             {index === 0 && (
-                              <span className="rounded-full bg-[#fff2d7] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#a15c00]">
+                              <span className="rounded-full bg-[#E2F3EC] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#4C9F80] border border-[#4C9F80]/20">
                                 Best available
                               </span>
                             )}
                           </div>
-                          <p className="mt-1 break-words text-xs text-[#5f6673]">
+                          <p className="mt-1 break-words text-xs text-[#5B7077]">
                             {source.source_facility_code || "No code"}
                           </p>
                         </div>
                         <span
                           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                            isSelected ? "bg-[#6be9c2] text-[#0d1117]" : "bg-white text-[#8a93a3]"
+                            isSelected ? "bg-[#34769B] text-white" : "bg-[#E5EFF1] text-[#5B7077]"
                           }`}
                         >
                           {isSelected ? <CheckIcon /> : index + 1}
                         </span>
                       </div>
-                      <div className="mt-3 rounded-lg bg-white px-3 py-2">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#5f6673]">
+                      <div className="mt-3 rounded-lg border border-[#CFDDE0] bg-[#E5EFF1]/40 px-3 py-2">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">
                           Available to request
                         </p>
-                        <p className="mt-1 text-lg font-black text-[#008f68]">
+                        <p className="mt-1 text-lg font-black text-[#1F4E5A]">
                           {formatQuantity(source.available_quantity)} units
                         </p>
                       </div>
                       <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
-                        <span className="rounded-lg bg-white px-2 py-1 text-[#5f6673]">
+                        <span className="rounded-lg bg-[#E5EFF1]/40 px-2 py-1 text-[#5B7077]">
                           On hand{" "}
-                          <b className="text-[#0d1117]">{formatQuantity(source.physical_quantity)}</b>
+                          <b className="text-[#1B2B30]">{formatQuantity(source.physical_quantity)}</b>
                         </span>
-                        <span className="rounded-lg bg-white px-2 py-1 text-[#5f6673]">
+                        <span className="rounded-lg bg-[#E5EFF1]/40 px-2 py-1 text-[#5B7077]">
                           Already reserved{" "}
-                          <b className="text-[#0d1117]">{formatQuantity(source.reserved_quantity)}</b>
+                          <b className="text-[#1B2B30]">{formatQuantity(source.reserved_quantity)}</b>
                         </span>
-                        <span className="rounded-lg bg-white px-2 py-1 text-[#008f68]">
+                        <span className="rounded-lg bg-[#E2F3EC] px-2 py-1 text-[#4C9F80] font-bold">
                           Can request <b>{formatQuantity(source.available_quantity)}</b>
                         </span>
                       </div>
@@ -345,7 +345,7 @@ function RequestTransferModal({
           <button
             type="submit"
             disabled={isSaving || Boolean(validationError) || !selectedSource || !form.quantity}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-xs transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
           >
             <PlusIcon /> Submit Transfer Request
           </button>
@@ -372,12 +372,12 @@ function TrackingModal({
       widthClass="max-w-3xl"
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
               Transfer Status
             </p>
-            <h3 className="mt-1 text-lg font-bold text-[#0d1117]">{formatTransferNumber(transfer.id)}</h3>
+            <h3 className="mt-1 text-lg font-bold text-[#1B2B30]">{formatTransferNumber(transfer.id)}</h3>
           </div>
           <StatusBadge status={transfer.status} />
         </div>
@@ -388,37 +388,37 @@ function TrackingModal({
               key={step.key}
               className={`rounded-xl border p-4 ${
                 step.state === "complete"
-                  ? "border-[#6be9c2] bg-[#ecfff8]"
+                  ? "border-[#4C9F80] bg-[#E2F3EC] text-[#1F4E5A]"
                   : step.state === "current"
-                    ? "border-blue-200 bg-blue-50"
+                    ? "border-[#34769B] bg-[#E5EFF1]/60 text-[#1B2B30] ring-1 ring-[#34769B]/30"
                     : step.state === "rejected"
-                      ? "border-red-200 bg-red-50"
-                      : "border-[#e5e7eb] bg-white"
+                      ? "border-[#D9826B]/40 bg-[#FDEEE9] text-[#1B2B30]"
+                      : "border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077]"
               }`}
             >
-              <p className="text-sm font-bold text-[#0d1117]">{step.label}</p>
-              <p className="mt-1 text-xs text-[#5f6673]">{step.detail}</p>
+              <p className="text-sm font-bold">{step.label}</p>
+              <p className="mt-1 text-xs opacity-80">{step.detail}</p>
             </div>
           ))}
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+        <div className="overflow-hidden rounded-xl border border-[#CFDDE0]">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <thead className="border-b border-[#CFDDE0] bg-[#E5EFF1]/60 text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
               <tr>
                 <th className="px-4 py-3">Medicine</th>
                 <th className="px-4 py-3">Full Details</th>
                 <th className="px-4 py-3 text-right">Quantity</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#edf0f2]">
+            <tbody className="divide-y divide-[#CFDDE0]/50">
               {(transfer.items || []).map((item) => (
                 <tr key={item.id}>
-                  <td className="px-4 py-3 font-bold text-[#0d1117]">{getTransferItemLabel(item)}</td>
-                  <td className="px-4 py-3 text-xs text-[#5f6673]">
+                  <td className="px-4 py-3 font-bold text-[#1B2B30]">{getTransferItemLabel(item)}</td>
+                  <td className="px-4 py-3 text-xs text-[#5B7077]">
                     {getTransferMedicineFullLabel(item.medicine)}
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-[#0d1117]">
+                  <td className="px-4 py-3 text-right font-bold text-[#1B2B30]">
                     {Number(item.quantity || 0).toLocaleString()} units
                   </td>
                 </tr>
@@ -427,16 +427,16 @@ function TrackingModal({
           </table>
         </div>
 
-        <div className="rounded-xl border border-[#e5e7eb] bg-white p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Admin Notes</p>
-          <p className="mt-1 text-sm text-[#0d1117]">{transfer.remarks || "No admin notes yet."}</p>
+        <div className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">Admin Notes</p>
+          <p className="mt-1 text-sm text-[#1B2B30]">{transfer.remarks || "No admin notes yet."}</p>
         </div>
 
         <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
+            className="btn-secondary h-10 px-5 text-sm font-bold transition cursor-pointer"
           >
             Close
           </button>
@@ -445,7 +445,7 @@ function TrackingModal({
               type="button"
               onClick={onConfirmReceipt}
               disabled={isSaving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:opacity-60"
+              className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-sm transition disabled:opacity-60 cursor-pointer"
             >
               <CheckIcon /> Confirm Receipt
             </button>
@@ -492,12 +492,12 @@ function IncomingTransferModal({
       widthClass="max-w-5xl"
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
               Transfer Status
             </p>
-            <h3 className="mt-1 text-lg font-bold text-[#0d1117]">{formatTransferNumber(transfer.id)}</h3>
+            <h3 className="mt-1 text-lg font-bold text-[#1B2B30]">{formatTransferNumber(transfer.id)}</h3>
           </div>
           <StatusBadge status={transfer.status} />
         </div>
@@ -508,54 +508,54 @@ function IncomingTransferModal({
               key={step.key}
               className={`rounded-xl border p-4 ${
                 step.state === "complete"
-                  ? "border-[#6be9c2] bg-[#ecfff8]"
+                  ? "border-[#4C9F80] bg-[#E2F3EC] text-[#1F4E5A]"
                   : step.state === "current"
-                    ? "border-blue-200 bg-blue-50"
+                    ? "border-[#34769B] bg-[#E5EFF1]/60 text-[#1B2B30] ring-1 ring-[#34769B]/30"
                     : step.state === "rejected"
-                      ? "border-red-200 bg-red-50"
-                      : "border-[#e5e7eb] bg-white"
+                      ? "border-[#D9826B]/40 bg-[#FDEEE9] text-[#1B2B30]"
+                      : "border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077]"
               }`}
             >
-              <p className="text-sm font-bold text-[#0d1117]">{step.label}</p>
-              <p className="mt-1 text-xs text-[#5f6673]">{step.detail}</p>
+              <p className="text-sm font-bold">{step.label}</p>
+              <p className="mt-1 text-xs opacity-80">{step.detail}</p>
             </div>
           ))}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+          <div className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">
               Requesting Barangay
             </p>
-            <p className="mt-1 text-sm font-bold text-[#0d1117]">
+            <p className="mt-1 text-sm font-bold text-[#1B2B30]">
               {getFacilityLabel(transfer.destination)}
             </p>
-            <p className="mt-1 text-xs text-[#5f6673]">{transfer.destination?.address || "No address"}</p>
+            <p className="mt-1 text-xs text-[#5B7077]">{transfer.destination?.address || "No address"}</p>
           </div>
-          <div className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Requested By</p>
-            <p className="mt-1 text-sm font-bold text-[#0d1117]">{requesterName}</p>
-            <p className="mt-1 text-xs text-[#5f6673]">{transfer.requester?.role || "No role"}</p>
+          <div className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">Requested By</p>
+            <p className="mt-1 text-sm font-bold text-[#1B2B30]">{requesterName}</p>
+            <p className="mt-1 text-xs text-[#5B7077]">{transfer.requester?.role || "No role"}</p>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+        <div className="overflow-hidden rounded-xl border border-[#CFDDE0]">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <thead className="border-b border-[#CFDDE0] bg-[#E5EFF1]/60 text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
               <tr>
                 <th className="px-4 py-3">Medicine</th>
                 <th className="px-4 py-3">Full Details</th>
                 <th className="px-4 py-3 text-right">Quantity</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#edf0f2]">
+            <tbody className="divide-y divide-[#CFDDE0]/50">
               {(transfer.items || []).map((item) => (
                 <tr key={item.id}>
-                  <td className="px-4 py-3 font-bold text-[#0d1117]">{getTransferItemLabel(item)}</td>
-                  <td className="px-4 py-3 text-xs text-[#5f6673]">
+                  <td className="px-4 py-3 font-bold text-[#1B2B30]">{getTransferItemLabel(item)}</td>
+                  <td className="px-4 py-3 text-xs text-[#5B7077]">
                     {getTransferMedicineFullLabel(item.medicine)}
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-[#0d1117]">
+                  <td className="px-4 py-3 text-right font-bold text-[#1B2B30]">
                     {Number(item.quantity || 0).toLocaleString()} units
                   </td>
                 </tr>
@@ -564,20 +564,20 @@ function IncomingTransferModal({
           </table>
         </div>
 
-        <section className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+        <section className="overflow-hidden rounded-xl border border-[#CFDDE0]">
           <button
             type="button"
             onClick={toggleInventory}
-            className="flex w-full items-center justify-between gap-3 bg-white px-4 py-3 text-left transition hover:bg-[#f8f9ff]"
+            className="flex w-full items-center justify-between gap-3 bg-[#F9FBFB] px-4 py-3 text-left transition hover:bg-[#E5EFF1]/40"
           >
             <span>
-              <span className="block text-sm font-bold text-[#0d1117]">My Full Inventory</span>
-              <span className="block text-xs text-[#5f6673]">
+              <span className="block text-sm font-bold text-[#1B2B30]">My Full Inventory</span>
+              <span className="block text-xs text-[#5B7077]">
                 Every batch at your facility, ordered first-expiry-first-out, to help you decide what to release.
               </span>
             </span>
             <span
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[#0d1117] transition ${showInventory ? "bg-[#6be9c2]" : "bg-white"}`}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[#1B2B30] transition ${showInventory ? "bg-[#1F4E5A] text-white border-[#1F4E5A]" : "bg-[#F9FBFB] border-[#CFDDE0]"}`}
             >
               {showInventory ? <XIcon /> : <PlusIcon />}
             </span>
@@ -777,7 +777,7 @@ function IncomingTransferModal({
               type="button"
               onClick={onAllocatePickup}
               disabled={isSaving || Boolean(allocationError)}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:opacity-60"
+              className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-xs transition disabled:opacity-60 cursor-pointer"
             >
               <CheckIcon /> Mark Ready for Pickup
             </button>
@@ -1082,10 +1082,10 @@ export default function BhwTransfersModule() {
                   setViewMode("outgoing");
                   setFilters((current) => ({ ...current, status: "ACTIVE" }));
                 }}
-                className={`h-9 rounded-md px-4 text-sm font-bold transition ${
+                className={`h-9 rounded-md px-4 text-sm font-bold transition cursor-pointer ${
                   viewMode === "outgoing"
-                    ? "bg-[#6be9c2] text-[#0d1117]"
-                    : "text-[#42474e] hover:bg-[#eff4ff]"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "text-[#5B7077] hover:bg-[#E5EFF1]"
                 }`}
               >
                 My Requests
@@ -1096,10 +1096,10 @@ export default function BhwTransfersModule() {
                   setViewMode("incoming");
                   setFilters((current) => ({ ...current, status: "ACTIVE" }));
                 }}
-                className={`h-9 rounded-md px-4 text-sm font-bold transition ${
+                className={`h-9 rounded-md px-4 text-sm font-bold transition cursor-pointer ${
                   viewMode === "incoming"
-                    ? "bg-[#6be9c2] text-[#0d1117]"
-                    : "text-[#42474e] hover:bg-[#eff4ff]"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "text-[#5B7077] hover:bg-[#E5EFF1]"
                 }`}
               >
                 Incoming Requests
@@ -1108,17 +1108,17 @@ export default function BhwTransfersModule() {
             <button
               type="button"
               onClick={() => setShowRequestModal(true)}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
+              className="btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 cursor-pointer"
             >
               <PlusIcon /> Request Transfer
             </button>
           </div>
         </section>
 
-        <section className="rounded-xl border border-[#d8dadc] bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-4">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-[#CFDDE0] px-4 py-4">
             <div>
-              <h2 className="text-base font-bold text-[#0d1117]">
+              <h2 className="text-base font-bold text-[#1B2B30]">
                 {viewMode === "incoming"
                   ? isHistoryView
                     ? "Incoming History"
@@ -1130,7 +1130,7 @@ export default function BhwTransfersModule() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 border-b border-[#e5e7eb] px-4 py-3">
+          <div className="flex items-center gap-3 border-b border-[#CFDDE0] px-4 py-3">
             <label className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a93a3]">
                 <SearchIcon />
@@ -1174,7 +1174,7 @@ export default function BhwTransfersModule() {
             <button
               type="button"
               onClick={exportHistory}
-              className="h-10 shrink-0 rounded-lg border border-[#d8dadc] bg-white px-4 text-sm font-bold text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+              className="btn-secondary h-10 shrink-0 px-4 text-sm font-bold transition cursor-pointer"
             >
               Export
             </button>

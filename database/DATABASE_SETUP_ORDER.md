@@ -115,4 +115,5 @@
 * 2026-inventory-stock-returns-and-disposal.sql
 * 2026-remove-brand-and-cost-from-medicines.sql
 * 2026-fix-get-cho-inventory-medicines-ambiguous-id.sql
+* 2026-prds-normalization-and-audit-hardening.sql
 

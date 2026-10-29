@@ -61,16 +61,16 @@ const getRelativeDateLabel = (dateStr) => {
   if (!dateStr) return null;
   const today = getTodayIso();
   if (dateStr === today) {
-    return { label: "Today", style: "bg-emerald-50 text-emerald-700 ring-emerald-200" };
+    return { label: "Today", style: "bg-[#E8F5F1] text-[#2D7A5D] ring-[#4C9F80]/30" };
   }
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowIso = tomorrow.toISOString().slice(0, 10);
   if (dateStr === tomorrowIso) {
-    return { label: "Tomorrow", style: "bg-blue-50 text-blue-700 ring-blue-200" };
+    return { label: "Tomorrow", style: "bg-[#e6f0f7] text-[#34769B] ring-[#34769B]/30" };
   }
   if (dateStr < today) {
-    return { label: "Past Due", style: "bg-amber-50 text-amber-700 ring-amber-200" };
+    return { label: "Past Due", style: "bg-[#faeed6] text-[#b8741a] ring-[#E09453]/30" };
   }
   return null;
 };
@@ -86,9 +86,9 @@ const getProgramStatus = (program) => {
 };
 
 const statusClass = {
-  UPCOMING: "bg-blue-50 text-blue-700 ring-blue-200",
-  COMPLETED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  CANCELLED: "bg-slate-100 text-slate-600 ring-slate-200",
+  UPCOMING: "bg-[#e6f0f7] text-[#34769B] ring-[#34769B]/30",
+  COMPLETED: "bg-[#E8F5F1] text-[#2D7A5D] ring-[#4C9F80]/30",
+  CANCELLED: "bg-[#E5EFF1] text-[#5B7077] ring-[#CFDDE0]",
 };
 
 const statusLabel = {
@@ -530,7 +530,7 @@ export default function OtherProgramsModule() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#0d1117] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#25313b] active:scale-[0.98]"
+              className="btn-primary inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-xs transition active:scale-[0.98] cursor-pointer"
             >
               <Plus className="h-4 w-4" /> Add Program
             </button>
@@ -572,25 +572,25 @@ export default function OtherProgramsModule() {
             <button
               type="button"
               onClick={() => setStatusFilter("ALL")}
-              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${
+              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs cursor-pointer ${
                 statusFilter === "ALL"
-                  ? "border-[#007a52] bg-emerald-50/20 ring-2 ring-emerald-100"
-                  : "border-[#d8dadc] bg-white hover:border-slate-300"
+                  ? "border-[#1F4E5A] bg-[#EBF3F5] ring-2 ring-[#1F4E5A]/20"
+                  : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#1F4E5A]/40"
               }`}
             >
               <div className="flex items-start justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-[#69717d]">
+                <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
                   Total Programs
                 </span>
-                <span className="rounded-lg bg-slate-100 p-2 text-slate-700 group-hover:bg-slate-200">
+                <span className="rounded-lg bg-[#E5EFF1] p-2 text-[#1B2B30] group-hover:bg-[#CFDDE0]">
                   <ClipboardList className="h-4 w-4" />
                 </span>
               </div>
               <div className="mt-3">
-                <p className="text-2xl font-black text-[#0d1117] leading-none">
+                <p className="text-2xl font-black text-[#1B2B30] leading-none">
                   {counts.all}
                 </p>
-                <p className="mt-1 text-xs text-[#69717d]">
+                <p className="mt-1 text-xs text-[#5B7077]">
                   All recorded outreach missions
                 </p>
               </div>
@@ -602,25 +602,25 @@ export default function OtherProgramsModule() {
               onClick={() =>
                 setStatusFilter(statusFilter === "UPCOMING" ? "ALL" : "UPCOMING")
               }
-              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${
+              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs cursor-pointer ${
                 statusFilter === "UPCOMING"
-                  ? "border-blue-500 bg-blue-50/30 ring-2 ring-blue-100"
-                  : "border-[#d8dadc] bg-white hover:border-slate-300"
+                  ? "border-[#34769B] bg-[#e6f0f7] ring-2 ring-[#34769B]/20"
+                  : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#34769B]/40"
               }`}
             >
               <div className="flex items-start justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-blue-700">
+                <span className="text-xs font-black uppercase tracking-wider text-[#34769B]">
                   Upcoming Missions
                 </span>
-                <span className="rounded-lg bg-blue-50 p-2 text-blue-700 group-hover:bg-blue-100">
+                <span className="rounded-lg bg-[#e6f0f7] p-2 text-[#34769B] group-hover:bg-[#34769B]/10">
                   <CalendarDays className="h-4 w-4" />
                 </span>
               </div>
               <div className="mt-3">
-                <p className="text-2xl font-black text-[#0d1117] leading-none">
+                <p className="text-2xl font-black text-[#1B2B30] leading-none">
                   {counts.upcoming}
                 </p>
-                <p className="mt-1 text-xs text-[#69717d]">
+                <p className="mt-1 text-xs text-[#5B7077]">
                   Active & scheduled to dispatch
                 </p>
               </div>
@@ -632,45 +632,45 @@ export default function OtherProgramsModule() {
               onClick={() =>
                 setStatusFilter(statusFilter === "COMPLETED" ? "ALL" : "COMPLETED")
               }
-              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${
+              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs cursor-pointer ${
                 statusFilter === "COMPLETED"
-                  ? "border-[#007a52] bg-emerald-50/30 ring-2 ring-emerald-100"
-                  : "border-[#d8dadc] bg-white hover:border-slate-300"
+                  ? "border-[#4C9F80] bg-[#E8F5F1] ring-2 ring-[#4C9F80]/20"
+                  : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#4C9F80]/40"
               }`}
             >
               <div className="flex items-start justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-[#007a52]">
+                <span className="text-xs font-black uppercase tracking-wider text-[#2D7A5D]">
                   Completed Missions
                 </span>
-                <span className="rounded-lg bg-emerald-50 p-2 text-[#007a52] group-hover:bg-emerald-100">
+                <span className="rounded-lg bg-[#E8F5F1] p-2 text-[#2D7A5D] group-hover:bg-[#4C9F80]/20">
                   <CheckCircle2 className="h-4 w-4" />
                 </span>
               </div>
               <div className="mt-3">
-                <p className="text-2xl font-black text-[#0d1117] leading-none">
+                <p className="text-2xl font-black text-[#1B2B30] leading-none">
                   {counts.completed}
                 </p>
-                <p className="mt-1 text-xs text-[#69717d]">
+                <p className="mt-1 text-xs text-[#5B7077]">
                   Fulfilled & stock deducted
                 </p>
               </div>
             </button>
 
             {/* Card 4: Total Reserved Units */}
-            <div className="flex flex-col justify-between rounded-xl border border-[#d8dadc] bg-white p-4">
+            <div className="flex flex-col justify-between rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
               <div className="flex items-start justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-amber-700">
+                <span className="text-xs font-black uppercase tracking-wider text-[#b8741a]">
                   Reserved Units
                 </span>
-                <span className="rounded-lg bg-amber-50 p-2 text-amber-700">
+                <span className="rounded-lg bg-[#faeed6] p-2 text-[#b8741a]">
                   <Boxes className="h-4 w-4" />
                 </span>
               </div>
               <div className="mt-3">
-                <p className="text-2xl font-black text-[#0d1117] leading-none">
+                <p className="text-2xl font-black text-[#1B2B30] leading-none">
                   {counts.totalReservedUnits.toLocaleString()}
                 </p>
-                <p className="mt-1 text-xs text-[#69717d]">
+                <p className="mt-1 text-xs text-[#5B7077]">
                   Committed for upcoming drives
                 </p>
               </div>
@@ -678,20 +678,20 @@ export default function OtherProgramsModule() {
           </div>
 
           {/* Clean Search & Refresh Toolbar (Redundant tabs removed) */}
-          <div className="flex items-center justify-between gap-3 border-t border-[#e5e7eb] px-6 py-4">
+          <div className="flex items-center justify-between gap-3 border-t border-[#CFDDE0] px-6 py-4">
             <div className="relative min-w-0 flex-1 max-w-lg">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a919b]" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5B7077]" />
               <input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search by program, description, or medicine name..."
-                className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white pl-9 pr-9 text-sm text-[#0d1117] outline-none transition focus:border-[#007a52] focus:ring-2 focus:ring-[#007a52]/15"
+                className="h-10 w-full rounded-lg border border-[#CFDDE0] bg-white pl-9 pr-9 text-sm text-[#1B2B30] placeholder:text-[#5B7077]/70 outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
               />
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a919b] hover:text-[#0d1117]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5B7077] hover:text-[#1B2B30]"
                   title="Clear search"
                 >
                   <X className="h-4 w-4" />
@@ -703,19 +703,19 @@ export default function OtherProgramsModule() {
               type="button"
               onClick={loadPrograms}
               disabled={isLoading}
-              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#d8dadc] bg-white px-3.5 text-xs font-bold text-[#252a31] shadow-sm hover:bg-[#f7f8fa] active:scale-[0.98] disabled:opacity-50"
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#CFDDE0] bg-white px-3.5 text-xs font-bold text-[#1B2B30] shadow-xs hover:bg-[#F4F8F8] active:scale-[0.98] disabled:opacity-50"
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-[#007a52]" : ""}`}
+                className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-[#1F4E5A]" : ""}`}
               />
               Refresh
             </button>
           </div>
 
           {/* Main Table */}
-          <div className="overflow-x-auto border-t border-[#e5e7eb]">
+          <div className="overflow-x-auto border-t border-[#CFDDE0]">
             <table className="w-full min-w-[850px] text-left text-sm">
-              <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <thead className="border-b border-[#CFDDE0] bg-[#F4F8F8] text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
                 <tr>
                   <th className="px-6 py-3.5">Program & Objectives</th>
                   <th className="px-4 py-3.5">Scheduled Date</th>
@@ -724,7 +724,7 @@ export default function OtherProgramsModule() {
                   <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#eef0f2]">
+              <tbody className="divide-y divide-[#CFDDE0]/60">
                 {pagination.paginatedRows.map((program) => {
                   const status = getProgramStatus(program);
                   const relDate =
@@ -739,7 +739,7 @@ export default function OtherProgramsModule() {
                   return (
                     <tr
                       key={program.id}
-                      className="transition duration-150 hover:bg-[#fbfdfc]"
+                      className="transition duration-150 hover:bg-[#F4F8F8]"
                     >
                       {/* Program & Description */}
                       <td className="px-6 py-4">
@@ -748,12 +748,12 @@ export default function OtherProgramsModule() {
                           onClick={() => openView(program)}
                           className="group text-left"
                         >
-                          <p className="font-bold text-[#0d1117] transition group-hover:text-[#007a52]">
+                          <p className="font-bold text-[#1B2B30] transition group-hover:text-[#1F4E5A]">
                             {program.program_name}
                           </p>
-                          <p className="mt-1 max-w-sm truncate text-xs text-[#69717d]">
+                          <p className="mt-1 max-w-sm truncate text-xs text-[#5B7077]">
                             {program.description || (
-                              <span className="italic text-slate-400">
+                              <span className="italic text-[#5B7077]/60">
                                 No description recorded
                               </span>
                             )}
@@ -764,8 +764,8 @@ export default function OtherProgramsModule() {
                       {/* Scheduled Date */}
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="flex flex-col items-start gap-1">
-                          <span className="inline-flex items-center gap-1.5 font-semibold text-[#252a31]">
-                            <CalendarDays className="h-4 w-4 text-[#007a52]" />
+                          <span className="inline-flex items-center gap-1.5 font-semibold text-[#1B2B30]">
+                            <CalendarDays className="h-4 w-4 text-[#1F4E5A]" />
                             {formatDate(program.program_date)}
                           </span>
                           {relDate && (
@@ -781,10 +781,10 @@ export default function OtherProgramsModule() {
                       {/* Medicine Allocation Chips */}
                       <td className="px-4 py-4">
                         <div className="flex flex-col gap-1.5">
-                          <span className="text-xs font-bold text-[#42474e]">
+                          <span className="text-xs font-bold text-[#5B7077]">
                             {program.medicines?.length || 0} medicine
                             {(program.medicines?.length || 0) === 1 ? "" : "s"} ·{" "}
-                            <span className="text-[#0d1117]">
+                            <span className="text-[#1B2B30]">
                               {totalUnits.toLocaleString()} units
                             </span>
                           </span>
@@ -792,7 +792,7 @@ export default function OtherProgramsModule() {
                             {(program.medicines || []).slice(0, 2).map((item) => (
                               <span
                                 key={item.id}
-                                className="rounded bg-[#effcf7] px-2 py-0.5 text-[11px] font-bold text-[#007a52]"
+                                className="rounded bg-[#E8F5F1] px-2 py-0.5 text-[11px] font-bold text-[#2D7A5D]"
                               >
                                 {item.medicine?.generic_name || "Medicine"}
                                 {item.medicine?.dosage
@@ -802,12 +802,12 @@ export default function OtherProgramsModule() {
                               </span>
                             ))}
                             {(program.medicines?.length || 0) > 2 && (
-                              <span className="rounded bg-[#f1f3f5] px-2 py-0.5 text-[11px] font-bold text-[#69717d]">
+                              <span className="rounded bg-[#E5EFF1] px-2 py-0.5 text-[11px] font-bold text-[#5B7077]">
                                 +{program.medicines.length - 2} more
                               </span>
                             )}
                             {!program.medicines?.length && (
-                              <span className="text-xs font-semibold text-[#8a919b]">
+                              <span className="text-xs font-semibold text-[#5B7077]/70">
                                 No allocation
                               </span>
                             )}
@@ -823,10 +823,10 @@ export default function OtherProgramsModule() {
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${
                               status === "UPCOMING"
-                                ? "bg-blue-600"
+                                ? "bg-[#34769B]"
                                 : status === "COMPLETED"
-                                ? "bg-emerald-600"
-                                : "bg-slate-400"
+                                ? "bg-[#4C9F80]"
+                                : "bg-[#5B7077]"
                             }`}
                           />
                           {statusLabel[status] || status}
@@ -839,7 +839,7 @@ export default function OtherProgramsModule() {
                           <button
                             type="button"
                             onClick={() => openView(program)}
-                            className="inline-flex h-8 items-center gap-1 rounded-md border border-[#d8dadc] bg-white px-2.5 text-xs font-bold text-[#0d1117] transition hover:border-[#007a52] hover:text-[#007a52]"
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-[#1F4E5A]/20 bg-[#EBF3F5] px-2.5 text-xs font-bold text-[#1F4E5A] transition hover:bg-linear-to-r hover:from-[#1F4E5A] hover:to-[#286575] hover:text-white"
                           >
                             <Eye className="h-3.5 w-3.5" /> Details
                           </button>
@@ -848,7 +848,7 @@ export default function OtherProgramsModule() {
                               <button
                                 type="button"
                                 onClick={() => openEdit(program)}
-                                className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                                className="inline-flex h-8 items-center gap-1 rounded-md border border-[#CFDDE0] bg-white px-2 text-xs font-bold text-[#1B2B30] transition hover:bg-[#E5EFF1]"
                                 title="Edit Program Details"
                               >
                                 <Edit3 className="h-3.5 w-3.5" />
@@ -858,7 +858,7 @@ export default function OtherProgramsModule() {
                                 onClick={() =>
                                   openActionConfirmation("complete", program)
                                 }
-                                className="inline-flex h-8 items-center gap-1 rounded-md bg-[#0d1117] px-2.5 text-xs font-bold text-white transition hover:bg-[#25313b]"
+                                className="inline-flex h-8 items-center gap-1 rounded-md bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] px-2.5 text-xs font-bold text-white shadow-xs transition hover:brightness-105 active:scale-[0.99]"
                                 title="Fulfill and Deduct Stock"
                               >
                                 <Check className="h-3.5 w-3.5" /> Complete
@@ -900,7 +900,7 @@ export default function OtherProgramsModule() {
                         <button
                           type="button"
                           onClick={openCreate}
-                          className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0d1117] px-3.5 text-xs font-bold text-white hover:bg-[#25313b]"
+                          className="btn-primary mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold text-white shadow-xs transition cursor-pointer"
                         >
                           <Plus className="h-3.5 w-3.5" /> Add Program
                         </button>
@@ -961,10 +961,10 @@ export default function OtherProgramsModule() {
               )}
 
               {/* Section 1: Activity Details */}
-              <div className="rounded-xl border border-[#e1e4e8] bg-[#fbfdfc] p-4">
-                <div className="flex items-center gap-2 border-b border-[#e1e4e8] pb-3 mb-4">
-                  <FileText className="h-4 w-4 text-[#007a52]" />
-                  <h3 className="text-xs font-black uppercase tracking-wider text-[#252a31]">
+              <div className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
+                <div className="flex items-center gap-2 border-b border-[#CFDDE0] pb-3 mb-4">
+                  <FileText className="h-4 w-4 text-[#1F4E5A]" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#1B2B30]">
                     1. Activity Information
                   </h3>
                 </div>
@@ -973,8 +973,8 @@ export default function OtherProgramsModule() {
                 <div className="grid gap-4 sm:grid-cols-[1fr_210px]">
                   {/* Program Name */}
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-bold text-[#0d1117]">
-                      Program Name <span className="text-red-500">*</span>
+                    <span className="mb-1.5 block text-xs font-bold text-[#1B2B30]">
+                      Program Name <span className="text-[#D9826B]">*</span>
                     </span>
                     <input
                       value={form.program_name}
@@ -982,15 +982,15 @@ export default function OtherProgramsModule() {
                         updateForm("program_name", event.target.value)
                       }
                       placeholder="e.g. Community Medical Mission - Brgy. Inayagan"
-                      className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm text-[#0d1117] outline-none transition focus:border-[#007a52] focus:ring-2 focus:ring-[#007a52]/15"
+                      className="h-10 w-full rounded-lg border border-[#CFDDE0] bg-white px-3 text-sm text-[#1B2B30] placeholder:text-[#5B7077]/70 outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
                       required
                     />
                   </label>
 
                   {/* Scheduled Date */}
                   <label className="block">
-                    <span className="mb-1.5 block text-xs font-bold text-[#0d1117]">
-                      Scheduled Date <span className="text-red-500">*</span>
+                    <span className="mb-1.5 block text-xs font-bold text-[#1B2B30]">
+                      Scheduled Date <span className="text-[#D9826B]">*</span>
                     </span>
                     <input
                       type="date"
@@ -999,11 +999,11 @@ export default function OtherProgramsModule() {
                       onChange={(event) =>
                         updateForm("program_date", event.target.value)
                       }
-                      className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm text-[#0d1117] outline-none transition focus:border-[#007a52] focus:ring-2 focus:ring-[#007a52]/15"
+                      className="h-10 w-full rounded-lg border border-[#CFDDE0] bg-white px-3 text-sm text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
                       required
                     />
                     {form.program_date && form.program_date < getTodayIso() && (
-                      <p className="mt-1 text-xs font-bold text-red-600">
+                      <p className="mt-1 text-xs font-bold text-[#D9826B]">
                         Date cannot be in past.
                       </p>
                     )}
@@ -1012,9 +1012,9 @@ export default function OtherProgramsModule() {
 
                 {/* Description / Beneficiaries */}
                 <label className="block mt-4">
-                  <span className="mb-1.5 block text-xs font-bold text-[#0d1117]">
+                  <span className="mb-1.5 block text-xs font-bold text-[#1B2B30]">
                     Description & Target Beneficiaries{" "}
-                    <span className="text-xs font-normal text-[#69717d]">
+                    <span className="text-xs font-normal text-[#5B7077]">
                       (Optional)
                     </span>
                   </span>
@@ -1025,29 +1025,29 @@ export default function OtherProgramsModule() {
                       updateForm("description", event.target.value)
                     }
                     placeholder="Specify location, partner organizations, target patient demographics, or mission goals..."
-                    className="w-full rounded-lg border border-[#d8dadc] bg-white p-3 text-sm text-[#0d1117] outline-none transition focus:border-[#007a52] focus:ring-2 focus:ring-[#007a52]/15"
+                    className="w-full rounded-lg border border-[#CFDDE0] bg-white p-3 text-sm text-[#1B2B30] placeholder:text-[#5B7077]/70 outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
                   />
                 </label>
               </div>
 
               {/* Section 2: Medicine Allocation Table */}
-              <div className="rounded-xl border border-[#e1e4e8] bg-white">
-                <div className="flex items-center justify-between border-b border-[#e1e4e8] bg-[#fbfdfc] px-4 py-3 rounded-t-xl">
+              <div className="rounded-xl border border-[#CFDDE0] bg-white">
+                <div className="flex items-center justify-between border-b border-[#CFDDE0] bg-[#F4F8F8] px-4 py-3 rounded-t-xl">
                   <div>
                     <div className="flex items-center gap-2">
-                      <Pill className="h-4 w-4 text-[#007a52]" />
-                      <h3 className="text-xs font-black uppercase tracking-wider text-[#252a31]">
+                      <Pill className="h-4 w-4 text-[#1F4E5A]" />
+                      <h3 className="text-xs font-black uppercase tracking-wider text-[#1B2B30]">
                         2. Medicine Allocation
                       </h3>
                     </div>
-                    <p className="mt-0.5 text-xs text-[#69717d]">
+                    <p className="mt-0.5 text-xs text-[#5B7077]">
                       Select medicines and quantities to reserve from CHO inventory.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={addMedicineLine}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#0d1117] px-3 text-xs font-bold text-white transition hover:bg-[#25313b] active:scale-[0.98]"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] px-3 text-xs font-bold text-white shadow-xs transition hover:brightness-105 active:scale-[0.98]"
                   >
                     <Plus className="h-3.5 w-3.5" /> Add Medicine
                   </button>
@@ -1055,7 +1055,7 @@ export default function OtherProgramsModule() {
 
                 {/* Table Header */}
                 {form.medicines.length > 0 && (
-                  <div className="hidden border-b border-[#e1e4e8] bg-[#f7f8fa] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[#69717d] sm:grid sm:grid-cols-[1fr_130px_130px_40px] gap-3">
+                  <div className="hidden border-b border-[#CFDDE0] bg-[#F4F8F8] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[#5B7077] sm:grid sm:grid-cols-[1fr_130px_130px_40px] gap-3">
                     <span>Medicine</span>
                     <span>Available Stock</span>
                     <span>Allocated Qty</span>
@@ -1064,7 +1064,7 @@ export default function OtherProgramsModule() {
                 )}
 
                 {/* Medicine Rows */}
-                <div className="divide-y divide-[#f0f2f4] p-2 sm:p-0">
+                <div className="divide-y divide-[#CFDDE0]/60 p-2 sm:p-0">
                   {form.medicines.map((line, index) => {
                     const availableStock = line.medicine_id
                       ? getAvailableStock(line.medicine_id)
@@ -1088,11 +1088,11 @@ export default function OtherProgramsModule() {
                     return (
                       <div
                         key={`${index}-${line.medicine_id}`}
-                        className="flex flex-col gap-2 p-3 sm:grid sm:grid-cols-[1fr_130px_130px_40px] sm:items-center sm:gap-3 sm:px-4 sm:py-3 transition hover:bg-slate-50/50"
+                        className="flex flex-col gap-2 p-3 sm:grid sm:grid-cols-[1fr_130px_130px_40px] sm:items-center sm:gap-3 sm:px-4 sm:py-3 transition hover:bg-[#F4F8F8]"
                       >
                         {/* Medicine Selector */}
                         <div>
-                          <label className="text-[10px] font-bold uppercase text-[#69717d] sm:hidden block mb-1">
+                          <label className="text-[10px] font-bold uppercase text-[#5B7077] sm:hidden block mb-1">
                             Medicine
                           </label>
                           <select
@@ -1100,7 +1100,7 @@ export default function OtherProgramsModule() {
                             onChange={(event) =>
                               updateMedicineLine(index, "medicine_id", event.target.value)
                             }
-                            className="h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-semibold text-[#0d1117] outline-none transition focus:border-[#007a52] focus:ring-1 focus:ring-[#007a52] truncate"
+                            className="h-10 w-full rounded-lg border border-[#CFDDE0] bg-white px-3 text-xs font-semibold text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-1 focus:ring-[#1F4E5A] truncate"
                             disabled={isSaving}
                             required
                           >
@@ -1129,21 +1129,21 @@ export default function OtherProgramsModule() {
 
                         {/* Available Stock Indicator */}
                         <div className="flex items-center">
-                          <label className="text-[10px] font-bold uppercase text-[#69717d] sm:hidden mr-2">
+                          <label className="text-[10px] font-bold uppercase text-[#5B7077] sm:hidden mr-2">
                             Available:
                           </label>
                           {line.medicine_id ? (
                             availableStock > 0 ? (
-                              <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">
+                              <span className="inline-flex items-center rounded-md bg-[#E8F5F1] px-2 py-1 text-xs font-bold text-[#2D7A5D]">
                                 {availableStock.toLocaleString()} {unitLabel}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-bold text-red-700">
+                              <span className="inline-flex items-center rounded-md bg-[#faedf0] px-2 py-1 text-xs font-bold text-[#D9826B]">
                                 Out of Stock
                               </span>
                             )
                           ) : (
-                            <span className="text-xs text-[#8a919b]">
+                            <span className="text-xs text-[#5B7077]/70">
                               — Select medicine
                             </span>
                           )}
@@ -1151,7 +1151,7 @@ export default function OtherProgramsModule() {
 
                         {/* Quantity Input (Without Max Button) */}
                         <div>
-                          <label className="text-[10px] font-bold uppercase text-[#69717d] sm:hidden block mb-1">
+                          <label className="text-[10px] font-bold uppercase text-[#5B7077] sm:hidden block mb-1">
                             Allocated Qty
                           </label>
                           <div className="relative">
@@ -1171,18 +1171,18 @@ export default function OtherProgramsModule() {
                               placeholder="Qty"
                               className={`h-10 w-full rounded-lg border bg-white px-3 pr-10 text-sm font-semibold outline-none transition ${
                                 isOverAllocated
-                                  ? "border-red-400 bg-red-50/30 text-red-700 ring-2 ring-red-100"
-                                  : "border-[#d8dadc] text-[#0d1117] focus:border-[#007a52] focus:ring-1 focus:ring-[#007a52]"
+                                  ? "border-[#D9826B] bg-[#faedf0]/30 text-[#D9826B] ring-2 ring-[#D9826B]/20"
+                                  : "border-[#CFDDE0] text-[#1B2B30] focus:border-[#1F4E5A] focus:ring-1 focus:ring-[#1F4E5A]"
                               }`}
                               disabled={!line.medicine_id || availableStock <= 0}
                               required
                             />
-                            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
+                            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#5B7077]">
                               {unitLabel}
                             </span>
                           </div>
                           {isOverAllocated && (
-                            <p className="mt-1 text-[11px] font-bold text-red-600">
+                            <p className="mt-1 text-[11px] font-bold text-[#D9826B]">
                               Exceeds stock (max {availableStock.toLocaleString()})
                             </p>
                           )}
@@ -1193,7 +1193,7 @@ export default function OtherProgramsModule() {
                           <button
                             type="button"
                             onClick={() => removeMedicineLine(index)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#CFDDE0] text-[#5B7077] transition hover:border-[#D9826B]/40 hover:bg-[#faedf0] hover:text-[#D9826B]"
                             aria-label="Remove medicine"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -1206,13 +1206,13 @@ export default function OtherProgramsModule() {
                   {/* Empty Medicine State */}
                   {form.medicines.length === 0 && (
                     <div className="p-8 text-center">
-                      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#E5EFF1] text-[#5B7077]">
                         <Boxes className="h-5 w-5" />
                       </div>
-                      <p className="mt-2 text-sm font-bold text-[#252a31]">
+                      <p className="mt-2 text-sm font-bold text-[#1B2B30]">
                         No medicines allocated yet
                       </p>
-                      <p className="mt-1 text-xs text-[#69717d]">
+                      <p className="mt-1 text-xs text-[#5B7077]">
                         Click the &quot;+ Add Medicine&quot; button above to select and
                         reserve stock for this program.
                       </p>
@@ -1222,18 +1222,18 @@ export default function OtherProgramsModule() {
 
                 {/* Reservation Summary Footer Strip */}
                 {form.medicines.length > 0 && (
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-[#e1e4e8] bg-[#fbfdfc] px-4 py-3 rounded-b-xl gap-2">
-                    <div className="flex items-center gap-1.5 text-xs text-[#69717d]">
-                      <Info className="h-3.5 w-3.5 text-[#007a52]" />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-[#CFDDE0] bg-[#F4F8F8] px-4 py-3 rounded-b-xl gap-2">
+                    <div className="flex items-center gap-1.5 text-xs text-[#5B7077]">
+                      <Info className="h-3.5 w-3.5 text-[#1F4E5A]" />
                       <span>
                         Allocated stock will be placed on <strong>RESERVED</strong> status.
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs font-bold text-[#69717d]">
+                      <span className="text-xs font-bold text-[#5B7077]">
                         Total Planned:{" "}
                       </span>
-                      <span className="text-sm font-black text-[#0d1117]">
+                      <span className="text-sm font-black text-[#1B2B30]">
                         {formValidation.totalMedicines} medicine
                         {formValidation.totalMedicines === 1 ? "" : "s"} ·{" "}
                         {formValidation.totalUnits.toLocaleString()} units
@@ -1269,7 +1269,7 @@ export default function OtherProgramsModule() {
                 <button
                   type="submit"
                   disabled={isSaving || !formValidation.isValid}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#0d1117] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#25313b] active:scale-[0.98] disabled:opacity-50"
+                  className="btn-primary inline-flex h-10 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-xs transition active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving
                     ? "Saving..."
@@ -1324,7 +1324,7 @@ export default function OtherProgramsModule() {
                       setViewingProgram(null);
                       openEdit(target);
                     }}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#b9efd9] bg-white px-3 text-xs font-bold text-[#007a52] hover:bg-emerald-50"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#1F4E5A]/20 bg-[#EBF3F5] px-3 text-xs font-bold text-[#1F4E5A] transition hover:bg-[#1F4E5A] hover:text-white"
                   >
                     <Edit3 className="h-3.5 w-3.5" /> Edit
                   </button>
@@ -1332,7 +1332,7 @@ export default function OtherProgramsModule() {
                 <button
                   type="button"
                   onClick={() => setViewingProgram(null)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  className="rounded-lg p-1.5 text-[#5B7077] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                   aria-label="Close"
                 >
                   <X className="h-5 w-5" />
@@ -1344,8 +1344,8 @@ export default function OtherProgramsModule() {
             <div className="max-h-[72vh] space-y-5 overflow-y-auto px-6 py-5">
               {/* Context Status Banner */}
               {getProgramStatus(viewingProgram) === "UPCOMING" && (
-                <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-900">
-                  <Info className="h-4 w-4 shrink-0 text-blue-700 mt-0.5" />
+                <div className="flex items-start gap-2.5 rounded-lg border border-[#34769B]/30 bg-[#e6f0f7] p-3.5 text-xs text-[#34769B]">
+                  <Info className="h-4 w-4 shrink-0 text-[#34769B] mt-0.5" />
                   <div>
                     <span className="font-bold">Active Stock Reservation: </span>
                     Medicines for this outreach mission are held on RESERVED status.
@@ -1354,8 +1354,8 @@ export default function OtherProgramsModule() {
                 </div>
               )}
               {getProgramStatus(viewingProgram) === "COMPLETED" && (
-                <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-900">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700 mt-0.5" />
+                <div className="flex items-start gap-2.5 rounded-lg border border-[#4C9F80]/20 bg-[#E8F5F1] p-3.5 text-xs text-[#2D7A5D]">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-[#2D7A5D] mt-0.5" />
                   <div>
                     <span className="font-bold">Program Fulfilled: </span>
                     This mission was executed and all allocated medicine batches were
@@ -1430,10 +1430,10 @@ export default function OtherProgramsModule() {
               {/* Medicine Table */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[10px] font-black uppercase tracking-wide text-[#7a828d]">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-[#5B7077]">
                     Medicine Distribution List
                   </p>
-                  <span className="text-xs font-bold text-[#007a52]">
+                  <span className="text-xs font-bold text-[#1F4E5A]">
                     {getProgramStatus(viewingProgram) === "UPCOMING"
                       ? "Reserved"
                       : getProgramStatus(viewingProgram) === "COMPLETED"
@@ -1441,38 +1441,38 @@ export default function OtherProgramsModule() {
                       : "Released"}
                   </span>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-[#e1e4e8]">
+                <div className="overflow-hidden rounded-lg border border-[#CFDDE0]">
                   <table className="w-full text-left text-sm">
-                    <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <thead className="border-b border-[#CFDDE0] bg-[#F4F8F8] text-[10px] font-bold uppercase tracking-wider text-[#5B7077]">
                       <tr>
                         <th className="px-3.5 py-2.5">Medicine Name</th>
                         <th className="px-3 py-2.5">Unit</th>
                         <th className="px-3.5 py-2.5 text-right">Planned Quantity</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#eef0f2]">
+                    <tbody className="divide-y divide-[#CFDDE0]/60">
                       {(viewingProgram.medicines || []).map((item) => (
                         <tr key={item.id}>
-                          <td className="px-3.5 py-3 font-semibold text-[#0d1117]">
+                          <td className="px-3.5 py-3 font-semibold text-[#1B2B30]">
                             {item.medicine?.generic_name || "Unknown medicine"}
                             {item.medicine?.dosage ? ` ${item.medicine.dosage}` : ""}
                             {item.medicine?.brand_name
                               ? ` (${item.medicine.brand_name})`
                               : ""}
                           </td>
-                          <td className="px-3 py-3 text-xs text-[#69717d]">
+                          <td className="px-3 py-3 text-xs text-[#5B7077]">
                             {item.medicine?.unit_of_measure || "units"}
                           </td>
-                          <td className="px-3.5 py-3 text-right font-black text-[#0d1117]">
+                          <td className="px-3.5 py-3 text-right font-black text-[#1B2B30]">
                             {Number(item.quantity_used || 0).toLocaleString()}
                           </td>
                         </tr>
                       ))}
-                      <tr className="bg-[#fbfdfc] font-black">
-                        <td colSpan="2" className="px-3.5 py-3 text-[#0d1117]">
+                      <tr className="bg-[#F9FBFB] font-black">
+                        <td colSpan="2" className="px-3.5 py-3 text-[#1B2B30]">
                           Total Units
                         </td>
-                        <td className="px-3.5 py-3 text-right text-[#007a52]">
+                        <td className="px-3.5 py-3 text-right text-[#1F4E5A]">
                           {(viewingProgram.medicines || [])
                             .reduce(
                               (sum, item) => sum + Number(item.quantity_used || 0),
@@ -1501,7 +1501,7 @@ export default function OtherProgramsModule() {
                   <button
                     type="button"
                     onClick={() => openActionConfirmation("complete", viewingProgram)}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#0d1117] px-5 text-xs font-black text-white shadow-sm transition hover:bg-[#25313b]"
+                    className="btn-primary inline-flex h-10 items-center gap-1.5 rounded-lg px-5 text-xs font-bold text-white shadow-xs transition cursor-pointer"
                   >
                     <Check className="h-4 w-4" /> Complete & Deduct Stock
                   </button>
@@ -1529,13 +1529,13 @@ export default function OtherProgramsModule() {
           onClose={() => !isActionSaving && setPendingAction(null)}
           panelClassName="max-w-md"
         >
-          <div className="w-full overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-2xl">
-            <header className="flex items-start gap-3 border-b border-[#e5e7eb] px-6 py-5">
+          <div className="w-full overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-2xl">
+            <header className="flex items-start gap-3 border-b border-[#CFDDE0] px-6 py-5">
               <div
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                   pendingAction.action === "cancel"
-                    ? "bg-red-50 text-red-700"
-                    : "bg-emerald-50 text-emerald-700"
+                    ? "bg-[#faedf0] text-[#D9826B]"
+                    : "bg-[#E8F5F1] text-[#2D7A5D]"
                 }`}
               >
                 {pendingAction.action === "cancel" ? (
@@ -1545,12 +1545,12 @@ export default function OtherProgramsModule() {
                 )}
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#007a52]">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#1F4E5A]">
                   Confirm Action
                 </p>
                 <h2
                   id="program-action-confirmation-title"
-                  className="mt-1 text-base font-black text-[#0d1117]"
+                  className="mt-1 text-base font-black text-[#1B2B30]"
                 >
                   {pendingAction.action === "cancel"
                     ? `Cancel ${pendingAction.program.program_name}?`
@@ -1559,7 +1559,7 @@ export default function OtherProgramsModule() {
               </div>
             </header>
             <div className="px-6 py-5">
-              <p className="text-sm leading-6 text-[#69717d]">
+              <p className="text-sm leading-6 text-[#5B7077]">
                 {pendingAction.action === "cancel"
                   ? "This will release the reserved medicine allocation back into active inventory and mark the program as Cancelled."
                   : "This will officially deduct the reserved medicine batches from CHO inventory using FEFO and mark the program as Completed."}
@@ -1578,10 +1578,10 @@ export default function OtherProgramsModule() {
                 type="button"
                 onClick={confirmProgramAction}
                 disabled={isActionSaving}
-                className={`h-10 rounded-lg px-4 text-xs font-black text-white shadow-sm disabled:opacity-60 ${
+                className={`h-10 rounded-lg px-4 text-xs font-bold text-white shadow-xs cursor-pointer transition disabled:opacity-60 ${
                   pendingAction.action === "cancel"
                     ? "bg-red-700 hover:bg-red-800"
-                    : "bg-[#0d1117] hover:bg-[#25313b]"
+                    : "btn-primary"
                 }`}
               >
                 {isActionSaving

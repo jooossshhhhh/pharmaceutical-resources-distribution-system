@@ -515,3 +515,67 @@ test("getDailyDispensingTransactions extracts sorted table rows for selected dat
   assert.equal(list[1].quantity, 20);
   assert.equal(list[1].prescribedBy, "Dr. Reyes");
 });
+
+test("aggregateMonthlyDispensingDistribution correctly resolves walk-in price from unit_cost_at_dispense and inventoryRows", () => {
+  const dispensingRows = [
+    {
+      id: "disp-walkin-1",
+      quantity: 10,
+      dispense_date: "2026-10-23T08:30:00Z",
+      unit_cost_at_dispense: "45.0000",
+      total_cost_at_dispense: "450.00",
+      inventory_id: "inv-batch-1",
+      medicine: {
+        id: "med-1",
+        generic_name: "Amoxicillin",
+        dosage: "500 mg",
+        // no unit_cost on medicines catalog in database
+      },
+    },
+    {
+      id: "disp-walkin-2",
+      quantity: 5,
+      dispense_date: "2026-10-24T09:00:00Z",
+      // no unit_cost_at_dispense, should resolve via inventoryRows matching inventory_id
+      inventory_id: "inv-batch-2",
+      medicine: {
+        id: "med-2",
+        generic_name: "Paracetamol",
+        dosage: "500 mg",
+      },
+    },
+  ];
+
+  const inventoryRows = [
+    {
+      id: "inv-batch-1",
+      batch_number: "0827023",
+      medicine_id: "med-1",
+      unit_cost: 45.0,
+    },
+    {
+      id: "inv-batch-2",
+      batch_number: "0827024",
+      medicine_id: "med-2",
+      unit_cost: 10.0,
+    },
+  ];
+
+  const result = aggregateMonthlyDispensingDistribution({
+    dispensingRows,
+    requestRows: [],
+    otherProgramsRows: [],
+    inventoryRows,
+    year: 2026,
+    month: 10,
+  });
+
+  assert.equal(result.totalUnits, 15);
+  // Cost: 10 * 45 (450) + 5 * 10 (50) = 500
+  assert.equal(result.totalCost, 500);
+
+  const walkInChannel = result.channels.find((c) => c.id === "walk_in");
+  assert.equal(walkInChannel.units, 15);
+  assert.equal(walkInChannel.cost, 500);
+  assert.equal(walkInChannel.percentage, 100);
+});

@@ -72,17 +72,17 @@ export default function SyncStatusBadge() {
           <button
             type="button"
             onClick={handleClickBadge}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30 hover:bg-[#FBE9E3]/80 transition-colors cursor-pointer"
             title={`${tooltip} (Click to open Outbox monitor)`}
           >
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-[#D9826B] animate-pulse" />
             <span>Offline</span>
             {failedCount > 0 ? (
-              <span className="px-1.5 py-0.2 rounded-full bg-red-200 text-red-900 text-[11px] font-bold">
+              <span className="px-1.5 py-0.2 rounded-full bg-[#D9826B] text-white text-[11px] font-bold">
                 {failedCount} failed
               </span>
             ) : pendingCount > 0 ? (
-              <span className="px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900 text-[11px] font-semibold">
+              <span className="px-1.5 py-0.2 rounded-full bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30 text-[11px] font-semibold">
                 {pendingCount} queued
               </span>
             ) : null}
@@ -91,37 +91,37 @@ export default function SyncStatusBadge() {
           <button
             type="button"
             onClick={handleClickBadge}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-[#E3EEF5] text-[#1F4A66] border border-[#34769B]/30 hover:bg-[#E3EEF5]/80 transition-colors cursor-pointer"
             title={`${tooltip} (Click to open Outbox monitor)`}
           >
-            <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping" />
+            <span className="w-2 h-2 rounded-full bg-[#34769B] animate-ping" />
             <span>Syncing...</span>
           </button>
         ) : failedCount > 0 || syncState.status === "ERROR" ? (
           <button
             type="button"
             onClick={handleClickBadge}
-            className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-800 transition-colors hover:bg-red-100 cursor-pointer"
+            className="flex items-center gap-1.5 rounded-full border border-[#D9826B]/40 bg-[#FBE9E3] px-2.5 py-1 text-xs font-semibold text-[#8F3F2B] transition-colors hover:bg-[#FBE9E3]/80 cursor-pointer"
             title={`${tooltip} (Click to inspect sync issues)`}
           >
-            <span className="h-2 w-2 rounded-full bg-red-500" />
+            <span className="h-2 w-2 rounded-full bg-[#D9826B]" />
             <span>{failedCount > 0 ? `${failedCount} sync issue${failedCount === 1 ? "" : "s"}` : "Sync issue"}</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={handleClickBadge}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/30 hover:bg-[#E2F3EC]/80 transition-colors cursor-pointer"
             title={`${tooltip} (Click to open Outbox monitor)`}
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="w-2 h-2 rounded-full bg-[#4C9F80]" />
             <span>Online</span>
             {pendingCount > 0 ? (
-              <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold">
+              <span className="px-1.5 py-0.2 rounded-full bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30 text-[11px] font-semibold">
                 {pendingCount} syncing
               </span>
             ) : (
-              <span className="text-emerald-600 text-[11px]">Synced</span>
+              <span className="text-[#226048] text-[11px] font-semibold">Synced</span>
             )}
           </button>
         )}

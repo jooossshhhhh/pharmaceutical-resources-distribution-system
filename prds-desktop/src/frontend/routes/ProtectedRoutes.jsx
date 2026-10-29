@@ -25,13 +25,13 @@ export default function ProtectedRoutes() {
 
   if (!maxLoadingReached && (!effectiveAuth || (loading && !effectiveProfile))) {
     return (
-      <main className="min-h-screen bg-[#f1f5f9] px-5 py-5 text-[#0d1117]">
+      <main className="min-h-screen bg-[#E5EFF1] px-5 py-5 text-[#1B2B30]">
         <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-[1280px] items-center justify-center">
-          <div className="rounded-xl border border-[#d8dadc] bg-white px-5 py-4 text-center shadow-sm">
-            <div className="mx-auto h-2 w-28 overflow-hidden rounded-full bg-[#eef1f5]">
-              <div className="h-full w-1/2 animate-pulse rounded-full bg-[#6be9c2]" />
+          <div className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-5 py-4 text-center shadow-xs">
+            <div className="mx-auto h-2 w-28 overflow-hidden rounded-full bg-[#CFDDE0]/50">
+              <div className="h-full w-1/2 animate-pulse rounded-full bg-linear-to-r from-[#1F4E5A] to-[#286575]" />
             </div>
-            <p className="mt-3 text-sm font-bold text-[#42474e]">Loading PRDS workspace</p>
+            <p className="mt-3 text-sm font-bold text-[#1B2B30]">Loading PRDS workspace</p>
           </div>
         </div>
       </main>

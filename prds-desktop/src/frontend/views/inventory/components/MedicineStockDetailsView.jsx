@@ -22,6 +22,7 @@ import { formatMedicineCategories } from "@shared/utils/medicineUtils";
 export default function MedicineStockDetailsView({
   item,
   canManage = false,
+  isBhw = false,
   onBack,
   onEditLot,
   onDisposeLot,
@@ -189,10 +190,16 @@ export default function MedicineStockDetailsView({
                 </span>
               )}
             </div>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-600 font-medium">
-              <span className="font-semibold text-neutral-500">Total Cost:</span>
-              <strong className="font-bold text-[#0d1117]">{formatCurrency(totalValuation)}</strong>
-            </div>
+            {!isBhw ? (
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-600 font-medium">
+                <span className="font-semibold text-neutral-500">Total Cost:</span>
+                <strong className="font-bold text-[#0d1117]">{formatCurrency(totalValuation)}</strong>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-1 text-xs text-neutral-500 font-medium">
+                <span>{isExpired ? "Non-dispensable stock" : "Available in health station"}</span>
+              </div>
+            )}
           </div>
 
           {/* Card 2: Active Batches */}
@@ -252,6 +259,8 @@ export default function MedicineStockDetailsView({
       <InventoryLotTable
         lots={allLots}
         canEdit={canManage}
+        isBhw={isBhw}
+        showProcurement={!isBhw}
         onSelectLot={(lot) => setSelectedBatchLot(lot)}
       />
 
@@ -262,6 +271,7 @@ export default function MedicineStockDetailsView({
         medicine={item}
         facilityName={facilityName}
         canEdit={canManage}
+        isBhw={isBhw}
         onClose={() => setSelectedBatchLot(null)}
         onEditLot={onEditLot}
         onDisposeLot={onDisposeLot}

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as XLSX from "xlsx";
 
 import {
   buildExportPayload,
@@ -282,4 +283,22 @@ test("downloadExportFile automatically numbers multiple downloads of the same re
   assert.equal(recent[1].filename, "Request_Issuance_Slip_2026-09-26 (1).xlsx");
   assert.equal(recent[2].filename, "Request_Issuance_Slip_2026-09-26.xlsx");
 });
+
+test("downloadExportFile accepts data alias for csv without falling back to No data", async () => {
+  clearRecentExports();
+  const rawCsv = "patient,medicine,qty\nJuan Dela Cruz,Paracetamol,10";
+  const item = downloadExportFile({
+    filename: "dispensing-history-test.csv",
+    data: rawCsv,
+    recordCount: 1,
+  });
+
+  assert.equal(item.filename, "dispensing-history-test.xlsx");
+  const buffer = await item.blob.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: "array" });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  assert.equal(sheet["A1"]?.v, "patient");
+  assert.equal(sheet["A2"]?.v, "Juan Dela Cruz");
+});
+
 

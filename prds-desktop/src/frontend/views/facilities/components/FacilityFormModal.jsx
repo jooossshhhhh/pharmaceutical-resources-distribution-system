@@ -29,28 +29,28 @@ export function FacilityFormModal({
     >
       <form
         onSubmit={onSubmit}
-        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-2xl"
       >
-        <div className="flex items-start justify-between border-b border-neutral-100 px-6 py-5">
+        <div className="flex items-start justify-between border-b border-[#CFDDE0] px-6 py-5">
           <div>
-            <h3 id="facility-form-modal-title" className="text-xl font-black text-black">
+            <h3 id="facility-form-modal-title" className="text-xl font-bold text-[#1B2B30]">
               {editingFacility ? "Edit Facility" : "Add Facility"}
             </h3>
-            <p className="text-sm font-medium text-neutral-500">
+            <p className="text-sm font-medium text-[#5B7077]">
               Fill in the required details and locate the facility on the map.
             </p>
           </div>
         </div>
 
-        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#f8faf7] px-6 py-5">
+        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#F4F8F8] px-6 py-5">
           {error && (
             <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
               {error}
             </p>
           )}
 
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#007a52]">
+          <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-xs">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#1F4E5A]">
               Facility Information
             </p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -84,7 +84,7 @@ export function FacilityFormModal({
               />
             </div>
 
-            <label className="mt-4 grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
+            <label className="mt-4 grid gap-2 text-xs font-bold uppercase tracking-wide text-[#5B7077]">
               Address
               <textarea
                 name="address"
@@ -92,13 +92,13 @@ export function FacilityFormModal({
                 onChange={onChange}
                 rows="4"
                 required
-                className="resize-none rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                className="resize-none rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 py-3 text-sm font-semibold normal-case tracking-normal text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
               />
             </label>
           </section>
 
-          <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <p className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-[#007a52]">
+          <div className="mt-4 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-xs">
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-[#1F4E5A]">
               Map Location (Optional)
             </p>
             <LocationPicker
@@ -116,18 +116,18 @@ export function FacilityFormModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-neutral-100 px-6 py-4">
+        <div className="flex justify-end gap-3 border-t border-[#CFDDE0] px-6 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-neutral-100 px-6 text-sm font-bold text-neutral-700 hover:bg-neutral-200"
+            className="h-10 rounded-lg bg-[#E5EFF1] px-6 text-sm font-bold text-[#1B2B30] hover:bg-[#CFDDE0] transition"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving}
-            className="h-10 rounded-lg bg-emerald-600 px-6 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+            className="h-10 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-6 text-sm font-bold text-white shadow-xs transition-all disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSaving ? "Saving..." : "Save Facility"}
           </button>
@@ -139,11 +139,11 @@ export function FacilityFormModal({
 
 function Field({ label, ...props }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
+    <label className="grid gap-2 text-xs font-bold uppercase tracking-wide text-[#5B7077]">
       {label}
       <input
         {...props}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        className="h-10 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-semibold normal-case tracking-normal text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
       />
     </label>
   );
@@ -151,11 +151,11 @@ function Field({ label, ...props }) {
 
 function SelectField({ label, options, ...props }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
+    <label className="grid gap-2 text-xs font-bold uppercase tracking-wide text-[#5B7077]">
       {label}
       <select
         {...props}
-        className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        className="h-10 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-semibold normal-case tracking-normal text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

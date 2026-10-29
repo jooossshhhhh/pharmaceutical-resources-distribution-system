@@ -231,14 +231,6 @@ begin
     end if;
 
     if coalesce(v_profile.phone_number, '') is distinct from coalesce(v_next_phone_local, '') then
-        if v_next_phone_local is null then
-            if v_auth_phone_local is not null then
-                raise exception 'Remove phone login through Supabase Auth before clearing the profile phone number';
-            end if;
-        elsif v_next_phone_local is distinct from v_auth_phone_local then
-            raise exception 'Phone updates require verified Supabase Auth phone login';
-        end if;
-
         v_details := array_append(
             v_details,
             'Phone number changed from "' || coalesce(v_profile.phone_number, 'Not connected') || '" to "' || coalesce(v_next_phone_local, 'Not connected') || '"'
@@ -548,3 +540,78 @@ before delete
 on public.profiles
 for each row
 execute function prevent_last_active_pharma_ii_lockout();
+
+-- Notify CHO when a BHW updates their primary Gmail/email
+create or replace function public.notify_cho_of_bhw_email_update(
+    p_old_email text,
+    p_new_email text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_user_id uuid := auth.uid();
+    v_role user_role;
+    v_facility_name text;
+    v_user_name text;
+    v_cho_user record;
+begin
+    if v_user_id is null then
+        raise exception 'Not authenticated';
+    end if;
+
+    update public.profiles
+    set email = p_new_email,
+        updated_at = now()
+    where id = v_user_id;
+
+    select
+        p.role,
+        coalesce(f.facility_name, 'Barangay Health Station'),
+        coalesce(trim(p.first_name || ' ' || p.last_name), 'User')
+    into v_role, v_facility_name, v_user_name
+    from public.profiles p
+    left join public.facilities f on f.id = p.facility_id
+    where p.id = v_user_id;
+
+    insert into public.activity_logs (user_id, action, module, details)
+    values (
+        v_user_id,
+        'User Account Email Updated',
+        'Authentication',
+        v_user_name || ' (' || coalesce(v_role::text, 'User') || ' at ' || v_facility_name || ') updated account email from ' || coalesce(p_old_email, 'none') || ' to ' || p_new_email || '.'
+    );
+
+    if v_role = 'BHW' then
+        for v_cho_user in
+            select id from public.profiles
+            where role in ('PHARMA_II', 'PHARMA_I')
+              and status = 'ACTIVE'
+        loop
+            insert into public.notifications (user_id, title, message)
+            values (
+                v_cho_user.id,
+                'BHW Account Email Updated',
+                v_user_name || ' from ' || v_facility_name || ' has updated their official account email from ' || coalesce(p_old_email, 'none') || ' to ' || p_new_email || '.'
+            );
+        end loop;
+    end if;
+
+    insert into public.notifications (user_id, title, message)
+    values (
+        v_user_id,
+        'Account Email Updated',
+        case
+            when v_role = 'BHW' then 'Your account email has been updated to ' || p_new_email || '. City Health Office (CHO) has been notified.'
+            else 'Your primary account email has been successfully updated to ' || p_new_email || '.'
+        end
+    );
+
+    return true;
+end;
+$$;
+
+revoke all on function public.notify_cho_of_bhw_email_update(text, text) from public, anon;
+grant execute on function public.notify_cho_of_bhw_email_update(text, text) to authenticated;

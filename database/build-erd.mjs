@@ -187,24 +187,32 @@ export const TABLES = [
     columns: [
       { name: 'id', type: 'uuid', pk: true, nn: true },
       { name: 'generic_name', type: 'text', nn: true },
-      { name: 'brand_name', type: 'text' },
       { name: 'unit_of_measure', type: 'text', nn: true, desc: 'e.g. tablet, vial' },
       { name: 'dosage', type: 'text', nn: true, desc: 'e.g. 500mg, 10mg/mL' },
-      { name: 'unit_cost', type: 'numeric(10,2)' },
       { name: 'categories', type: 'text[]', nn: true, desc: 'Array of categories' }
     ]
   },
   {
-    name: 'suppliers',
+    name: 'stock_returns',
     domain: 'inventory',
-    title: 'suppliers',
-    subtitle: 'Pharma distributors and sources',
+    title: 'stock_returns',
+    subtitle: 'BHW returned lot ledger & verification',
     columns: [
       { name: 'id', type: 'uuid', pk: true, nn: true },
-      { name: 'supplier_name', type: 'text', nn: true, uq: true },
-      { name: 'contact_number', type: 'text' },
-      { name: 'address', type: 'text' },
-      { name: 'status', type: 'supplier_status', nn: true, desc: "'ACTIVE'|'INACTIVE'" }
+      { name: 'lot_no', type: 'text', nn: true, desc: 'Returned batch number' },
+      { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', desc: 'Optional catalog link' },
+      { name: 'medicine_name', type: 'text', nn: true, desc: 'Generic medicine name' },
+      { name: 'brand_name', type: 'text', desc: 'Returned brand name' },
+      { name: 'quantity', type: 'integer', nn: true, desc: 'Returned qty > 0' },
+      { name: 'unit_cost', type: 'numeric(10,2)', nn: true, desc: 'Valuation cost' },
+      { name: 'expiration_date', type: 'date', nn: true, desc: 'Batch expiry' },
+      { name: 'reason', type: 'text', nn: true, desc: "'EXCESS'|'NEAR_EXPIRY'|'PROGRAM_ENDED'..." },
+      { name: 'facility_id', type: 'uuid', fk: 'facilities.id', nn: true, desc: 'Source returning facility' },
+      { name: 'submitted_by_id', type: 'uuid', fk: 'profiles.id', desc: 'BHW who returned' },
+      { name: 'verified_by_id', type: 'uuid', fk: 'profiles.id', desc: 'Pharma staff who verified' },
+      { name: 'status', type: 'text', desc: "'PENDING'|'VERIFIED'|'CANCELLED'" },
+      { name: 'submitted_at', type: 'timestamptz', nn: true },
+      { name: 'verified_at', type: 'timestamptz' }
     ]
   },
   {
@@ -216,12 +224,15 @@ export const TABLES = [
       { name: 'id', type: 'uuid', pk: true, nn: true },
       { name: 'facility_id', type: 'uuid', fk: 'facilities.id', nn: true },
       { name: 'medicine_id', type: 'uuid', fk: 'medicines.id', nn: true },
-      { name: 'supplier_id', type: 'uuid', fk: 'suppliers.id', nn: true },
+      { name: 'batch_number', type: 'text', nn: true, desc: 'Batch lot number' },
+      { name: 'brand_name', type: 'text', desc: 'Procurement brand name' },
+      { name: 'po_number', type: 'text', desc: 'LGU Purchase Order reference' },
+      { name: 'unit_cost', type: 'numeric(10,2)', desc: 'Batch procurement unit cost' },
       { name: 'quantity', type: 'integer', nn: true, desc: 'Stock on hand >= 0' },
-      { name: 'threshold', type: 'integer', nn: true, desc: 'Reorder alert >= 0' },
-      { name: 'batch_number', type: 'text', nn: true },
+      { name: 'threshold', type: 'integer', nn: true, desc: 'Facility reorder alert >= 0' },
       { name: 'date_received', type: 'date', nn: true },
       { name: 'expiration_date', type: 'date', nn: true, desc: 'FEFO sort key' },
+      { name: 'status', type: 'text', desc: "'ACTIVE'|'DISPOSED'" },
       { name: 'updated_at', type: 'timestamptz', nn: true }
     ]
   },
@@ -360,6 +371,8 @@ export const TABLES = [
       { name: 'inventory_id', type: 'uuid', fk: 'inventory.id', nn: true },
       { name: 'quantity', type: 'integer', nn: true, desc: 'Dispensed qty > 0' },
       { name: 'needed_quantity', type: 'integer', nn: true, desc: 'Requested qty >= quantity' },
+      { name: 'unit_cost_at_dispense', type: 'numeric(10,2)', desc: 'Snapshot unit cost at transaction' },
+      { name: 'total_cost_at_dispense', type: 'numeric(12,2)', desc: 'Stored: qty * unit_cost' },
       { name: 'prescribed_by', type: 'text' },
       { name: 'follow_up_action', type: 'text', desc: "'SCHEDULE_NEXT_WEEK'|'REFER_TO_BARANGAY'" },
       { name: 'follow_up_date', type: 'date' },
@@ -378,7 +391,7 @@ export const TABLES = [
     name: 'patient_medicine_records',
     domain: 'dispensing',
     title: 'patient_medicine_records',
-    subtitle: 'Monthly claim eligibility tracking',
+    subtitle: 'Backward-compatibility view over medicine_dispensing',
     columns: [
       { name: 'id', type: 'uuid', pk: true, nn: true },
       { name: 'patient_id', type: 'uuid', fk: 'patients.id', nn: true },
@@ -498,9 +511,12 @@ export const RELATIONSHIPS = [
   { from: 'profiles', fromCol: 'id', to: 'notifications', toCol: 'user_id', label: 'receives alert', type: '1:N', onDelete: 'CASCADE' },
   { from: 'profiles', fromCol: 'id', to: 'activity_logs', toCol: 'user_id', label: 'actor of log', type: '1:N', onDelete: 'SET NULL' },
 
-  // Medicines & Suppliers relations
-  { from: 'suppliers', fromCol: 'id', to: 'inventory', toCol: 'supplier_id', label: 'supplies batch', type: '1:N', onDelete: 'RESTRICT' },
+  // Medicines & Inventory relations
   { from: 'medicines', fromCol: 'id', to: 'inventory', toCol: 'medicine_id', label: 'stored as batch', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'medicines', fromCol: 'id', to: 'stock_returns', toCol: 'medicine_id', label: 'returned drug', type: '1:N', onDelete: 'SET NULL' },
+  { from: 'facilities', fromCol: 'id', to: 'stock_returns', toCol: 'facility_id', label: 'returning facility', type: '1:N', onDelete: 'RESTRICT' },
+  { from: 'profiles', fromCol: 'id', to: 'stock_returns', toCol: 'submitted_by_id', label: 'submits return', type: '1:N', onDelete: 'SET NULL' },
+  { from: 'profiles', fromCol: 'id', to: 'stock_returns', toCol: 'verified_by_id', label: 'verifies return', type: '1:N', onDelete: 'SET NULL' },
   { from: 'medicines', fromCol: 'id', to: 'medicine_request_items', toCol: 'medicine_id', label: 'requested item', type: '1:N', onDelete: 'RESTRICT' },
   { from: 'medicines', fromCol: 'id', to: 'stock_transfer_items', toCol: 'medicine_id', label: 'transferred item', type: '1:N', onDelete: 'RESTRICT' },
   { from: 'medicines', fromCol: 'id', to: 'medicine_dispensing', toCol: 'medicine_id', label: 'dispensed drug', type: '1:N', onDelete: 'RESTRICT' },
@@ -555,7 +571,7 @@ export const TABLOID_POSITIONS = {
   patient_medicine_records: { x: 380, y: 870, width: 280, height: 190 },
 
   // Column 3: Medicines & Inventory (x: 710, width: 280)
-  suppliers: { x: 710, y: 90, width: 280, height: 180 },
+  stock_returns: { x: 710, y: 90, width: 280, height: 180 },
   medicines: { x: 710, y: 300, width: 280, height: 240 },
   inventory: { x: 710, y: 570, width: 280, height: 300 },
   _legend: { x: 710, y: 900, width: 280, height: 160 },
@@ -589,7 +605,7 @@ export const LONG_BOND_POSITIONS = {
   patient_medicine_records: { x: 295, y: 680, width: 220, height: 150 },
 
   // Column 3: Medicines & Inventory (x: 550, width: 220)
-  suppliers: { x: 550, y: 75, width: 220, height: 145 },
+  stock_returns: { x: 550, y: 75, width: 220, height: 145 },
   medicines: { x: 550, y: 240, width: 220, height: 190 },
   inventory: { x: 550, y: 450, width: 220, height: 235 },
   _legend: { x: 550, y: 705, width: 220, height: 125 },
@@ -620,7 +636,7 @@ export const A4_POSITIONS = {
   medicine_dispensing: { x: 260, y: 345, width: 205, height: 275 },
   patient_medicine_records: { x: 260, y: 635, width: 205, height: 150 },
 
-  suppliers: { x: 485, y: 70, width: 205, height: 140 },
+  stock_returns: { x: 485, y: 70, width: 205, height: 140 },
   medicines: { x: 485, y: 225, width: 205, height: 180 },
   inventory: { x: 485, y: 420, width: 205, height: 220 },
   _legend: { x: 485, y: 655, width: 205, height: 130 },
@@ -657,10 +673,10 @@ export const DOMAIN_PAGES = [
     id: 'page_inventory',
     name: '2. Medicines Catalog & Inventory',
     domainId: 'inventory',
-    title: 'PRDS — Medicines, Suppliers & Batch Inventory Schema',
-    tables: ['suppliers', 'medicines', 'inventory', 'facilities'],
+    title: 'PRDS — Medicines, Stock Returns & Batch Inventory Schema',
+    tables: ['stock_returns', 'medicines', 'inventory', 'facilities'],
     positions: {
-      suppliers: { x: 70, y: 150, width: 280, height: 260 },
+      stock_returns: { x: 70, y: 150, width: 280, height: 260 },
       medicines: { x: 70, y: 440, width: 280, height: 280 },
       inventory: { x: 440, y: 220, width: 340, height: 400 },
       facilities: { x: 850, y: 260, width: 260, height: 280 }
@@ -2127,6 +2143,7 @@ function main() {
   const rootDir = 'd:/prds';
   const databaseDir = path.join(rootDir, 'database');
   const docDir = path.join(rootDir, 'documentation', '2-Database');
+  fs.mkdirSync(docDir, { recursive: true });
 
   console.log('Generating Enhanced Black & White Draw.io XML with Multi-Paper Pages...');
   const drawioContent = generateDrawioXml();

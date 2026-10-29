@@ -307,21 +307,21 @@ export default function ActivityLogsModule() {
 
       <div className="space-y-5">
         {/* Main Header & Toolbar Card */}
-        <section className="rounded-xl border border-neutral-200 bg-white shadow-sm shadow-neutral-200/50">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs">
           {/* Header Row */}
-          <div className="flex flex-col gap-3 border-b border-neutral-200 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 border-b border-[#CFDDE0] px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#00a36c]">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#1F4E5A]">
                 Accountability
               </p>
-              <h2 className="mt-0.5 text-lg font-black text-[#0d1117]">
+              <h2 className="mt-0.5 text-lg font-black text-[#1B2B30]">
                 Activity log
               </h2>
             </div>
 
             {/* Header Right Actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#eff4ff] px-3 py-1.5 text-xs font-black tabular-nums text-[#0d1117]">
+              <span className="rounded-full bg-[#E5EFF1] px-3 py-1.5 text-xs font-black tabular-nums text-[#1B2B30]">
                 {visibleLogs.length} total
               </span>
 
@@ -331,8 +331,8 @@ export default function ActivityLogsModule() {
                 onClick={() => setShowFilters((prev) => !prev)}
                 className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-black transition cursor-pointer ${
                   showFilters || activeAdvancedCount > 0
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-800 shadow-xs ring-1 ring-emerald-200"
-                    : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 hover:text-black"
+                    ? "border-[#1F4E5A] bg-[#EBF3F5] text-[#1F4E5A] shadow-xs ring-1 ring-[#1F4E5A]/30"
+                    : "border-[#CFDDE0] bg-white text-[#5B7077] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
                 aria-expanded={showFilters}
                 aria-label="Toggle activity log filters"
@@ -340,7 +340,7 @@ export default function ActivityLogsModule() {
                 <FilterIcon className="h-3.5 w-3.5" />
                 <span>Filter</span>
                 {activeAdvancedCount > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-700 px-1 text-[10px] font-black text-white">
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1F4E5A] px-1 text-[10px] font-black text-white">
                     {activeAdvancedCount}
                   </span>
                 )}
@@ -356,7 +356,7 @@ export default function ActivityLogsModule() {
                 type="button"
                 onClick={loadLogs}
                 disabled={isLoading}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#00a36c] px-3.5 text-xs font-black text-white shadow-sm transition hover:bg-[#007f5f] disabled:cursor-not-allowed disabled:bg-emerald-300 cursor-pointer"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] px-3.5 text-xs font-black text-white shadow-xs transition hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               >
                 <RefreshIcon className={isLoading ? "animate-spin" : ""} />
                 Refresh
@@ -368,7 +368,7 @@ export default function ActivityLogsModule() {
           <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Search Input */}
             <div className="relative min-w-0 sm:w-80">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
                 <SearchIcon className="h-4 w-4" />
               </span>
               <input
@@ -376,13 +376,13 @@ export default function ActivityLogsModule() {
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 placeholder="Search action, user, ID, facility..."
-                className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-8 text-xs font-semibold text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                className="h-9 w-full rounded-lg border border-[#CFDDE0] bg-white pl-9 pr-8 text-xs font-semibold text-[#1B2B30] outline-none transition placeholder:text-[#5B7077]/70 focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
               />
               {keyword && (
                 <button
                   type="button"
                   onClick={() => setKeyword("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5B7077] hover:text-[#1B2B30] cursor-pointer"
                   aria-label="Clear search"
                 >
                   <CloseIcon className="h-3.5 w-3.5" />
@@ -398,8 +398,8 @@ export default function ActivityLogsModule() {
                 onClick={() => setCategory("all")}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "all"
-                    ? "bg-[#0d1117] text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-neutral-100 hover:text-black"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>All</span>
@@ -407,7 +407,7 @@ export default function ActivityLogsModule() {
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "all"
                       ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.total}
@@ -420,8 +420,8 @@ export default function ActivityLogsModule() {
                 onClick={() => setCategory((prev) => (prev === "inventory" ? "all" : "inventory"))}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "inventory"
-                    ? "bg-emerald-700 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-emerald-50 hover:text-emerald-800"
+                    ? "bg-[#4C9F80] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#E8F5F1] hover:text-[#2D7A5D]"
                 }`}
               >
                 <span>Inventory</span>
@@ -429,7 +429,7 @@ export default function ActivityLogsModule() {
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "inventory"
                       ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.inventory}
@@ -442,8 +442,8 @@ export default function ActivityLogsModule() {
                 onClick={() => setCategory((prev) => (prev === "dispensing" ? "all" : "dispensing"))}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "dispensing"
-                    ? "bg-teal-700 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-teal-50 hover:text-teal-800"
+                    ? "bg-[#4C9F80] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#E8F5F1] hover:text-[#2D7A5D]"
                 }`}
               >
                 <span>Dispensing</span>
@@ -451,7 +451,7 @@ export default function ActivityLogsModule() {
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "dispensing"
                       ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.dispensing}
@@ -697,7 +697,7 @@ export default function ActivityLogsModule() {
                 <button
                   type="button"
                   onClick={() => setShowFilters(false)}
-                  className="h-8 rounded-lg bg-[#0d1117] px-4 text-xs font-bold text-white transition hover:bg-neutral-800 cursor-pointer"
+                  className="btn-primary h-8 rounded-lg px-4 text-xs font-bold text-white shadow-xs transition cursor-pointer"
                 >
                   Apply & Close
                 </button>
@@ -1098,11 +1098,11 @@ function ActivityDetailModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-end border-t border-neutral-100 px-6 py-3.5 bg-neutral-50/70">
+        <div className="flex items-center justify-end border-t border-[#CFDDE0] px-6 py-3.5 bg-[#F9FBFB]">
           <button
             type="button"
             onClick={onClose}
-            className="h-9 rounded-lg bg-[#00a36c] px-5 text-xs font-black text-white shadow-sm transition hover:bg-[#007f5f] cursor-pointer"
+            className="h-9 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] px-5 text-xs font-black text-white shadow-xs transition hover:brightness-105 active:scale-[0.99] cursor-pointer"
           >
             Close
           </button>

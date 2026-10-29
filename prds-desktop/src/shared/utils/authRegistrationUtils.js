@@ -19,6 +19,11 @@ export const toE164Phone = (input) => {
 export const isPhilippineMobileNumber = (phoneNumber) =>
   /^09\d{9}$/.test(normalizePhilippinePhone(phoneNumber));
 
+export const isValidEmail = (email) => {
+  if (!email || typeof email !== "string") return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+};
+
 export const sanitizeName = (input) => {
   if (!input) return "";
   return String(input)
@@ -132,6 +137,7 @@ export const validateRegistrationFields = ({
   firstName,
   lastName,
   phoneNumber,
+  email,
   facilityId,
   facilities = [],
   role,
@@ -157,7 +163,11 @@ export const validateRegistrationFields = ({
     return "Please select a valid role.";
   }
 
-  if (!isGoogleRegistration && !isPhilippineMobileNumber(phoneNumber)) {
+  if (!isGoogleRegistration && (!email || !isValidEmail(email))) {
+    return "Please enter a valid Gmail or email address.";
+  }
+
+  if (phoneNumber && !isPhilippineMobileNumber(phoneNumber)) {
     return "Phone number must use the format 09XXXXXXXXX.";
   }
 

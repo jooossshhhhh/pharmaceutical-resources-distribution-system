@@ -180,12 +180,12 @@ export default function AdminHeader({ profile, onSignOut }) {
   };
 
   return (
-    <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-[#e5e7eb] bg-white px-6 shadow-xs">
+    <header className="relative z-30 flex h-13.5 items-center justify-between border-b border-[#CFDDE0] bg-[#F9FBFB] px-6 shadow-xs">
       <div className="min-w-0">
-        <h1 className="truncate text-lg font-black tracking-tight text-[#0d1117]">
+        <h1 className="truncate text-lg font-black tracking-tight text-[#1B2B30]">
           PRDS
         </h1>
-        <p className="truncate text-xs font-semibold text-[#5f6673]">
+        <p className="truncate text-xs font-semibold text-[#5B7077]">
           {formattedDate}
         </p>
       </div>
@@ -193,7 +193,7 @@ export default function AdminHeader({ profile, onSignOut }) {
       <div className="flex items-center gap-3">
         <SyncStatusBadge />
 
-        <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-1.5 text-xs font-bold tabular-nums tracking-wide text-slate-800 sm:flex">
+        <div className="hidden items-center gap-2 rounded-full border border-[#CFDDE0] bg-[#E5EFF1] px-3.5 py-1.5 text-xs font-bold tabular-nums tracking-wide text-[#1B2B30] sm:flex">
           <ClockIcon />
           {formattedTime}
         </div>
@@ -204,12 +204,12 @@ export default function AdminHeader({ profile, onSignOut }) {
             setIsDownloadsOpen(false);
             setIsNotificationsOpen((isOpen) => !isOpen);
           }}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[#5B7077] transition hover:bg-[#E5EFF1] hover:text-[#1B2B30]"
           aria-label="Open notifications"
         >
           <BellIcon />
           {unreadCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-black text-white ring-2 ring-white">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#D9826B] px-1 text-[10px] font-black text-white ring-2 ring-[#F9FBFB]">
               {unreadCount}
             </span>
           )}
@@ -221,15 +221,15 @@ export default function AdminHeader({ profile, onSignOut }) {
             onClick={handleToggleDownloads}
             className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition ${
               isDownloadsOpen
-                ? "bg-[#e8fff7] text-[#007f5f] ring-1 ring-[#007f5f]/30"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                ? "bg-[#E2F3EC] text-[#226048] ring-1 ring-[#4C9F80]/30"
+                : "text-[#5B7077] hover:bg-[#E5EFF1] hover:text-[#1B2B30]"
             }`}
             aria-label="Open recent exports"
             title="Recent Exports"
           >
             <DownloadTrayIcon isExporting={isExportingFile} />
             {unreadExportCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#007f5f] px-1 text-[10px] font-black text-white ring-2 ring-white">
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#4C9F80] px-1 text-[10px] font-black text-white ring-2 ring-[#F9FBFB]">
                 {unreadExportCount}
               </span>
             )}
@@ -245,8 +245,8 @@ export default function AdminHeader({ profile, onSignOut }) {
           }}
           className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
             isPreferencesOpen
-              ? "bg-slate-100 text-slate-900 ring-1 ring-slate-300"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              ? "bg-[#E5EFF1] text-[#1B2B30] ring-1 ring-[#CFDDE0]"
+              : "text-[#5B7077] hover:bg-[#E5EFF1] hover:text-[#1B2B30]"
           }`}
           aria-label="Open system preferences"
           title="System Preferences"
@@ -254,12 +254,12 @@ export default function AdminHeader({ profile, onSignOut }) {
           <SettingsIcon />
         </button>
 
-        <div className="hidden h-6 w-px bg-slate-200 sm:block" />
+        <div className="hidden h-6 w-px bg-[#CFDDE0] sm:block" />
 
         <button
           type="button"
           onClick={() => setShowLogoutModal(true)}
-          className="hidden h-8 items-center gap-2 rounded-md px-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 sm:flex cursor-pointer"
+          className="hidden h-8 items-center gap-2 rounded-md px-2.5 text-sm font-bold text-[#5B7077] transition hover:bg-[#E5EFF1] hover:text-[#1B2B30] sm:flex cursor-pointer"
         >
           <LogoutIcon />
           Logout
@@ -268,12 +268,12 @@ export default function AdminHeader({ profile, onSignOut }) {
 
 
       {isNotificationsOpen && (
-        <div className={`absolute ${notificationOffset} top-12.5 z-50 w-75.5 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xl shadow-neutral-200/70`}>
-          <div className="flex items-center justify-between px-4 py-3">
+        <div className={`absolute ${notificationOffset} top-12.5 z-50 w-75.5 overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xl shadow-slate-900/10`}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#CFDDE0]/60">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-black text-[#0d1117]">Notifications</p>
+              <p className="text-sm font-black text-[#1B2B30]">Notifications</p>
               {unreadCount > 0 && (
-                <span className="rounded-full bg-orange-500 px-2 py-0.5 text-xs font-black text-white">
+                <span className="rounded-full bg-[#D9826B] px-2 py-0.5 text-xs font-black text-white">
                   {unreadCount} new
                 </span>
               )}
@@ -281,19 +281,19 @@ export default function AdminHeader({ profile, onSignOut }) {
             <button
               type="button"
               onClick={markNotificationsRead}
-              className="text-xs font-bold text-emerald-700 hover:text-emerald-800"
+              className="text-xs font-bold text-[#34769B] hover:text-[#1F4A66]"
             >
               View all
             </button>
           </div>
-          <div className="prds-modal-scrollbar max-h-81.5 overflow-y-auto px-4 pb-2">
+          <div className="prds-modal-scrollbar max-h-81.5 overflow-y-auto px-4 pb-2 pt-2">
             {headerError && (
-              <p className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              <p className="mb-2 rounded-lg border border-[#D9826B]/30 bg-[#FBE9E3] px-3 py-2 text-xs font-semibold text-[#8F3F2B]">
                 {headerError}
               </p>
             )}
             {notifications.length === 0 ? (
-              <p className="rounded-lg bg-neutral-50 px-3 py-6 text-center text-sm font-semibold text-neutral-500">
+              <p className="rounded-lg bg-[#E5EFF1]/60 px-3 py-6 text-center text-sm font-semibold text-[#5B7077]">
                 No notifications yet.
               </p>
             ) : (
@@ -301,24 +301,24 @@ export default function AdminHeader({ profile, onSignOut }) {
                 <article
                   key={notification.id}
                   className={`rounded-lg px-3 py-3 ${
-                    notification.is_read ? "hover:bg-neutral-50" : "bg-emerald-50/60"
+                    notification.is_read ? "hover:bg-[#E5EFF1]/50" : "bg-[#E2F3EC]/70"
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <NotificationIcon title={notification.title} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="truncate text-xs font-black text-neutral-950">
+                        <p className="truncate text-xs font-black text-[#1B2B30]">
                           {notification.title}
                         </p>
                         {!notification.is_read && (
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-600" />
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4C9F80]" />
                         )}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-600">
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#5B7077]">
                         {notification.message}
                       </p>
-                      <p className="mt-1 text-xs font-semibold text-neutral-400">
+                      <p className="mt-1 text-xs font-semibold text-[#5B7077]/70">
                         {getRelativeTime(notification.created_at)}
                       </p>
                     </div>
@@ -333,7 +333,7 @@ export default function AdminHeader({ profile, onSignOut }) {
               setIsNotificationsOpen(false);
               navigate("/notifications");
             }}
-            className="w-full border-t border-neutral-100 px-4 py-3 text-center text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+            className="w-full border-t border-[#CFDDE0] px-4 py-3 text-center text-xs font-semibold text-[#5B7077] hover:bg-[#E5EFF1]"
           >
             See all notifications
           </button>
@@ -341,24 +341,24 @@ export default function AdminHeader({ profile, onSignOut }) {
       )}
 
       {showLogoutModal && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-neutral-200 text-neutral-900">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-[#F9FBFB] p-6 shadow-2xl border border-[#CFDDE0] text-[#1B2B30]">
             <div className="flex items-start gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FBE9E3] text-[#8F3F2B]">
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-base font-black text-neutral-950">Confirm Sign Out</h3>
-                <p className="mt-1 text-xs leading-5 text-neutral-500">
+                <h3 className="text-base font-black text-[#1B2B30]">Confirm Sign Out</h3>
+                <p className="mt-1 text-xs leading-5 text-[#5B7077]">
                   Are you sure you want to log out of PRDS? You will need to sign in again to access the system.
                 </p>
               </div>
             </div>
 
             {logoutError && (
-              <p className="mt-4 text-xs font-semibold text-red-700" role="alert">
+              <p className="mt-4 text-xs font-semibold text-[#8F3F2B]" role="alert">
                 {logoutError}
               </p>
             )}
@@ -367,14 +367,14 @@ export default function AdminHeader({ profile, onSignOut }) {
               <button
                 type="button"
                 onClick={() => setShowLogoutModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 hover:bg-neutral-100 transition-colors cursor-pointer"
+                className="btn-secondary px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmSignOut}
-                className="flex items-center gap-2 rounded-xl bg-rose-600 px-4.5 py-2 text-xs font-bold text-white shadow-md shadow-rose-600/20 hover:bg-rose-700 transition-colors cursor-pointer"
+                className="flex items-center gap-2 rounded-xl bg-[#D9826B] px-4.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#8F3F2B] transition-colors cursor-pointer"
               >
                 Log Out
               </button>
@@ -492,7 +492,7 @@ function ClockIcon() {
   return (
     <svg
       aria-hidden="true"
-      className="h-3.5 w-3.5 text-[#00a36c]"
+      className="h-3.5 w-3.5 text-[#4C9F80]"
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
@@ -528,7 +528,7 @@ function LogoutIcon() {
 function DownloadTrayIcon({ isExporting }) {
   if (isExporting) {
     return (
-      <svg className="h-5 w-5 animate-bounce text-[#007f5f]" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <svg className="h-5 w-5 animate-bounce text-[#4C9F80]" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
         <polyline points="7 10 12 15 17 10" />
         <line x1="12" y1="15" x2="12" y2="3" />

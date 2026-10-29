@@ -2,20 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { requestStatusLabels, requestStatusTones } from "@shared/utils/requestUtils";
 
 const statusDotTones = {
-  APPROVED: "bg-blue-500",
-  COMPLETED: "bg-emerald-500",
-  PENDING: "bg-orange-500",
-  REJECTED: "bg-red-500",
+  APPROVED: "bg-[#4C9F80]",
+  COMPLETED: "bg-[#4C9F80]",
+  PENDING: "bg-[#D9826B]",
+  REJECTED: "bg-[#D9826B]",
 };
 
 export function RequestStatusBadge({ status }) {
   return (
     <span
       className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
-        requestStatusTones[status] || "bg-neutral-100 text-neutral-700"
+        requestStatusTones[status] || "bg-[#E5EFF1] text-[#5B7077]"
       }`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${statusDotTones[status] || "bg-neutral-300"}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${statusDotTones[status] || "bg-[#CFDDE0]"}`} />
       {requestStatusLabels[status] || status || "Unknown"}
     </span>
   );
@@ -24,10 +24,10 @@ export function RequestStatusBadge({ status }) {
 export function RequestPriorityBadge({ priority }) {
   const tone =
     priority === "HIGH"
-      ? "bg-red-100 text-red-700"
+      ? "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25"
       : priority === "MEDIUM"
-        ? "bg-amber-100 text-amber-700"
-        : "bg-neutral-100 text-neutral-600";
+        ? "bg-[#E3EEF5] text-[#1F4A66] border border-[#34769B]/25"
+        : "bg-[#E5EFF1] text-[#5B7077] border border-[#CFDDE0]";
 
   return (
     <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tone}`}>
@@ -51,25 +51,25 @@ export function RequestMetricCard({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       aria-pressed={onClick ? active : undefined}
-      className={`group rounded-xl border px-4 py-3 text-left shadow-sm transition-all duration-200 ${
+      className={`group rounded-xl border px-4 py-3 text-left shadow-xs transition-all duration-200 ${
         active
-          ? "border-[#6be9c2] bg-[#6be9c2] text-[#0d1117] shadow-md shadow-emerald-100"
-          : "border-neutral-200 bg-white text-[#0d1117] hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"
+          ? "border-[#34769B] bg-[#34769B] text-white shadow-sm"
+          : "border-[#CFDDE0] bg-[#F9FBFB] text-[#1B2B30] hover:-translate-y-0.5 hover:border-[#34769B]/40 hover:shadow-xs"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className={`text-[10px] font-black uppercase tracking-[0.14em] ${active ? "text-[#0d1117]/70" : "text-neutral-500"}`}>
+          <p className={`text-[10px] font-black uppercase tracking-[0.14em] ${active ? "text-white/80" : "text-[#5B7077]"}`}>
             {label}
           </p>
           <p className="mt-3 text-2xl font-black leading-none">{value}</p>
-          <p className={`mt-1 truncate text-[11px] font-semibold ${active ? "text-[#0d1117]/70" : "text-neutral-500"}`}>
+          <p className={`mt-1 truncate text-[11px] font-semibold ${active ? "text-white/80" : "text-[#5B7077]"}`}>
             {note}
           </p>
         </div>
         <span
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-            active ? "bg-white/55 text-[#0d1117]" : "bg-neutral-50 text-neutral-500 group-hover:bg-emerald-50 group-hover:text-emerald-700"
+            active ? "bg-white/20 text-white" : "bg-[#E5EFF1] text-[#5B7077] group-hover:bg-[#E3EEF5] group-hover:text-[#34769B]"
           }`}
         >
           {icon}
@@ -81,7 +81,7 @@ export function RequestMetricCard({
 
 export function RequestPanel({ children, className = "" }) {
   return (
-    <section className={`overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm ${className}`}>
+    <section className={`overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs ${className}`}>
       {children}
     </section>
   );
@@ -89,16 +89,16 @@ export function RequestPanel({ children, className = "" }) {
 
 export function RequestPanelHeader({ actions, eyebrow, subtitle, title }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-4 py-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#CFDDE0]/60 px-4 py-4">
       <div className="min-w-0">
         {eyebrow && (
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#34769B]">
             {eyebrow}
           </p>
         )}
-        <h2 className="text-base font-black text-black">{title}</h2>
+        <h2 className="text-base font-black text-[#1B2B30]">{title}</h2>
         {subtitle && (
-          <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-neutral-500">
+          <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-[#5B7077]">
             {subtitle}
           </p>
         )}
@@ -111,7 +111,7 @@ export function RequestPanelHeader({ actions, eyebrow, subtitle, title }) {
 export function RequestSearchInput({ onChange, placeholder, value }) {
   return (
     <label className="relative block min-w-0 flex-1">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
         <SearchIcon />
       </span>
       <input
@@ -119,7 +119,7 @@ export function RequestSearchInput({ onChange, placeholder, value }) {
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+        className="h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] pl-9 pr-3 text-sm font-medium text-[#1B2B30] outline-none transition placeholder:text-[#5B7077]/70 focus:border-[#34769B] focus:ring-2 focus:ring-[#E3EEF5]"
       />
     </label>
   );
@@ -127,7 +127,7 @@ export function RequestSearchInput({ onChange, placeholder, value }) {
 
 export function RequestToolbar({ children }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-neutral-100 px-4 py-3 lg:flex-row lg:items-center">
+    <div className="flex flex-col gap-3 border-b border-[#CFDDE0]/60 px-4 py-3 lg:flex-row lg:items-center">
       {children}
     </div>
   );
@@ -157,7 +157,7 @@ export function ActionButton({
 }) {
   const tones = {
     danger: "border-red-300 bg-white text-red-600 hover:bg-red-50 disabled:text-neutral-300",
-    dark: "border-black bg-black text-white hover:bg-[#0d1117] disabled:border-neutral-300 disabled:bg-neutral-300",
+    dark: "btn-primary border-[#2F7094] text-white disabled:border-neutral-300 disabled:bg-neutral-300 shadow-xs",
     primary: "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 disabled:border-neutral-300 disabled:bg-neutral-300",
     soft: "border-neutral-200 bg-white text-neutral-700 hover:border-emerald-300 hover:text-emerald-700",
     neutral: "border-neutral-200 bg-neutral-50 text-neutral-700 hover:bg-neutral-100",
@@ -317,7 +317,7 @@ export function RequestEmptyState({
         <button
           type="button"
           onClick={onAction}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-black px-4 text-xs font-bold text-white transition hover:bg-[#0d1117]"
+          className="btn-primary mt-4 inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-bold text-white shadow-xs transition cursor-pointer"
         >
           <PlusIcon />
           {actionLabel}

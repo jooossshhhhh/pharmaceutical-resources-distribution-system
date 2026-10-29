@@ -51,3 +51,23 @@ test("pendingOtpStore stores phone OTP payload and defaults channel to phone", (
   clearPendingPhoneOtp();
   assert.equal(getPendingPhoneOtp(), null);
 });
+
+test("pendingOtpStore supports PASSWORD_RESET purpose for phone OTP", () => {
+  clearPendingOtp();
+
+  const resetPayload = {
+    phoneNumber: "+639123456789",
+    purpose: PHONE_OTP_PURPOSES.PASSWORD_RESET,
+  };
+
+  setPendingPhoneOtp(resetPayload);
+
+  const retrieved = getPendingOtp();
+  assert.equal(retrieved.phoneNumber, "+639123456789");
+  assert.equal(retrieved.channel, OTP_CHANNELS.PHONE);
+  assert.equal(retrieved.purpose, OTP_PURPOSES.PASSWORD_RESET);
+
+  clearPendingOtp();
+  assert.equal(getPendingOtp(), null);
+});
+

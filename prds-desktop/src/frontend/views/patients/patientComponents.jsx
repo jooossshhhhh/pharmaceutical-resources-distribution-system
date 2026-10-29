@@ -96,7 +96,7 @@ export function SortToggleButton({ onClick, sortMode }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+      className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1F4E5A] hover:bg-[#EBF3F5]"
       title={isDesc ? "Sort A–Z" : "Sort Z–A"}
       aria-label={isDesc ? "Sort from Z to A" : "Sort from A to Z"}
     >
@@ -202,14 +202,14 @@ export const Field = ({ label, required, children }) => (
 export const Input = (props) => (
   <input
     {...props}
-    className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+    className={`h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20 ${props.className || ""}`}
   />
 );
 
 export const Select = (props) => (
   <select
     {...props}
-    className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-medium text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+    className={`h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-medium text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20 ${props.className || ""}`}
   />
 );
 
@@ -279,15 +279,15 @@ export function PatientTable({ archiveMode = "active", isCho, isLoading, onSelec
             tabIndex={0}
             role="button"
             aria-label={`Open ${formatPatientName(patient)} patient record`}
-            className={`cursor-pointer border-l-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#00a36c] ${
+            className={`cursor-pointer border-l-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1F4E5A] ${
               isSelected
-                ? "border-l-[#00a36c] bg-[#eff4ff]"
-                : "border-l-transparent hover:bg-[#f8f9ff] focus:bg-[#f8f9ff]"
+                ? "border-l-[#1F4E5A] bg-[#EBF3F5]"
+                : "border-l-transparent hover:bg-[#F4F8F8] focus:bg-[#F4F8F8]"
             }`}
           >
             <td className="px-4 py-3.5">
-              <p className="text-sm font-bold text-[#0d1117]">{formatPatientName(patient)}</p>
-              <p className="text-xs text-[#5f6673]">
+              <p className="text-sm font-bold text-[#1B2B30]">{formatPatientName(patient)}</p>
+              <p className="text-xs text-[#5B7077]">
                 {archiveMode === "archived"
                   ? `Archived ${formatPatientArchivedAt(patient.archived_at)}${patient.archive_reason ? ` - ${patient.archive_reason}` : ""}`
                   : patient.address || "No address on file"}
@@ -591,18 +591,18 @@ export function PatientViewModal({
       overlayClassName="bg-slate-950/30 backdrop-blur-[2px]"
       panelClassName="max-w-4xl"
     >
-      <div className="max-h-[88vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] bg-[#f8fffb] px-5 py-4">
+      <div className="max-h-[88vh] w-full overflow-hidden rounded-xl bg-[#F9FBFB] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#CFDDE0] bg-[#EBF3F5] px-5 py-4">
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#008f68]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
               {viewMode === "history" ? "Patient History" : viewMode === "add" ? "Manual Record" : formatPatientCode(patient.patient_code)}
             </p>
-            <h2 id="patient-view-modal-title" className="mt-1 truncate text-xl font-bold text-[#0d1117]">
+            <h2 id="patient-view-modal-title" className="mt-1 truncate text-xl font-bold text-[#1B2B30]">
               {formatPatientName(patient)}
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <GenderBadge gender={patient.gender} />
-              <span className="inline-flex rounded-full bg-[#eff4ff] px-2.5 py-1 text-[11px] font-bold text-[#42474e]">
+              <span className="inline-flex rounded-full bg-[#E5EFF1] px-2.5 py-1 text-[11px] font-bold text-[#5B7077]">
                 {formatPatientAge(patient.date_of_birth)}
               </span>
               {isArchived && (
@@ -617,7 +617,7 @@ export function PatientViewModal({
               <button
                 type="button"
                 onClick={() => setViewMode("details")}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] shadow-xs transition hover:bg-[#EBF3F5]"
               >
                 <BackIcon />
                 Back to Details
@@ -627,7 +627,7 @@ export function PatientViewModal({
               <button
                 type="button"
                 onClick={openHistory}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff]"
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] shadow-xs transition hover:bg-[#EBF3F5]"
               >
                 <ClipboardIcon />
                 Patient History
@@ -637,7 +637,7 @@ export function PatientViewModal({
               <button
                 type="button"
                 onClick={openAddRecord}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-black px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#0d1117]"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-3 text-xs font-bold text-white shadow-xs transition-all"
               >
                 <PlusIcon />
                 Add Record
@@ -649,8 +649,8 @@ export function PatientViewModal({
         <div className="prds-modal-scrollbar max-h-[calc(88vh-150px)] overflow-y-auto p-5">
           {viewMode === "details" && (
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-              <section className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
-                <h3 className="text-sm font-bold text-[#0d1117]">Patient Details</h3>
+              <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-xs">
+                <h3 className="text-sm font-bold text-[#1B2B30]">Patient Details</h3>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <InfoBox
                     icon={<CalendarIcon />}
@@ -679,7 +679,7 @@ export function PatientViewModal({
                           Archived
                         </span>
                       ) : (
-                        <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-[#008f68]">
+                        <span className="inline-flex rounded-full bg-[#E8F5F1] px-2.5 py-0.5 text-xs font-bold text-[#2D7A5D] border border-[#4C9F80]/30">
                           Active
                         </span>
                       )
@@ -805,14 +805,14 @@ export function PatientViewModal({
                           <button
                             type="button"
                             onClick={() => setHistoryDateFilter({ end: "", mode: PATIENT_HISTORY_DATE_MODES.all, start: "", value: "" })}
-                            className="h-8 rounded-lg px-3 font-bold text-[#5f6673] hover:bg-slate-100"
+                            className="h-8 rounded-lg px-3 font-bold text-[#5B7077] hover:bg-[#E5EFF1]"
                           >
                             Clear
                           </button>
                           <button
                             type="button"
                             onClick={() => setIsDateFilterOpen(false)}
-                            className="h-8 rounded-lg bg-black px-3 font-bold text-white"
+                            className="h-8 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-3 font-bold text-white shadow-xs transition-all"
                           >
                             Apply
                           </button>
@@ -824,7 +824,7 @@ export function PatientViewModal({
                     type="button"
                     onClick={loadClaims}
                     disabled={isLoadingClaims}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] shadow-xs transition hover:bg-[#EBF3F5] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span className={isLoadingClaims ? "animate-spin" : ""}>
                       <RefreshIcon />
@@ -924,7 +924,7 @@ export function PatientViewModal({
                             ) : (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
                                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                Partial
+                                Scheduled
                               </span>
                             )}
                           </td>
@@ -1100,18 +1100,18 @@ export function PatientViewModal({
                 </aside>
               </div>
 
-              <div className="mt-5 flex justify-end gap-3 border-t border-[#e5e7eb] pt-4">
+              <div className="mt-5 flex justify-end gap-3 border-t border-[#CFDDE0] pt-4">
                 <button
                   type="button"
                   onClick={() => setViewMode("details")}
-                  className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
+                  className="h-10 rounded-lg bg-[#E5EFF1] px-5 text-sm font-bold text-[#1B2B30] transition hover:bg-[#CFDDE0]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingManual}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-5 text-sm font-bold text-white shadow-xs transition-all disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <PlusIcon />
                   {isSavingManual ? "Saving..." : "Save Record"}
@@ -1121,7 +1121,7 @@ export function PatientViewModal({
           )}
         </div>
 
-        <div className="flex flex-wrap justify-end gap-3 border-t border-[#e5e7eb] px-5 py-4">
+        <div className="flex flex-wrap justify-end gap-3 border-t border-[#CFDDE0] px-5 py-4">
           {viewMode === "details" && (
             isArchived ? (
               <>
@@ -1129,7 +1129,7 @@ export function PatientViewModal({
                   <button
                     type="button"
                     onClick={onRestore}
-                    className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white transition hover:bg-[#0d1117]"
+                    className="inline-flex h-10 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-5 text-sm font-bold text-white shadow-xs transition-all"
                   >
                     <BackIcon />
                     Restore
@@ -1139,7 +1139,7 @@ export function PatientViewModal({
                   <button
                     type="button"
                     onClick={onDelete}
-                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-200 px-4 text-sm font-bold text-red-600 transition hover:bg-red-50"
+                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#D9826B]/40 px-4 text-sm font-bold text-[#D9826B] transition hover:bg-[#faedf0]"
                   >
                     <TrashIcon />
                     Delete permanently
@@ -1151,7 +1151,7 @@ export function PatientViewModal({
                 <button
                   type="button"
                   onClick={onEdit}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white transition hover:bg-[#0d1117]"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-5 text-sm font-bold text-white shadow-xs transition-all"
                 >
                   <PencilIcon />
                   Edit
@@ -1172,7 +1172,7 @@ export function PatientViewModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
+            className="h-10 rounded-lg bg-[#E5EFF1] px-5 text-sm font-bold text-[#1B2B30] transition hover:bg-[#CFDDE0]"
           >
             Close
           </button>
@@ -1198,14 +1198,14 @@ export function PatientConfirmModal({
       description: "This patient will be hidden from the active list, but their dispensing history will stay preserved.",
       icon: <ArchiveIcon />,
       confirmLabel: "Archive Patient",
-      buttonClass: "bg-black text-white hover:bg-[#0d1117]",
+      buttonClass: "bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] text-white shadow-xs",
     },
     restore: {
       title: "Restore Patient",
       description: "This patient will return to the active patient list.",
       icon: <BackIcon />,
       confirmLabel: "Restore Patient",
-      buttonClass: "bg-black text-white hover:bg-[#0d1117]",
+      buttonClass: "bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] text-white shadow-xs",
     },
     delete: {
       title: "Delete Permanently",
@@ -1213,7 +1213,7 @@ export function PatientConfirmModal({
         "Warning: this action cannot be undone. Deletion is only possible when there is no dispensing or patient medicine history.",
       icon: <TrashIcon />,
       confirmLabel: "Delete Permanently",
-      buttonClass: "bg-red-600 text-white hover:bg-red-700",
+      buttonClass: "bg-[#D9826B] hover:brightness-105 text-white shadow-xs",
     },
   }[actionType];
 
@@ -1228,29 +1228,29 @@ export function PatientConfirmModal({
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName="max-w-md"
     >
-      <div className="w-full rounded-xl border border-[#d8dadc] bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] px-5 py-4">
+      <div className="w-full rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#CFDDE0] px-5 py-4">
           <div className="flex items-center gap-3">
             <span
               className={`flex h-10 w-10 items-center justify-center rounded-lg ${
                 actionType === "delete"
-                  ? "bg-red-50 text-red-600"
-                  : "bg-[#dffbf2] text-[#008f68]"
+                  ? "bg-[#faedf0] text-[#D9826B]"
+                  : "bg-[#E8F5F1] text-[#2D7A5D]"
               }`}
             >
               {copy.icon}
             </span>
             <div>
-              <h2 id="patient-confirm-modal-title" className="text-lg font-bold text-[#0d1117]">
+              <h2 id="patient-confirm-modal-title" className="text-lg font-bold text-[#1B2B30]">
                 {copy.title}
               </h2>
-              <p className="mt-0.5 text-sm font-semibold text-[#42474e]">{patientName}</p>
+              <p className="mt-0.5 text-sm font-semibold text-[#5B7077]">{patientName}</p>
             </div>
           </div>
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          <p className="text-sm leading-6 text-[#42474e]">{copy.description}</p>
+          <p className="text-sm leading-6 text-[#5B7077]">{copy.description}</p>
 
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold leading-6 text-red-700">
@@ -1263,19 +1263,19 @@ export function PatientConfirmModal({
               <textarea
                 value={archiveReason}
                 onChange={(event) => onReasonChange(event.target.value)}
-                className="min-h-24 w-full resize-none rounded-lg border border-[#d8dadc] bg-white px-3 py-2 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40"
+                className="min-h-24 w-full resize-none rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 py-2 text-sm text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
                 placeholder="Optional note for activity history"
               />
             </Field>
           )}
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-[#e5e7eb] px-5 py-4">
+        <div className="flex justify-end gap-3 border-t border-[#CFDDE0] px-5 py-4">
           <button
             type="button"
             onClick={onCancel}
             disabled={isSaving}
-            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80 disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-10 rounded-lg bg-[#E5EFF1] px-5 text-sm font-bold text-[#1B2B30] transition hover:bg-[#CFDDE0] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
           </button>
@@ -1296,22 +1296,22 @@ export function PatientConfirmModal({
 
 function InfoBox({ icon, label, sub, value }) {
   return (
-    <div className="rounded-lg bg-[#f8f9ff] p-3">
+    <div className="rounded-lg bg-[#F4F8F8] p-3">
       <div className="flex items-center gap-2">
-        <span className="text-[#008f68]">{icon}</span>
-        <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">{label}</p>
+        <span className="text-[#1F4E5A]">{icon}</span>
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">{label}</p>
       </div>
-      <p className="mt-1.5 text-sm font-bold text-[#0d1117]">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-[#5f6673]">{sub}</p>}
+      <p className="mt-1.5 text-sm font-bold text-[#1B2B30]">{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-[#5B7077]">{sub}</p>}
     </div>
   );
 }
 
 function DetailLine({ label, value }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-[#edf0f2] pb-3 text-sm">
-      <p className="text-xs font-bold uppercase tracking-wide text-[#6b7280]">{label}</p>
-      <p className="text-right font-bold text-[#0d1117]">{value}</p>
+    <div className="flex items-center justify-between gap-3 border-b border-[#CFDDE0] pb-3 text-sm">
+      <p className="text-xs font-bold uppercase tracking-wide text-[#5B7077]">{label}</p>
+      <p className="text-right font-bold text-[#1B2B30]">{value}</p>
     </div>
   );
 }
@@ -1346,18 +1346,18 @@ export function PatientFormModal({
     >
       <form
         onSubmit={onSubmit}
-        className="max-h-[86vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="max-h-[86vh] w-full overflow-hidden rounded-xl bg-[#F9FBFB] shadow-2xl"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-[#CFDDE0] px-5 py-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#dffbf2] text-[#008f68]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E8F5F1] text-[#2D7A5D]">
               <UsersIcon />
             </span>
             <div>
-              <h2 id="patient-form-modal-title" className="text-lg font-bold text-[#0d1117]">
+              <h2 id="patient-form-modal-title" className="text-lg font-bold text-[#1B2B30]">
                 {title}
               </h2>
-              <p className="mt-0.5 text-sm text-[#5f6673]">
+              <p className="mt-0.5 text-sm text-[#5B7077]">
                 {mode === "create"
                   ? "Add a bonafide citizen to the patient logbook."
                   : "Update the patient's registration details."}
@@ -1501,11 +1501,11 @@ export function PatientFormModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-[#e5e7eb] px-5 py-4">
+        <div className="flex justify-end gap-3 border-t border-[#CFDDE0] px-5 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-slate-100 px-5 text-sm font-bold text-slate-800 transition hover:bg-slate-200/80"
+            className="h-10 rounded-lg bg-[#E5EFF1] px-5 text-sm font-bold text-[#1B2B30] transition hover:bg-[#CFDDE0]"
           >
             Cancel
           </button>
@@ -1513,7 +1513,7 @@ export function PatientFormModal({
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:bg-neutral-400"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-5 text-sm font-bold text-white shadow-xs transition-all disabled:cursor-not-allowed disabled:opacity-60"
             >
               <PlusIcon />
               {isSaving

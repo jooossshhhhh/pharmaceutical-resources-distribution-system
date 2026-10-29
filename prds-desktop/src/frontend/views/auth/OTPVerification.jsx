@@ -1,32 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Clock, RotateCcw } from "lucide-react";
 
 import {
   getAuthErrorMessage,
   logoutUser,
   sendEmailOtp,
-  sendPhoneOtp,
-  toPhilippineE164PhoneNumber,
   verifyEmailOtp,
-  verifyPhoneOtp,
 } from "@backend/services/auth/authService";
 import {
   clearPendingOtp,
   getPendingOtp,
-  getPendingPhoneOtp,
-  OTP_CHANNELS,
   PHONE_OTP_PURPOSES,
 } from "@backend/services/auth/pendingPhoneOtpStore";
 import {
-  createPhoneProfile,
   getProfileById,
-  isProfileRegistrationComplete,
 } from "@backend/services/auth/profileService";
 import citySeal from "@frontend/assets/city-of-naga-seal.png";
 import nagaGarbo from "@frontend/assets/naga-atong-garbo.png";
 import prdsLogo from "@frontend/assets/prds-logo-main.svg";
 import { getLoginAccountStatus } from "@shared/utils/authRegistrationUtils.js";
 
+const OTP_LENGTH = 6;
 const OTP_EXPIRY_SECONDS = 120;
 const RESEND_COOLDOWN_SECONDS = 60;
 const MAX_OTP_ATTEMPTS = 3;
@@ -46,8 +41,9 @@ function maskEmail(email) {
 
 export default function OTPVerification() {
   const navigate = useNavigate();
-  const [pendingOtp] = useState(() => getPendingOtp() || getPendingPhoneOtp());
-  const [verificationCode, setVerificationCode] = useState("");
+  const [pendingOtp] = useState(() => getPendingOtp());
+  const [otpDigits, setOtpDigits] = useState(() => Array(OTP_LENGTH).fill(""));
+  const inputRefs = useRef([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [resendNotice, setResendNotice] = useState("");
   const [showPendingApprovalModal, setShowPendingApprovalModal] = useState(false);
@@ -57,11 +53,23 @@ export default function OTPVerification() {
   const [resendCooldown, setResendCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const [failedAttempts, setFailedAttempts] = useState(0);
 
+  const verificationCode = otpDigits.join("");
+
   useEffect(() => {
     if (!pendingOtp) {
       navigate("/", { replace: true });
     }
   }, [navigate, pendingOtp]);
+
+  useEffect(() => {
+    if (pendingOtp) {
+      const timer = setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [pendingOtp]);
 
   useEffect(() => {
     if (!pendingOtp || secondsRemaining <= 0) {
@@ -94,20 +102,14 @@ export default function OTPVerification() {
   }
 
   const {
-    channel,
     email,
-    facilityId,
-    firstName,
-    lastName,
-    phoneNumber,
     purpose,
-    role,
   } = pendingOtp;
 
-  const isEmailOtp =
-    channel === OTP_CHANNELS.EMAIL || (!phoneNumber && Boolean(email));
-  const isRegistrationOtp = purpose === PHONE_OTP_PURPOSES.REGISTRATION;
+  const isPasswordResetOtp = purpose === PHONE_OTP_PURPOSES.PASSWORD_RESET;
   const isOtpExpired = secondsRemaining <= 0;
+  const canResend =
+    resendCooldown <= 0 || isOtpExpired || failedAttempts >= MAX_OTP_ATTEMPTS;
   const formattedTimeRemaining = `${String(
     Math.floor(secondsRemaining / 60)
   ).padStart(2, "0")}:${String(secondsRemaining % 60).padStart(2, "0")}`;
@@ -128,93 +130,33 @@ export default function OTPVerification() {
     }
 
     const cleanCode = verificationCode.trim();
-    if (cleanCode.length < 6 || cleanCode.length > 8) {
-      setErrorMessage("Please enter the complete verification code.");
+    if (cleanCode.length !== OTP_LENGTH) {
+      setErrorMessage(`Please enter the complete ${OTP_LENGTH}-digit verification code.`);
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      if (isEmailOtp) {
-        const { user } = await verifyEmailOtp({
-          email,
-          verificationCode: cleanCode,
-        });
-
-        if (!user) {
-          throw new Error("Unable to verify Gmail code. Please try again.");
-        }
-
-        const profile = await getProfileById(user.id);
-        clearPendingOtp();
-
-        const accountStatus = getLoginAccountStatus(profile);
-        if (accountStatus === "pending") {
-          await logoutUser();
-          clearPendingOtp();
-          setShowPendingApprovalModal(true);
-          return;
-        }
-
-        if (accountStatus === "unregistered") {
-          await logoutUser();
-          navigate("/", {
-            replace: true,
-            state: {
-              accountAccessStatus: accountStatus,
-            },
-          });
-          return;
-        }
-
-        if (profile.status === "DEACTIVATED") {
-          await logoutUser();
-          navigate("/", {
-            replace: true,
-            state: {
-              noticeMessage:
-                "This account is deactivated. Please contact a PRDS administrator for assistance.",
-            },
-          });
-          return;
-        }
-
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-
-      // Phone OTP Verification
-      const { user } = await verifyPhoneOtp({
+      const { user } = await verifyEmailOtp({
+        email,
         verificationCode: cleanCode,
-        phoneNumber,
       });
 
       if (!user) {
-        throw new Error("Unable to verify OTP. Please try again.");
+        throw new Error("Unable to verify Gmail code. Please try again.");
       }
 
-      if (isRegistrationOtp) {
-        const existingProfile = await getProfileById(user.id);
-
-        if (!isProfileRegistrationComplete(existingProfile)) {
-          await createPhoneProfile({
-            facilityId,
-            firstName,
-            lastName,
-            phoneNumber,
-            role,
-            userId: user.id,
-          });
-        }
-
+      if (isPasswordResetOtp) {
         clearPendingOtp();
-        navigate("/pending-approval", { replace: true });
+        navigate("/reset-password", {
+          replace: true,
+          state: { isPhoneReset: false, identifier: email },
+        });
         return;
       }
 
       const profile = await getProfileById(user.id);
-
       clearPendingOtp();
 
       const accountStatus = getLoginAccountStatus(profile);
@@ -249,6 +191,7 @@ export default function OTPVerification() {
       }
 
       navigate("/dashboard", { replace: true });
+      return;
     } catch (error) {
       const nextAttempts = failedAttempts + 1;
       setFailedAttempts(nextAttempts);
@@ -263,8 +206,77 @@ export default function OTPVerification() {
     }
   };
 
+  const handleDigitChange = (index, value) => {
+    const clean = value.replace(/\D/g, "");
+
+    if (clean.length > 1) {
+      const chars = clean.slice(0, OTP_LENGTH).split("");
+      const nextDigits = [...otpDigits];
+      chars.forEach((char, i) => {
+        if (index + i < OTP_LENGTH) {
+          nextDigits[index + i] = char;
+        }
+      });
+      setOtpDigits(nextDigits);
+      setErrorMessage("");
+      const nextFocus = Math.min(index + chars.length, OTP_LENGTH - 1);
+      inputRefs.current[nextFocus]?.focus();
+      return;
+    }
+
+    const nextDigits = [...otpDigits];
+    nextDigits[index] = clean;
+    setOtpDigits(nextDigits);
+    setErrorMessage("");
+
+    if (clean && index < OTP_LENGTH - 1) {
+      inputRefs.current[index + 1]?.focus();
+      inputRefs.current[index + 1]?.select();
+    }
+  };
+
+  const handleKeyDown = (index, event) => {
+    if (event.key === "Backspace") {
+      if (otpDigits[index]) {
+        const nextDigits = [...otpDigits];
+        nextDigits[index] = "";
+        setOtpDigits(nextDigits);
+      } else if (index > 0) {
+        const nextDigits = [...otpDigits];
+        nextDigits[index - 1] = "";
+        setOtpDigits(nextDigits);
+        inputRefs.current[index - 1]?.focus();
+      }
+    } else if (event.key === "ArrowLeft" && index > 0) {
+      event.preventDefault();
+      inputRefs.current[index - 1]?.focus();
+      inputRefs.current[index - 1]?.select();
+    } else if (event.key === "ArrowRight" && index < OTP_LENGTH - 1) {
+      event.preventDefault();
+      inputRefs.current[index + 1]?.focus();
+      inputRefs.current[index + 1]?.select();
+    }
+  };
+
+  const handlePaste = (event) => {
+    event.preventDefault();
+    const pasted = (event.clipboardData.getData("text") || "")
+      .replace(/\D/g, "")
+      .slice(0, OTP_LENGTH);
+    if (!pasted) return;
+
+    const nextDigits = Array(OTP_LENGTH).fill("");
+    pasted.split("").forEach((char, i) => {
+      nextDigits[i] = char;
+    });
+    setOtpDigits(nextDigits);
+    setErrorMessage("");
+    const targetFocus = Math.min(pasted.length, OTP_LENGTH - 1);
+    inputRefs.current[targetFocus]?.focus();
+  };
+
   const handleResendCode = async () => {
-    if (resendCooldown > 0) {
+    if (!canResend) {
       return;
     }
     setErrorMessage("");
@@ -272,17 +284,13 @@ export default function OTPVerification() {
     setIsResending(true);
 
     try {
-      if (isEmailOtp) {
-        await sendEmailOtp(email, { shouldCreateUser: false });
-        setResendNotice("A new verification code has been sent to your Gmail.");
-      } else {
-        await sendPhoneOtp(phoneNumber, { shouldCreateUser: isRegistrationOtp });
-        setResendNotice("A new verification code has been sent to your phone.");
-      }
+      await sendEmailOtp(email, { shouldCreateUser: false });
+      setResendNotice("A new verification code has been sent to your Gmail.");
       setSecondsRemaining(OTP_EXPIRY_SECONDS);
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
       setFailedAttempts(0);
-      setVerificationCode("");
+      setOtpDigits(Array(OTP_LENGTH).fill(""));
+      setTimeout(() => inputRefs.current[0]?.focus(), 50);
     } catch (error) {
       setErrorMessage(getAuthErrorMessage(error));
     } finally {
@@ -292,15 +300,20 @@ export default function OTPVerification() {
 
   const handleChangeDestination = () => {
     clearPendingOtp();
-    navigate(isRegistrationOtp ? "/register" : "/", { replace: true });
+    navigate(
+      isPasswordResetOtp
+        ? "/forgot-password"
+        : "/",
+      { replace: true }
+    );
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-gray-50 font-sans antialiased">
-      <div className="relative hidden min-h-0 min-w-0 overflow-hidden bg-[#1d3f8c] p-16 text-white lg:flex lg:w-1/2 flex-col justify-between">
-        <div className="absolute inset-0 bg-linear-to-br from-[#1d3f8c] via-[#254fa8] to-[#0e1f47] opacity-100 z-0"></div>
-        <div className="absolute -top-20 -right-20 w-125 h-125 bg-[#dc8939] rounded-full mix-blend-screen filter blur-[120px] opacity-[0.15] z-0"></div>
-        <div className="absolute -bottom-40 -left-20 w-150 h-150 bg-[#b53e53] rounded-full mix-blend-screen filter blur-[140px] opacity-20 z-0"></div>
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-[#E5EFF1] font-sans antialiased">
+      <div className="relative hidden min-h-0 min-w-0 overflow-hidden bg-[#1F4E5A] p-16 text-white lg:flex lg:w-1/2 flex-col justify-between">
+        <div className="absolute inset-0 bg-linear-to-br from-[#1F4E5A] via-[#286575] to-[#163a43] opacity-100 z-0"></div>
+        <div className="absolute -top-20 -right-20 w-125 h-125 bg-[#34769B] rounded-full mix-blend-screen filter blur-[120px] opacity-[0.25] z-0"></div>
+        <div className="absolute -bottom-40 -left-20 w-150 h-150 bg-[#4C9F80] rounded-full mix-blend-screen filter blur-[140px] opacity-20 z-0"></div>
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-size-[32px_32px] z-0"></div>
 
         <div className="relative z-10">
@@ -321,19 +334,17 @@ export default function OTPVerification() {
             <br />
             Distribution
             <br />
-            <span className="text-[#dc8939]">System</span>
+            <span className="text-transparent bg-clip-text bg-linear-to-r from-[#FEF08A] to-[#F5D461]">System</span>
           </h1>
 
-          <p className="text-lg text-blue-100/80 max-w-md font-medium leading-relaxed">
-            {isEmailOtp
-              ? "Enter the verification code sent to your Gmail inbox to sign in to your PRDS account."
-              : isRegistrationOtp
-                ? "Verify your phone number before your access request is submitted for approval."
-                : "Use the one-time code to sign in without your account password."}
+          <p className="text-lg text-teal-100/80 max-w-md font-medium leading-relaxed">
+            {isPasswordResetOtp
+              ? "Enter the verification code sent to your Gmail inbox to reset your password."
+              : "Enter the verification code sent to your Gmail inbox to sign in to your PRDS account."}
           </p>
         </div>
 
-        <div className="relative z-10 text-sm text-blue-200/60 font-medium tracking-wide">
+        <div className="relative z-10 text-sm text-teal-200/60 font-medium tracking-wide">
           &copy; 2026 City Health Office - City of Naga, Cebu. All rights reserved.
         </div>
       </div>
@@ -343,131 +354,134 @@ export default function OTPVerification() {
           <form className="w-full max-w-md" onSubmit={handleVerifyOtp}>
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold tracking-tight text-slate-800 mb-2">
-                {isEmailOtp ? "Verify Gmail Code" : "Verify Phone Number"}
+                Verify Gmail Code
               </h2>
               <p className="text-sm font-medium text-slate-500">
-                {isEmailOtp ? (
-                  <>
-                    Enter the verification code sent to{" "}
-                    <span className="font-bold text-slate-700">
-                      {maskEmail(email)}
-                    </span>
-                    .
-                  </>
-                ) : (
-                  <>
-                    {isRegistrationOtp
-                      ? "Enter the registration code sent to "
-                      : "Enter the sign-in code sent to "}
-                    <span className="font-bold text-slate-700">
-                      {toPhilippineE164PhoneNumber(phoneNumber)}
-                    </span>
-                    .
-                  </>
-                )}
+                Enter the verification code sent to{" "}
+                <span className="font-bold text-slate-700">
+                  {maskEmail(email)}
+                </span>
+                .
               </p>
-              <div className="mt-3 flex flex-col items-center justify-center gap-1.5 sm:flex-row sm:gap-3">
-                <p
-                  className={`text-sm font-bold ${
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+                <span
+                  className={`inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold ${
                     isOtpExpired || failedAttempts >= MAX_OTP_ATTEMPTS
-                      ? "text-red-600"
-                      : "text-green-700"
+                      ? "text-[#D9826B]"
+                      : "text-[#226048]"
                   }`}
                 >
+                  <Clock className="h-3.5 w-3.5" />
                   {failedAttempts >= MAX_OTP_ATTEMPTS
                     ? "Code invalidated (3/3 attempts used)"
                     : isOtpExpired
                       ? "Code expired"
                       : `Code expires in ${formattedTimeRemaining}`}
-                </p>
-                <div>
-                  {resendCooldown > 0 ? (
-                    <span className="text-xs font-medium text-slate-500">
-                      Resend code in {resendCooldown}s
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleResendCode}
-                      disabled={isResending}
-                      className="text-xs font-bold text-[#1d3f8c] hover:text-green-700 hover:underline disabled:opacity-70 cursor-pointer"
-                    >
-                      {isResending ? "Resending..." : "Resend Code"}
-                    </button>
-                  )}
-                </div>
+                </span>
+
+                {canResend ? (
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isResending}
+                    className="btn-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold text-white shadow-xs transition hover:brightness-105 active:scale-[0.98] cursor-pointer disabled:opacity-60"
+                  >
+                    <RotateCcw className={`h-3 w-3 ${isResending ? "animate-spin" : ""}`} />
+                    <span>{isResending ? "Resending Code..." : "Resend Code"}</span>
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-2.5 py-1 text-xs font-medium text-[#5B7077]">
+                    <Clock className="h-3 w-3 text-[#5B7077]" />
+                    Resend code in {resendCooldown}s
+                  </span>
+                )}
               </div>
               {resendNotice && (
-                <p className="mt-2 text-xs font-semibold text-green-700">
+                <p className="mt-2 text-xs font-semibold text-[#2D7A5D]">
                   {resendNotice}
                 </p>
               )}
             </div>
 
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#5B7077] mb-3 text-center sm:text-left">
               Verification Code
             </label>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={8}
-              value={verificationCode}
-              onChange={(event) =>
-                setVerificationCode(
-                  event.target.value.replace(/\D/g, "").slice(0, 8)
-                )
-              }
-              onPaste={(event) => {
-                event.preventDefault();
-                const pastedText = event.clipboardData.getData("text") || "";
-                setVerificationCode(pastedText.replace(/\D/g, "").slice(0, 8));
-              }}
-              placeholder="Enter 6-digit code"
-              required
-              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-center text-lg font-bold tracking-[0.35em] text-gray-900 shadow-sm outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
-            />
+
+            <div
+              className="flex items-center justify-between gap-2 sm:gap-3 my-2"
+              role="group"
+              aria-label="6-digit verification code"
+            >
+              {otpDigits.map((digit, index) => {
+                const isFilled = Boolean(digit);
+                return (
+                  <input
+                    key={index}
+                    ref={(el) => (inputRefs.current[index] = el)}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={OTP_LENGTH}
+                    value={digit}
+                    onChange={(e) => handleDigitChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    onPaste={handlePaste}
+                    onFocus={(e) => e.target.select()}
+                    onClick={(e) => e.target.select()}
+                    disabled={isSubmitting || isOtpExpired || failedAttempts >= MAX_OTP_ATTEMPTS}
+                    aria-label={`Digit ${index + 1} of ${OTP_LENGTH}`}
+                    autoComplete={index === 0 ? "one-time-code" : "off"}
+                    className={`h-14 w-11 sm:h-16 sm:w-13 rounded-2xl border text-center text-xl sm:text-2xl font-bold tracking-tight text-[#1B2B30] shadow-2xs outline-none transition-all duration-150 ${
+                      isFilled
+                        ? "border-[#1F4E5A] bg-white ring-1 ring-[#1F4E5A]/20"
+                        : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#1F4E5A]/40"
+                    } focus:border-[#1F4E5A] focus:bg-white focus:ring-2 focus:ring-[#1F4E5A]/25 disabled:cursor-not-allowed disabled:bg-[#E5EFF1] disabled:opacity-60`}
+                  />
+                );
+              })}
+            </div>
 
             {errorMessage && (
-              <p className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              <p className="mt-5 rounded-lg border border-[#faedf0] bg-[#faedf0] px-4 py-3 text-sm font-semibold text-[#D9826B]">
                 {errorMessage}
               </p>
             )}
 
             <button
               type="submit"
-              disabled={isSubmitting || isOtpExpired || failedAttempts >= MAX_OTP_ATTEMPTS}
-              className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#008000] px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-md shadow-green-800/10 transition-all duration-150 hover:bg-[#006600] hover:shadow-lg hover:shadow-green-800/20 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={
+                isSubmitting ||
+                isOtpExpired ||
+                failedAttempts >= MAX_OTP_ATTEMPTS ||
+                verificationCode.length !== OTP_LENGTH
+              }
+              className="mt-6 flex w-full items-center justify-center rounded-xl bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-xs transition hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
             >
               {isSubmitting
                 ? "Verifying Code..."
-                : isEmailOtp
-                  ? "Verify Code and Sign In"
-                  : isRegistrationOtp
-                    ? "Verify OTP and Create Account"
-                    : "Verify OTP and Sign In"}
+                : isPasswordResetOtp
+                  ? "Verify Code and Reset Password"
+                  : "Verify Code and Log In"}
             </button>
 
             <button
               type="button"
               onClick={handleChangeDestination}
               disabled={isSubmitting}
-              className="mt-4 w-full text-center text-sm font-bold text-[#1d3f8c] transition hover:text-green-700 hover:underline disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-4 w-full text-center text-sm font-bold text-[#1F4E5A] transition hover:text-[#286575] hover:underline disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
             >
-              {isEmailOtp
+              {isPasswordResetOtp
                 ? "Use a different email address"
-                : isRegistrationOtp
-                  ? "Change registration number"
-                  : "Back to sign in"}
+                : "Back to log in"}
             </button>
 
-            <div className="text-center mt-8 text-sm text-gray-500 font-medium">
+            <div className="text-center mt-8 text-sm text-[#5B7077] font-medium">
               Already have an account?{" "}
               <Link
                 to="/"
-                className="text-[#1d3f8c] font-bold hover:text-green-700 hover:underline"
+                className="text-[#1F4E5A] font-bold hover:text-[#286575] hover:underline cursor-pointer"
               >
-                Sign in
+                Log in
               </Link>
             </div>
           </form>
@@ -515,7 +529,7 @@ export default function OTPVerification() {
               <button
                 type="button"
                 onClick={() => navigate("/", { replace: true })}
-                className="rounded-lg bg-[#0d1117] px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                className="btn-primary rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition cursor-pointer"
               >
                 Okay
               </button>

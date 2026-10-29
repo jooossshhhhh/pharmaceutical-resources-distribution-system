@@ -1,10 +1,10 @@
 import { formatNumber } from "@shared/utils/dashboardUtils";
 
 const palette = {
-  APPROVED: "#0f9f94",
-  PENDING: "#f59e0b",
-  DISPENSED: "#6366f1",
-  REJECTED: "#ef4444",
+  APPROVED: "#4C9F80",
+  PENDING: "#D9826B",
+  DISPENSED: "#34769B",
+  REJECTED: "#8F3F2B",
 };
 
 const labels = ["APPROVED", "PENDING", "DISPENSED", "REJECTED"];
@@ -33,9 +33,9 @@ export default function RequestStatusChart({ rows }) {
         className="relative mx-auto h-28 w-28 rounded-full"
         style={{ background: `conic-gradient(${gradient})` }}
       >
-        <div className="absolute inset-5 flex flex-col items-center justify-center rounded-full bg-white">
-          <span className="text-xl font-black text-black">{formatNumber(total)}</span>
-          <span className="text-[11px] font-medium text-neutral-400">Total</span>
+        <div className="absolute inset-5 flex flex-col items-center justify-center rounded-full bg-[#F9FBFB] shadow-inner">
+          <span className="text-xl font-black text-[#1B2B30]">{formatNumber(total)}</span>
+          <span className="text-[11px] font-semibold text-[#5B7077]">Total</span>
         </div>
       </div>
 
@@ -47,15 +47,15 @@ export default function RequestStatusChart({ rows }) {
 
           return (
             <div key={row.status} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 text-xs">
-              <span className="flex min-w-0 items-center gap-2 font-medium text-neutral-600">
+              <span className="flex min-w-0 items-center gap-2 font-medium text-[#5B7077]">
                 <span
                   className="h-2.5 w-2.5 rounded-full"
                   style={{ backgroundColor: palette[row.status] }}
                 />
                 <span className="truncate">{label}</span>
               </span>
-              <span className="font-black text-black">{formatNumber(row.value)}</span>
-              <span className="w-8 text-right text-neutral-400">{percent}%</span>
+              <span className="font-black text-[#1B2B30]">{formatNumber(row.value)}</span>
+              <span className="w-8 text-right font-medium text-[#5B7077]/70">{percent}%</span>
             </div>
           );
         })}

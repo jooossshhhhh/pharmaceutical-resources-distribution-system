@@ -27,6 +27,7 @@ export default function GoogleOAuthCallbackHandler() {
       const result = await completeGoogleOAuthCallback(rawUrl, {
         storage: localStorage,
         exchangeCode: (code) => supabaseAuth.auth.exchangeCodeForSession(code),
+        setSession: (session) => supabaseAuth.auth.setSession(session),
       });
       if (!active || !result) return;
 

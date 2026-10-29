@@ -24,7 +24,7 @@ export default function PaginationControls({
         >
           <ChevronLeftIcon />
         </button>
-        <span className="rounded-lg bg-black px-3 py-1.5 text-xs font-black text-white">
+        <span className="btn-primary rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow-xs">
           {currentPage}
         </span>
         <button

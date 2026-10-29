@@ -101,7 +101,7 @@ export function FilterChip({ active, children, icon, onClick }) {
       onClick={onClick}
       className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 ${
         active
-          ? "bg-black text-white shadow-md shadow-black/10"
+          ? "btn-primary text-white shadow-xs"
           : "bg-slate-100 text-slate-700 hover:bg-slate-200/80"
       }`}
     >
@@ -116,7 +116,7 @@ export function SortToggleButton({ onClick, sort }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+      className="btn-secondary inline-flex h-10 items-center gap-2 rounded-lg px-3 text-xs font-bold shadow-xs transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
       title={sort === "newest" ? "Newest first" : "Oldest first"}
       aria-label={sort === "newest" ? "Sort newest first" : "Sort oldest first"}
     >
@@ -131,16 +131,16 @@ export function MetricCard({ active, icon, label, onClick, value, detail }) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md ${
-        active ? "border-[#6be9c2] ring-1 ring-[#6be9c2]" : "border-[#d8dadc]"
+      className={`rounded-xl border bg-[#F9FBFB] p-4 text-left shadow-xs transition hover:-translate-y-0.5 hover:shadow-sm cursor-pointer ${
+        active ? "border-[#34769B] ring-1 ring-[#34769B]" : "border-[#CFDDE0]"
       }`}
     >
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-[#dffbf2] text-[#008f68]">
+      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-[#E3EEF5] text-[#34769B]">
         {icon}
       </div>
-      <p className="text-2xl font-bold leading-none text-[#0d1117]">{value}</p>
-      <p className="mt-2 text-xs font-bold text-[#0d1117]">{label}</p>
-      <p className="mt-1 text-xs text-[#5f6673]">{detail}</p>
+      <p className="text-2xl font-bold leading-none text-[#1B2B30]">{value}</p>
+      <p className="mt-2 text-xs font-bold text-[#1B2B30]">{label}</p>
+      <p className="mt-1 text-xs text-[#5B7077]">{detail}</p>
     </button>
   );
 }
@@ -148,7 +148,7 @@ export function MetricCard({ active, icon, label, onClick, value, detail }) {
 export function Field({ children, label }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">
         {label}
       </span>
       {children}
@@ -160,7 +160,7 @@ export function Input(props) {
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+      className={`h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 ${props.className || ""}`}
     />
   );
 }
@@ -169,7 +169,7 @@ export function Select(props) {
   return (
     <select
       {...props}
-      className={`h-10 w-full rounded-lg border border-[#d8dadc] bg-white px-3 text-sm font-medium text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+      className={`h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-medium text-[#1B2B30] outline-none transition focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 ${props.className || ""}`}
     />
   );
 }
@@ -178,7 +178,7 @@ export function Textarea(props) {
   return (
     <textarea
       {...props}
-      className={`min-h-24 w-full resize-none rounded-lg border border-[#d8dadc] bg-white px-3 py-2 text-sm text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/40 ${props.className || ""}`}
+      className={`min-h-24 w-full resize-none rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 py-2 text-sm text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 ${props.className || ""}`}
     />
   );
 }
@@ -191,18 +191,18 @@ export function TransferModal({ children, onClose, title, subtitle, widthClass =
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName={widthClass}
     >
-      <div className="max-h-[86vh] w-full overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-[#e5e7eb] px-5 py-4">
+      <div className="max-h-[86vh] w-full overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#CFDDE0] px-5 py-4">
           <div>
-            <h2 id="transfer-modal-title" className="text-lg font-bold text-[#0d1117]">
+            <h2 id="transfer-modal-title" className="text-lg font-bold text-[#1B2B30]">
               {title}
             </h2>
-            {subtitle && <p className="mt-1 text-sm text-[#5f6673]">{subtitle}</p>}
+            {subtitle && <p className="mt-1 text-sm text-[#5B7077]">{subtitle}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#6b7280] transition hover:bg-[#eff4ff] hover:text-[#0d1117]"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#5B7077] transition hover:bg-[#E5EFF1] hover:text-[#1B2B30] cursor-pointer"
             aria-label="Close modal"
           >
             <XIcon />

@@ -24,12 +24,22 @@ export const parseGoogleOAuthCallback = (rawUrl) => {
   const error = getParam("error");
   const errorDescription = getParam("error_description");
   const code = getParam("code");
+  const accessToken = getParam("access_token");
+  const refreshToken = getParam("refresh_token");
 
   if (error) {
     return { error: errorDescription?.slice(0, 240) || error };
   }
 
-  return code ? { code } : null;
+  if (code) {
+    return { code };
+  }
+
+  if (accessToken && refreshToken) {
+    return { accessToken, refreshToken };
+  }
+
+  return null;
 };
 
 export const consumeGoogleOAuthReturnPath = (storage) => {
@@ -40,7 +50,7 @@ export const consumeGoogleOAuthReturnPath = (storage) => {
 
 export const completeGoogleOAuthCallback = async (
   rawUrl,
-  { storage, exchangeCode }
+  { storage, exchangeCode, setSession }
 ) => {
   const callback = parseGoogleOAuthCallback(rawUrl);
   if (!callback) return null;
@@ -53,7 +63,19 @@ export const completeGoogleOAuthCallback = async (
   }
 
   try {
-    const { error } = await exchangeCode(callback.code);
+    let result;
+    if (callback.code && exchangeCode) {
+      result = await exchangeCode(callback.code);
+    } else if (callback.accessToken && callback.refreshToken && setSession) {
+      result = await setSession({
+        access_token: callback.accessToken,
+        refresh_token: callback.refreshToken,
+      });
+    } else {
+      return { returnPath, notice: "Google sign-in could not be completed. Please try again." };
+    }
+
+    const error = result?.error;
     return {
       returnPath,
       notice: error ? "Google sign-in could not be completed. Please try again." : "",

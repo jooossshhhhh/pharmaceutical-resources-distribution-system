@@ -33,7 +33,10 @@ export const supabase = createClient(
   supabaseAnonKey,
   {
     auth: {
-      flowType: "pkce",
+      flowType: "implicit",
+      detectSessionInUrl: true,
+      autoRefreshToken: true,
+      persistSession: true,
     },
     global: {
       fetch: authAwareFetch,

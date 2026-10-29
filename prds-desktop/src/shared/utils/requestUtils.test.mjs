@@ -378,6 +378,21 @@ test("validates manual paper request payloads", () => {
   assert.equal(
     validateManualPaperRequest({
       facilityId: "facility-a",
+      items: [{ medicine_id: "med-a", quantity: 1, consumed_quantity: -5 }],
+    }),
+    "Consumed quantity cannot be negative."
+  );
+  assert.equal(
+    validateManualPaperRequest({
+      facilityId: "facility-a",
+      items: [{ medicine_id: "med-a", quantity: 1 }],
+      requestDate: "invalid-date-not-a-day",
+    }),
+    "Enter a valid requisition date."
+  );
+  assert.equal(
+    validateManualPaperRequest({
+      facilityId: "facility-a",
       items: [
         { medicine_id: "med-a", quantity: 1 },
         { medicine_id: "med-a", quantity: 2 },
@@ -386,7 +401,11 @@ test("validates manual paper request payloads", () => {
     "Each medicine can appear only once per paper request."
   );
   assert.equal(
-    validateManualPaperRequest({ facilityId: "facility-a", items: [{ medicine_id: "med-a", quantity: 1 }] }),
+    validateManualPaperRequest({
+      facilityId: "facility-a",
+      items: [{ medicine_id: "med-a", quantity: 300, consumed_quantity: 300 }],
+      requestDate: "2026-10-01",
+    }),
     ""
   );
 });

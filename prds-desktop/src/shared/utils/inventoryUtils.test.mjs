@@ -387,3 +387,38 @@ test("isPoNumberUsed respects excludeId and facilityId scoping", () => {
   // Brand new PO -> false
   assert.equal(isPoNumberUsed("PO-NEW-1234", inventory, null, "cho-1"), false);
 });
+
+test("buildInventoryMedicineRows resolves brand_name from lots onto grouped row", () => {
+  const lot1 = {
+    id: "lot-1",
+    facility_id: "cho-1",
+    medicine_id: "med-1",
+    quantity: 100,
+    expiration_date: "2027-01-27",
+    brand_name: "Ritemed",
+    medicine: { id: "med-1", generic_name: "Ascorbic acid" },
+    status: "ACTIVE",
+  };
+  const lot2 = {
+    id: "lot-2",
+    facility_id: "cho-1",
+    medicine_id: "med-1",
+    quantity: 90,
+    expiration_date: "2027-03-31",
+    brand_name: "Ceelin",
+    medicine: { id: "med-1", generic_name: "Ascorbic acid" },
+    status: "ACTIVE",
+  };
+
+  const grouped = buildInventoryMedicineRows([lot1, lot2]);
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0].quantity, 190);
+  assert.equal(grouped[0].brand_name, "Ritemed, Ceelin");
+  assert.equal(grouped[0].medicine.brand_name, "Ritemed, Ceelin");
+});
+
+test("emptyInventoryForm and emptyPoReceiptForm contain supplier fields", () => {
+  assert.ok("supplier_name" in emptyPoReceiptForm);
+  assert.ok("supplier_address" in emptyPoReceiptForm);
+  assert.ok("supplier_contact" in emptyPoReceiptForm);
+});

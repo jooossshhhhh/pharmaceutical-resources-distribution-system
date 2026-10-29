@@ -133,6 +133,9 @@ async function initializeSqliteSchema() {
       return_reason TEXT,
       status TEXT DEFAULT 'ACTIVE',
       brand_name TEXT,
+      supplier_name TEXT,
+      supplier_address TEXT,
+      supplier_contact TEXT,
       disposed_at DATETIME,
       disposal_method TEXT,
       disposed_by TEXT,
@@ -419,6 +422,15 @@ async function initializeSqliteSchema() {
   }
   if (!inventoryColumns.some((column) => column.name === "brand_name")) {
     await db.execute("ALTER TABLE inventory ADD COLUMN brand_name TEXT");
+  }
+  if (!inventoryColumns.some((column) => column.name === "supplier_name")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN supplier_name TEXT");
+  }
+  if (!inventoryColumns.some((column) => column.name === "supplier_address")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN supplier_address TEXT");
+  }
+  if (!inventoryColumns.some((column) => column.name === "supplier_contact")) {
+    await db.execute("ALTER TABLE inventory ADD COLUMN supplier_contact TEXT");
   }
 
   const catalogVersion = await db.select(

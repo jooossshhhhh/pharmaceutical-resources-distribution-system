@@ -8,6 +8,7 @@ export const OTP_CHANNELS = {
 export const OTP_PURPOSES = {
   LOGIN: "login",
   REGISTRATION: "registration",
+  PASSWORD_RESET: "password_reset",
 };
 
 export const PHONE_OTP_PURPOSES = OTP_PURPOSES;

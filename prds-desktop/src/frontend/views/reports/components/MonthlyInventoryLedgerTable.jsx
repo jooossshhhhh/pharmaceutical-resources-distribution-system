@@ -203,7 +203,7 @@ export default function MonthlyInventoryLedgerTable({
               type="button"
               disabled={isExporting}
               onClick={onExportExcel}
-              className="flex items-center gap-1.5 bg-[#00a36c] hover:bg-[#008f5d] disabled:opacity-60 text-white text-xs font-semibold rounded-lg px-3 py-1.5 shadow-xs transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] disabled:opacity-60 text-white text-xs font-semibold rounded-lg px-3 py-1.5 shadow-xs transition-all cursor-pointer"
             >
               <Download className="h-3.5 w-3.5" />
               <span>{isExporting ? "Exporting..." : "Export .xlsx"}</span>
@@ -560,14 +560,14 @@ export default function MonthlyInventoryLedgerTable({
           </tbody>
 
           {/* Sticky Total Footer (Row N+1 of template) */}
-          <tfoot className="bg-[#f0fdf4] font-bold border-t-2 border-[#00a36c] text-[#0d1117] text-xs sticky bottom-0 z-20">
+          <tfoot className="bg-[#EBF3F5] font-bold border-t-2 border-[#1F4E5A] text-[#1B2B30] text-xs sticky bottom-0 z-20">
             <tr>
-              <td colSpan={6} className="px-3 py-2 text-center uppercase tracking-wider border-r border-[#d8dadc] text-emerald-950 font-bold">
+              <td colSpan={6} className="px-3 py-2 text-center uppercase tracking-wider border-r border-[#CFDDE0] text-[#1F4E5A] font-bold">
                 TOTAL
               </td>
-              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-              {viewMode === "full" && <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>}
-              <td className="px-2.5 py-2 text-right text-emerald-950 border-r border-[#d8dadc]">
+              <td className="px-2.5 py-2 text-right border-r border-[#CFDDE0]">-</td>
+              {viewMode === "full" && <td className="px-2.5 py-2 text-right border-r border-[#CFDDE0]">-</td>}
+              <td className="px-2.5 py-2 text-right text-[#1F4E5A] border-r border-[#CFDDE0]">
                 {formatPeso(filteredTotals.begVal)}
               </td>
 

@@ -2,6 +2,9 @@ export const emptyInventoryForm = {
   facility_id: "",
   medicine_id: "",
   brand_name: "",
+  supplier_name: "",
+  supplier_address: "",
+  supplier_contact: "",
   quantity: "",
   threshold: "",
   batch_number: "",
@@ -10,7 +13,6 @@ export const emptyInventoryForm = {
   po_number: "",
   unit_cost: "",
   intake_type: "PO", // "PO" | "RETURN"
-  origin_facility_id: "",
   return_reason: "",
   status: "ACTIVE",
 };
@@ -48,8 +50,10 @@ export const DISPOSAL_METHODS = [
 export const emptyPoReceiptForm = {
   facility_id: "",
   po_number: "",
+  supplier_name: "",
+  supplier_address: "",
+  supplier_contact: "",
   intake_type: "PO",
-  origin_facility_id: "",
   return_reason: "",
   date_received: new Date().toISOString().slice(0, 10),
   items: [createEmptyPoItem("item-1")],
@@ -59,7 +63,6 @@ export const emptyReturnReceiptForm = {
   facility_id: "",
   po_number: "",
   intake_type: "RETURN",
-  origin_facility_id: "",
   return_reason: "EXCESS",
   date_received: new Date().toISOString().slice(0, 10),
   items: [createEmptyPoItem("item-1")],
@@ -440,7 +443,7 @@ export const getStockStatus = (item) => {
     return {
       key: "CRITICAL",
       label: "Critical",
-      badgeClass: "bg-red-100 text-red-700",
+      badgeClass: "bg-[#faedf0] text-[#D9826B] border border-[#D9826B]/25",
     };
   }
 
@@ -448,14 +451,14 @@ export const getStockStatus = (item) => {
     return {
       key: "LOW",
       label: "Low Stock",
-      badgeClass: "bg-orange-100 text-orange-700",
+      badgeClass: "bg-[#fdf3e9] text-[#965315] border border-[#dc8939]/25",
     };
   }
 
   return {
     key: "NORMAL",
     label: "Normal",
-    badgeClass: "bg-emerald-100 text-emerald-700",
+    badgeClass: "bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/25",
   };
 };
 
@@ -506,10 +509,28 @@ export const buildInventoryMedicineRows = (items = []) => {
       sortedLots[0] ||
       {};
 
+    const distinctBrands = Array.from(
+      new Set(
+        lots
+          .map((lot) => (lot.brand_name || lot.medicine?.brand_name || "").trim())
+          .filter((b) => b && b !== "-" && b !== "—")
+      )
+    );
+    const resolvedBrandName =
+      distinctBrands.join(", ") ||
+      nearestLot.brand_name ||
+      nearestLot.medicine?.brand_name ||
+      "";
+
     return {
       ...nearestLot,
       id: key,
       isGrouped: true,
+      brand_name: resolvedBrandName,
+      medicine: {
+        ...(nearestLot.medicine || {}),
+        brand_name: resolvedBrandName || nearestLot.medicine?.brand_name || "",
+      },
       lots: sortedLots,
       lotCount: sortedLots.length,
       quantity: lots.reduce((sum, lot) => sum + Number(lot.quantity || 0), 0),
@@ -567,7 +588,7 @@ export const getExpiryStatus = (item) => {
     return {
       key: "EXPIRED",
       label: "Expired",
-      badgeClass: "bg-red-100 text-red-700",
+      badgeClass: "bg-[#faedf0] text-[#D9826B] border border-[#D9826B]/25",
       days,
     };
   }
@@ -576,7 +597,7 @@ export const getExpiryStatus = (item) => {
     return {
       key: "EXPIRING",
       label: "Expiring soon",
-      badgeClass: "bg-amber-100 text-amber-700",
+      badgeClass: "bg-[#fefee6] text-[#716006] border border-[#f3f029]/60",
       days,
     };
   }
@@ -584,7 +605,7 @@ export const getExpiryStatus = (item) => {
   return {
     key: "OK",
     label: "OK",
-    badgeClass: "bg-emerald-100 text-emerald-700",
+    badgeClass: "bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/25",
     days,
   };
 };
@@ -621,7 +642,7 @@ export const getLotStatus = (lot) => {
     return {
       key: "EXPIRED",
       label: "Expired",
-      badgeClass: "bg-red-100 text-red-700",
+      badgeClass: "bg-[#faedf0] text-[#D9826B] border border-[#D9826B]/25",
     };
   }
 
@@ -629,7 +650,7 @@ export const getLotStatus = (lot) => {
     return {
       key: "EXPIRES_TODAY",
       label: "Expires Today",
-      badgeClass: "bg-red-100 text-red-700 border border-red-200",
+      badgeClass: "bg-[#faedf0] text-[#D9826B] border border-[#D9826B]/30",
     };
   }
 
@@ -637,14 +658,14 @@ export const getLotStatus = (lot) => {
     return {
       key: "EXPIRING",
       label: "Expiring Soon",
-      badgeClass: "bg-amber-100 text-amber-700",
+      badgeClass: "bg-[#fefee6] text-[#716006] border border-[#f3f029]/60",
     };
   }
 
   return {
     key: "ACTIVE",
     label: "Active",
-    badgeClass: "bg-emerald-100 text-emerald-700",
+    badgeClass: "bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/25",
   };
 };
 

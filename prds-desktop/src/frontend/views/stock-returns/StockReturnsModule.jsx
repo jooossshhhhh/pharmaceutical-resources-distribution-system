@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Building2,
   Calendar,
@@ -48,6 +49,15 @@ export default function StockReturnsModule() {
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [selectedReturnRecord, setSelectedReturnRecord] = useState(null);
   const [notice, setNotice] = useState("");
+
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.openNewReturn) {
+      setIsRecordModalOpen(true);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -265,7 +275,7 @@ export default function StockReturnsModule() {
               <button
                 type="button"
                 onClick={() => setIsRecordModalOpen(true)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0d1117] px-4 text-xs font-black text-white shadow-sm hover:bg-neutral-800 active:scale-[0.98] transition cursor-pointer"
+                className="btn-primary inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-bold text-white shadow-xs hover:brightness-105 active:scale-[0.98] transition cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 {isBhw ? "Send Return" : "Record Return"}

@@ -8,18 +8,18 @@ export function FacilityCard({ facility, isSelected, onView, onViewOnMap }) {
   return (
     <article
       data-facility-id={facility.id}
-      className={`group relative overflow-hidden rounded-xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md ${
+      className={`group relative overflow-hidden rounded-xl border bg-[#F9FBFB] p-4 shadow-xs transition hover:-translate-y-0.5 hover:border-[#1F4E5A]/40 hover:shadow-md ${
         isSelected
-          ? "border-neutral-300 ring-2 ring-neutral-100"
-          : "border-neutral-200"
+          ? "border-[#1F4E5A] ring-2 ring-[#1F4E5A]/20"
+          : "border-[#CFDDE0]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 pr-2">
-          <h3 className="line-clamp-2 text-base font-black leading-snug text-black">
+          <h3 className="line-clamp-2 text-base font-bold leading-snug text-[#1B2B30]">
             {facility.facility_name}
           </h3>
-          <p className="mt-0.5 text-sm font-medium text-neutral-500">
+          <p className="mt-0.5 text-sm font-medium text-[#5B7077]">
             {formatFacilityType(facility.facility_type)} - {facility.facility_code}
           </p>
         </div>
@@ -27,19 +27,19 @@ export function FacilityCard({ facility, isSelected, onView, onViewOnMap }) {
           <button
             type="button"
             onClick={onViewOnMap}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 transition hover:border-[#6be9c2] hover:bg-[#ecfff8] hover:text-[#007a52]"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CFDDE0] text-[#5B7077] transition hover:border-[#1F4E5A] hover:bg-[#EBF3F5] hover:text-[#1F4E5A]"
             aria-label={`View ${facility.facility_name} on map`}
             title="View on map"
           >
             <MapViewIcon />
           </button>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-black ${facility.status === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${facility.status === "ACTIVE" ? "bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/30" : "bg-[#E5EFF1] text-[#5B7077]"}`}>
             {formatStatus(facility.status)}
           </span>
         </div>
       </div>
 
-      <div className="mt-4 space-y-2 text-sm font-medium text-neutral-500">
+      <div className="mt-4 space-y-2 text-sm font-medium text-[#5B7077]">
         <InfoLine icon={<LocationIcon />} text={facility.address} />
         <InfoLine icon={<StockIcon />} text={`${facility.inventoryRows.length} inventory records`} />
       </div>
@@ -51,11 +51,11 @@ export function FacilityCard({ facility, isSelected, onView, onViewOnMap }) {
       </div>
 
       <div className="mt-4">
-        <div className="mb-2 flex items-center justify-between text-xs font-bold text-neutral-600">
+        <div className="mb-2 flex items-center justify-between text-xs font-bold text-[#5B7077]">
           <span>Stock Condition</span>
           <span>{facility.healthPercent == null ? "-" : `${facility.healthPercent}%`}</span>
         </div>
-        <div className="h-1.5 rounded-full bg-neutral-100">
+        <div className="h-1.5 rounded-full bg-[#CFDDE0]">
           <div
             className={`h-full rounded-full ${healthMeta.barClass}`}
             style={{ width: `${facility.healthPercent ?? 0}%` }}
@@ -66,12 +66,12 @@ export function FacilityCard({ facility, isSelected, onView, onViewOnMap }) {
             {healthMeta.label}
           </span>
           <span
-            className={`rounded-full px-2 py-0.5 text-xs font-black ${
+            className={`rounded-full px-2 py-0.5 text-xs font-bold ${
               alertCount > 0
-                ? "bg-red-50 text-red-600"
+                ? "bg-[#faedf0] text-[#D9826B] border border-[#D9826B]/30"
               : facility.stockHealth === "NO_DATA"
-                ? "bg-neutral-100 text-neutral-600"
-                : "bg-emerald-50 text-emerald-700"
+                ? "bg-[#E5EFF1] text-[#5B7077]"
+                : "bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/30"
             }`}
           >
             {alertCount > 0 ? `${alertCount} concerns` : facility.stockHealth === "NO_DATA" ? "Not assessed" : "No concerns"}
@@ -83,7 +83,7 @@ export function FacilityCard({ facility, isSelected, onView, onViewOnMap }) {
         <button
           type="button"
           onClick={onView}
-          className="h-10 w-full rounded-lg bg-[#e5fff4] text-sm font-black text-[#007a52] transition hover:bg-[#d7fbea]"
+          className="h-10 w-full rounded-lg bg-[#EBF3F5] text-sm font-bold text-[#1F4E5A] border border-[#1F4E5A]/20 transition hover:bg-linear-to-r hover:from-[#1F4E5A] hover:to-[#286575] hover:text-white cursor-pointer shadow-xs"
         >
           View Details
         </button>
@@ -124,9 +124,9 @@ export function FacilityCardSkeleton() {
 
 function MetricTile({ value, label }) {
   return (
-    <div className="rounded-lg bg-neutral-50 px-3 py-3 text-center">
-      <p className="text-base font-black text-black">{value}</p>
-      <p className="text-xs font-medium text-neutral-500">{label}</p>
+    <div className="rounded-lg bg-[#F4F8F8] px-3 py-3 text-center">
+      <p className="text-base font-bold text-[#1B2B30]">{value}</p>
+      <p className="text-xs font-medium text-[#5B7077]">{label}</p>
     </div>
   );
 }
@@ -134,7 +134,7 @@ function MetricTile({ value, label }) {
 function InfoLine({ icon, text }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="text-neutral-400">{icon}</span>
+      <span className="text-[#5B7077]">{icon}</span>
       <span className="truncate">{text}</span>
     </div>
   );

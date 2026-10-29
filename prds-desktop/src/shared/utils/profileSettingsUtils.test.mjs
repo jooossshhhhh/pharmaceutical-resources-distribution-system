@@ -13,6 +13,8 @@ import {
   getReadableEmail,
   getSubmittedPhoneNumber,
   isPhoneAlreadyRegisteredError,
+  isValidEmail,
+  emptyGmailUpdate,
   maskPhoneNumber,
 } from "./profileSettingsUtils.js";
 
@@ -40,17 +42,13 @@ test("uses Not connected for missing login methods", () => {
 });
 
 test("chooses the missing login method as the profile action", () => {
-  assert.deepEqual(
-    getLoginMethodAction({ hasGmailLogin: true, hasPhoneLogin: false }),
-    { kind: "phone", label: "Add Phone Number" }
-  );
-  assert.deepEqual(
-    getLoginMethodAction({ hasGmailLogin: false, hasPhoneLogin: true }),
-    { kind: "gmail", label: "Add Gmail Login" }
-  );
   assert.equal(
-    getLoginMethodAction({ hasGmailLogin: true, hasPhoneLogin: true }),
+    getLoginMethodAction({ hasGmailLogin: true }),
     null
+  );
+  assert.deepEqual(
+    getLoginMethodAction({ hasGmailLogin: false }),
+    { kind: "gmail", label: "Add Gmail Login" }
   );
 });
 
@@ -146,19 +144,10 @@ test("ignores a stale profile email that is not linked in Supabase Auth", () => 
   );
 });
 
-test("only allows removing a login method when another method remains", () => {
+test("does not allow removing Gmail as the sole login method", () => {
   assert.equal(
     canRemoveLoginMethod({
       hasGmailLogin: true,
-      hasPhoneLogin: true,
-      method: "gmail",
-    }),
-    true
-  );
-  assert.equal(
-    canRemoveLoginMethod({
-      hasGmailLogin: true,
-      hasPhoneLogin: false,
       method: "gmail",
     }),
     false
@@ -195,7 +184,7 @@ test("uses the edited phone number when a new value is submitted", () => {
   );
 });
 
-test("requires verification when adding a phone number to a profile without one", () => {
+test("does not require verification when adding or updating a phone number as database contact info", () => {
   assert.deepEqual(
     getPhoneChangeState({
       currentPhoneNumber: "",
@@ -205,12 +194,9 @@ test("requires verification when adding a phone number to a profile without one"
     {
       currentPhoneNumber: "",
       nextPhoneNumber: "09623702834",
-      requiresVerification: true,
+      requiresVerification: false,
     }
   );
-});
-
-test("does not require verification when phone is unchanged while saving profile details", () => {
   assert.deepEqual(
     getPhoneChangeState({
       currentPhoneNumber: "09623702834",
@@ -223,9 +209,6 @@ test("does not require verification when phone is unchanged while saving profile
       requiresVerification: false,
     }
   );
-});
-
-test("requires verification when an existing phone number is changed", () => {
   assert.deepEqual(
     getPhoneChangeState({
       currentPhoneNumber: "09623702834",
@@ -235,7 +218,7 @@ test("requires verification when an existing phone number is changed", () => {
     {
       currentPhoneNumber: "09623702834",
       nextPhoneNumber: "09702347186",
-      requiresVerification: true,
+      requiresVerification: false,
     }
   );
 });
@@ -292,9 +275,8 @@ test("accurately detects offline Google identities and resolves connected Gmail 
 
   const action = getLoginMethodAction({
     hasGmailLogin: Boolean(googleEmail && linkedGmail),
-    hasPhoneLogin: false,
   });
-  assert.deepEqual(action, { kind: "phone", label: "Add Phone Number" });
+  assert.equal(action, null);
 });
 
 test("validateAvatarFile enforces 2 MB limit, allowed formats, and blocks SVG files", async () => {
@@ -336,5 +318,21 @@ test("canUpdateAvatar enforces once-a-week (7-day) update cooldown", async () =>
   // 10 days later -> allowed
   const tenDaysLater = new Date("2026-10-08T12:00:00Z");
   assert.equal(canUpdateAvatar(baseDate, tenDaysLater).allowed, true);
+});
+
+test("isValidEmail correctly validates email formats", () => {
+  assert.equal(isValidEmail("test@gmail.com"), true);
+  assert.equal(isValidEmail("user.name+tag@domain.co"), true);
+  assert.equal(isValidEmail(""), false);
+  assert.equal(isValidEmail("notanemail"), false);
+  assert.equal(isValidEmail("missingdomain@"), false);
+  assert.equal(isValidEmail("@nodomain.com"), false);
+});
+
+test("emptyGmailUpdate initial state is clean", () => {
+  assert.equal(emptyGmailUpdate.isOpen, false);
+  assert.equal(emptyGmailUpdate.step, "input");
+  assert.equal(emptyGmailUpdate.newEmail, "");
+  assert.equal(emptyGmailUpdate.code, "");
 });
 

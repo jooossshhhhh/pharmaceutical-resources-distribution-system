@@ -102,6 +102,18 @@ test("inventory metrics count stocked batches and keep critical separate from lo
   assert.deepEqual(metrics, { stockedBatches: 3, criticalStock: 2, lowStock: 1 });
 });
 
+test("inventory metrics aggregate multiple batches of the same medicine to prevent false alarms", () => {
+  const metrics = getDashboardInventoryMetrics([
+    { facility_id: "fac-1", medicine_id: "med-1", quantity: 2, threshold: 100 },
+    { facility_id: "fac-1", medicine_id: "med-1", quantity: 500, threshold: 100 },
+    { facility_id: "fac-1", medicine_id: "med-2", quantity: 5, threshold: 50 },
+  ]);
+
+  // med-1 has 2 + 500 = 502 (> 100) -> Healthy
+  // med-2 has 5 (<= 50 * 0.25 = 12.5) -> Critical
+  assert.deepEqual(metrics, { stockedBatches: 3, criticalStock: 1, lowStock: 0 });
+});
+
 test("active patient count excludes archived patients", () => {
   assert.equal(countActivePatients([
     { archived_at: null },

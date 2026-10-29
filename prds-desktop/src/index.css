@@ -19,9 +19,63 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* Universal interactive cursor rules: ensure hand cursor on all clickable buttons */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]):not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"]:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+:root {
+  /* Brand */
+  --teal-700: #1F4E5A;   --teal-50: #E5EFF1;
+  --sky-600:  #34769B;   --sky-50:  #E3EEF5;  --sky-900:  #1F4A66;
+  --mint-500: #4C9F80;   --mint-50: #E2F3EC;  --mint-900: #226048;
+  --coral-400:#D9826B;   --coral-50:#FBE9E3;  --coral-900:#8F3F2B;
+
+  /* Neutrals */
+  --canvas:   #E5EFF1;
+  --surface:  #F9FBFB;
+  --border:   #CFDDE0;
+  --text:     #1B2B30;
+  --text-2:   #5B7077;
+
+  /* Semantic */
+  --primary:    var(--sky-600);
+  --success-bg: var(--mint-50);  --success-fg: var(--mint-900);
+  --warn-bg:    var(--coral-50); --warn-fg:    var(--coral-900);
+  --danger:     var(--coral-400);
+
+  /* Gradients (Whisper level) */
+  --grad-sidebar: linear-gradient(180deg, #245866 0%, #1F4E5A 55%, #1A4350 100%);
+  --grad-canvas:  linear-gradient(180deg, #EBF4F6 0%, #E5EFF1 100%);
+  --grad-hero:    linear-gradient(135deg, #F9FBFB 0%, #E3EEF5 100%);
+  --grad-primary: linear-gradient(180deg, #387BA0 0%, #2F7094 100%);
+  --grad-primary-hover: linear-gradient(180deg, #32708F 0%, #2A6788 100%);
+  --grad-success-bar: linear-gradient(90deg, #4C9F80 0%, #6BB59A 100%);
+  --grad-card-accent: linear-gradient(90deg, #34769B 0%, #4C9F80 100%);
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+  --color-prds-teal: #1F4E5A;
+  --color-prds-sky: #34769B;
+  --color-prds-mint: #4C9F80;
+  --color-prds-coral: #D9826B;
+  --color-prds-canvas: #E5EFF1;
+  --color-prds-surface: #F9FBFB;
+  --color-prds-border: #CFDDE0;
+  --color-prds-text: #1B2B30;
+  --color-prds-text-secondary: #5B7077;
 }
 
 @keyframes prds-fade-in {
@@ -138,9 +192,11 @@ body {
   height: 100%;
   margin: 0;
   font-family: inherit;
-  background: #f5f7fb;
+  background: var(--grad-canvas);
+  background-attachment: fixed;
+  color: var(--text);
   overflow: hidden;
-  scrollbar-color: #42474e #f3efe9;
+  scrollbar-color: var(--border) var(--canvas);
   scrollbar-width: thin;
 }
 
@@ -149,7 +205,7 @@ body {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #f5f7fb;
+  background: var(--grad-canvas);
 }
 
 *::-webkit-scrollbar {
@@ -158,26 +214,45 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background: #f3efe9;
+  background: var(--canvas);
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #42474e;
-  border: 2px solid #f3efe9;
+  background: var(--border);
+  border: 2px solid var(--canvas);
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #00a36c;
+  background: var(--text-2);
 }
 
 .prds-admin-shell {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
-  background:
-    radial-gradient(1100px 480px at 85% -8%, rgb(107 233 194 / 0.12), transparent 60%),
-    radial-gradient(900px 420px at -10% 0%, rgb(0 163 108 / 0.06), transparent 55%),
-    #f1f5f9;
+  background: var(--grad-canvas);
+  color: var(--text);
+}
+
+.btn-primary {
+  background: var(--grad-primary);
+  color: #fff;
+  border: 1px solid #2F7094;
+  box-shadow: 0 1px 2px rgba(31, 78, 90, 0.18);
+}
+
+.btn-primary:hover {
+  background: var(--grad-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--canvas);
 }
 
 .prds-admin-shell .font-black {
@@ -208,7 +283,7 @@ body {
 }
 
 .prds-main-scrollbar {
-  scrollbar-color: #cbd5e1 #f1f5f9;
+  scrollbar-color: var(--border) var(--canvas);
   scrollbar-width: thin;
 }
 
@@ -218,17 +293,17 @@ body {
 }
 
 .prds-main-scrollbar::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--canvas);
 }
 
 .prds-main-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border: 2px solid #f1f5f9;
+  background: var(--border);
+  border: 2px solid var(--canvas);
   border-radius: 999px;
 }
 
 .prds-main-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--text-2);
 }
 
 .prds-modal-scrollbar {
@@ -359,9 +434,10 @@ body {
 }
 
 .prds-map-popup .leaflet-popup-content-wrapper {
-  border: 1px solid #e4e6e8;
+  border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 18px 44px rgba(13, 17, 23, 0.18), 0 2px 8px rgba(13, 17, 23, 0.06);
+  box-shadow: 0 18px 44px rgba(31, 78, 90, 0.16), 0 2px 8px rgba(31, 78, 90, 0.06);
+  background: var(--surface);
   overflow: hidden;
 }
 
@@ -369,17 +445,18 @@ body {
   content: "";
   display: block;
   height: 3px;
-  background: linear-gradient(90deg, #00a36c, #6be9c2);
+  background: var(--grad-card-accent);
 }
 
 .prds-map-popup .leaflet-popup-content {
   margin: 0;
   padding: 13px 14px;
   line-height: 1.4;
+  color: var(--text);
 }
 
 .prds-map-popup .leaflet-popup-tip {
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: none;
 }
 
@@ -434,12 +511,12 @@ body {
 
 @keyframes prds-flash {
   0% {
-    border-color: #6be9c2;
-    background-color: #ecfff8;
+    border-color: #4C9F80;
+    background-color: #E2F3EC;
   }
   100% {
-    border-color: #e5e7eb;
-    background-color: #f8f9ff;
+    border-color: #CFDDE0;
+    background-color: #F9FBFB;
   }
 }
 

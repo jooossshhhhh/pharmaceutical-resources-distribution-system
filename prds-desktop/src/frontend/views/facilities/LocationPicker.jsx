@@ -20,7 +20,7 @@ const createPinIcon = () => {
   return L.divIcon({
     className: "",
     html: `
-      <span style="display:flex;width:30px;height:30px;align-items:center;justify-content:center;border-radius:9999px 9999px 9999px 0;transform:rotate(-45deg);background:#00a36c;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(13,17,23,0.45);">
+      <span style="display:flex;width:30px;height:30px;align-items:center;justify-content:center;border-radius:9999px 9999px 9999px 0;transform:rotate(-45deg);background:#1F4E5A;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(13,17,23,0.45);">
         <span style="width:10px;height:10px;border-radius:9999px;background:#ffffff;"></span>
       </span>
     `,
@@ -273,18 +273,18 @@ export default function LocationPicker({ value = null, onChange, label = null })
         </label>
 
         {isDropdownOpen && results.length > 0 && (
-          <ul className="absolute inset-x-0 z-20 mt-1.5 max-h-64 overflow-auto rounded-lg border border-[#d8dadc] bg-white py-1 shadow-xl">
+          <ul className="absolute inset-x-0 z-20 mt-1.5 max-h-64 overflow-auto rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] py-1 shadow-xl">
             {results.map((place) => (
               <li key={place.id}>
                 <button
                   type="button"
                   onClick={() => selectPlace(place)}
-                  className="w-full px-3.5 py-2.5 text-left transition hover:bg-[#eff4ff]"
+                  className="w-full px-3.5 py-2.5 text-left transition hover:bg-[#EBF3F5]"
                 >
-                  <span className="block truncate text-sm font-black normal-case tracking-normal text-[#0d1117]">
+                  <span className="block truncate text-sm font-black normal-case tracking-normal text-[#1B2B30]">
                     {place.name}
                   </span>
-                  <span className="block truncate text-xs font-medium normal-case tracking-normal text-neutral-500">
+                  <span className="block truncate text-xs font-medium normal-case tracking-normal text-[#5B7077]">
                     {place.address}
                   </span>
                 </button>
@@ -305,7 +305,7 @@ export default function LocationPicker({ value = null, onChange, label = null })
           maxBoundsViscosity={1}
           scrollWheelZoom={false}
           onClick={handleMapClick}
-          className="z-0 h-52 w-full rounded-lg border border-[#d8dadc] bg-[#eef1f4]"
+          className="z-0 h-52 w-full rounded-lg border border-[#CFDDE0] bg-[#E5EFF1]"
         >
           <TileLayer
             attribution="Tiles &copy; Esri"
@@ -325,7 +325,7 @@ export default function LocationPicker({ value = null, onChange, label = null })
               eventHandlers={{ drag: handleDrag, dragend: handleDragEnd }}
             >
               <Tooltip direction="top" offset={[0, -8]} opacity={1}>
-                <p className="text-xs font-black text-[#0d1117]">{pinLabel || "Pinned location"}</p>
+                <p className="text-xs font-black text-[#1B2B30]">{pinLabel || "Pinned location"}</p>
               </Tooltip>
             </Marker>
           )}
@@ -337,25 +337,25 @@ export default function LocationPicker({ value = null, onChange, label = null })
           aria-label="Use my location"
           title="Use my location"
           disabled={isLocating}
-          className="absolute right-2 top-2 z-[1000] flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 shadow-md transition hover:text-emerald-600 disabled:opacity-50"
+          className="absolute right-2 top-2 z-[1000] flex h-8 w-8 items-center justify-center rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077] shadow-md transition hover:text-[#1F4E5A] disabled:opacity-50"
         >
           {isLocating ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#4C9F80]/30 border-t-[#4C9F80]" />
           ) : (
             <CrosshairIcon />
           )}
         </button>
       </div>
 
-      <div className="rounded-lg bg-[#f8f9ff] px-3 py-2">
+      <div className="rounded-lg bg-[#F4F8F8] px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           {displayPosition ? (
-            <p className="min-w-0 truncate text-xs font-semibold normal-case tracking-normal text-[#42474e]">
+            <p className="min-w-0 truncate text-xs font-semibold normal-case tracking-normal text-[#5B7077]">
               {dragPosition ? "Dragging — " : ""}
               {displayPosition.latitude.toFixed(6)}, {displayPosition.longitude.toFixed(6)}
             </p>
           ) : (
-            <p className="min-w-0 truncate text-xs font-semibold normal-case tracking-normal text-neutral-500">
+            <p className="min-w-0 truncate text-xs font-semibold normal-case tracking-normal text-[#5B7077]">
               Search for a place or click the map to set the location.
             </p>
           )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
@@ -51,6 +52,9 @@ import {
   SearchIcon,
   XIcon,
 } from "./DispensingUi";
+import DispensingTabToggle from "./DispensingTabToggle";
+import DispensingHistoryView from "./DispensingHistoryView";
+import UpdateFollowUpModal from "./UpdateFollowUpModal";
 
 function StepperBar({ blockerFor, onStepClick, step }) {
   const steps = [
@@ -87,26 +91,26 @@ function StepperBar({ blockerFor, onStepClick, step }) {
                 <span
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition ${
                     active
-                      ? "bg-[#00a36c] text-white shadow-sm"
+                      ? "bg-[#34769B] text-white shadow-sm"
                       : done
-                        ? "border border-[#6be9c2] bg-[#ecfff8] text-[#008f68]"
-                        : "border border-[#d8dadc] bg-white text-[#9aa1ad]"
+                        ? "border border-[#4C9F80]/30 bg-[#E2F3EC] text-[#226048]"
+                        : "border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077]"
                   }`}
                 >
                   {done ? <CheckIcon /> : entry.id}
                 </span>
                 <span
                   className={`hidden whitespace-nowrap text-sm font-bold sm:block ${
-                    active ? "text-[#0d1117]" : done ? "text-[#008f68]" : "text-[#9aa1ad]"
+                    active ? "text-[#1B2B30]" : done ? "text-[#226048]" : "text-[#5B7077]"
                   }`}
                 >
                   {entry.label}
                 </span>
               </button>
               {index < steps.length - 1 && (
-                <span aria-hidden="true" className="relative mx-3 h-0.5 min-w-6 flex-1 overflow-hidden rounded-full bg-[#e5e7eb]">
+                <span aria-hidden="true" className="relative mx-3 h-0.5 min-w-6 flex-1 overflow-hidden rounded-full bg-[#CFDDE0]">
                   <span
-                    className={`absolute inset-y-0 left-0 rounded-full bg-[#6be9c2] transition-[width] duration-300 ${
+                    className={`absolute inset-y-0 left-0 rounded-full bg-[#4C9F80] transition-[width] duration-300 ${
                       done ? "w-full" : "w-0"
                     }`}
                   />
@@ -120,7 +124,7 @@ function StepperBar({ blockerFor, onStepClick, step }) {
   );
 }
 
-function ReceiptModal({ onClose, onExport, receipt }) {
+function ReceiptModal({ onClose, onExport, onViewInHistory, receipt }) {
   return (
     <DispensingModal
       title="Medicine Released"
@@ -129,31 +133,31 @@ function ReceiptModal({ onClose, onExport, receipt }) {
       widthClass="max-w-2xl"
     >
       <div className="space-y-4">
-        <div className="flex flex-col items-center rounded-xl border border-[#6be9c2] bg-[#ecfff8] p-6 text-center transition-all duration-200">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#00a36c] text-white">
+        <div className="flex flex-col items-center rounded-xl border border-[#4C9F80]/30 bg-[#E2F3EC] p-6 text-center transition-all duration-200">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#4C9F80] text-white">
             <CheckIcon />
           </span>
-          <h3 className="mt-3 text-lg font-bold text-[#0d1117] tabular-nums">
+          <h3 className="mt-3 text-lg font-bold text-[#1B2B30] tabular-nums">
             {formatTransactionNumber(receipt.transactionId)}
           </h3>
-          <p className="mt-1 text-xs text-[#5f6673]">{formatDispensingDateTime(receipt.dispensedAt)}</p>
+          <p className="mt-1 text-xs text-[#5B7077]">{formatDispensingDateTime(receipt.dispensedAt)}</p>
         </div>
 
-        <section className="rounded-xl border border-[#e5e7eb] p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Patient</p>
-          <p className="mt-1 text-sm font-bold text-[#0d1117]">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">Patient</p>
+          <p className="mt-1 text-sm font-bold text-[#1B2B30]">
             {formatPatientName(receipt.patient)}{" "}
-            <span className="font-medium text-[#5f6673]">
+            <span className="font-medium text-[#5B7077]">
               · {formatPatientCode(receipt.patient.patient_code)}
             </span>
           </p>
-          <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Prescribed By</p>
-          <p className="mt-1 text-sm font-semibold text-[#0d1117]">{receipt.prescribedBy}</p>
+          <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">Prescribed By</p>
+          <p className="mt-1 text-sm font-semibold text-[#1B2B30]">{receipt.prescribedBy}</p>
         </section>
 
-        <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+        <div className="overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB]">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <thead className="border-b border-[#CFDDE0] bg-[#F9FBFB] text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
               <tr>
                 <th className="px-4 py-3">Medicine</th>
                 <th className="px-4 py-3">Batch</th>
@@ -161,16 +165,16 @@ function ReceiptModal({ onClose, onExport, receipt }) {
                 <th className="px-4 py-3 text-right">Released</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#edf0f2]">
+            <tbody className="divide-y divide-[#CFDDE0]/40">
               {receipt.lines.flatMap((line) =>
                 line.preview.allocations.map((allocation, allocationIndex) => (
                   <tr key={`${line.medicine_id}-${allocation.inventory_id}`}>
-                    <td className="px-4 py-3 font-bold text-[#0d1117]">
+                    <td className="px-4 py-3 font-bold text-[#1B2B30]">
                       {allocationIndex === 0 ? (
                         <div>
                           <p>{getMedicineLabel(line.option.medicine)}</p>
                           {line.follow_up_action && (
-                            <span className="mt-1 inline-block rounded bg-[#ecfff8] px-2 py-0.5 text-[10px] font-semibold text-[#008f68] border border-[#6be9c2]/50">
+                            <span className="mt-1 inline-block rounded bg-[#E2F3EC] px-2 py-0.5 text-[10px] font-semibold text-[#226048] border border-[#4C9F80]/25">
                               {getFollowUpDisplay(line)}
                             </span>
                           )}
@@ -179,13 +183,13 @@ function ReceiptModal({ onClose, onExport, receipt }) {
                         ""
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-[#5f6673]">{allocation.batch_number}</td>
-                    <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                    <td className="px-4 py-3 text-xs text-[#5B7077]">{allocation.batch_number}</td>
+                    <td className="px-4 py-3 text-right font-bold text-[#1B2B30] tabular-nums">
                       {allocationIndex === 0
                         ? Number(line.needed_quantity ?? line.quantity).toLocaleString()
                         : ""}
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-[#0d1117] tabular-nums">
+                    <td className="px-4 py-3 text-right font-bold text-[#1B2B30] tabular-nums">
                       {allocation.quantity.toLocaleString()}
                     </td>
                   </tr>
@@ -195,21 +199,32 @@ function ReceiptModal({ onClose, onExport, receipt }) {
           </table>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-[#e5e7eb] pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#CFDDE0] pt-4">
           <button
             type="button"
             onClick={onExport}
-            className={`h-10 rounded-lg border border-[#d8dadc] bg-white px-5 text-sm font-bold text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff] ${FOCUS_RING}`}
+            className={`btn-secondary h-10 rounded-lg px-5 text-sm font-bold shadow-xs transition cursor-pointer ${FOCUS_RING}`}
           >
             Export
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className={`inline-flex h-10 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] ${FOCUS_RING}`}
-          >
-            Done
-          </button>
+          <div className="flex items-center gap-2">
+            {onViewInHistory && (
+              <button
+                type="button"
+                onClick={onViewInHistory}
+                className={`btn-secondary h-10 inline-flex items-center gap-1.5 rounded-lg px-4 text-sm font-bold shadow-xs transition cursor-pointer ${FOCUS_RING}`}
+              >
+                View in History
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className={`btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-sm transition cursor-pointer ${FOCUS_RING}`}
+            >
+              Done
+            </button>
+          </div>
         </div>
       </div>
     </DispensingModal>
@@ -276,6 +291,7 @@ export default function DispensingWorkbench() {
 
   // Wizard step
   const [wizardStep, setWizardStep] = useState(1);
+  const [activeTab, setActiveTab] = useState("DISPENSE"); // "DISPENSE" | "HISTORY"
 
   const [inventoryRows, setInventoryRows] = useState([]);
   const [isLoadingInventory, setIsLoadingInventory] = useState(true);
@@ -315,9 +331,21 @@ export default function DispensingWorkbench() {
   const [isLoadingReferralStock, setIsLoadingReferralStock] = useState(false);
   const [stockModalMedicineId, setStockModalMedicineId] = useState("");
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [isUpdateFollowUpModalOpen, setIsUpdateFollowUpModalOpen] = useState(false);
+  const [updateFollowUpPatientData, setUpdateFollowUpPatientData] = useState(null);
 
   const [receipt, setReceipt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.prefillMedicineName) {
+      setActiveTab("DISPENSE");
+      setMedicineKeyword(location.state.prefillMedicineName);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const currentDateTime = useMemo(
     () =>
@@ -403,7 +431,10 @@ export default function DispensingWorkbench() {
       setPatientResults(rows);
 
       const patientIds = rows.map((row) => row.id);
-      const overviewMap = await getPatientsMonthlyClaimOverview(patientIds);
+      const overviewMap = await getPatientsMonthlyClaimOverview(patientIds, {
+        currentFacilityId: profileFacilityId,
+        isBhw,
+      });
       setPatientsOverview(overviewMap);
 
       const blockedIds = [];
@@ -974,8 +1005,8 @@ export default function DispensingWorkbench() {
 
     if (isLoadingReferralStock) {
       return (
-        <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff] p-5 text-sm text-[#5f6673]">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#00a36c] border-t-transparent" />
+        <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#CFDDE0] bg-[#F9FBFB] p-5 text-sm text-[#5B7077]">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#34769B] border-t-transparent" />
           <span>Checking stock availability at {destinationFullName}...</span>
         </div>
       );
@@ -1016,7 +1047,7 @@ export default function DispensingWorkbench() {
             </div>
             <div className="shrink-0 text-right">
               <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Unreleased</p>
-              <span className="mt-0.5 inline-flex items-center rounded-lg bg-amber-100/90 px-2.5 py-1 text-xs font-black text-amber-900 border border-amber-200">
+              <span className="mt-0.5 inline-flex items-center rounded-lg bg-[#fdf3e9] px-2.5 py-1 text-xs font-black text-[#965315] border border-[#dc8939]/30">
                 {remainingAfterThisRelease} {remainingAfterThisRelease === 1 ? "unit" : "units"}
               </span>
             </div>
@@ -1027,20 +1058,20 @@ export default function DispensingWorkbench() {
         <div
           className={`flex items-center justify-between gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs ${
             totalUnits <= 0
-              ? "border-rose-200 bg-rose-50 text-rose-900"
+              ? "border-[#D9826B]/30 bg-[#FBE9E3] text-[#8F3F2B]"
               : isFullyCovered
-              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-              : "border-amber-200 bg-amber-50 text-amber-950"
+              ? "border-[#4C9F80]/30 bg-[#E2F3EC] text-[#226048]"
+              : "border-[#34769B]/30 bg-[#E3EEF5] text-[#1F4A66]"
           }`}
         >
           <div className="flex items-center gap-2">
             <span
               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${
                 totalUnits <= 0
-                  ? "bg-rose-600"
+                  ? "bg-[#D9826B]"
                   : isFullyCovered
-                  ? "bg-[#00a36c]"
-                  : "bg-amber-600"
+                  ? "bg-[#4C9F80]"
+                  : "bg-[#34769B]"
               }`}
             >
               {totalUnits <= 0 ? "✕" : isFullyCovered ? "✓" : "!"}
@@ -1105,7 +1136,7 @@ export default function DispensingWorkbench() {
           <button
             type="button"
             onClick={() => setStockModalMedicineId("")}
-            className={`h-9 rounded-lg bg-[#00a36c] px-5 text-xs font-bold text-white shadow-xs transition hover:bg-[#008f68] ${FOCUS_RING}`}
+            className={`btn-primary h-9 rounded-lg px-5 text-xs font-bold text-white shadow-xs transition cursor-pointer ${FOCUS_RING}`}
           >
             Got It
           </button>
@@ -1133,8 +1164,8 @@ export default function DispensingWorkbench() {
         <label
           className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 transition ${
             !line.follow_up_action
-              ? "border-[#00a36c] bg-[#ecfff8]/50 ring-1 ring-[#00a36c]"
-              : "border-[#e5e7eb] bg-white hover:border-[#cfd5dc] hover:bg-[#fafafa]"
+              ? "border-[#34769B] bg-[#E3EEF5]/40 ring-1 ring-[#34769B]"
+              : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#34769B]/40 hover:bg-[#E5EFF1]"
           }`}
         >
           <input
@@ -1142,11 +1173,11 @@ export default function DispensingWorkbench() {
             type="radio"
             checked={!line.follow_up_action}
             onChange={() => updateFollowUpAction(line.medicine_id, "")}
-            className="mt-0.5 text-[#00a36c] focus:ring-[#00a36c]"
+            className="mt-0.5 text-[#34769B] focus:ring-[#34769B]"
           />
           <div className="min-w-0 flex-1">
-            <span className="block text-xs font-bold text-[#0d1117]">No follow-up recorded</span>
-            <span className="block text-[11px] text-[#5f6673]">
+            <span className="block text-xs font-bold text-[#1B2B30]">No follow-up recorded</span>
+            <span className="block text-[11px] text-[#5B7077]">
               Close claim without scheduling or referral
             </span>
           </div>
@@ -1156,8 +1187,8 @@ export default function DispensingWorkbench() {
         <div
           className={`rounded-lg border p-2.5 transition ${
             line.follow_up_action === FOLLOW_UP_ACTIONS.schedule
-              ? "border-[#00a36c] bg-[#ecfff8]/50 ring-1 ring-[#00a36c]"
-              : "border-[#e5e7eb] bg-white hover:border-[#cfd5dc] hover:bg-[#fafafa]"
+              ? "border-[#34769B] bg-[#E3EEF5]/40 ring-1 ring-[#34769B]"
+              : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#34769B]/40 hover:bg-[#E5EFF1]"
           }`}
         >
           <label className="flex cursor-pointer items-start gap-2.5">
@@ -1166,18 +1197,18 @@ export default function DispensingWorkbench() {
               type="radio"
               checked={line.follow_up_action === FOLLOW_UP_ACTIONS.schedule}
               onChange={() => updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.schedule)}
-              className="mt-0.5 text-[#00a36c] focus:ring-[#00a36c]"
+              className="mt-0.5 text-[#34769B] focus:ring-[#34769B]"
             />
             <div className="min-w-0 flex-1">
-              <span className="block text-xs font-bold text-[#0d1117]">Schedule next release</span>
-              <span className="block text-[11px] text-[#5f6673]">
+              <span className="block text-xs font-bold text-[#1B2B30]">Schedule next release</span>
+              <span className="block text-[11px] text-[#5B7077]">
                 Patient returns to this health center on a set date
               </span>
             </div>
           </label>
 
           {line.follow_up_action === FOLLOW_UP_ACTIONS.schedule && (
-            <div className="mt-2.5 space-y-2 border-t border-[#e5e7eb] pt-2">
+            <div className="mt-2.5 space-y-2 border-t border-[#CFDDE0] pt-2">
               <div className="flex items-center gap-2">
                 <Input
                   type="date"
@@ -1192,21 +1223,21 @@ export default function DispensingWorkbench() {
                 <button
                   type="button"
                   onClick={() => updateFollowUpDate(line.medicine_id, getPresetDate(7))}
-                  className="rounded-md border border-[#d8dadc] bg-white px-2 py-0.5 text-[10px] font-bold text-[#42474e] transition hover:border-[#00a36c] hover:bg-[#eff4ff]"
+                  className="btn-secondary rounded-md px-2 py-0.5 text-[10px] font-bold shadow-xs transition cursor-pointer"
                 >
                   +7 Days (Next week)
                 </button>
                 <button
                   type="button"
                   onClick={() => updateFollowUpDate(line.medicine_id, getPresetDate(14))}
-                  className="rounded-md border border-[#d8dadc] bg-white px-2 py-0.5 text-[10px] font-bold text-[#42474e] transition hover:border-[#00a36c] hover:bg-[#eff4ff]"
+                  className="btn-secondary rounded-md px-2 py-0.5 text-[10px] font-bold shadow-xs transition cursor-pointer"
                 >
                   +14 Days
                 </button>
                 <button
                   type="button"
                   onClick={() => updateFollowUpDate(line.medicine_id, getPresetDate(30))}
-                  className="rounded-md border border-[#d8dadc] bg-white px-2 py-0.5 text-[10px] font-bold text-[#42474e] transition hover:border-[#00a36c] hover:bg-[#eff4ff]"
+                  className="btn-secondary rounded-md px-2 py-0.5 text-[10px] font-bold shadow-xs transition cursor-pointer"
                 >
                   +30 Days
                 </button>
@@ -1219,8 +1250,8 @@ export default function DispensingWorkbench() {
         <div
           className={`rounded-lg border p-2.5 transition ${
             line.follow_up_action === FOLLOW_UP_ACTIONS.refer
-              ? "border-[#00a36c] bg-[#ecfff8]/50 ring-1 ring-[#00a36c]"
-              : "border-[#e5e7eb] bg-white hover:border-[#cfd5dc] hover:bg-[#fafafa]"
+              ? "border-[#34769B] bg-[#E3EEF5]/40 ring-1 ring-[#34769B]"
+              : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#34769B]/40 hover:bg-[#E5EFF1]"
           }`}
         >
           <label className="flex cursor-pointer items-start gap-2.5">
@@ -1229,34 +1260,34 @@ export default function DispensingWorkbench() {
               type="radio"
               checked={line.follow_up_action === FOLLOW_UP_ACTIONS.refer}
               onChange={() => updateFollowUpAction(line.medicine_id, FOLLOW_UP_ACTIONS.refer)}
-              className="mt-0.5 text-[#00a36c] focus:ring-[#00a36c]"
+              className="mt-0.5 text-[#34769B] focus:ring-[#34769B]"
             />
             <div className="min-w-0 flex-1">
-              <span className="block text-xs font-bold text-[#0d1117]">{referralActionLabel}</span>
-              <span className="block text-[11px] text-[#5f6673]">
+              <span className="block text-xs font-bold text-[#1B2B30]">{referralActionLabel}</span>
+              <span className="block text-[11px] text-[#5B7077]">
                 {destinationName}
               </span>
             </div>
           </label>
 
           {/* Live Stock Availability Preview & Details Link */}
-          <div className="mt-2 space-y-1.5 border-t border-[#e5e7eb] pt-2">
+          <div className="mt-2 space-y-1.5 border-t border-[#CFDDE0] pt-2">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
               {isLoadingReferralStock ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#5f6673] animate-pulse">
-                  <span className="h-2 w-2 rounded-full bg-slate-400"></span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#5B7077] animate-pulse">
+                  <span className="h-2 w-2 rounded-full bg-[#5B7077]"></span>
                   Checking {destinationShortName} stock...
                 </span>
               ) : hasStock && availableUnits >= remainingAfterThisRelease ? (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100/80 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                <span className="inline-flex items-center gap-1 rounded-md bg-[#E2F3EC] px-2 py-0.5 text-[11px] font-bold text-[#226048]">
                   <CheckIcon /> {availableUnits.toLocaleString()} units available at {destinationShortName}
                 </span>
               ) : hasStock && availableUnits > 0 ? (
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-100/80 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                <span className="inline-flex items-center gap-1 rounded-md bg-[#E3EEF5] px-2 py-0.5 text-[11px] font-bold text-[#1F4A66]">
                   ⚠ Only {availableUnits.toLocaleString()} units at {destinationShortName} (Partial)
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-md bg-rose-100/80 px-2 py-0.5 text-[11px] font-bold text-rose-800">
+                <span className="inline-flex items-center gap-1 rounded-md bg-[#FBE9E3] px-2 py-0.5 text-[11px] font-bold text-[#8F3F2B]">
                   ✕ 0 units available at {destinationShortName}
                 </span>
               )}
@@ -1264,7 +1295,7 @@ export default function DispensingWorkbench() {
               <button
                 type="button"
                 onClick={() => setStockModalMedicineId(line.medicine_id)}
-                className="inline-flex items-center gap-1 rounded border border-[#d8dadc] bg-white px-2 py-1 text-[11px] font-bold text-[#0d1117] shadow-xs transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+                className="btn-secondary inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-bold shadow-xs transition cursor-pointer"
                 title={`View detailed batch list and expiration dates at ${destinationName}`}
               >
                 <EyeIcon /> View {destinationShortName} Stock
@@ -1288,23 +1319,46 @@ export default function DispensingWorkbench() {
         )}
 
         {/* Top Header Card */}
-        <section className="rounded-xl border border-[#d8dadc] bg-white px-5 py-4 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#008f68]">
-              Dispensing Management
-            </p>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#6be9c2] px-3 py-1 text-xs font-bold text-[#0d1117]">
-              <PillIcon /> {isDispensingFromCho ? "CHO Medicine Release" : "Barangay Health Center Release"}
-            </span>
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-5 py-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#34769B]">
+                  Dispensing Management
+                </p>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E3EEF5] px-3 py-1 text-xs font-bold text-[#1F4A66]">
+                  <PillIcon /> {isDispensingFromCho ? "CHO Medicine Release" : "Barangay Health Center Release"}
+                </span>
+              </div>
+              <h1 className="mt-2 text-xl font-bold text-[#1B2B30]">
+                {activeTab === "DISPENSE" ? "Dispensing" : "Dispensing History"}
+              </h1>
+              <p className="mt-1 max-w-3xl text-sm text-[#5B7077]">
+                {activeTab === "DISPENSE"
+                  ? "Find a patient, check their monthly medicine status, select available medicines, then release the claim."
+                  : "Search, audit, and inspect past dispensing transactions by patient code, name, dispensing ID, or medicine."}
+              </p>
+            </div>
+
+            <div className="shrink-0">
+              <DispensingTabToggle
+                activeTab={activeTab}
+                onSelectTab={setActiveTab}
+              />
+            </div>
           </div>
-          <h1 className="mt-2 text-xl font-bold text-[#0d1117]">Dispensing</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[#5f6673]">
-            Find a patient, check their monthly medicine status, select available medicines, then release the claim.
-          </p>
         </section>
 
-        {/* Stepper Progress */}
-        <StepperBar blockerFor={stepBlockers} onStepClick={setWizardStep} step={wizardStep} />
+        {activeTab === "HISTORY" ? (
+          <DispensingHistoryView
+            facilities={facilities}
+            facilityId={profileFacilityId}
+            isCho={isDispensingFromCho}
+          />
+        ) : (
+          <>
+            {/* Stepper Progress */}
+            <StepperBar blockerFor={stepBlockers} onStepClick={setWizardStep} step={wizardStep} />
 
         {/* STEP 1: PATIENT SEARCH */}
         {wizardStep === 1 && (
@@ -1367,10 +1421,10 @@ export default function DispensingWorkbench() {
                             key={patient.id}
                             className={`flex w-full flex-col gap-3 rounded-xl border p-4 transition ${
                               isBlocked
-                                ? "border-[#e5e7eb] bg-[#f4f5f7] opacity-85"
+                                ? "border-[#CFDDE0] bg-[#E5EFF1]/60 opacity-85"
                                 : isSelectedCard
-                                  ? "border-[#6be9c2] bg-[#ecfff8]/40 ring-1 ring-[#6be9c2]"
-                                  : "border-[#e5e7eb] bg-[#f8f9ff] hover:border-[#c7ccd3] hover:bg-white"
+                                  ? "border-[#34769B] bg-[#E3EEF5]/40 ring-1 ring-[#34769B]"
+                                  : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#34769B]/40 hover:bg-[#E5EFF1]/40"
                             }`}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -1378,15 +1432,15 @@ export default function DispensingWorkbench() {
                                 <PatientAvatar name={patientName} sizeClass="h-10 w-10 text-xs" />
                                 <div className="min-w-0">
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-sm font-bold text-[#0d1117] truncate">
+                                    <p className="text-sm font-bold text-[#1B2B30] truncate">
                                       {patientName}
                                     </p>
-                                    <span className="font-mono text-xs text-[#5f6673]">
+                                    <span className="font-mono text-xs text-[#5B7077]">
                                       {formatPatientCode(patient.patient_code)}
                                     </span>
                                   </div>
                                   {patient.address && (
-                                    <p className="mt-0.5 truncate text-xs text-[#5f6673]">{patient.address}</p>
+                                    <p className="mt-0.5 truncate text-xs text-[#5B7077]">{patient.address}</p>
                                   )}
                                 </div>
                               </div>
@@ -1394,48 +1448,63 @@ export default function DispensingWorkbench() {
                               {/* Status Badge */}
                               <div className="shrink-0">
                                 {status?.code === "COMPLETED" ? (
-                                  <span className="inline-flex items-center rounded-full bg-gray-200/80 px-2.5 py-1 text-xs font-bold text-[#5f6673]">
+                                  <span className="inline-flex items-center rounded-full bg-[#E5EFF1] px-2.5 py-1 text-xs font-bold text-[#5B7077]">
                                     Already received all medicines for this month
                                   </span>
+                                ) : status?.code === "SCHEDULED_AT_CHO" ? (
+                                  <span className="inline-flex items-center rounded-full bg-[#FBE9E3] border border-[#D9826B]/30 px-2.5 py-1 text-xs font-bold text-[#8F3F2B]">
+                                    {status.label}
+                                  </span>
                                 ) : status?.code === "PARTIAL_SCHEDULED" ? (
-                                  <span className="inline-flex items-center rounded-full bg-amber-100 border border-amber-300 px-2.5 py-1 text-xs font-bold text-amber-800">
+                                  <span className="inline-flex items-center rounded-full bg-[#FBE9E3] border border-[#D9826B]/30 px-2.5 py-1 text-xs font-bold text-[#8F3F2B]">
                                     {status.label}
                                   </span>
                                 ) : status?.code === "PARTIAL_REFERRED" ? (
-                                  <span className="inline-flex items-center rounded-full bg-indigo-100 border border-indigo-300 px-2.5 py-1 text-xs font-bold text-indigo-800">
+                                  <span className="inline-flex items-center rounded-full bg-[#E3EEF5] border border-[#34769B]/30 px-2.5 py-1 text-xs font-bold text-[#1F4A66]">
+                                    {status.label}
+                                  </span>
+                                ) : status?.code === "REFERRED_OTHER_BARANGAY" ? (
+                                  <span className="inline-flex items-center rounded-full bg-[#E3EEF5] border border-[#34769B]/30 px-2.5 py-1 text-xs font-bold text-[#1F4A66]">
                                     {status.label}
                                   </span>
                                 ) : status?.code === "PARTIAL_READY" ? (
-                                  <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-1 text-xs font-bold text-[#008f68]">
+                                  <span className="inline-flex items-center rounded-full bg-[#E2F3EC] border border-[#4C9F80]/30 px-2.5 py-1 text-xs font-bold text-[#226048]">
                                     {status.label}
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center rounded-full bg-[#ecfff8] border border-[#6be9c2] px-2.5 py-1 text-xs font-bold text-[#008f68]">
+                                  <span className="inline-flex items-center rounded-full bg-[#E2F3EC] border border-[#4C9F80]/30 px-2.5 py-1 text-xs font-bold text-[#226048]">
                                     Ready to claim
                                   </span>
                                 )}
                               </div>
 
-                              {/* Action Button */}
-                              <div className="shrink-0">
-                                {isBlocked ? (
+                              {/* Action Buttons */}
+                              <div className="shrink-0 flex items-center gap-2">
+                                {isDispensingFromCho && overview?.hasPartial && (
                                   <button
                                     type="button"
-                                    disabled
-                                    aria-label={`${patientName} cannot be selected - completed`}
-                                    className="h-9 cursor-not-allowed rounded-lg border border-[#d8dadc] bg-white/70 px-3 text-xs font-bold text-[#8a93a3]"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setUpdateFollowUpPatientData({ patient, overview });
+                                      setIsUpdateFollowUpModalOpen(true);
+                                    }}
+                                    className={`h-9 inline-flex items-center gap-1.5 rounded-lg border border-[#34769B]/40 bg-white px-3 text-xs font-bold text-[#34769B] shadow-xs hover:bg-[#E3EEF5]/50 transition cursor-pointer ${FOCUS_RING}`}
+                                    title="Update return schedule or refer patient to Barangay Health Center"
                                   >
-                                    Completed
+                                    <CalendarIcon className="h-3.5 w-3.5" />
+                                    Update Follow-up
                                   </button>
-                                ) : (
+                                )}
+
+                                {!isBlocked && (
                                   <button
                                     type="button"
                                     aria-label={`${isSelectedCard ? "Unselect" : "Select"} ${patientName}`}
                                     onClick={() => selectPatient(patient)}
-                                    className={`h-9 rounded-lg px-4 text-xs font-bold shadow-sm transition ${FOCUS_RING} ${
+                                    className={`h-9 rounded-lg px-4 text-xs font-bold shadow-sm transition cursor-pointer ${FOCUS_RING} ${
                                       isSelectedCard
-                                        ? "border border-slate-200 bg-white text-[#0d1117] hover:bg-slate-100"
-                                        : "bg-black text-white hover:bg-[#0d1117]"
+                                        ? "btn-secondary"
+                                        : "btn-primary"
                                     }`}
                                   >
                                     {isSelectedCard ? "Unselect" : "Select"}
@@ -1461,7 +1530,7 @@ export default function DispensingWorkbench() {
                                       </span>
                                       <span className="shrink-0 tabular-nums">
                                         {item.is_completed ? (
-                                          <span className="font-bold text-[#008f68]">
+                                          <span className="font-bold text-[#226048]">
                                             {item.released_quantity}/{item.needed_quantity} (Done)
                                           </span>
                                         ) : (
@@ -1506,7 +1575,7 @@ export default function DispensingWorkbench() {
                         type="button"
                         onClick={() => setWizardStep(2)}
                         disabled={selectedClaimed}
-                        className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+                        className={`btn-primary inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-bold text-white shadow-xs transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${FOCUS_RING}`}
                       >
                         Continue to Medicines <ArrowRightIcon />
                       </button>
@@ -1561,7 +1630,7 @@ export default function DispensingWorkbench() {
                           </div>
                           <div className="text-right shrink-0">
                             {item.is_completed ? (
-                              <span className="inline-flex items-center gap-1 font-bold text-[#008f68]">
+                              <span className="inline-flex items-center gap-1 font-bold text-[#226048]">
                                 <CheckIcon /> All released
                               </span>
                             ) : (
@@ -1712,7 +1781,7 @@ export default function DispensingWorkbench() {
                               </div>
 
                               {isCompletedForMonth && (
-                                <p className="mt-2 text-xs font-bold text-[#008f68]">
+                                <p className="mt-2 text-xs font-bold text-[#226048]">
                                   Already completed this month
                                 </p>
                               )}
@@ -1944,7 +2013,7 @@ export default function DispensingWorkbench() {
                     onClick={() => setWizardStep(3)}
                     disabled={!canReview}
                     title={stepBlockers(3) || undefined}
-                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-black px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d1117] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="btn-primary inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-xs transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
                   >
                     Review <ArrowRightIcon />
                   </button>
@@ -2079,7 +2148,7 @@ export default function DispensingWorkbench() {
                     onClick={handleComplete}
                     disabled={!canComplete || isSaving}
                     title={stepBlockers(3) || undefined}
-                    className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#00a36c] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+                    className={`btn-primary inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-5 text-sm font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${FOCUS_RING}`}
                   >
                     <CheckIcon /> Release
                   </button>
@@ -2087,6 +2156,8 @@ export default function DispensingWorkbench() {
               </div>
             </section>
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -2150,7 +2221,7 @@ export default function DispensingWorkbench() {
               <button
                 type="button"
                 onClick={() => setIsFollowUpModalOpen(false)}
-                className={`h-10 rounded-lg bg-[#00a36c] px-6 text-sm font-bold text-white shadow-sm transition hover:bg-[#008f68] ${FOCUS_RING}`}
+                className={`btn-primary h-10 rounded-lg px-6 text-sm font-bold text-white shadow-sm transition cursor-pointer ${FOCUS_RING}`}
               >
                 Done
               </button>
@@ -2174,8 +2245,40 @@ export default function DispensingWorkbench() {
       )}
 
       {receipt && (
-        <ReceiptModal onClose={closeReceipt} onExport={exportReceipt} receipt={receipt} />
+        <ReceiptModal
+          onClose={closeReceipt}
+          onExport={exportReceipt}
+          onViewInHistory={() => {
+            closeReceipt();
+            setActiveTab("HISTORY");
+          }}
+          receipt={receipt}
+        />
       )}
+
+      <UpdateFollowUpModal
+        isOpen={isUpdateFollowUpModalOpen}
+        onClose={() => {
+          setIsUpdateFollowUpModalOpen(false);
+          setUpdateFollowUpPatientData(null);
+        }}
+        patient={updateFollowUpPatientData?.patient}
+        breakdown={updateFollowUpPatientData?.overview?.breakdown}
+        facilities={facilities}
+        onSuccess={async () => {
+          await runPatientSearch();
+          if (selectedPatient && updateFollowUpPatientData?.patient?.id === selectedPatient.id) {
+            const updatedOverview = await getPatientsMonthlyClaimOverview([selectedPatient.id], {
+              currentFacilityId: profileFacilityId,
+              isBhw,
+            });
+            const overview = updatedOverview.get(selectedPatient.id);
+            if (overview) {
+              setActivePatientClaim(overview);
+            }
+          }
+        }}
+      />
     </AdminShell>
   );
 }

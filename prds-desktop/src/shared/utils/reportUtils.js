@@ -77,12 +77,159 @@ export const toDateKey = (dateInput) => {
 };
 
 /**
+ * Builds an index of inventory items for fast O(1) unit cost and batch resolution.
+ * Indexes by:
+ * - id: inventory item id
+ * - batch: uppercase batch_number / lot_number
+ * - medId: medicine_id (stores inventory item with positive unit_cost if available)
+ */
+export const createInventoryIndex = (inventoryRows = []) => {
+  const byId = new Map();
+  const byBatch = new Map();
+  const byMedId = new Map();
+
+  let rows = Array.isArray(inventoryRows) ? inventoryRows : [];
+  if (rows.length === 0 && typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem("prds_snapshot_inventory");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          rows = parsed;
+        }
+      }
+    } catch {}
+  }
+
+  rows.forEach((inv) => {
+    if (!inv) return;
+    const invId = inv.id ? String(inv.id) : "";
+    if (invId) {
+      byId.set(invId, inv);
+    }
+    const batch = (inv.batch_number || inv.lot_number || inv.lot_no || inv.lot || "").trim().toUpperCase();
+    if (batch) {
+      byBatch.set(batch, inv);
+    }
+    const medId = String(inv.medicine_id || inv.medicine?.id || "");
+    if (medId) {
+      const cost = Number(inv.unit_cost ?? inv.medicine?.unit_cost ?? 0);
+      const existing = byMedId.get(medId);
+      if (!existing || (cost > 0 && Number(existing.unit_cost ?? 0) <= 0)) {
+        byMedId.set(medId, inv);
+      }
+    }
+  });
+
+  return { byId, byBatch, byMedId };
+};
+
+/**
+ * Resolves unit cost for an item (dispensing row, request item, program medicine, or inventory row)
+ * using waterfall priority:
+ * 1. item.unit_cost_at_dispense (if > 0)
+ * 2. item.total_cost_at_dispense / item.quantity (if > 0 and quantity > 0)
+ * 3. item.unit_cost (if > 0)
+ * 4. item.batch?.unit_cost or item.inventory?.unit_cost (if > 0)
+ * 5. item.medicine?.unit_cost (if > 0)
+ * 6. Matching inventory row from inventoryIndex / inventoryRows:
+ *    - by inventory_id (item.inventory_id || item.batch?.id)
+ *    - by batch_number (item.batch_number || item.lot_no || item.batch?.batch_number)
+ *    - by medicine_id (item.medicine_id || item.medicine?.id)
+ * 7. Matching medicine row from medicinesMap / localStorage snapshot
+ * 8. Fallback to 0
+ */
+export const resolveItemUnitCost = (
+  item,
+  { inventoryIndex = null, inventoryRows = null, medicinesMap = null } = {}
+) => {
+  if (!item) return 0;
+
+  // 1. Stored unit_cost_at_dispense
+  const atDispense = Number(item.unit_cost_at_dispense);
+  if (Number.isFinite(atDispense) && atDispense > 0) return atDispense;
+
+  // 2. Stored total_cost_at_dispense
+  const totalAtDispense = Number(item.total_cost_at_dispense);
+  const qty = Number(item.quantity) || 0;
+  if (Number.isFinite(totalAtDispense) && totalAtDispense > 0 && qty > 0) {
+    return totalAtDispense / qty;
+  }
+
+  // 3. Direct unit_cost
+  const directCost = Number(item.unit_cost);
+  if (Number.isFinite(directCost) && directCost > 0) return directCost;
+
+  // 4. Joined batch or inventory object
+  const batchCost = Number(item.batch?.unit_cost ?? item.inventory?.unit_cost);
+  if (Number.isFinite(batchCost) && batchCost > 0) return batchCost;
+
+  // 5. Attached medicine object unit_cost
+  const medCost = Number(item.medicine?.unit_cost);
+  if (Number.isFinite(medCost) && medCost > 0) return medCost;
+
+  // 6. Resolve from inventory index / rows
+  const index = inventoryIndex || (inventoryRows ? createInventoryIndex(inventoryRows) : null);
+  if (index) {
+    // 6a. Match by inventory_id
+    const invId = String(item.inventory_id || item.batch?.id || "");
+    if (invId && index.byId?.has(invId)) {
+      const invMatch = index.byId.get(invId);
+      const invCost = Number(invMatch.unit_cost ?? invMatch.medicine?.unit_cost);
+      if (Number.isFinite(invCost) && invCost > 0) return invCost;
+    }
+
+    // 6b. Match by batch_number / lot
+    const batchKey = (item.batch_number || item.lot_no || item.batch?.batch_number || "").trim().toUpperCase();
+    if (batchKey && index.byBatch?.has(batchKey)) {
+      const invMatch = index.byBatch.get(batchKey);
+      const invCost = Number(invMatch.unit_cost ?? invMatch.medicine?.unit_cost);
+      if (Number.isFinite(invCost) && invCost > 0) return invCost;
+    }
+
+    // 6c. Match by medicine_id
+    const medId = String(item.medicine_id || item.medicine?.id || "");
+    if (medId && index.byMedId?.has(medId)) {
+      const invMatch = index.byMedId.get(medId);
+      const invCost = Number(invMatch.unit_cost ?? invMatch.medicine?.unit_cost);
+      if (Number.isFinite(invCost) && invCost > 0) return invCost;
+    }
+  }
+
+  // 7. Resolve from medicinesMap or snapshot
+  let resolvedMedsMap = medicinesMap;
+  if (!resolvedMedsMap && typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem("prds_snapshot_medicines");
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          resolvedMedsMap = new Map(list.map((m) => [String(m.id), m]));
+        }
+      }
+    } catch {}
+  }
+
+  const medId = String(item.medicine_id || item.medicine?.id || "");
+  if (resolvedMedsMap && medId) {
+    const found = resolvedMedsMap.get ? resolvedMedsMap.get(medId) : resolvedMedsMap[medId];
+    if (found) {
+      const foundCost = Number(found.unit_cost);
+      if (Number.isFinite(foundCost) && foundCost > 0) return foundCost;
+    }
+  }
+
+  return 0;
+};
+
+/**
  * Normalizes request items from completed medicine requests
  */
 export const extractCompletedRequestItems = (
   requestRows = [],
   targetDateKey = null,
-  medicinesMap = null
+  medicinesMap = null,
+  inventoryIndex = null
 ) => {
   const flattened = [];
 
@@ -113,7 +260,7 @@ export const extractCompletedRequestItems = (
       const brand = (med.brand_name || item.brand_name || "-").trim().toUpperCase();
       const unit = (med.unit_of_measure || item.unit_of_measure || "UNIT").trim().toUpperCase();
       const qty = Number(item.quantity) || 0;
-      const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
+      const unitCost = resolveItemUnitCost(item, { inventoryIndex, medicinesMap });
 
       flattened.push({
         id: item.id || `${req.id}-${item.medicine_id}`,
@@ -154,6 +301,7 @@ export const calculateReportKpis = ({
   medicinesMap = null,
 }) => {
   const targetDateKey = toDateKey(selectedDate);
+  const inventoryIndex = createInventoryIndex(inventoryRows);
 
   // Resolve medicines map for unit cost lookup fallback
   let resolvedMedsMap = medicinesMap;
@@ -171,21 +319,6 @@ export const calculateReportKpis = ({
     }
   }
 
-  const getMedUnitCost = (item) => {
-    let cost = Number(item.unit_cost ?? item.medicine?.unit_cost);
-    if (!isNaN(cost) && cost > 0) return cost;
-
-    const medId = String(item.medicine_id || item.medicine?.id || "");
-    if (resolvedMedsMap && medId) {
-      const found = resolvedMedsMap.get ? resolvedMedsMap.get(medId) : resolvedMedsMap[medId];
-      if (found) {
-        const foundCost = Number(found.unit_cost);
-        if (!isNaN(foundCost) && foundCost > 0) return foundCost;
-      }
-    }
-    return 0;
-  };
-
   // 1. Walk-in dispensing on selected date
   const todaysWalkIns = dispensingRows.filter((row) => {
     if (row.voided_at) return false;
@@ -196,12 +329,12 @@ export const calculateReportKpis = ({
   const walkInUnits = todaysWalkIns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
   const walkInCost = todaysWalkIns.reduce((sum, r) => {
     const qty = Number(r.quantity) || 0;
-    const unitCost = getMedUnitCost(r);
+    const unitCost = resolveItemUnitCost(r, { inventoryIndex, medicinesMap: resolvedMedsMap });
     return sum + qty * unitCost;
   }, 0);
 
   // 2. Completed medicine requests to Barangay Health Centers on selected date
-  const todaysBhwItems = extractCompletedRequestItems(requestRows, targetDateKey, resolvedMedsMap);
+  const todaysBhwItems = extractCompletedRequestItems(requestRows, targetDateKey, resolvedMedsMap, inventoryIndex);
 
   const bhwUnits = todaysBhwItems.reduce((sum, item) => sum + item.quantity, 0);
   const bhwCost = todaysBhwItems.reduce((sum, item) => sum + item.totalCost, 0);
@@ -219,7 +352,7 @@ export const calculateReportKpis = ({
   inventoryRows.forEach((item) => {
     const qty = Number(item.quantity) || 0;
     const threshold = Number(item.threshold) || 10;
-    const unitCost = getMedUnitCost(item);
+    const unitCost = resolveItemUnitCost(item, { inventoryIndex, medicinesMap: resolvedMedsMap });
     const medId = String(item.medicine_id || item.medicine?.id || "");
     const medName =
       item.medicine?.generic_name ||
@@ -268,11 +401,13 @@ export const calculateReportKpis = ({
 export const aggregateTopMedicines = ({
   dispensingRows = [],
   requestRows = [],
+  inventoryRows = [],
   selectedDate = new Date(),
   limit = 5,
   medicinesMap = null,
 }) => {
   const targetDateKey = toDateKey(selectedDate);
+  const inventoryIndex = createInventoryIndex(inventoryRows);
   const map = new Map();
 
   let resolvedMedsMap = medicinesMap;
@@ -288,20 +423,6 @@ export const aggregateTopMedicines = ({
     } catch { }
   }
 
-  const getMedUnitCost = (r) => {
-    let cost = Number(r.unit_cost ?? r.medicine?.unit_cost);
-    if (!isNaN(cost) && cost > 0) return cost;
-    const medId = String(r.medicine_id || r.medicine?.id || "");
-    if (resolvedMedsMap && medId) {
-      const found = resolvedMedsMap.get ? resolvedMedsMap.get(medId) : resolvedMedsMap[medId];
-      if (found) {
-        const foundCost = Number(found.unit_cost);
-        if (!isNaN(foundCost) && foundCost > 0) return foundCost;
-      }
-    }
-    return 0;
-  };
-
   // Combine walk-ins
   dispensingRows.forEach((r) => {
     if (r.voided_at) return false;
@@ -311,7 +432,7 @@ export const aggregateTopMedicines = ({
       ? `${med.generic_name}${med.dosage ? ` ${med.dosage}` : ""}`
       : r.generic_name || "Unknown Medicine";
     const qty = Number(r.quantity) || 0;
-    const unitCost = getMedUnitCost(r);
+    const unitCost = resolveItemUnitCost(r, { inventoryIndex, medicinesMap: resolvedMedsMap });
 
     const existing = map.get(name) || { name, quantity: 0, cost: 0, brand: med.brand_name || "" };
     existing.quantity += qty;
@@ -320,7 +441,7 @@ export const aggregateTopMedicines = ({
   });
 
   // Combine completed request items
-  const bhwItems = extractCompletedRequestItems(requestRows, targetDateKey, resolvedMedsMap);
+  const bhwItems = extractCompletedRequestItems(requestRows, targetDateKey, resolvedMedsMap, inventoryIndex);
   bhwItems.forEach((item) => {
     const med = item.medicine || {};
     const name = med.generic_name
@@ -375,7 +496,7 @@ export const aggregateFacilityDistribution = ({
   const total = Array.from(facilityCounts.values()).reduce((a, b) => a + b, 0);
   if (total === 0) return [];
 
-  const PALETTE = ["#00a36c", "#6be9c2", "#3b82f6", "#8b5cf6", "#f59e0b", "#06b6d4", "#ec4899"];
+  const PALETTE = ["#1F4E5A", "#34769B", "#4C9F80", "#D9826B", "#286575", "#5B7077", "#2D7A5D"];
 
   return Array.from(facilityCounts.entries())
     .sort((a, b) => b[1] - a[1])
@@ -393,12 +514,14 @@ export const aggregateFacilityDistribution = ({
 export const aggregateDailyDispensingTrend = ({
   dispensingRows = [],
   requestRows = [],
+  inventoryRows = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1, // 1-indexed (1-12)
   medicinesMap = null,
 }) => {
   const daysInMonth = new Date(year, month, 0).getDate();
   const dailyMap = new Map();
+  const inventoryIndex = createInventoryIndex(inventoryRows);
 
   let resolvedMedsMap = medicinesMap;
   if (!resolvedMedsMap && typeof localStorage !== "undefined") {
@@ -412,20 +535,6 @@ export const aggregateDailyDispensingTrend = ({
       }
     } catch { }
   }
-
-  const getMedUnitCost = (r) => {
-    let cost = Number(r.unit_cost ?? r.medicine?.unit_cost);
-    if (!isNaN(cost) && cost > 0) return cost;
-    const medId = String(r.medicine_id || r.medicine?.id || "");
-    if (resolvedMedsMap && medId) {
-      const found = resolvedMedsMap.get ? resolvedMedsMap.get(medId) : resolvedMedsMap[medId];
-      if (found) {
-        const foundCost = Number(found.unit_cost);
-        if (!isNaN(foundCost) && foundCost > 0) return foundCost;
-      }
-    }
-    return 0;
-  };
 
   for (let d = 1; d <= daysInMonth; d++) {
     dailyMap.set(d, { day: d, units: 0, cost: 0 });
@@ -446,14 +555,14 @@ export const aggregateDailyDispensingTrend = ({
     const d = new Date(rawDate).getDate();
     const current = dailyMap.get(d) || { day: d, units: 0, cost: 0 };
     const qty = Number(r.quantity) || 0;
-    const unitCost = getMedUnitCost(r);
+    const unitCost = resolveItemUnitCost(r, { inventoryIndex, medicinesMap: resolvedMedsMap });
     current.units += qty;
     current.cost += qty * unitCost;
     dailyMap.set(d, current);
   });
 
   // Add completed requests
-  const allCompletedItems = extractCompletedRequestItems(requestRows, null, resolvedMedsMap);
+  const allCompletedItems = extractCompletedRequestItems(requestRows, null, resolvedMedsMap, inventoryIndex);
   allCompletedItems.forEach((item) => {
     if (!isMatchingMonth(item.approvedAt)) return;
     const d = new Date(item.approvedAt).getDate();
@@ -479,11 +588,13 @@ export const aggregateMonthlyDispensingDistribution = ({
   dispensingRows = [],
   requestRows = [],
   otherProgramsRows = [],
+  inventoryRows = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1,
   medicinesMap = null,
 }) => {
   const targetMonthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+  const inventoryIndex = createInventoryIndex(inventoryRows);
 
   let resolvedMedsMap = medicinesMap;
   if (!resolvedMedsMap && typeof localStorage !== "undefined") {
@@ -498,20 +609,6 @@ export const aggregateMonthlyDispensingDistribution = ({
     } catch { }
   }
 
-  const getMedUnitCost = (r) => {
-    let cost = Number(r.unit_cost ?? r.medicine?.unit_cost);
-    if (!isNaN(cost) && cost > 0) return cost;
-    const medId = String(r.medicine_id || r.medicine?.id || "");
-    if (resolvedMedsMap && medId) {
-      const found = resolvedMedsMap.get ? resolvedMedsMap.get(medId) : resolvedMedsMap[medId];
-      if (found) {
-        const foundCost = Number(found.unit_cost);
-        if (!isNaN(foundCost) && foundCost > 0) return foundCost;
-      }
-    }
-    return 0;
-  };
-
   // 1. Walk-in in the CHO
   let walkInUnits = 0;
   let walkInCost = 0;
@@ -520,7 +617,7 @@ export const aggregateMonthlyDispensingDistribution = ({
     const dateKey = toDateKey(r.dispense_date || r.created_at);
     if (!dateKey.startsWith(targetMonthPrefix)) return;
     const qty = Number(r.quantity) || 0;
-    const unitCost = getMedUnitCost(r);
+    const unitCost = resolveItemUnitCost(r, { inventoryIndex, medicinesMap: resolvedMedsMap });
     walkInUnits += qty;
     walkInCost += qty * unitCost;
   });
@@ -537,7 +634,7 @@ export const aggregateMonthlyDispensingDistribution = ({
     const items = req.items || [];
     items.forEach((item) => {
       const qty = Number(item.quantity) || 0;
-      const unitCost = getMedUnitCost(item);
+      const unitCost = resolveItemUnitCost(item, { inventoryIndex, medicinesMap: resolvedMedsMap });
       requestUnits += qty;
       requestCost += qty * unitCost;
     });
@@ -555,7 +652,7 @@ export const aggregateMonthlyDispensingDistribution = ({
     const meds = prog.medicines || [];
     meds.forEach((m) => {
       const qty = Number(m.quantity_used || m.quantity) || 0;
-      const unitCost = Number(m.unit_cost ?? m.medicine?.unit_cost ?? 0);
+      const unitCost = resolveItemUnitCost(m, { inventoryIndex, medicinesMap: resolvedMedsMap });
       otherProgramUnits += qty;
       otherProgramCost += qty * unitCost;
     });
@@ -572,7 +669,7 @@ export const aggregateMonthlyDispensingDistribution = ({
       units: requestUnits,
       cost: requestCost,
       percentage: totalUnits > 0 ? Number(((requestUnits / totalUnits) * 100).toFixed(1)) : 0,
-      color: "#00a36c", // Emerald / PRDS Brand
+      color: "#1F4E5A", // PRDS Deep Clinical Teal
     },
     {
       id: "walk_in",
@@ -581,7 +678,7 @@ export const aggregateMonthlyDispensingDistribution = ({
       units: walkInUnits,
       cost: walkInCost,
       percentage: totalUnits > 0 ? Number(((walkInUnits / totalUnits) * 100).toFixed(1)) : 0,
-      color: "#2563eb", // Royal Blue
+      color: "#34769B", // PRDS Caring Sky Blue
     },
     {
       id: "other_programs",
@@ -590,7 +687,7 @@ export const aggregateMonthlyDispensingDistribution = ({
       units: otherProgramUnits,
       cost: otherProgramCost,
       percentage: totalUnits > 0 ? Number(((otherProgramUnits / totalUnits) * 100).toFixed(1)) : 0,
-      color: "#8b5cf6", // Purple
+      color: "#4C9F80", // PRDS Healing Mint
     },
   ];
 
@@ -609,9 +706,12 @@ export const aggregateMonthlyDispensingDistribution = ({
 export const aggregateHourlyDispensingFlow = ({
   dispensingRows = [],
   requestRows = [],
+  inventoryRows = [],
   selectedDate = new Date(),
+  medicinesMap = null,
 }) => {
   const targetDateKey = toDateKey(selectedDate);
+  const inventoryIndex = createInventoryIndex(inventoryRows);
   const hourlySlots = {};
 
   // Standard dispensary working hours: 8 AM to 5 PM (8 to 17)
@@ -651,7 +751,7 @@ export const aggregateHourlyDispensingFlow = ({
     }
 
     const qty = Number(row.quantity) || 0;
-    const unitCost = Number(row.medicine?.unit_cost ?? row.unit_cost ?? 0);
+    const unitCost = resolveItemUnitCost(row, { inventoryIndex, medicinesMap });
     hourlySlots[hour].units += qty;
     hourlySlots[hour].walkInUnits += qty;
     hourlySlots[hour].cost += qty * unitCost;
@@ -684,7 +784,7 @@ export const aggregateHourlyDispensingFlow = ({
     const items = req.items || [];
     items.forEach((item) => {
       const qty = Number(item.quantity) || 0;
-      const unitCost = Number(item.medicine?.unit_cost ?? item.unit_cost ?? 0);
+      const unitCost = resolveItemUnitCost(item, { inventoryIndex, medicinesMap });
       hourlySlots[hour].units += qty;
       hourlySlots[hour].bhwUnits += qty;
       hourlySlots[hour].cost += qty * unitCost;
@@ -730,10 +830,12 @@ export const aggregateHourlyDispensingFlow = ({
 export const getDailyDispensingTransactions = ({
   dispensingRows = [],
   requestRows = [],
+  inventoryRows = [],
   selectedDate = new Date(),
   medicinesMap = null,
 }) => {
   const targetDateKey = toDateKey(selectedDate);
+  const inventoryIndex = createInventoryIndex(inventoryRows);
   const transactions = [];
 
   const formatTime = (dateInput) => {
@@ -763,7 +865,7 @@ export const getDailyDispensingTransactions = ({
     const brand = (med.brand_name || row.brand_name || "").trim();
     const desc = formatItemDescription(generic, dosage);
     const qty = Number(row.quantity) || 0;
-    const unitCost = Number(med.unit_cost ?? row.unit_cost ?? 0);
+    const unitCost = resolveItemUnitCost(row, { inventoryIndex, medicinesMap });
     const doctor = row.prescribed_by?.trim() || "Attending Physician";
     const dispenser = row.dispenser
       ? [row.dispenser.first_name, row.dispenser.last_name].filter(Boolean).join(" ")
@@ -814,7 +916,7 @@ export const getDailyDispensingTransactions = ({
       const brand = (med.brand_name || item.brand_name || "").trim();
       const desc = formatItemDescription(generic, dosage);
       const qty = Number(item.quantity) || 0;
-      const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
+      const unitCost = resolveItemUnitCost(item, { inventoryIndex, medicinesMap });
 
       const reqNumber = req.request_number || (req.id ? `RQ-${String(req.id).slice(0, 8).toUpperCase()}` : "RIS Request");
       const requesterName = req.requester

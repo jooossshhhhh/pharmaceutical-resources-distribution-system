@@ -38,29 +38,29 @@ import ModalShell from "../../components/ModalShell";
 
 export function MetricCard({ label, value, sub, onClick, active, compact = false }) {
   const interactiveClass = onClick
-    ? "cursor-pointer transition hover:-translate-y-0.5 hover:border-[#6be9c2] hover:shadow-md hover:shadow-emerald-100"
+    ? "cursor-pointer transition hover:-translate-y-0.5 hover:border-[#34769B] hover:shadow-xs"
     : "";
-  const activeClass = active ? "border-[#00a36c] ring-2 ring-emerald-100" : "border-[#d8dadc]";
+  const activeClass = active ? "border-[#34769B] ring-2 ring-[#E3EEF5]" : "border-[#CFDDE0]";
 
   return (
     <article
       onClick={onClick}
-      className={`group rounded-xl border bg-white text-left shadow-xs ${compact ? "p-2.5 px-3.5" : "p-3.5"
+      className={`group rounded-xl border bg-[#F9FBFB] text-left shadow-xs ${compact ? "p-2.5 px-3.5" : "p-3.5"
         } ${interactiveClass} ${activeClass}`}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
       <p
-        className={`font-black tracking-tight text-[#0d1117] ${compact ? "text-xl leading-tight" : "mt-1 text-2xl"
+        className={`font-black tracking-tight text-[#1B2B30] ${compact ? "text-xl leading-tight" : "mt-1 text-2xl"
           }`}
       >
         {value}
       </p>
-      <p className={`${compact ? "text-xs" : "text-sm"} font-black text-[#42474e]`}>
+      <p className={`${compact ? "text-xs" : "text-sm"} font-black text-[#5B7077]`}>
         {label}
       </p>
       {sub && (
-        <p className={`${compact ? "mt-0.5" : "mt-1"} text-xs font-medium leading-4 text-neutral-500 truncate`}>
+        <p className={`${compact ? "mt-0.5" : "mt-1"} text-xs font-medium leading-4 text-[#5B7077]/80 truncate`}>
           {sub}
         </p>
       )}
@@ -73,15 +73,14 @@ export function InventoryTabToggle({
   onSelectTab,
 }) {
   return (
-    <div className="inline-flex h-10 items-center rounded-xl bg-neutral-100 p-1 border border-neutral-200/90 shadow-2xs">
+    <div className="inline-flex h-10 items-center rounded-xl bg-[#E5EFF1] p-1 border border-[#CFDDE0] shadow-2xs">
       <button
         type="button"
         onClick={() => onSelectTab("DISPENSABLE")}
-        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${
-          activeTab === "DISPENSABLE"
-            ? "bg-[#00a36c] text-white shadow-xs"
-            : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"
-        }`}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${activeTab === "DISPENSABLE"
+            ? "bg-[#34769B] text-white shadow-xs"
+            : "text-[#5B7077] hover:text-[#1B2B30] hover:bg-[#F9FBFB]/60"
+          }`}
       >
         <Package className="h-3.5 w-3.5" />
         <span>Dispensable Stock</span>
@@ -90,11 +89,10 @@ export function InventoryTabToggle({
       <button
         type="button"
         onClick={() => onSelectTab("EXPIRED")}
-        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${
-          activeTab === "EXPIRED"
-            ? "bg-red-600 text-white shadow-xs"
-            : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"
-        }`}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${activeTab === "EXPIRED"
+            ? "bg-[#D9826B] text-white shadow-xs"
+            : "text-[#5B7077] hover:text-[#1B2B30] hover:bg-[#F9FBFB]/60"
+          }`}
       >
         <Lock className="h-3.5 w-3.5" />
         <span>Expired Stocks</span>
@@ -168,10 +166,10 @@ export function FacilityPicker({
         onClick={() => setIsOpen((prev) => !prev)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        className="inline-flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-neutral-200/90 bg-white px-3 py-1.5 text-xs font-bold text-neutral-800 shadow-2xs hover:border-[#00a36c] focus:outline-none focus:ring-2 focus:ring-emerald-100 cursor-pointer transition-colors"
+        className="inline-flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] px-3 py-1.5 text-xs font-bold text-[#1B2B30] shadow-2xs hover:border-[#1F4E5A] focus:outline-none focus:ring-2 focus:ring-[#1F4E5A]/20 cursor-pointer transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0 flex-1 text-left">
-          <Building2 className="h-4 w-4 text-[#00a36c] shrink-0" />
+          <Building2 className="h-4 w-4 text-[#1F4E5A] shrink-0" />
           <span className="truncate">
             {isAllSelected
               ? "All Health Centers (City-Wide)"
@@ -179,17 +177,16 @@ export function FacilityPicker({
           </span>
         </div>
         <ChevronDown
-          className={`h-3.5 w-3.5 text-neutral-400 shrink-0 transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={`h-3.5 w-3.5 text-neutral-400 shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""
+            }`}
         />
       </button>
 
       {isOpen && (
         <div
-          className={`absolute right-0 top-full z-30 mt-1.5 w-72 sm:w-80 overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-xl ${dropdownClassName}`}
+          className={`absolute right-0 top-full z-30 mt-1.5 w-72 sm:w-80 overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xl ${dropdownClassName}`}
         >
-          <div className="flex items-center gap-2 border-b border-neutral-100 bg-neutral-50/60 px-3 py-2">
+          <div className="flex items-center gap-2 border-b border-[#CFDDE0] bg-[#F4F8F8] px-3 py-2">
             <Search className="h-3.5 w-3.5 text-neutral-400 shrink-0" />
             <input
               type="search"
@@ -197,7 +194,7 @@ export function FacilityPicker({
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search health center..."
               autoFocus
-              className="w-full bg-transparent text-xs font-medium text-neutral-800 outline-none placeholder:text-neutral-400"
+              className="w-full bg-transparent text-xs font-medium text-[#1B2B30] outline-none placeholder:text-[#5B7077]"
             />
             {searchTerm && (
               <button
@@ -216,19 +213,18 @@ export function FacilityPicker({
                 <button
                   type="button"
                   onClick={() => handleSelect("ALL")}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-xs font-bold transition cursor-pointer ${
-                    isAllSelected
-                      ? "bg-emerald-50 text-[#00a36c]"
-                      : "text-neutral-700 hover:bg-neutral-50"
-                  }`}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-xs font-bold transition cursor-pointer ${isAllSelected
+                      ? "bg-[#E8F5F1] text-[#2D7A5D]"
+                      : "text-[#1B2B30] hover:bg-[#F4F8F8]"
+                    }`}
                 >
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-3.5 w-3.5 text-[#00a36c]" />
+                    <Building2 className="h-3.5 w-3.5 text-[#2D7A5D]" />
                     <span>All Health Centers (City-Wide)</span>
                   </div>
-                  {isAllSelected && <Check className="h-3.5 w-3.5 text-[#00a36c]" />}
+                  {isAllSelected && <Check className="h-3.5 w-3.5 text-[#2D7A5D]" />}
                 </button>
-                <div className="my-1 border-t border-neutral-100" />
+                <div className="my-1 border-t border-[#CFDDE0]" />
               </>
             )}
 
@@ -244,21 +240,17 @@ export function FacilityPicker({
                     key={facility.id}
                     type="button"
                     onClick={() => handleSelect(facility.id)}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-xs font-bold transition cursor-pointer ${
-                      isSelected
-                        ? "bg-emerald-50 text-[#00a36c]"
-                        : "text-neutral-700 hover:bg-neutral-50"
-                    }`}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-xs font-bold transition cursor-pointer ${isSelected
+                        ? "bg-[#E8F5F1] text-[#2D7A5D]"
+                        : "text-[#1B2B30] hover:bg-[#F4F8F8]"
+                      }`}
                   >
                     <div className="flex items-center gap-2 min-w-0 pr-2 text-left">
-                      <span className="truncate">{facility.facility_name}</span>
-                      {facility.facility_code && (
-                        <span className="shrink-0 rounded bg-neutral-100 px-1 py-0.2 text-[10px] font-semibold text-neutral-500">
-                          {facility.facility_code}
-                        </span>
-                      )}
+                      <span className="truncate" title={facility.facility_name}>
+                        {facility.facility_name}
+                      </span>
                     </div>
-                    {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-[#00a36c]" />}
+                    {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-[#2D7A5D]" />}
                   </button>
                 );
               })
@@ -306,16 +298,16 @@ export function DisposeStockModal({
       panelClassName="max-w-lg"
     >
       <div className="flex flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-red-100 bg-red-50/70 px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-[#faedf0] bg-[#faedf0] px-5 py-3.5">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-600 text-white">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#D9826B] text-white">
               <ShieldAlert className="h-4 w-4" />
             </div>
             <div>
-              <h3 id="dispose-stock-modal-title" className="text-sm font-black text-red-950">
+              <h3 id="dispose-stock-modal-title" className="text-sm font-black text-[#D9826B]">
                 Condemn &amp; Dispose Expired Stock
               </h3>
-              <p className="text-[11px] font-semibold text-red-800/80">
+              <p className="text-[11px] font-semibold text-[#D9826B]/80">
                 Official condemnation protocol &amp; audit record
               </p>
             </div>
@@ -406,7 +398,7 @@ export function DisposeStockModal({
             type="button"
             disabled={isSubmitting}
             onClick={() => onConfirm(lot, { method, remarks })}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-black text-white hover:bg-red-700 disabled:opacity-50 cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#D9826B] px-4 py-2 text-xs font-black text-white hover:bg-[#C26B54] disabled:opacity-50 cursor-pointer shadow-xs"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {isSubmitting ? "Processing..." : "Confirm Condemnation"}
@@ -420,31 +412,52 @@ export function DisposeStockModal({
 export function StockLevelBar({ quantity, threshold }) {
   const qty = Number(quantity || 0);
   const thresh = Number(threshold || 0);
-  const ratio = Math.min(1, qty / Math.max(thresh, 1));
-  const width = `${Math.max(2, Math.round(ratio * 100))}%`;
-  const toneClass =
-    qty === 0 || qty <= Math.max(1, Math.floor(thresh * 0.25))
-      ? "bg-red-500"
-      : qty <= thresh
-        ? "bg-orange-400"
-        : "bg-emerald-500";
+
+  let widthPercent = 100;
+  let toneClass = "bg-linear-to-r from-[#4C9F80] to-[#2D7A5D]";
+
+  if (qty === 0) {
+    widthPercent = 0;
+    toneClass = "bg-[#D9826B]";
+  } else if (thresh > 0) {
+    if (qty <= Math.max(1, Math.floor(thresh * 0.25))) {
+      widthPercent = Math.max(8, Math.min(25, Math.round((qty / thresh) * 100)));
+      toneClass = "bg-[#D9826B]";
+    } else if (qty <= thresh) {
+      widthPercent = Math.max(25, Math.min(60, Math.round((qty / thresh) * 100)));
+      toneClass = "bg-[#dc8939]";
+    } else {
+      const target = Math.max(thresh * 2, 1);
+      widthPercent = Math.min(100, Math.max(65, Math.round((qty / target) * 100)));
+      toneClass = "bg-linear-to-r from-[#4C9F80] to-[#2D7A5D]";
+    }
+  } else {
+    widthPercent = 100;
+    toneClass = "bg-linear-to-r from-[#4C9F80] to-[#2D7A5D]";
+  }
 
   return (
-    <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
-      <div className={`h-full rounded-full ${toneClass}`} style={{ width }} />
+    <div
+      className="mt-1.5 h-2 w-full max-w-[130px] overflow-hidden rounded-full border border-[#CFDDE0] bg-[#E5EFF1]"
+      title={`Stock: ${formatNumber(qty)}${thresh > 0 ? ` (Min threshold: ${formatNumber(thresh)})` : ""}`}
+    >
+      <div
+        className={`h-full rounded-full transition-all duration-300 ${toneClass}`}
+        style={{ width: `${widthPercent}%` }}
+      />
     </div>
   );
 }
 
 export function FilterChip({ label, onRemove }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 py-1 pl-3 pr-1.5 text-xs font-bold text-emerald-700">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4C9F80]/20 bg-[#E2F3EC] py-1 pl-3 pr-1.5 text-xs font-bold text-[#226048]">
       {label}
       <button
         type="button"
         onClick={onRemove}
         aria-label={`Remove ${label} filter`}
-        className="flex h-4 w-4 items-center justify-center rounded-full text-emerald-600 transition hover:bg-emerald-100"
+        className="flex h-4 w-4 items-center justify-center rounded-full text-[#226048] transition hover:bg-[#4C9F80]/20"
       >
         <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.4" viewBox="0 0 24 24">
           <path d="M18 6 6 18M6 6l12 12" />
@@ -481,7 +494,7 @@ export function AlertBanner({ alerts, onJump }) {
   );
 }
 
-export function Field({ label, className = "", autoComplete = "off", ...props }) {
+export function Field({ label, className = "", autoComplete = "off", hint, ...props }) {
   return (
     <label className={`block min-w-0 w-full text-xs font-black uppercase tracking-wide text-neutral-600 ${className}`}>
       {label && <span className="block mb-1.5 truncate text-[11px]">{label}</span>}
@@ -491,8 +504,13 @@ export function Field({ label, className = "", autoComplete = "off", ...props })
         spellCheck="false"
         data-form-type="other"
         {...props}
-        className="h-10 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50 disabled:text-neutral-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className="h-10 w-full min-w-0 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-semibold normal-case tracking-normal text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20 disabled:bg-[#E5EFF1] disabled:text-[#5B7077] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
       />
+      {hint && (
+        <span className="block mt-1 normal-case tracking-normal text-[10px] font-medium text-neutral-500 leading-tight">
+          {hint}
+        </span>
+      )}
     </label>
   );
 }
@@ -503,7 +521,7 @@ export function SelectField({ label, className = "", children, ...props }) {
       {label && <span className="block mb-1.5 truncate text-[11px]">{label}</span>}
       <select
         {...props}
-        className="h-10 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:bg-neutral-50 disabled:text-neutral-500"
+        className="h-10 w-full min-w-0 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-semibold normal-case tracking-normal text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20 disabled:bg-[#E5EFF1] disabled:text-[#5B7077]"
       >
         {children}
       </select>
@@ -558,7 +576,7 @@ export function InventoryTable({
     <>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[920px] text-left text-sm">
-          <thead className="sticky top-0 z-10 border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <thead className="sticky top-0 z-10 border-b border-[#CFDDE0]/80 bg-[#F9FBFB] text-[11px] font-bold uppercase tracking-wider text-[#5B7077]">
             <tr>
               <th className="w-[32%] px-4 py-2.5">Medicine name</th>
               <th className="w-[18%] px-4 py-2.5">Brand name</th>
@@ -567,7 +585,7 @@ export function InventoryTable({
                 <button
                   type="button"
                   onClick={() => onSort("quantity")}
-                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-emerald-700"
+                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[#34769B]"
                 >
                   {isExpiredTab ? "Expired Qty" : "Stock Level"}
                   <SortArrowIcon
@@ -579,7 +597,7 @@ export function InventoryTable({
                 <button
                   type="button"
                   onClick={() => onSort("expiration_date")}
-                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-emerald-700"
+                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[#34769B]"
                 >
                   {isExpiredTab ? "Date Expired" : "Expiration Date"}
                   <SortArrowIcon
@@ -589,7 +607,7 @@ export function InventoryTable({
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-100">
+          <tbody className="divide-y divide-[#CFDDE0]/40">
             {isLoading ? (
               Array.from({ length: 10 }, (_, index) => (
                 <InventoryRowSkeleton key={index} columns={5} />
@@ -599,11 +617,11 @@ export function InventoryTable({
                 <td className="px-4 py-12 text-center" colSpan="5">
                   {isExpiredTab ? (
                     <>
-                      <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                      <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#E2F3EC] text-[#226048]">
                         <CheckCircle2 className="h-5 w-5" />
                       </div>
-                      <p className="font-bold text-[#0d1117]">No Expired Medicines</p>
-                      <p className="mt-0.5 text-xs font-medium text-neutral-400">
+                      <p className="font-bold text-[#1B2B30]">No Expired Medicines</p>
+                      <p className="mt-0.5 text-xs font-medium text-[#5B7077]">
                         {hasActiveFilters
                           ? "Try adjusting or clearing the current filters."
                           : "All medicine batches in this facility are within their valid shelf life and safe for dispensing."}
@@ -611,11 +629,11 @@ export function InventoryTable({
                     </>
                   ) : (
                     <>
-                      <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-400">
+                      <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#E5EFF1] text-[#5B7077]">
                         <InboxIcon />
                       </span>
-                      <p className="font-bold text-neutral-500">No inventory records found.</p>
-                      <p className="mt-0.5 text-xs font-medium text-neutral-400">
+                      <p className="font-bold text-[#5B7077]">No inventory records found.</p>
+                      <p className="mt-0.5 text-xs font-medium text-[#5B7077]">
                         {hasActiveFilters
                           ? "Try adjusting or clearing the current filters."
                           : emptyHint || "Add stock to start tracking medicine inventory."}
@@ -626,7 +644,7 @@ export function InventoryTable({
                     <button
                       type="button"
                       onClick={onClearFilters}
-                      className="mt-3 rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-black text-neutral-700 hover:bg-neutral-200"
+                      className="mt-3 rounded-lg bg-[#E5EFF1] px-3 py-1.5 text-xs font-black text-[#1B2B30] hover:bg-[#CFDDE0]"
                     >
                       Clear filters
                     </button>
@@ -640,15 +658,15 @@ export function InventoryTable({
                 <tr
                   key={item.id}
                   onClick={() => onOpenItem(item)}
-                  className="group cursor-pointer transition hover:bg-emerald-50/35"
+                  className="group cursor-pointer transition hover:bg-[#E5EFF1]/50"
                 >
                   <td className="px-4 py-2.5 align-middle">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-black leading-snug text-[#0d1117]">
+                      <p className="text-sm font-black leading-snug text-[#1B2B30]">
                         {getMedicineName(item)}
                       </p>
                       {item.lotCount > 1 && (
-                        <span className="inline-flex items-center rounded-md bg-neutral-100 border border-neutral-200/60 px-1.5 py-0.2 text-[10px] font-bold text-neutral-600">
+                        <span className="inline-flex items-center rounded-md bg-[#E5EFF1] border border-[#CFDDE0] px-1.5 py-0.2 text-[10px] font-bold text-[#5B7077]">
                           {item.lotCount} batches
                         </span>
                       )}
@@ -660,39 +678,48 @@ export function InventoryTable({
                     )}
                   </td>
                   <td className="px-4 py-2.5 align-middle">
-                    <p className="font-bold text-[#42474e]">
+                    <p className="font-bold text-[#5B7077]">
                       {item.medicine?.brand_name || "—"}
                     </p>
                   </td>
                   <td className="px-4 py-2.5 align-middle">
-                    <p className="font-bold text-[#42474e]">
+                    <p className="font-bold text-[#5B7077]">
                       {item.medicine?.unit_of_measure || "-"}
                     </p>
                   </td>
                   <td className="px-4 py-2.5 align-middle">
-                    <p className="text-sm font-black text-[#0d1117]">
-                      {formatNumber(item.quantity)}
-                    </p>
                     {isExpiredTab ? (
-                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.2 text-[10px] font-black text-red-700">
-                        <Lock className="h-2.5 w-2.5" />
-                        Non-Dispensable
-                      </span>
-                    ) : (
                       <>
-                        <p className="text-[11px] font-semibold text-neutral-500">
-                          {getStockStatus(item).label}
+                        <p className="text-sm font-black text-[#1B2B30]">
+                          {formatNumber(item.quantity)}
                         </p>
-                        <StockLevelBar quantity={item.quantity} threshold={item.threshold} />
+                        <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-[#FBE9E3] border border-[#D9826B]/25 px-2 py-0.2 text-[10px] font-black text-[#8F3F2B]">
+                          <Lock className="h-2.5 w-2.5" />
+                          Non-Dispensable
+                        </span>
                       </>
+                    ) : (
+                      <div className="max-w-[130px]">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <p className="text-sm font-black text-[#1B2B30]">
+                            {formatNumber(item.quantity)}
+                          </p>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${getStockStatus(item).badgeClass}`}
+                          >
+                            {getStockStatus(item).label}
+                          </span>
+                        </div>
+                        <StockLevelBar quantity={item.quantity} threshold={item.threshold} />
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-2.5 align-middle">
-                    <p className="text-sm font-black text-[#0d1117]">
+                    <p className="text-sm font-black text-[#1B2B30]">
                       {formatDate(item.expiration_date)}
                     </p>
                     {isExpiredTab ? (
-                      <p className="mt-0.5 text-xs font-bold text-red-600">
+                      <p className="mt-0.5 text-xs font-bold text-[#8F3F2B]">
                         {getExpiredDays(item.expiration_date) > 0
                           ? `Expired ${getExpiredDays(item.expiration_date)} day${getExpiredDays(item.expiration_date) === 1 ? "" : "s"} ago`
                           : "Expired today"}
@@ -700,11 +727,10 @@ export function InventoryTable({
                     ) : (
                       item.expiration_date && getExpiryStatus(item).key !== "OK" && getExpiryStatus(item).key !== "NO_DATE" && (
                         <p
-                          className={`mt-0.5 text-xs font-semibold ${
-                            getExpiryStatus(item).key === "EXPIRED"
-                              ? "text-red-600"
-                              : "text-amber-600"
-                          }`}
+                          className={`mt-0.5 text-xs font-semibold ${getExpiryStatus(item).key === "EXPIRED"
+                              ? "text-[#8F3F2B]"
+                              : "text-[#8F3F2B]"
+                            }`}
                         >
                           {getExpiryStatus(item).label}
                         </p>
@@ -718,8 +744,8 @@ export function InventoryTable({
         </table>
       </div>
 
-      <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3">
-        <p className="text-xs font-medium text-neutral-500">
+      <div className="flex items-center justify-between border-t border-[#CFDDE0]/60 px-4 py-3">
+        <p className="text-xs font-medium text-[#5B7077]">
           Showing {totalCount > 0 ? (currentPage - 1) * 10 + 1 : 0} -{" "}
           {Math.min(currentPage * 10, totalCount)} of {totalCount}
         </p>
@@ -728,19 +754,19 @@ export function InventoryTable({
             type="button"
             onClick={() => onPageChange(Math.max(1, currentPage - 1))}
             disabled={currentPage === 1}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 transition"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CFDDE0] text-[#5B7077] hover:bg-[#E5EFF1] disabled:cursor-not-allowed disabled:opacity-40 transition"
             aria-label="Previous page"
           >
             <ChevronLeftIcon />
           </button>
-          <span className="rounded-lg bg-black px-3 py-1.5 text-xs font-black text-white">
+          <span className="rounded-lg bg-[#1F4A66] px-3 py-1.5 text-xs font-black text-white shadow-xs">
             Page {currentPage} of {totalPages}
           </span>
           <button
             type="button"
             onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage === totalPages}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 transition"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CFDDE0] text-[#5B7077] hover:bg-[#E5EFF1] disabled:cursor-not-allowed disabled:opacity-40 transition"
             aria-label="Next page"
           >
             <ChevronRightIcon />
@@ -754,12 +780,15 @@ export function InventoryTable({
 export function InventoryLotTable({
   lots = [],
   canEdit = false,
+  isBhw = false,
+  showProcurement = true,
   onEditLot,
   onDisposeLot,
   onSelectLot,
   showActions = false,
 }) {
   const displayedLots = lots;
+  const shouldShowProcurement = showProcurement && !isBhw;
 
   const {
     currentPage,
@@ -798,7 +827,9 @@ export function InventoryLotTable({
         </div>
         {onSelectLot && (
           <p className="text-[11px] font-semibold text-neutral-400">
-            Click any lot record to view details or edit
+            {canEdit
+              ? "Click any lot record to view details or edit"
+              : "Click any lot record to view details"}
           </p>
         )}
       </div>
@@ -807,9 +838,9 @@ export function InventoryLotTable({
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
             <tr>
-              <th className="px-4 py-2.5">PO #</th>
+              {shouldShowProcurement && <th className="px-4 py-2.5">PO #</th>}
               <th className="px-4 py-2.5">Lot No.</th>
-              <th className="px-4 py-2.5">Supplier</th>
+              {shouldShowProcurement && <th className="px-4 py-2.5">Supplier</th>}
               <th className="px-4 py-2.5">Quantity</th>
               <th className="px-4 py-2.5">Received</th>
               <th className="px-4 py-2.5">Expiration</th>
@@ -821,14 +852,21 @@ export function InventoryLotTable({
           <tbody className="divide-y divide-neutral-100 text-xs">
             {totalCount === 0 ? (
               <tr>
-                <td className="px-4 py-12 text-center" colSpan={hasActions ? 8 : 7}>
+                <td
+                  className="px-4 py-12 text-center"
+                  colSpan={(shouldShowProcurement ? 7 : 5) + (hasActions ? 1 : 0)}
+                >
                   <div className="max-w-md mx-auto">
                     <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
                       <Package className="h-5 w-5" />
                     </div>
-                    <p className="font-bold text-[#0d1117]">No Supplier Deliveries</p>
+                    <p className="font-bold text-[#0d1117]">
+                      {shouldShowProcurement ? "No Supplier Deliveries" : "No Stock Batches"}
+                    </p>
                     <p className="mt-0.5 text-xs text-neutral-400">
-                      No stock batches for this medicine have been recorded via Supplier Purchase Order.
+                      {shouldShowProcurement
+                        ? "No stock batches for this medicine have been recorded via Supplier Purchase Order."
+                        : "No stock batches have been recorded for this medicine."}
                     </p>
                   </div>
                 </td>
@@ -852,125 +890,139 @@ export function InventoryLotTable({
                   <tr
                     key={lot.id}
                     onClick={() => onSelectLot?.(lot)}
-                    className={`transition-colors ${
-                      onSelectLot ? "hover:bg-emerald-50/50 cursor-pointer group" : "hover:bg-neutral-50/70"
-                    }`}
+                    className={`transition-colors ${onSelectLot ? "hover:bg-emerald-50/50 cursor-pointer group" : "hover:bg-neutral-50/70"
+                      }`}
                   >
-                      {/* Column 1: PO Number */}
+                    {/* Column 1: PO Number (CHO only) */}
+                    {shouldShowProcurement && (
                       <td className="px-4 py-3 align-top whitespace-nowrap">
                         <span className="font-mono text-xs font-bold text-neutral-600">
                           {normalizePoNumber(lot.po_number) || "—"}
                         </span>
                       </td>
+                    )}
 
-                      {/* Column 2: Lot No. */}
-                      <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-xs font-black text-[#0d1117] group-hover:text-emerald-700 tracking-wider">
-                            {normalizeLotNumber(lot.batch_number) || "-"}
+                    {/* Column 2: Lot No. */}
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-xs font-black text-[#0d1117] group-hover:text-emerald-700 tracking-wider">
+                          {normalizeLotNumber(lot.batch_number) || "-"}
+                        </span>
+                        {displayedLots.length > 1 && lot.id === fefoLotId && (
+                          <span
+                            title="First-Expired, First-Out: Priority batch to dispense"
+                            className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
+                          >
+                            FEFO Next
                           </span>
-                          {displayedLots.length > 1 && lot.id === fefoLotId && (
-                            <span
-                              title="First-Expired, First-Out: Priority batch to dispense"
-                              className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Column 3: Supplier (CHO only) */}
+                    {shouldShowProcurement && (
+                      <td className="px-4 py-3 align-top">
+                        <div className="max-w-[200px]">
+                          <p className="font-bold text-[#0d1117] text-xs truncate">
+                            {lot.supplier_name || lot.supplier?.supplier_name || "—"}
+                          </p>
+                          {lot.supplier_contact ? (
+                            <p className="text-[11px] font-medium text-neutral-500 truncate">
+                              {lot.supplier_contact}
+                            </p>
+                          ) : lot.supplier_address ? (
+                            <p className="text-[11px] font-medium text-neutral-500 truncate">
+                              {lot.supplier_address}
+                            </p>
+                          ) : null}
+                        </div>
+                      </td>
+                    )}
+
+                    {/* Column 4: Quantity in Stock */}
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-sm font-black text-[#0d1117]">
+                          {formatNumber(lot.quantity)}
+                        </span>
+                        {unitMeasure && (
+                          <span className="text-xs font-bold text-neutral-500 lowercase">
+                            {unitMeasure}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Column 5: Date Received */}
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      <span className="text-xs font-semibold text-neutral-800">
+                        {lot.date_received ? formatDate(lot.date_received) : "—"}
+                      </span>
+                    </td>
+
+                    {/* Column 4: Expiration & Shelf Life */}
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      <div className="text-xs font-bold text-[#0d1117]">
+                        {formatDate(lot.expiration_date)}
+                      </div>
+                      <div className="mt-1">
+                        {isExpired ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                            Expired ({getExpiredDays(lot.expiration_date) > 0 ? `${getExpiredDays(lot.expiration_date)}d ago` : "Today"})
+                          </span>
+                        ) : expiry.days !== null && expiry.days <= 30 ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            {expiry.days === 0 ? "Expires today" : `Expiring in ${expiry.days}d`}
+                          </span>
+                        ) : expiry.days !== null ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                            {expiry.days}d shelf life
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-neutral-400">No expiry date</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Column 5: Stock Health */}
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      <span className={'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-black ' + status.badgeClass}>
+                        {status.label}
+                      </span>
+                    </td>
+
+                    {/* Column 6: Action */}
+                    {hasActions && (
+                      <td className="px-4 py-3 align-top text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => onEditLot?.(lot)}
+                              className="inline-flex h-7 items-center justify-center rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-bold text-neutral-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
                             >
-                              FEFO Next
-                            </span>
+                              Edit
+                            </button>
+                          )}
+                          {isExpired && onDisposeLot && (
+                            <button
+                              type="button"
+                              onClick={() => onDisposeLot?.(lot)}
+                              className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 text-xs font-bold text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500/20 cursor-pointer"
+                              title="Condemn and dispose expired stock"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Dispose
+                            </button>
                           )}
                         </div>
                       </td>
-
-                      {/* Column 3: Supplier Name */}
-                      <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <span className="text-xs font-semibold text-neutral-700">
-                          {lot.supplier?.supplier_name || "—"}
-                        </span>
-                      </td>
-
-                      {/* Column 4: Quantity in Stock */}
-                      <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-sm font-black text-[#0d1117]">
-                            {formatNumber(lot.quantity)}
-                          </span>
-                          {unitMeasure && (
-                            <span className="text-xs font-bold text-neutral-500 lowercase">
-                              {unitMeasure}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Column 5: Date Received */}
-                      <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <span className="text-xs font-semibold text-neutral-800">
-                          {lot.date_received ? formatDate(lot.date_received) : "—"}
-                        </span>
-                      </td>
-
-                      {/* Column 4: Expiration & Shelf Life */}
-                      <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <div className="text-xs font-bold text-[#0d1117]">
-                          {formatDate(lot.expiration_date)}
-                        </div>
-                        <div className="mt-1">
-                          {isExpired ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
-                              <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
-                              Expired ({getExpiredDays(lot.expiration_date) > 0 ? `${getExpiredDays(lot.expiration_date)}d ago` : "Today"})
-                            </span>
-                          ) : expiry.days !== null && expiry.days <= 30 ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600">
-                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                              {expiry.days === 0 ? "Expires today" : `Expiring in ${expiry.days}d`}
-                            </span>
-                          ) : expiry.days !== null ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
-                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                              {expiry.days}d shelf life
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-neutral-400">No expiry date</span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Column 5: Stock Health */}
-                      <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <span className={'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-black ' + status.badgeClass}>
-                          {status.label}
-                        </span>
-                      </td>
-
-                      {/* Column 6: Action */}
-                      {hasActions && (
-                        <td className="px-4 py-3 align-top text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {canEdit && (
-                              <button
-                                type="button"
-                                onClick={() => onEditLot?.(lot)}
-                                className="inline-flex h-7 items-center justify-center rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-bold text-neutral-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
-                              >
-                                Edit
-                              </button>
-                            )}
-                            {isExpired && onDisposeLot && (
-                              <button
-                                type="button"
-                                onClick={() => onDisposeLot?.(lot)}
-                                className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 text-xs font-bold text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500/20 cursor-pointer"
-                                title="Condemn and dispose expired stock"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                                Dispose
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
+                    )}
+                  </tr>
+                );
               })
             )}
           </tbody>

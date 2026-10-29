@@ -18,6 +18,35 @@ export const formatDispensingDateTime = (value) => {
   }).format(parsed);
 };
 
+export const formatDispensingDate = (value) => {
+  if (!value) {
+    return "—";
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]) - 1;
+      const day = Number(match[3]);
+      return new Intl.DateTimeFormat("en-US", {
+        dateStyle: "medium",
+      }).format(new Date(year, month, day));
+    }
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+  }).format(parsed);
+};
+
 export const formatTransactionNumber = (transactionId) => {
   if (!transactionId) {
     return "TXN-UNKNOWN";
@@ -476,7 +505,9 @@ export const getPatientMonthlyClaimsBreakdown = (rows = [], patientId = null, mo
           referred_facility: row.referred_facility || null,
           referred_facility_id: row.referred_facility_id || (row.referred_facility ? row.referred_facility.id : ""),
           last_dispense_date: row.dispense_date || "",
+          facility_id: row.facility_id || "",
           transactions: [],
+          dispensing_ids: [],
         });
       }
 
@@ -484,6 +515,12 @@ export const getPatientMonthlyClaimsBreakdown = (rows = [], patientId = null, mo
       const needed = Number(row.needed_quantity || row.quantity || 0);
       claim.needed_quantity = Math.max(claim.needed_quantity, needed);
       claim.released_quantity += Number(row.quantity || 0);
+      if (row.id && !claim.dispensing_ids.includes(row.id)) {
+        claim.dispensing_ids.push(row.id);
+      }
+      if (row.facility_id && !claim.facility_id) {
+        claim.facility_id = row.facility_id;
+      }
       if (row.medicine && !claim.medicine) {
         claim.medicine = row.medicine;
       }
@@ -517,6 +554,8 @@ export const getPatientMonthlyClaimsBreakdown = (rows = [], patientId = null, mo
 export const getPatientDispensingStatus = ({
   claimsBreakdown = [],
   today = new Date().toISOString().slice(0, 10),
+  currentFacilityId = null,
+  isBhw = false,
 } = {}) => {
   if (!claimsBreakdown || claimsBreakdown.length === 0) {
     return {
@@ -555,6 +594,23 @@ export const getPatientDispensingStatus = ({
     scheduledItems.sort((a, b) => a.follow_up_date.localeCompare(b.follow_up_date));
     const earliestDate = scheduledItems[0].follow_up_date;
 
+    // If viewer is BHW: patient is scheduled to return to CHO for remaining balance.
+    // Barangay health worker cannot dispense until CHO updates follow-up to refer to barangay.
+    if (isBhw) {
+      return {
+        code: "SCHEDULED_AT_CHO",
+        label: earliestDate ? `Scheduled at CHO (${earliestDate})` : "Scheduled at CHO",
+        badgeColor: "amber",
+        description: `Patient is scheduled to return to CHO on ${earliestDate}. Cannot dispense at Barangay.`,
+        isBlocked: true,
+        isFutureSchedule: true,
+        scheduledDate: earliestDate,
+        pendingMedicines: pending,
+        completedMedicines: completed,
+      };
+    }
+
+    // If viewer is CHO:
     if (earliestDate > today) {
       const todayDate = new Date(today);
       const targetDate = new Date(earliestDate);
@@ -592,14 +648,55 @@ export const getPatientDispensingStatus = ({
   );
 
   if (referredItems.length > 0) {
+    const targetFacilityId = referredItems[0]?.referred_facility_id || referredItems[0]?.referred_facility?.id || "";
     const facilityName = referredItems[0]?.referred_facility?.facility_name || "Barangay Health Center";
+
+    // If viewer is BHW: check if referred specifically to this BHW's facility
+    if (isBhw) {
+      const isReferredToThisBarangay = Boolean(
+        currentFacilityId && targetFacilityId && String(currentFacilityId) === String(targetFacilityId)
+      );
+
+      if (isReferredToThisBarangay) {
+        return {
+          code: "PARTIAL_REFERRED",
+          label: "Referred from CHO",
+          badgeColor: "indigo",
+          description: `Referred to ${facilityName}. Ready to dispense remaining balance.`,
+          isBlocked: false,
+          isFutureSchedule: false,
+          referredFacilityId: targetFacilityId,
+          referredFacilityName: facilityName,
+          pendingMedicines: pending,
+          completedMedicines: completed,
+        };
+      }
+
+      // Referred to a different barangay
+      return {
+        code: "REFERRED_OTHER_BARANGAY",
+        label: `Referred to ${facilityName}`,
+        badgeColor: "indigo",
+        description: `Patient was referred to ${facilityName}. Cannot dispense at this barangay.`,
+        isBlocked: true,
+        isFutureSchedule: false,
+        referredFacilityId: targetFacilityId,
+        referredFacilityName: facilityName,
+        pendingMedicines: pending,
+        completedMedicines: completed,
+      };
+    }
+
+    // If viewer is CHO:
     return {
       code: "PARTIAL_REFERRED",
       label: `Referred to ${facilityName}`,
       badgeColor: "indigo",
-      description: `${pending.length} medicine(s) pending`,
+      description: `${pending.length} medicine(s) pending (Referred to ${facilityName})`,
       isBlocked: false,
       isFutureSchedule: false,
+      referredFacilityId: targetFacilityId,
+      referredFacilityName: facilityName,
       pendingMedicines: pending,
       completedMedicines: completed,
     };
@@ -650,36 +747,284 @@ export const groupHistoryByTransaction = (rows) => {
     }
   });
 
-  return Array.from(groups.values()).map((group) => {
+  const groupList = Array.from(groups.values());
+
+  // Sort chronologically (oldest first) to accurately track multi-step prescription cycles and remaining balance
+  const chronological = [...groupList].sort((a, b) => {
+    const timeA = new Date(a.dispenseDate).getTime() || 0;
+    const timeB = new Date(b.dispenseDate).getTime() || 0;
+    if (timeA !== timeB) return timeA - timeB;
+    return String(a.transactionId || a.key || "").localeCompare(String(b.transactionId || b.key || ""));
+  });
+
+  const activeCycles = new Map();
+
+  chronological.forEach((group) => {
+    group.isFollowUp = false;
+    group.isFulfilledByLater = false;
+    group.fulfillingTransactionId = null;
+    group.fulfillingDate = null;
+    group.followUpOfTransactionId = null;
+    group.followUpOfDate = null;
+
     const medicineLines = groupMedicineRows(group.rows);
+    const patientId = String(
+      group.patient?.id ||
+      group.rows[0]?.patient?.id ||
+      group.rows[0]?.patient_id ||
+      ""
+    );
+
     const hasPendingScheduled = !group.voidedAt && medicineLines.some(
-      (line) => line.releasedQuantity < line.neededQuantity && line.followUpAction === FOLLOW_UP_ACTIONS.schedule
+      (line) =>
+        line.followUpAction === FOLLOW_UP_ACTIONS.schedule ||
+        (Boolean(line.followUpDate) && line.followUpAction !== FOLLOW_UP_ACTIONS.refer) ||
+        (line.releasedQuantity < line.neededQuantity && line.followUpAction === FOLLOW_UP_ACTIONS.schedule)
     );
     const hasReferred = !group.voidedAt && medicineLines.some(
-      (line) => line.releasedQuantity < line.neededQuantity && line.followUpAction === FOLLOW_UP_ACTIONS.refer
+      (line) =>
+        line.followUpAction === FOLLOW_UP_ACTIONS.refer ||
+        Boolean(line.referredFacility) ||
+        (line.releasedQuantity < line.neededQuantity && line.followUpAction === FOLLOW_UP_ACTIONS.refer)
     );
-    const isCompleted = !group.voidedAt && medicineLines.every(
-      (line) => line.releasedQuantity >= line.neededQuantity
-    );
+
+    let allLinesCompleted = true;
+
+    for (const line of medicineLines) {
+      const firstRow = line.rows?.[0] || line || {};
+      const medicineId = String(line.medicine?.id || firstRow.medicine_id || firstRow.id || "");
+      const cycleKey = `${patientId}:${medicineId}`;
+      const cycle = patientId && medicineId ? activeCycles.get(cycleKey) : null;
+
+      if (group.voidedAt) {
+        line.isFollowUp = false;
+        line.prescribedNeeded = line.neededQuantity;
+        line.previouslyClaimed = 0;
+        line.neededThisVisit = line.neededQuantity;
+        line.releasedThisVisit = line.releasedQuantity;
+        line.balanceRemaining = Math.max(0, line.neededQuantity - line.releasedQuantity);
+        line.rows?.forEach((row) => {
+          row.is_follow_up = false;
+          row.prescribed_needed = line.prescribedNeeded;
+          row.previously_claimed = 0;
+          row.needed_this_visit = line.neededQuantity;
+          row.released_this_visit = Number(row.quantity || 0);
+          row.balance_remaining = line.balanceRemaining;
+        });
+        continue;
+      }
+
+      if (cycle && cycle.remaining > 0) {
+        // Follow-up visit completing an open prescription cycle
+        const prescribedNeeded = cycle.originalNeeded;
+        const previouslyClaimed = cycle.cumulativeReleased;
+        const neededThisVisit = cycle.remaining;
+        const newCumulative = previouslyClaimed + line.releasedQuantity;
+        const balanceRemaining = Math.max(0, prescribedNeeded - newCumulative);
+
+        group.isFollowUp = true;
+        group.followUpOfTransactionId = cycle.initialTransactionId;
+        group.followUpOfDate = cycle.initialTransaction?.dispenseDate;
+
+        line.isFollowUp = true;
+        line.prescribedNeeded = prescribedNeeded;
+        line.previouslyClaimed = previouslyClaimed;
+        line.neededThisVisit = neededThisVisit;
+        line.releasedThisVisit = line.releasedQuantity;
+        line.balanceRemaining = balanceRemaining;
+        line.initialTransactionId = cycle.initialTransactionId;
+
+        line.rows?.forEach((row) => {
+          row.is_follow_up = true;
+          row.prescribed_needed = prescribedNeeded;
+          row.previously_claimed = previouslyClaimed;
+          row.needed_this_visit = neededThisVisit;
+          row.released_this_visit = Number(row.quantity || 0);
+          row.balance_remaining = balanceRemaining;
+          row.initial_transaction_id = cycle.initialTransactionId;
+        });
+
+        if (balanceRemaining === 0) {
+          // Fulfills the open cycle! Mark initial transaction and any intermediate transactions
+          if (cycle.initialTransaction) {
+            cycle.initialTransaction.isFulfilledByLater = true;
+            cycle.initialTransaction.fulfillingTransactionId = group.transactionId || group.key;
+            cycle.initialTransaction.fulfillingDate = group.dispenseDate;
+            cycle.initialTransaction.rows?.forEach((r) => {
+              if (String(r.medicine_id || r.medicine?.id || "") === medicineId) {
+                r.is_fulfilled_by_later = true;
+                r.fulfilling_transaction_id = group.transactionId || group.key;
+                r.fulfilling_date = group.dispenseDate;
+              }
+            });
+            cycle.initialTransaction.medicineLines?.forEach((l) => {
+              const lMedId = String(l.medicine?.id || l.rows?.[0]?.medicine_id || "");
+              if (lMedId === medicineId) {
+                l.isFulfilledByLater = true;
+                l.fulfillingTransactionId = group.transactionId || group.key;
+                l.fulfillingDate = group.dispenseDate;
+              }
+            });
+          }
+
+          cycle.transactions?.forEach((tx) => {
+            tx.isFulfilledByLater = true;
+            tx.fulfillingTransactionId = group.transactionId || group.key;
+            tx.fulfillingDate = group.dispenseDate;
+          });
+
+          activeCycles.delete(cycleKey);
+        } else {
+          cycle.cumulativeReleased = newCumulative;
+          cycle.remaining = balanceRemaining;
+          cycle.transactions.push(group);
+          allLinesCompleted = false;
+        }
+      } else {
+        // Initial / standalone prescription release
+        const prescribedNeeded = line.neededQuantity;
+        const previouslyClaimed = 0;
+        const neededThisVisit = line.neededQuantity;
+        const balanceRemaining = Math.max(0, prescribedNeeded - line.releasedQuantity);
+
+        line.isFollowUp = false;
+        line.prescribedNeeded = prescribedNeeded;
+        line.previouslyClaimed = 0;
+        line.neededThisVisit = neededThisVisit;
+        line.releasedThisVisit = line.releasedQuantity;
+        line.balanceRemaining = balanceRemaining;
+
+        line.rows?.forEach((row) => {
+          row.is_follow_up = false;
+          row.prescribed_needed = prescribedNeeded;
+          row.previously_claimed = 0;
+          row.needed_this_visit = neededThisVisit;
+          row.released_this_visit = Number(row.quantity || 0);
+          row.balance_remaining = balanceRemaining;
+        });
+
+        if (balanceRemaining > 0) {
+          allLinesCompleted = false;
+          if (patientId && medicineId) {
+            activeCycles.set(cycleKey, {
+              originalNeeded: prescribedNeeded,
+              cumulativeReleased: line.releasedQuantity,
+              remaining: balanceRemaining,
+              initialTransaction: group,
+              initialTransactionId: group.transactionId || group.key,
+              transactions: [group],
+            });
+          }
+        }
+      }
+    }
+
+    const isCompleted =
+      !group.voidedAt &&
+      !hasPendingScheduled &&
+      !hasReferred &&
+      allLinesCompleted;
 
     let status = "COMPLETED";
     if (group.voidedAt) {
       status = "VOIDED";
-    } else if (hasPendingScheduled) {
-      status = "SCHEDULED";
     } else if (hasReferred) {
       status = "REFERRED";
+    } else if (hasPendingScheduled || !isCompleted) {
+      status = "PARTIAL";
     }
 
-    return {
-      ...group,
-      hasPendingScheduled,
-      hasReferred,
-      isCompleted,
-      medicineLines,
-      status,
-      totalQuantity: getTransactionTotalQuantity(group.rows),
-    };
+    group.medicineLines = medicineLines;
+    group.hasPendingScheduled = hasPendingScheduled;
+    group.hasReferred = hasReferred;
+    group.isCompleted = isCompleted;
+    group.status = status;
+    group.totalQuantity = getTransactionTotalQuantity(group.rows);
+  });
+
+  return groupList;
+};
+
+export const buildDispensingClaimCycles = (transactions = []) => {
+  const cycles = new Map();
+
+  const sorted = [...transactions].sort((a, b) => {
+    const timeA = new Date(a.dispenseDate).getTime() || 0;
+    const timeB = new Date(b.dispenseDate).getTime() || 0;
+    return timeA - timeB;
+  });
+
+  sorted.forEach((tx) => {
+    const patient = tx.patient;
+    const patientId = String(patient?.id || tx.rows?.[0]?.patient_id || "");
+    if (!patientId) return;
+
+    tx.rows?.forEach((row) => {
+      const medicineId = String(row.medicine_id || row.medicine?.id || "");
+      if (!medicineId) return;
+
+      const cycleId = row.initial_transaction_id || tx.transactionId || tx.key;
+      const key = `${patientId}:${medicineId}:${cycleId}`;
+
+      if (!cycles.has(key)) {
+        cycles.set(key, {
+          key,
+          cycleId,
+          patient,
+          patientId,
+          medicine: row.medicine,
+          medicineId,
+          prescribedBy: row.prescribed_by || tx.rows?.[0]?.prescribed_by || "—",
+          prescribedNeeded: Number(row.prescribed_needed || row.needed_quantity || row.quantity || 0),
+          totalReleased: 0,
+          balanceRemaining: 0,
+          startDate: tx.dispenseDate,
+          latestDate: tx.dispenseDate,
+          dispensingFacility: tx.dispensingFacility || row.dispensing_facility,
+          visits: [],
+          status: "COMPLETED",
+          isVoided: false,
+        });
+      }
+
+      const cycle = cycles.get(key);
+      const qty = Number(row.quantity || 0);
+      cycle.totalReleased += qty;
+      cycle.latestDate = tx.dispenseDate;
+      cycle.balanceRemaining = Math.max(0, cycle.prescribedNeeded - cycle.totalReleased);
+
+      if (tx.voidedAt) {
+        cycle.isVoided = true;
+      }
+
+      cycle.visits.push({
+        transactionId: tx.transactionId || tx.key,
+        dispenseDate: tx.dispenseDate,
+        dispenser: tx.dispenser,
+        manualDispensedBy: row.manual_dispensed_by,
+        quantity: qty,
+        batchNumber: row.batch?.batch_number,
+        expirationDate: row.batch?.expiration_date,
+        followUpAction: row.follow_up_action,
+        followUpDate: row.follow_up_date,
+        referredFacility: row.referred_facility,
+        isVoided: Boolean(tx.voidedAt),
+      });
+
+      if (cycle.isVoided) {
+        cycle.status = "VOIDED";
+      } else if (cycle.balanceRemaining > 0) {
+        cycle.status = row.follow_up_action === FOLLOW_UP_ACTIONS.refer ? "REFERRED" : "PARTIAL";
+      } else {
+        cycle.status = "COMPLETED";
+      }
+    });
+  });
+
+  return Array.from(cycles.values()).sort((a, b) => {
+    const timeA = new Date(a.latestDate).getTime() || 0;
+    const timeB = new Date(b.latestDate).getTime() || 0;
+    return timeB - timeA;
   });
 };
 
@@ -719,17 +1064,22 @@ const groupMedicineRows = (rows) => {
 };
 
 export const getFollowUpDisplay = (line) => {
-  if (!line?.followUpAction && !line?.follow_up_action) {
+  // If the line has been fulfilled (0 balance remaining), there is no pending follow-up action
+  if (line?.balance_remaining === 0 || line?.balanceRemaining === 0) {
     return "";
   }
 
-  const action = line.followUpAction || line.follow_up_action;
-  const date = line.followUpDate || line.follow_up_date;
-  const facility = line.referredFacility || line.referred_facility;
-
-  if (action === FOLLOW_UP_ACTIONS.schedule) {
-    return date ? `Schedule next week - ${date}` : "Schedule next week";
+  // If this line fulfilled what was needed for this visit and has no pending balance
+  if (
+    line?.needed_this_visit !== undefined &&
+    Number(line?.quantity || line?.released_this_visit || 0) >= Number(line?.needed_this_visit) &&
+    (line?.balance_remaining === undefined || line?.balance_remaining <= 0)
+  ) {
+    return "";
   }
+
+  const action = line?.followUpAction || line?.follow_up_action;
+  const facility = line?.referredFacility || line?.referred_facility;
 
   if (action === FOLLOW_UP_ACTIONS.refer) {
     if (isChoFacility(facility)) {
@@ -742,9 +1092,21 @@ export const getFollowUpDisplay = (line) => {
     return `Refer to barangay${facility?.facility_name ? ` - ${facility.facility_name}` : ""}`;
   }
 
+  if (action === FOLLOW_UP_ACTIONS.schedule) {
+    return "Partial";
+  }
+
+  if (!action) {
+    if (
+      (line?.neededQuantity && line?.releasedQuantity && line.neededQuantity > line.releasedQuantity) ||
+      (line?.needed_quantity && line?.quantity && Number(line.needed_quantity) > Number(line.quantity))
+    ) {
+      return "Partial";
+    }
+  }
+
   return "";
 };
-
 export const matchesHistoryFilters = ({ keyword = "", status = "ALL", transaction }) => {
   const term = (keyword || "").trim().toLowerCase();
 
@@ -756,7 +1118,10 @@ export const matchesHistoryFilters = ({ keyword = "", status = "ALL", transactio
     return false;
   }
 
-  if (status === "SCHEDULED" && (transaction.voidedAt || !transaction.hasPendingScheduled)) {
+  if (
+    (status === "SCHEDULED" || status === "PARTIAL") &&
+    (transaction.voidedAt || transaction.isCompleted || transaction.hasReferred)
+  ) {
     return false;
   }
 
@@ -874,7 +1239,7 @@ export const buildPatientHistoryRows = (transactions = []) => {
             status = "COMPLETED";
             activeCycles.delete(medicineId);
           } else {
-            status = "PARTIAL";
+            status = "SCHEDULED";
           }
         } else {
           // Fresh prescription or initial dispensing
@@ -884,7 +1249,7 @@ export const buildPatientHistoryRows = (transactions = []) => {
           if (remaining === 0) {
             status = "COMPLETED";
           } else {
-            status = "PARTIAL";
+            status = "SCHEDULED";
             activeCycles.set(medicineId, {
               originalNeeded: lineNeeded,
               remaining,

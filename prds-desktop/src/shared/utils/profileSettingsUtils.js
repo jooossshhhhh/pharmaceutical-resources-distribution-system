@@ -40,6 +40,21 @@ export const emptyPasswordVerification = {
   step: "choose",
 };
 
+export const emptyGmailUpdate = {
+  code: "",
+  error: "",
+  isOpen: false,
+  isSending: false,
+  isVerifying: false,
+  newEmail: "",
+  step: "input", // "input" | "verify"
+  successMessage: "",
+};
+
+export const isValidEmail = (email) => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+};
+
 export const getInitials = (profile) => {
   const firstInitial = profile?.first_name?.[0] || "P";
   const lastInitial = profile?.last_name?.[0] || "U";
@@ -94,7 +109,7 @@ export const getPhoneChangeState = ({
   return {
     currentPhoneNumber: normalizedCurrentPhoneNumber,
     nextPhoneNumber,
-    requiresVerification: nextPhoneNumber !== normalizedCurrentPhoneNumber,
+    requiresVerification: false,
   };
 };
 
@@ -197,27 +212,16 @@ export const getLoginMethodStatusLabel = (isConnected) => {
   return isConnected ? "Linked" : "Not connected";
 };
 
-export const getLoginMethodAction = ({ hasGmailLogin, hasPhoneLogin }) => {
+export const getLoginMethodAction = ({ hasGmailLogin }) => {
   if (!hasGmailLogin) {
     return { kind: "gmail", label: "Add Gmail Login" };
-  }
-
-  if (!hasPhoneLogin) {
-    return { kind: "phone", label: "Add Phone Number" };
   }
 
   return null;
 };
 
-export const canRemoveLoginMethod = ({ hasGmailLogin, hasPhoneLogin, method }) => {
-  if (method === "gmail") {
-    return hasGmailLogin && hasPhoneLogin;
-  }
-
-  if (method === "phone") {
-    return hasPhoneLogin && hasGmailLogin;
-  }
-
+export const canRemoveLoginMethod = ({ hasGmailLogin, method }) => {
+  // Gmail is the sole authentication method and cannot be removed
   return false;
 };
 

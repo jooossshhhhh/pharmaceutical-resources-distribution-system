@@ -416,9 +416,11 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           po_number,
           unit_cost,
           brand_name,
+          supplier_name,
+          supplier_address,
+          supplier_contact,
           date_received,
           expiration_date,
-          origin_facility_id,
           intake_type,
           return_reason,
           status,
@@ -639,6 +641,8 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                   inventory_id,
                   quantity,
                   needed_quantity,
+                  unit_cost_at_dispense,
+                  total_cost_at_dispense,
                   prescribed_by,
                   follow_up_action,
                   follow_up_date,
@@ -667,7 +671,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                   dispenser:profiles!medicine_dispensing_dispensed_by_fkey(id, first_name, last_name, role),
                   dispensing_facility:facilities!medicine_dispensing_facility_id_fkey(id, facility_name, facility_code),
                   referred_facility:facilities!medicine_dispensing_referred_facility_id_fkey(id, facility_name, facility_code),
-                  batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date)
+                  batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date, unit_cost)
                 `);
               if (wm) {
                 q = q.gt("updated_at", wm);
@@ -696,6 +700,8 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                     inventory_id,
                     quantity,
                     needed_quantity,
+                    unit_cost_at_dispense,
+                    total_cost_at_dispense,
                     prescribed_by,
                     follow_up_action,
                     follow_up_date,
@@ -724,7 +730,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                     dispenser:profiles!medicine_dispensing_dispensed_by_fkey(id, first_name, last_name, role),
                     dispensing_facility:facilities!medicine_dispensing_facility_id_fkey(id, facility_name, facility_code),
                     referred_facility:facilities!medicine_dispensing_referred_facility_id_fkey(id, facility_name, facility_code),
-                    batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date)
+                    batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date, unit_cost)
                   `)
                   .order("dispense_date", { ascending: false })
                   .order("id", { ascending: false });
@@ -1089,7 +1095,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           let localMetaMap = new Map();
           try {
             const existingRows = await db.query(
-              "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status FROM inventory"
+              "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact FROM inventory"
             );
             if (Array.isArray(existingRows)) {
               for (const row of existingRows) {
@@ -1133,10 +1139,16 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
               const returnReason = inv.return_reason || local?.return_reason || null;
               const status = inv.status || local?.status || "ACTIVE";
               const brandName = inv.brand_name || local?.brand_name || inv.medicine?.brand_name || null;
+              const supplierName = inv.supplier_name || local?.supplier_name || inv.supplier?.supplier_name || null;
+              const supplierAddress = inv.supplier_address || local?.supplier_address || inv.supplier?.address || null;
+              const supplierContact = inv.supplier_contact || local?.supplier_contact || inv.supplier?.contact_number || null;
 
               const enrichedInv = {
                 ...inv,
                 brand_name: brandName,
+                supplier_name: supplierName,
+                supplier_address: supplierAddress,
+                supplier_contact: supplierContact,
                 po_number: poNumber,
                 unit_cost: unitCost,
                 origin_facility_id: originFacilityId,
@@ -1161,6 +1173,9 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 returnReason,
                 status,
                 brandName,
+                supplierName,
+                supplierAddress,
+                supplierContact,
                 JSON.stringify(enrichedInv),
               ];
             });
@@ -1184,6 +1199,9 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 "return_reason",
                 "status",
                 "brand_name",
+                "supplier_name",
+                "supplier_address",
+                "supplier_contact",
                 "data_json",
               ],
               rows

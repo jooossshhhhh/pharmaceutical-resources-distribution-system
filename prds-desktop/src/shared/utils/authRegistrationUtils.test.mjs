@@ -15,6 +15,7 @@ import {
 const base = {
   firstName: "Ava",
   lastName: "Naga",
+  email: "ava@gmail.com",
   phoneNumber: "09123456789",
   facilityId: "facility-1",
   facilities: [{ id: "facility-1", status: "ACTIVE" }],
@@ -45,6 +46,21 @@ test("registration only accepts active facilities and allowed roles", () => {
   assert.match(validateRegistrationFields({ ...base, role: "PHARMA_II" }), /select a valid role/);
 });
 
+test("registration requires valid Gmail address when not already authenticated with Google", () => {
+  // Missing email on standard registration
+  assert.match(validateRegistrationFields({ ...base, email: "" }), /valid Gmail/);
+  // Invalid email on standard registration
+  assert.match(validateRegistrationFields({ ...base, email: "invalid-email" }), /valid Gmail/);
+  // Valid email on standard registration
+  assert.equal(validateRegistrationFields({ ...base, email: "nurse@gmail.com" }), "");
+
+  // Google reg does not require email field in payload (uses auth session email)
+  assert.equal(validateRegistrationFields({ ...base, isGoogleRegistration: true, email: "" }), "");
+  // Optional contact phone format validation
+  assert.equal(validateRegistrationFields({ ...base, phoneNumber: "" }), "");
+  assert.match(validateRegistrationFields({ ...base, phoneNumber: "123" }), /09XXXXXXXXX/);
+});
+
 test("login account status distinguishes unregistered, pending, and active profiles", () => {
   const profile = {
     first_name: "Ava",
@@ -61,9 +77,9 @@ test("login account status distinguishes unregistered, pending, and active profi
   assert.equal(getLoginAccountStatus({ ...profile, status: "ACTIVE" }), "active");
 });
 
-test("phone registration requires the Philippine mobile format; Google registration does not", () => {
-  assert.match(validateRegistrationFields({ ...base, phoneNumber: "", isGoogleRegistration: false }), /09XXXXXXXXX/);
-  assert.equal(validateRegistrationFields({ ...base, phoneNumber: "", isGoogleRegistration: true }), "");
+test("registration accepts empty phone as optional contact info, but validates format if provided", () => {
+  assert.equal(validateRegistrationFields({ ...base, phoneNumber: "" }), "");
+  assert.match(validateRegistrationFields({ ...base, phoneNumber: "123" }), /09XXXXXXXXX/);
 });
 
 test("Google registration routes existing profiles by status and leaves incomplete profiles on registration", () => {
@@ -220,6 +236,7 @@ test("validateRegistrationFields validates cultural names and supports enforceCo
   const base = {
     firstName: "Ava",
     lastName: "Naga",
+    email: "ava@gmail.com",
     phoneNumber: "09123456789",
     facilityId: "facility-1",
     facilities: [{ id: "facility-1", status: "ACTIVE" }],

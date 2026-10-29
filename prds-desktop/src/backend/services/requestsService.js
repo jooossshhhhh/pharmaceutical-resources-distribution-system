@@ -59,6 +59,7 @@ const buildRequestSelect = (withReceiptFields, withSourceFields) => `
     ${withSourceFields ? "request_source," : ""}
     ${withSourceFields ? "manual_requested_by," : ""}
     ${withSourceFields ? "encoded_by," : ""}
+    ${withSourceFields ? "paper_slip_reference," : ""}
     remarks,
     facility:facilities(id, facility_name, facility_code, facility_type, address),
     requester:profiles!medicine_requests_requested_by_fkey(
@@ -84,6 +85,7 @@ const buildRequestSelect = (withReceiptFields, withSourceFields) => `
         request_id,
         medicine_id,
         quantity,
+        consumed_quantity,
         medicine:medicines(id, generic_name, dosage, unit_of_measure)
       )
 `;
@@ -188,7 +190,7 @@ export const getRequestsData = async ({ facilityId = null } = {}) => {
         .order("facility_name", { ascending: true }),
       supabase
         .from("inventory")
-        .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date, po_number, unit_cost, date_received")
+        .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date, po_number, unit_cost, date_received, brand_name")
         .then(async (res) => {
           if (
             res.error &&
@@ -198,7 +200,7 @@ export const getRequestsData = async ({ facilityId = null } = {}) => {
           ) {
             return supabase
               .from("inventory")
-              .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date");
+              .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date, brand_name");
           }
           return res;
         }),
@@ -241,9 +243,38 @@ export const getRequestsData = async ({ facilityId = null } = {}) => {
       return requestMap;
     }, new Map());
 
+    const brandMap = new Map();
+    (inventoryResult.data || []).forEach((inv) => {
+      const b = (inv.brand_name || "").trim();
+      if (inv.medicine_id && b && !brandMap.has(inv.medicine_id)) {
+        brandMap.set(inv.medicine_id, b);
+      }
+    });
+    (medicinesResult.data || []).forEach((med) => {
+      const b = (med.brand_name || "").trim();
+      if (med.id && b) {
+        brandMap.set(med.id, b);
+      }
+    });
+
     const requests = requestsResult.map((request) => ({
       ...request,
       fulfillments: fulfillmentsByRequest.get(request.id) || [],
+      items: (request.items || []).map((item) => {
+        const resolvedBrand =
+          item.medicine?.brand_name ||
+          brandMap.get(item.medicine_id) ||
+          null;
+        return {
+          ...item,
+          medicine: item.medicine
+            ? {
+                ...item.medicine,
+                brand_name: resolvedBrand,
+              }
+            : item.medicine,
+        };
+      }),
     }));
 
     if (!facilityId) {
@@ -349,7 +380,7 @@ export const getBhwRequestsData = async ({ facilityId }) => {
     supabase.rpc("get_cho_inventory_medicines"),
     supabase
       .from("inventory")
-      .select("id, facility_id, medicine_id, quantity, threshold")
+      .select("id, facility_id, medicine_id, quantity, threshold, brand_name")
       .eq("facility_id", facilityId),
   ]);
 
@@ -380,9 +411,57 @@ export const getBhwRequestsData = async ({ facilityId }) => {
     return requestMap;
   }, new Map());
 
+  // Also query inventory brand names across the system to ensure every medicine's brand is resolved
+  let inventoryBrands = [];
+  try {
+    const { data: invBrands } = await supabase
+      .from("inventory")
+      .select("medicine_id, brand_name")
+      .not("brand_name", "is", null);
+    inventoryBrands = invBrands || [];
+  } catch {
+    inventoryBrands = [];
+  }
+
+  const brandMap = new Map();
+  inventoryBrands.forEach((inv) => {
+    const b = (inv.brand_name || "").trim();
+    if (inv.medicine_id && b && !brandMap.has(inv.medicine_id)) {
+      brandMap.set(inv.medicine_id, b);
+    }
+  });
+  (inventoryResult.data || []).forEach((inv) => {
+    const b = (inv.brand_name || "").trim();
+    if (inv.medicine_id && b) {
+      brandMap.set(inv.medicine_id, b);
+    }
+  });
+  (medicinesResult.data || []).forEach((med) => {
+    const b = (med.brand_name || "").trim();
+    if (med.id && b) {
+      brandMap.set(med.id, b);
+    }
+  });
+
   const requests = (requestsResult || []).map((request) => ({
     ...request,
     fulfillments: fulfillmentsByRequest.get(request.id) || [],
+    items: (request.items || []).map((item) => {
+      const resolvedBrand =
+        item.medicine?.brand_name ||
+        brandMap.get(item.medicine_id) ||
+        null;
+
+      return {
+        ...item,
+        medicine: item.medicine
+          ? {
+              ...item.medicine,
+              brand_name: resolvedBrand,
+            }
+          : item.medicine,
+      };
+    }),
   }));
 
   return {
@@ -424,10 +503,13 @@ export const createManualMedicineRequest = async ({
   items,
   manualRequestedBy,
   remarks,
+  requestDate,
+  paperSlipReference,
 }) => {
   const requestItems = items.map((item) => ({
     medicine_id: item.medicine_id,
     quantity: Number(item.quantity),
+    consumed_quantity: Number(item.consumed_quantity || 0),
   }));
 
   return callQueueableRequestRpc("create_manual_medicine_request_idempotent", {
@@ -435,6 +517,8 @@ export const createManualMedicineRequest = async ({
     p_items: requestItems,
     p_manual_requested_by: manualRequestedBy || null,
     p_remarks: remarks || null,
+    p_request_date: requestDate ? new Date(requestDate).toISOString() : null,
+    p_paper_slip_reference: paperSlipReference || null,
   }, facilityId).catch((error) => {
     if ((error.message || "").includes("create_manual_medicine_request")) {
       throw new Error("Manual request database update is not applied yet. Apply the latest Supabase migration, then try again.");

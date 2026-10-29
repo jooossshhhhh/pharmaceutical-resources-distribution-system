@@ -27,30 +27,30 @@ export default function ManageAccountModal({
       onClose={onClose}
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
     >
-      <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-950/25">
-        <div className="border-b border-[#6be9c2]/40 bg-[#f2fff9] px-5 py-5">
+      <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-2xl shadow-neutral-950/25">
+        <div className="border-b border-[#CFDDE0] bg-[#E5EFF1]/60 px-5 py-5">
           <div className="flex items-start gap-4">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#00a36c] text-base font-black text-white">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#1F4E5A] text-base font-black text-white shadow-xs">
               {getInitials(user)}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#007f5f]">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#1F4E5A]">
                 Manage Account
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <h3 id="user-modal-title" className="truncate text-2xl font-black text-black">
+                <h3 id="user-modal-title" className="truncate text-2xl font-black text-[#1B2B30]">
                   {getFullName(user)}
                 </h3>
                 <UserStatusBadge status={user.status} />
               </div>
-              <p className="mt-1 text-sm font-semibold text-neutral-600">
+              <p className="mt-1 text-sm font-semibold text-[#5B7077]">
                 {getRoleLabel(user.role)} - {getDisplayEmail(user) || getDisplayPhone(user) || "No login method shown"}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-neutral-50/60 p-5">
+        <div className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#F9FBFB] p-5">
           {error ? (
             <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
               {error}
@@ -59,10 +59,10 @@ export default function ManageAccountModal({
 
           {/* Quick Approval Action for Pending Users */}
           {user.status === "PENDING" && (
-            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-[#D9826B]/30 bg-[#D9826B]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-wider text-[#007f5f]">Pending Registration</p>
-                <p className="mt-0.5 text-sm font-semibold text-neutral-800">
+                <p className="text-xs font-black uppercase tracking-wider text-[#D9826B]">Pending Registration</p>
+                <p className="mt-0.5 text-sm font-semibold text-[#1B2B30]">
                   This user has registered and is awaiting administrator verification.
                 </p>
               </div>
@@ -70,23 +70,23 @@ export default function ManageAccountModal({
                 <button
                   type="button"
                   onClick={() => onChange({ target: { name: "status", value: "ACTIVE" } })}
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#00a36c] px-4 py-2 text-xs font-black text-white shadow-xs transition hover:bg-[#008f5d] cursor-pointer"
+                  className="btn-primary inline-flex shrink-0 items-center justify-center rounded-lg px-4 py-2 text-xs font-bold text-white shadow-xs transition cursor-pointer"
                 >
                   Approve Account
                 </button>
               ) : (
-                <span className="inline-flex shrink-0 items-center rounded-md bg-emerald-200/70 px-3 py-1 text-xs font-black text-[#007f5f]">
+                <span className="inline-flex shrink-0 items-center rounded-md bg-[#E2F3EC] px-3 py-1 text-xs font-bold text-[#4C9F80] border border-[#4C9F80]/20">
                   Marked as Active
                 </span>
               )}
             </div>
           )}
 
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-neutral-500">Profile Information</p>
-                <h4 className="mt-1 text-sm font-black text-black">Read-only identity and contact details</h4>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5B7077]">Profile Information</p>
+                <h4 className="mt-1 text-sm font-black text-[#1B2B30]">Read-only identity and contact details</h4>
               </div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -101,19 +101,19 @@ export default function ManageAccountModal({
             </div>
           </section>
 
-          <section className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-neutral-500">Account Controls</p>
-            <h4 className="mt-1 text-sm font-black text-black">Role, facility, and access status</h4>
+          <section className="mt-4 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-sm">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5B7077]">Account Controls</p>
+            <h4 className="mt-1 text-sm font-black text-[#1B2B30]">Role, facility, and access status</h4>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <SelectField label="Role" name="role" value={formValues.role} onChange={onChange} options={roleOptions} />
               <SelectField label="Status" name="status" value={formValues.status} onChange={onChange} options={statusOptions} />
-              <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600 sm:col-span-2">
+              <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-[#5B7077] sm:col-span-2">
                 Facility
                 <select
                   name="facility_id"
                   value={formValues.facility_id}
                   onChange={onChange}
-                  className="h-11 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/30"
+                  className="h-11 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-semibold normal-case tracking-normal text-[#1B2B30] outline-none transition focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20"
                 >
                   <option value="">No facility assigned</option>
                   {facilities.map((facility) => (
@@ -141,11 +141,11 @@ export default function ManageAccountModal({
           </section>
         </div>
 
-        <div className="flex flex-wrap justify-end gap-3 border-t border-neutral-100 bg-white px-5 py-4">
+        <div className="flex flex-wrap justify-end gap-3 border-t border-[#CFDDE0] bg-[#F9FBFB] px-5 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="h-10 rounded-lg bg-neutral-100 px-6 text-sm font-bold text-neutral-700 transition hover:bg-neutral-200 cursor-pointer"
+            className="btn-secondary h-10 px-6 text-sm font-bold transition cursor-pointer"
           >
             Cancel
           </button>
@@ -153,7 +153,7 @@ export default function ManageAccountModal({
             type="button"
             onClick={onSave}
             disabled={isSaving}
-            className="h-10 rounded-lg bg-[#00a36c] px-6 text-sm font-black text-white shadow-xs transition hover:bg-[#008f5d] disabled:cursor-not-allowed disabled:bg-neutral-300 cursor-pointer"
+            className="btn-primary h-10 px-6 text-sm font-bold text-white shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </button>
@@ -165,20 +165,20 @@ export default function ManageAccountModal({
 
 function ReadOnlyField({ emptyLabel = "Not set", label, value }) {
   return (
-    <div className="rounded-lg bg-neutral-50 p-4 ring-1 ring-neutral-100">
-      <p className="text-xs font-black uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-2 min-h-5 break-words text-sm font-semibold text-black">{value || emptyLabel}</p>
+    <div className="rounded-lg bg-[#E5EFF1]/40 p-4 ring-1 ring-[#CFDDE0]">
+      <p className="text-xs font-black uppercase tracking-wide text-[#5B7077]">{label}</p>
+      <p className="mt-2 min-h-5 break-words text-sm font-semibold text-[#1B2B30]">{value || emptyLabel}</p>
     </div>
   );
 }
 
 function SelectField({ label, options, ...props }) {
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-neutral-600">
+    <label className="grid gap-2 text-xs font-black uppercase tracking-wide text-[#5B7077]">
       {label}
       <select
         {...props}
-        className="h-11 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-neutral-800 outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-[#6be9c2]/30"
+        className="h-11 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-sm font-semibold normal-case tracking-normal text-[#1B2B30] outline-none transition focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

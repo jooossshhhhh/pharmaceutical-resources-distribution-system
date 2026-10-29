@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   AlertTriangle,
   Building2,
@@ -108,6 +109,10 @@ export default function BhwRequestsModule() {
   );
 
   const choAvailabilityMap = useMemo(() => getChoAvailabilityMap(medicines), [medicines]);
+  const medicinesMap = useMemo(
+    () => new Map((medicines || []).map((med) => [med.id, med])),
+    [medicines]
+  );
 
   const filteredRequests = useMemo(() => {
     const matchedRequests = requests.filter(
@@ -203,6 +208,25 @@ export default function BhwRequestsModule() {
     setIsModalOpen(true);
     await loadMedicines();
   };
+
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.openNewRequest) {
+      setIsModalOpen(true);
+      loadMedicines();
+      if (location.state.prefillMedicineId) {
+        setRequestItems([
+          {
+            ...emptyItem,
+            medicine_id: location.state.prefillMedicineId,
+            quantity_requested: String(location.state.prefillQuantity || ""),
+          },
+        ]);
+      }
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, loadMedicines]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -448,6 +472,7 @@ export default function BhwRequestsModule() {
                 paginatedRequests.map((request) => (
                   <BhwRequestRow
                     key={request.id}
+                    medicinesMap={medicinesMap}
                     onTrackRequest={() => setTrackedRequest(request)}
                     request={request}
                   />
@@ -509,6 +534,7 @@ export default function BhwRequestsModule() {
       {trackedRequest && (
         <RequestTrackingModal
           isReceiving={isReceiving}
+          medicinesMap={medicinesMap}
           onClose={() => setTrackedRequest(null)}
           onConfirmReceipt={confirmReceipt}
           request={trackedRequest}
@@ -605,14 +631,21 @@ function RequestsEmptyState({ hasAnyRequests, onClearFilters }) {
   );
 }
 
-function BhwRequestRow({ onTrackRequest, request }) {
+function BhwRequestRow({ medicinesMap, onTrackRequest, request }) {
   const totalQuantity = getRequestTotalQuantity(request);
   const items = request.items || [];
   const firstItem = items[0];
   const moreCount = items.length - 1;
 
-  const firstGenericName = firstItem?.medicine?.generic_name || "Unknown medicine";
-  const firstBrandName = firstItem?.medicine?.brand_name;
+  const resolvedFirstMed = medicinesMap?.get(firstItem?.medicine_id);
+  const firstGenericName =
+    firstItem?.medicine?.generic_name ||
+    resolvedFirstMed?.generic_name ||
+    "Unknown medicine";
+  const firstBrandName =
+    firstItem?.medicine?.brand_name ||
+    resolvedFirstMed?.brand_name ||
+    null;
 
   return (
     <tr
@@ -744,7 +777,14 @@ function OngoingRequestsModal({ onClose, onOpenRequest, requests }) {
   );
 }
 
-function RequestTrackingModal({ isReceiving, onClose, onConfirmReceipt, request, stockMap }) {
+function RequestTrackingModal({
+  isReceiving,
+  medicinesMap = new Map(),
+  onClose,
+  onConfirmReceipt,
+  request,
+  stockMap,
+}) {
   const [awaitingReceipt, setAwaitingReceipt] = useState(false);
   const items = request.items || [];
   const steps = getRequestTrackingSteps(request);
@@ -931,10 +971,20 @@ function RequestTrackingModal({ isReceiving, onClose, onConfirmReceipt, request,
             ) : (
               <div className="space-y-2">
                 {items.map((item, idx) => {
-                  const genericName = item.medicine?.generic_name || "Unknown Generic Name";
-                  const brandName = item.medicine?.brand_name;
-                  const dosage = item.medicine?.dosage;
-                  const unit = item.medicine?.unit_of_measure || "unit";
+                  const resolvedMed = medicinesMap?.get(item.medicine_id);
+                  const genericName =
+                    item.medicine?.generic_name ||
+                    resolvedMed?.generic_name ||
+                    "Unknown Generic Name";
+                  const brandName =
+                    item.medicine?.brand_name ||
+                    resolvedMed?.brand_name ||
+                    null;
+                  const dosage = item.medicine?.dosage || resolvedMed?.dosage;
+                  const unit =
+                    item.medicine?.unit_of_measure ||
+                    resolvedMed?.unit_of_measure ||
+                    "unit";
                   const quantity = Number(item.quantity || 0);
 
                   const stock = stockMap?.get(`${request.facility_id}:${item.medicine_id}`);
@@ -1265,15 +1315,16 @@ function MedicineSearchDropdown({
   facilityId,
   medicines = [],
   onChange,
+  otherSelectedMap = new Map(),
   pendingRequestsByMedicine,
-  placeholder = "Choose a medicine from CHO stock...",
+  placeholder = "Search or select a medicine from CHO stock...",
   stockMap,
   value,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const dropdownRef = useRef(null);
-  const searchInputRef = useRef(null);
+  const inputRef = useRef(null);
 
   const selectedMedicine = useMemo(
     () => medicines.find((m) => m.id === value) || null,
@@ -1295,8 +1346,8 @@ function MedicineSearchDropdown({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && searchInputRef.current) {
-      searchInputRef.current.focus();
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
     }
   }, [isOpen]);
 
@@ -1323,29 +1374,134 @@ function MedicineSearchDropdown({
     : null;
   const selectedAvailQty = selectedChoAvail?.availableQuantity ?? 0;
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      setSearchQuery("");
+      e.preventDefault();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const firstValid = filteredMedicines.find((m) => !otherSelectedMap?.has(m.id));
+      if (firstValid) {
+        onChange(firstValid.id);
+        setIsOpen(false);
+        setSearchQuery("");
+      }
+    } else if (e.key === "ArrowDown" && !isOpen) {
+      setIsOpen(true);
+      e.preventDefault();
+    }
+  };
+
   return (
     <div ref={dropdownRef} className="relative w-full">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen((prev) => !prev)}
-        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 text-left transition shadow-2xs outline-none ${
-          isOpen
-            ? "border-emerald-500 ring-2 ring-emerald-100"
-            : "border-neutral-300 hover:border-neutral-400"
-        } ${disabled ? "cursor-not-allowed bg-neutral-100 opacity-70" : ""}`}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-      >
-        {selectedMedicine ? (
+      {!selectedMedicine || isOpen ? (
+        <div
+          className={`relative flex h-10 w-full items-center rounded-lg border bg-white px-3 shadow-2xs transition ${
+            isOpen
+              ? "border-emerald-500 ring-2 ring-emerald-100"
+              : "border-neutral-300 hover:border-neutral-400"
+          } ${disabled ? "cursor-not-allowed bg-neutral-100 opacity-70" : ""}`}
+        >
+          <Search
+            className={`mr-2 h-3.5 w-3.5 shrink-0 transition-colors ${
+              isOpen ? "text-emerald-600" : "text-neutral-400"
+            }`}
+          />
+          <input
+            ref={inputRef}
+            type="text"
+            disabled={disabled}
+            value={searchQuery}
+            onFocus={() => {
+              if (!disabled) setIsOpen(true);
+            }}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (!isOpen) setIsOpen(true);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              selectedMedicine
+                ? `Change: ${selectedMedicine.generic_name}...`
+                : disabled
+                ? "Loading CHO stock..."
+                : placeholder
+            }
+            className="h-full w-full bg-transparent text-xs font-bold text-neutral-900 outline-none placeholder:text-neutral-400 placeholder:font-normal"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                inputRef.current?.focus();
+              }}
+              className="mr-1 rounded p-0.5 text-neutral-400 hover:text-neutral-600"
+              title="Clear search"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              if (isOpen) {
+                setIsOpen(false);
+                setSearchQuery("");
+              } else {
+                setIsOpen(true);
+                inputRef.current?.focus();
+              }
+            }}
+            className="rounded p-0.5 text-neutral-400 hover:text-neutral-600"
+            title={isOpen ? "Close dropdown" : "Open medicines list"}
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                isOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        </div>
+      ) : (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (disabled) return;
+            setIsOpen(true);
+            setSearchQuery("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
+              e.preventDefault();
+              if (!disabled) {
+                setIsOpen(true);
+                setSearchQuery("");
+              }
+            }
+          }}
+          className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-left transition shadow-2xs hover:border-neutral-400 cursor-pointer ${
+            disabled ? "cursor-not-allowed bg-neutral-100 opacity-70" : ""
+          }`}
+        >
           <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-xs font-bold text-neutral-900 leading-tight">
-                {selectedMedicine.generic_name}
-              </p>
+              <div className="flex items-center gap-1.5 leading-tight">
+                <span className="truncate text-xs font-bold text-neutral-900">
+                  {selectedMedicine.generic_name}
+                </span>
+                {selectedMedicine.brand_name && (
+                  <span className="truncate rounded bg-neutral-100 px-1.5 py-0.2 text-[10px] font-bold text-neutral-600">
+                    {selectedMedicine.brand_name}
+                  </span>
+                )}
+              </div>
               <p className="truncate text-[10px] font-semibold text-neutral-500 leading-tight">
-                {selectedMedicine.brand_name || "Generic"} · {selectedMedicine.dosage || "No dosage"}{" "}
-                {selectedMedicine.unit_of_measure ? `· ${selectedMedicine.unit_of_measure}` : ""}
+                {selectedMedicine.dosage || "No dosage"}
+                {selectedMedicine.unit_of_measure ? ` · ${selectedMedicine.unit_of_measure}` : ""}
               </p>
             </div>
             <span
@@ -1358,50 +1514,27 @@ function MedicineSearchDropdown({
               {selectedAvailQty.toLocaleString()} in CHO
             </span>
           </div>
-        ) : (
-          <div className="flex items-center gap-2 text-neutral-400">
-            <Search className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs font-medium">
-              {disabled ? "Loading CHO stock..." : placeholder}
-            </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange("");
+                setSearchQuery("");
+                setIsOpen(true);
+              }}
+              className="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition"
+              title="Clear selection"
+            >
+              <X className="h-3 w-3" />
+            </button>
+            <ChevronDown className="h-3.5 w-3.5 text-neutral-400" />
           </div>
-        )}
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
-        />
-      </button>
+        </div>
+      )}
 
       {isOpen && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl">
-          <div className="relative border-b border-neutral-100 bg-neutral-50/50 p-2">
-            <Search className="absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setIsOpen(false);
-                  setSearchQuery("");
-                }
-              }}
-              placeholder="Filter by generic name, brand, or dosage..."
-              className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-8 pr-7 text-xs font-medium text-neutral-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 placeholder:text-neutral-400"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-
           <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
             <span>Available Medicines ({filteredMedicines.length})</span>
             <span>CHO Available Stock</span>
@@ -1423,24 +1556,30 @@ function MedicineSearchDropdown({
                   stationThreshold > 0 && stationQty <= stationThreshold;
                 const pendingRequests = pendingRequestsByMedicine?.get(medicine.id) || [];
                 const isSelected = medicine.id === value;
+                const alreadyInItemNumber = otherSelectedMap?.get(medicine.id);
+                const isAlreadyAdded = Boolean(alreadyInItemNumber);
 
                 return (
                   <div
                     key={medicine.id}
                     onClick={() => {
+                      if (isAlreadyAdded) return;
                       onChange(medicine.id);
                       setIsOpen(false);
                       setSearchQuery("");
                     }}
-                    className={`flex items-center justify-between gap-3 px-3 py-2 transition-colors cursor-pointer ${
-                      isSelected
-                        ? "bg-emerald-50/90 text-emerald-950 font-bold"
-                        : "hover:bg-emerald-50/50 text-neutral-800"
+                    className={`flex items-center justify-between gap-3 px-3 py-2 transition-colors ${
+                      isAlreadyAdded
+                        ? "opacity-55 cursor-not-allowed bg-neutral-50/90 text-neutral-500"
+                        : isSelected
+                        ? "bg-emerald-50/90 text-emerald-950 font-bold cursor-pointer"
+                        : "hover:bg-emerald-50/50 text-neutral-800 cursor-pointer"
                     }`}
+                    title={isAlreadyAdded ? `Already added in Item #${alreadyInItemNumber}` : undefined}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="truncate text-xs font-bold text-neutral-900">
+                        <span className={`truncate text-xs font-bold ${isAlreadyAdded ? "text-neutral-600 line-through decoration-neutral-400" : "text-neutral-900"}`}>
                           {medicine.generic_name}
                         </span>
                         {medicine.brand_name && (
@@ -1456,27 +1595,35 @@ function MedicineSearchDropdown({
                     </div>
 
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {pendingRequests.length > 0 && (
-                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                          Pending
+                      {isAlreadyAdded ? (
+                        <span className="rounded bg-neutral-200/80 px-2 py-0.5 text-[10px] font-bold text-neutral-700">
+                          Already in Item #{alreadyInItemNumber}
                         </span>
-                      )}
-                      {isStationLow && (
-                        <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-800">
-                          Station Low ({stationQty})
-                        </span>
-                      )}
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
-                          availQty > 0
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {availQty.toLocaleString()} in CHO
-                      </span>
-                      {isSelected && (
-                        <Check className="ml-1 h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      ) : (
+                        <>
+                          {pendingRequests.length > 0 && (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                              Pending
+                            </span>
+                          )}
+                          {isStationLow && (
+                            <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-800">
+                              Station Low ({stationQty})
+                            </span>
+                          )}
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                              availQty > 0
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {availQty.toLocaleString()} in CHO
+                          </span>
+                          {isSelected && (
+                            <Check className="ml-1 h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1537,6 +1684,28 @@ function NewRequestModal({
     [validItems]
   );
 
+  const selectedMedicineCount = useMemo(
+    () => requestItems.filter((item) => Boolean(item.medicine_id)).length,
+    [requestItems]
+  );
+  const hasUnselectedItem = useMemo(
+    () => requestItems.some((item) => !item.medicine_id),
+    [requestItems]
+  );
+  const isAllMedicinesAdded =
+    medicines.length > 0 && selectedMedicineCount >= medicines.length;
+  const hasDuplicates = useMemo(
+    () =>
+      requestItems.some((item, index) => {
+        if (!item.medicine_id) return false;
+        return requestItems.some(
+          (other, otherIdx) =>
+            otherIdx !== index && other.medicine_id === item.medicine_id
+        );
+      }),
+    [requestItems]
+  );
+
   const availabilityError = validateChoRequestAvailability(
     validItems,
     choAvailabilityMap
@@ -1553,23 +1722,13 @@ function NewRequestModal({
         onKeyDown={handleFormKeyDown}
         className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl"
       >
-        <header className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-          <div>
-            <h3 id="new-request-modal-title" className="text-sm font-black text-neutral-900">
-              New Supply Request
-            </h3>
-            <p className="text-[11px] font-medium text-neutral-500">
-              Choose medicines from CHO stock, enter quantities needed, and submit for review.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-7 w-7 place-items-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 transition"
-            aria-label="Close request form"
-          >
-            <CloseIcon />
-          </button>
+        <header className="border-b border-neutral-100 px-4 py-3">
+          <h3 id="new-request-modal-title" className="text-sm font-black text-neutral-900">
+            New Supply Request
+          </h3>
+          <p className="text-[11px] font-medium text-neutral-500">
+            Choose medicines from CHO stock, enter quantities needed, and submit for review.
+          </p>
         </header>
 
         <div className="prds-modal-scrollbar max-h-[75vh] overflow-y-auto p-4 space-y-3">
@@ -1592,7 +1751,17 @@ function NewRequestModal({
               {lowStockItems.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setRequestItems(lowStockItems.map((item) => ({ ...item })))}
+                  onClick={() => {
+                    const uniqueLowStock = [];
+                    const seenIds = new Set();
+                    lowStockItems.forEach((item) => {
+                      if (!seenIds.has(item.medicine_id)) {
+                        seenIds.add(item.medicine_id);
+                        uniqueLowStock.push({ ...item });
+                      }
+                    });
+                    setRequestItems(uniqueLowStock);
+                  }}
                   className="inline-flex h-7 items-center gap-1 rounded-md border border-orange-200 bg-orange-50 px-2.5 text-[11px] font-bold text-orange-700 transition hover:bg-orange-100"
                   title="Add the medicines currently at or below their threshold"
                 >
@@ -1603,35 +1772,57 @@ function NewRequestModal({
             </div>
 
             <div className="space-y-2.5">
-              {requestItems.map((item, index) => (
-                <RequestItemFields
-                  key={`request-item-${index}`}
-                  canRemove={requestItems.length > 1}
-                  choAvailabilityMap={choAvailabilityMap}
-                  facilityId={facilityId}
-                  isMedicinesLoading={isMedicinesLoading}
-                  item={item}
-                  itemIndex={index}
-                  medicines={medicines}
-                  onRemove={() =>
-                    setRequestItems((currentItems) =>
-                      currentItems.filter((_, itemIndex) => itemIndex !== index)
-                    )
+              {requestItems.map((item, index) => {
+                const otherSelectedMap = new Map();
+                requestItems.forEach((reqItem, idx) => {
+                  if (idx !== index && reqItem.medicine_id) {
+                    otherSelectedMap.set(reqItem.medicine_id, idx + 1);
                   }
-                  pendingRequestsByMedicine={pendingRequestsByMedicine}
-                  stockMap={stockMap}
-                  updateItem={(field, value) => updateItem(index, field, value)}
-                />
-              ))}
+                });
+
+                return (
+                  <RequestItemFields
+                    key={`request-item-${index}`}
+                    canRemove={requestItems.length > 1}
+                    choAvailabilityMap={choAvailabilityMap}
+                    facilityId={facilityId}
+                    isMedicinesLoading={isMedicinesLoading}
+                    item={item}
+                    itemIndex={index}
+                    medicines={medicines}
+                    onRemove={() =>
+                      setRequestItems((currentItems) =>
+                        currentItems.filter((_, itemIndex) => itemIndex !== index)
+                      )
+                    }
+                    otherSelectedMap={otherSelectedMap}
+                    pendingRequestsByMedicine={pendingRequestsByMedicine}
+                    stockMap={stockMap}
+                    updateItem={(field, value) => updateItem(index, field, value)}
+                  />
+                );
+              })}
             </div>
 
             <button
               type="button"
+              disabled={hasUnselectedItem || isAllMedicinesAdded}
               onClick={() => setRequestItems((currentItems) => [...currentItems, { ...emptyItem }])}
-              className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-dashed border-emerald-300 px-3 text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition"
+              className={`inline-flex items-center gap-1.5 h-8 rounded-lg border border-dashed px-3 text-xs font-bold transition ${
+                hasUnselectedItem || isAllMedicinesAdded
+                  ? "border-neutral-200 text-neutral-400 bg-neutral-50 cursor-not-allowed"
+                  : "border-emerald-300 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+              }`}
+              title={
+                isAllMedicinesAdded
+                  ? "All available CHO medicines have been added to this request"
+                  : hasUnselectedItem
+                  ? "Please choose a medicine for the existing item before adding another"
+                  : "Add another medicine to request"
+              }
             >
               <Plus className="h-3.5 w-3.5" />
-              Add another medicine
+              {isAllMedicinesAdded ? "All CHO medicines added" : "Add another medicine"}
             </button>
           </section>
 
@@ -1689,6 +1880,7 @@ function NewRequestModal({
                 isMedicinesLoading ||
                 medicines.length === 0 ||
                 validItemsCount === 0 ||
+                hasDuplicates ||
                 Boolean(availabilityError)
               }
               className="h-8.5 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition disabled:cursor-not-allowed disabled:bg-neutral-300"
@@ -1767,7 +1959,7 @@ function ChoAvailabilitySummary({ error, isLoading, medicines, onRetry }) {
       <div className="flex items-center gap-2">
         <Building2 className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
         <span className="text-xs font-black text-emerald-950">
-          CHO Central Stock
+          CHO Stock
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.2 text-[9px] font-bold text-emerald-800">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1801,6 +1993,7 @@ function RequestItemFields({
   itemIndex,
   medicines,
   onRemove,
+  otherSelectedMap = new Map(),
   pendingRequestsByMedicine,
   stockMap,
   updateItem,
@@ -1809,6 +2002,9 @@ function RequestItemFields({
   const threshold = Number(stock?.threshold || 0);
   const currentQuantity = Number(stock?.quantity || 0);
   const deficit = Math.max(threshold - currentQuantity, 0);
+
+  const duplicateInItemNumber = otherSelectedMap?.get(item.medicine_id);
+  const isDuplicate = Boolean(duplicateInItemNumber);
 
   const pendingEntries = item.medicine_id
     ? pendingRequestsByMedicine.get(item.medicine_id) || []
@@ -1825,7 +2021,7 @@ function RequestItemFields({
   const choReserved = Number(choAvailability?.reservedQuantity || 0);
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-3 shadow-2xs">
+    <div className={`rounded-xl border p-3 shadow-2xs transition-colors ${isDuplicate ? "border-amber-300 bg-amber-50/20" : "border-neutral-200 bg-white"}`}>
       {canRemove && (
         <div className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-2 mb-2.5">
           <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-neutral-600">
@@ -1854,6 +2050,7 @@ function RequestItemFields({
             facilityId={facilityId}
             medicines={medicines}
             onChange={(newId) => updateItem("medicine_id", newId)}
+            otherSelectedMap={otherSelectedMap}
             pendingRequestsByMedicine={pendingRequestsByMedicine}
             stockMap={stockMap}
             value={item.medicine_id}
@@ -1885,6 +2082,15 @@ function RequestItemFields({
           </div>
         </div>
       </div>
+
+      {isDuplicate && (
+        <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 shadow-2xs">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <span>
+            Duplicate Entry: This medicine is already selected in <strong>Item #{duplicateInItemNumber}</strong>. Please update the quantity in Item #{duplicateInItemNumber} instead or remove this duplicate row.
+          </span>
+        </div>
+      )}
 
       {pendingEntries.length > 0 && (
         <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800">

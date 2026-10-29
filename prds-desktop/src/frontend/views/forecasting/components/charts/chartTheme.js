@@ -1,10 +1,10 @@
 export const chartColors = {
-  actual: "#00a36c",
-  actualSoft: "#e9f8f2",
-  forecast: "#cbd5e1",
-  grid: "#e5e7eb",
-  text: "#42474e",
-  trend: "#2563eb",
+  actual: "#4C9F80",
+  actualSoft: "#E2F3EC",
+  forecast: "#34769B",
+  grid: "#CFDDE0",
+  text: "#5B7077",
+  trend: "#1F4A66",
 };
 
 export const chartFont = {

@@ -343,27 +343,27 @@ export default function NotificationsModule() {
 
       <div className="space-y-5">
         {/* Main Header & Toolbar Card */}
-        <section className="rounded-xl border border-neutral-200 bg-white shadow-sm shadow-neutral-200/50">
+        <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs">
           {/* Header Row */}
-          <div className="flex flex-col gap-3 border-b border-neutral-200 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 border-b border-[#CFDDE0] px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#00a36c]">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#1F4E5A]">
                 Alerts & Updates
               </p>
-              <h2 className="mt-0.5 text-lg font-black text-[#0d1117]">
+              <h2 className="mt-0.5 text-lg font-black text-[#1B2B30]">
                 Notifications
               </h2>
             </div>
 
             {/* Header Right Actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#eff4ff] px-3 py-1.5 text-xs font-black tabular-nums text-[#0d1117]">
+              <span className="rounded-full bg-[#E5EFF1] px-3 py-1.5 text-xs font-black tabular-nums text-[#1B2B30]">
                 {visibleNotifications.length} total
               </span>
 
               {counts.unread > 0 && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-black tabular-nums text-emerald-800">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4C9F80]/30 bg-[#E8F5F1] px-3 py-1.5 text-xs font-black tabular-nums text-[#2D7A5D]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#4C9F80] animate-pulse" />
                   {counts.unread} unread
                 </span>
               )}
@@ -374,8 +374,8 @@ export default function NotificationsModule() {
                 onClick={() => setShowFilters((prev) => !prev)}
                 className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-black transition cursor-pointer ${
                   showFilters || activeAdvancedCount > 0
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-800 shadow-xs ring-1 ring-emerald-200"
-                    : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 hover:text-black"
+                    ? "border-[#1F4E5A] bg-[#EBF3F5] text-[#1F4E5A] shadow-xs ring-1 ring-[#1F4E5A]/30"
+                    : "border-[#CFDDE0] bg-white text-[#5B7077] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
                 aria-expanded={showFilters}
                 aria-label="Toggle notifications filter"
@@ -383,7 +383,7 @@ export default function NotificationsModule() {
                 <FilterIcon className="h-3.5 w-3.5" />
                 <span>Filter</span>
                 {activeAdvancedCount > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-700 px-1 text-[10px] font-black text-white">
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1F4E5A] px-1 text-[10px] font-black text-white">
                     {activeAdvancedCount}
                   </span>
                 )}
@@ -399,7 +399,7 @@ export default function NotificationsModule() {
                 type="button"
                 onClick={loadNotifications}
                 disabled={isLoading}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#00a36c] px-3.5 text-xs font-black text-white shadow-sm transition hover:bg-[#007f5f] disabled:cursor-not-allowed disabled:bg-emerald-300 cursor-pointer"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] px-3.5 text-xs font-black text-white shadow-xs transition hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               >
                 <RefreshIcon className={isLoading ? "animate-spin" : ""} />
                 Refresh
@@ -444,7 +444,7 @@ export default function NotificationsModule() {
                 }}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "all" && readFilter === "all"
-                    ? "bg-[#0d1117] text-white shadow-xs"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
                     : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-neutral-100 hover:text-black"
                 }`}
               >
@@ -564,8 +564,8 @@ export default function NotificationsModule() {
                 }}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "facility"
-                    ? "bg-teal-700 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-teal-50 hover:text-teal-800"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#EBF3F5] hover:text-[#1F4E5A]"
                 }`}
               >
                 <span>Facility</span>
@@ -573,7 +573,7 @@ export default function NotificationsModule() {
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "facility"
                       ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.facility}
@@ -766,7 +766,7 @@ export default function NotificationsModule() {
                 <button
                   type="button"
                   onClick={() => setShowFilters(false)}
-                  className="h-8 rounded-lg bg-[#0d1117] px-4 text-xs font-bold text-white transition hover:bg-neutral-800 cursor-pointer"
+                  className="btn-primary h-8 rounded-lg px-4 text-xs font-bold text-white shadow-xs transition cursor-pointer"
                 >
                   Apply & Close
                 </button>
@@ -1178,7 +1178,7 @@ function NotificationDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-9 rounded-lg bg-[#00a36c] px-5 text-xs font-black text-white shadow-sm transition hover:bg-[#007f5f] cursor-pointer"
+            className="h-9 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] border border-[#1F4E5A] px-5 text-xs font-black text-white shadow-xs transition hover:brightness-105 active:scale-[0.99] cursor-pointer"
           >
             Close
           </button>

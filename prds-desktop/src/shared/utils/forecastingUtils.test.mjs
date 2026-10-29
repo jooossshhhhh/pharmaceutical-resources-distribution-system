@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildFacilityRedistributionComparison,
   buildForecastAnalytics,
   buildCategoryForecastRows,
   buildForecastInterpretation,
   buildInventoryCoverageRows,
   buildMedicineActionFindings,
   buildMedicineChartSeries,
+  buildMedicineTrendRows,
   buildMonthlyConsumptionRows,
   calculateLinearRegression,
   getInventoryRisk,
@@ -238,4 +240,126 @@ test("buildMedicineActionFindings calculates plain runout, reorder recommendatio
   assert.equal(ampleFindings.runout.severity, "normal");
   assert.match(ampleFindings.runout.label, /Ample Stock/);
   assert.equal(ampleFindings.action.type, "neutral");
+
+  // CHO Near-Expiry: Prioritize FEFO Dispensing (central stock does not return to CHO)
+  const choExpiryFindings = buildMedicineActionFindings(
+    {
+      stockQuantity: 200,
+      threshold: 10,
+      nextMonthDemand: 10,
+      slope: 0,
+      atRiskExpiryUnits: 150,
+      daysToNearestExpiry: 30,
+      circularRisk: { type: "expiry_risk" },
+      historicalSeries: [{ key: "2026-01", value: 10 }],
+    },
+    { isCho: true }
+  );
+
+  assert.equal(choExpiryFindings.action.type, "dispense_fefo");
+  assert.equal(choExpiryFindings.actionQuantity, 150);
+  assert.match(choExpiryFindings.action.label, /Prioritize FEFO Dispensing/);
+  assert.match(choExpiryFindings.action.subtext, /prioritize walk-in dispensing/);
+
+  // BHW Near-Expiry: Dual Action (Dispense Locally or Return to CHO)
+  const bhwExpiryFindings = buildMedicineActionFindings(
+    {
+      stockQuantity: 200,
+      threshold: 10,
+      nextMonthDemand: 10,
+      slope: 0,
+      atRiskExpiryUnits: 150,
+      daysToNearestExpiry: 30,
+      circularRisk: { type: "expiry_risk" },
+      historicalSeries: [{ key: "2026-01", value: 10 }],
+    },
+    { isCho: false }
+  );
+
+  assert.equal(bhwExpiryFindings.action.type, "near_expiry_bhw");
+  assert.equal(bhwExpiryFindings.actionQuantity, 150);
+  assert.match(bhwExpiryFindings.action.label, /Near-Expiry Action/);
+  assert.match(bhwExpiryFindings.action.subtext, /dispense locally to patients or return to CHO/);
+});
+
+test("getReliabilityMeta protects against n=2 false certainty", () => {
+  // With n=2, R² is mathematically 1.0, but sample size is too small for statistical certainty
+  assert.equal(getReliabilityMeta(1.0, 2).label, "Needs Data");
+  assert.match(getReliabilityMeta(1.0, 2).desc, /Less than 3 months/);
+});
+
+test("buildMedicineChartSeries includes continuous olsFit and prediction bounds", () => {
+  const result = buildMedicineChartSeries({
+    historicalSeries: [
+      { key: "2026-01", value: 100 },
+      { key: "2026-02", value: 120 },
+      { key: "2026-03", value: 140 },
+    ],
+    forecastSeries: [],
+    slope: 20,
+    intercept: 100,
+    horizon: 3,
+  });
+
+  assert.equal(result.length, 6);
+  // Future months have olsFit populated
+  assert.equal(result[3].month, "+1mo");
+  assert.equal(result[3].olsFit, 160);
+  assert.equal(result[3].projected, 160);
+  assert.equal(result[4].olsFit, 180);
+});
+
+test("buildMedicineTrendRows correctly identifies threshold breaches and FEFO expiry risk", () => {
+  const rows = buildMedicineTrendRows({
+    dispensingRows: [
+      { medicine_id: "med-a", month: "2026-01-01", total_dispensed: 50 },
+    ],
+    forecastRows: [
+      { medicine_id: "med-a", forecast_month: "2026-02-01", predicted_quantity: 50, medicine: medicineA },
+      { medicine_id: "med-b", forecast_month: "2026-02-01", predicted_quantity: 10, medicine: medicineB },
+    ],
+    inventoryRows: [
+      // Med A: threshold breach (stock <= threshold)
+      { medicine_id: "med-a", quantity: 15, threshold: 30, medicine: medicineA },
+      // Med B: Overstock with near expiration (expiry in 30 days, 200 units on shelf but only 10 needed/mo)
+      {
+        medicine_id: "med-b",
+        quantity: 200,
+        threshold: 10,
+        medicine: medicineB,
+        expiration_date: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      },
+    ],
+  });
+
+  const medARow = rows.find((r) => r.medicineId === "med-a");
+  const medBRow = rows.find((r) => r.medicineId === "med-b");
+
+  assert.equal(medARow.circularRisk.type, "stockout");
+  assert.equal(medBRow.circularRisk.type, "expiry_risk");
+  assert.equal(medBRow.circularRisk.label, "Expiry Risk (FEFO)");
+});
+
+test("buildFacilityRedistributionComparison identifies deficit vs surplus facilities", () => {
+  const comparison = buildFacilityRedistributionComparison({
+    medicineId: "med-a",
+    dispensingRows: [
+      { facility_id: "fac-1", medicine_id: "med-a", month: "2026-01-01", total_dispensed: 100 },
+      { facility_id: "fac-2", medicine_id: "med-a", month: "2026-01-01", total_dispensed: 20 },
+    ],
+    inventoryRows: [
+      { facility_id: "fac-1", medicine_id: "med-a", quantity: 50, threshold: 20 }, // Deficit (has 50, needs 220 target)
+      { facility_id: "fac-2", medicine_id: "med-a", quantity: 300, threshold: 10 }, // Surplus (has 300, needs 50 target)
+    ],
+    facilities: [
+      { id: "fac-1", facility_name: "Tinaan Health Station" },
+      { id: "fac-2", facility_name: "CHO Central Warehouse" },
+    ],
+  });
+
+  assert.equal(comparison.length, 2);
+  assert.equal(comparison[0].facilityId, "fac-1");
+  assert.equal(comparison[0].status, "deficit");
+  assert.equal(comparison[1].facilityId, "fac-2");
+  assert.equal(comparison[1].status, "surplus");
 });

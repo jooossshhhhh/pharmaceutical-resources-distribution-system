@@ -104,8 +104,9 @@ export const sendEmailOtp = async (
 };
 
 export const sendPasswordResetEmail = async (email) => {
+  const publicBaseUrl = (import.meta.env.VITE_PUBLIC_SITE_URL || window.location.origin).replace(/\/+$/, '');
   const { data, error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/forgot-password`,
+    redirectTo: `${publicBaseUrl}/reset-password`,
   });
 
   if (error) {
@@ -193,6 +194,34 @@ export const signInWithEmailPassword = async ({
   await recordAuthActivity("User Signed In");
   return data;
 };
+
+export const signInWithUnifiedPassword = async ({ identifier, password }) => {
+  const cleanIdentifier = (identifier || "").trim();
+  const isEmail = cleanIdentifier.includes("@");
+
+  if (isEmail) {
+    const cleanEmail = cleanIdentifier.toLowerCase();
+    return await signInWithEmailPassword({ email: cleanEmail, password });
+  } else {
+    // Cross-identifier bridge: check if this phone number belongs to a profile with a registered email
+    const normalizedPhone = normalizePhoneNumber(cleanIdentifier);
+    try {
+      const { data: profile } = await supabaseAuth
+        .from("profiles")
+        .select("email")
+        .eq("phone_number", normalizedPhone)
+        .maybeSingle();
+
+      if (profile?.email) {
+        return await signInWithEmailPassword({ email: profile.email.toLowerCase(), password });
+      }
+    } catch (fallbackErr) {
+      console.warn("Cross-identifier email fallback skipped:", fallbackErr);
+    }
+    return await signInWithEmailPassword({ email: cleanIdentifier, password });
+  }
+};
+
 
 export const verifyPhoneOtp = async ({
   phoneNumber,
@@ -604,26 +633,6 @@ export const getUserIdentities = async () => {
       identity_data: {
         email: primaryEmail,
         email_verified: true,
-      },
-    });
-  }
-
-  // Check for Phone identity
-  const isPhone =
-    providers.includes("phone") ||
-    sourceUser?.app_metadata?.provider === "phone" ||
-    Boolean(phoneNumber);
-
-  if (isPhone && phoneNumber) {
-    identities.push({
-      id: sourceUser?.id ? `phone-${sourceUser.id}` : "phone-identity",
-      user_id: sourceUser?.id || "",
-      provider: "phone",
-      phone: phoneNumber,
-      identity_data: {
-        phone: phoneNumber,
-        sub: phoneNumber,
-        phone_verified: true,
       },
     });
   }

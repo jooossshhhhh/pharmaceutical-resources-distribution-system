@@ -603,7 +603,7 @@ export default function RecordStockReturnModal({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0d1117] px-5 py-2 text-xs font-black text-white shadow-sm hover:bg-neutral-800 active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
+            className="btn-primary inline-flex items-center gap-1.5 rounded-lg px-5 py-2 text-xs font-bold text-white shadow-xs hover:brightness-105 active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
           >
             {isSubmitting ? (
               <>

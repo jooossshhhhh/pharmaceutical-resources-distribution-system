@@ -491,14 +491,14 @@ export default function FacilitiesModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-[#d8dadc] bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-5 shadow-xs">
         <div>
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-[#007a52]">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#1F4E5A]">
               Facility Command
             </p>
-            <h2 className="mt-1 text-xl font-black text-[#0d1117]">Facilities</h2>
-            <p className="mt-1 max-w-2xl text-sm font-medium text-[#42474e]">
+            <h2 className="mt-1 text-xl font-bold text-[#1B2B30]">Facilities</h2>
+            <p className="mt-1 max-w-2xl text-sm font-medium text-[#5B7077]">
               Manage healthcare facilities, stock health, request activity, and map coverage.
             </p>
           </div>
@@ -691,7 +691,7 @@ function FacilityMiniMap({ facility }) {
   const pinIcon = L.divIcon({
     className: "",
     html: `
-      <span style="display:flex;width:30px;height:30px;align-items:center;justify-content:center;border-radius:9999px 9999px 9999px 0;transform:rotate(-45deg);background:#00a36c;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(13,17,23,0.45);">
+      <span style="display:flex;width:30px;height:30px;align-items:center;justify-content:center;border-radius:9999px 9999px 9999px 0;transform:rotate(-45deg);background:#1F4E5A;border:3px solid #ffffff;box-shadow:0 2px 8px rgba(13,17,23,0.45);">
         <span style="width:10px;height:10px;border-radius:9999px;background:#ffffff;"></span>
       </span>
     `,
@@ -710,7 +710,7 @@ function FacilityMiniMap({ facility }) {
       scrollWheelZoom={false}
       dragging={false}
       zoomControl={false}
-      className="z-0 h-44 w-full overflow-hidden rounded-lg border border-[#d8dadc] bg-[#eef1f4]"
+      className="z-0 h-44 w-full overflow-hidden rounded-lg border border-[#CFDDE0] bg-[#E5EFF1]"
     >
       <TileLayer
         attribution="Tiles &copy; Esri"
@@ -878,7 +878,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
             <DetailStat label="Patients" value={formatNumber(facility.patientCount)} />
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-neutral-200 bg-white p-2 shadow-sm">
+          <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-2 shadow-xs">
             {[
               { label: "Overview", ref: profileSectionRef },
               { label: "Inventory Health", ref: inventorySectionRef },
@@ -889,7 +889,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
                 key={section.label}
                 type="button"
                 onClick={() => section.ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="rounded-lg px-3 py-1.5 text-xs font-black text-neutral-600 transition hover:bg-[#ecfff8] hover:text-[#007a52]"
+                className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#5B7077] transition hover:bg-[#EBF3F5] hover:text-[#1F4E5A]"
               >
                 {section.label}
               </button>
@@ -1177,21 +1177,21 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
 
 function HealthGaugeCard({ percent, health }) {
   const colors = {
-    HEALTHY: "#00a36c",
-    WATCH: "#f59e0b",
-    LOW: "#f97316",
-    CRITICAL: "#ef4444",
-    NO_DATA: "#d1d5db",
+    HEALTHY: "#4C9F80",
+    WATCH: "#E5B94E",
+    LOW: "#E09453",
+    CRITICAL: "#D9826B",
+    NO_DATA: "#CFDDE0",
   };
 
-  const color = colors[health] || "#f59e0b";
+  const color = colors[health] || "#E5B94E";
   const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (clamped / 100) * circumference;
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-xs">
       <div className="relative mx-auto h-[72px] w-[72px]">
         <svg viewBox="0 0 64 64" className="h-full w-full -rotate-90">
           <circle cx="32" cy="32" r={radius} fill="none" stroke="#e9ebed" strokeWidth="7" />

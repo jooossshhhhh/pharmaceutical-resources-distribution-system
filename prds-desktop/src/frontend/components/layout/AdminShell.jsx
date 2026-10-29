@@ -61,7 +61,7 @@ function AdminShellRoot({
 
   return (
     <ModalContainerContext.Provider value={contextValue}>
-      <main className="prds-admin-shell h-full min-h-0 overflow-hidden bg-[#f1f5f9] text-slate-950">
+      <main className="prds-admin-shell h-full min-h-0 overflow-hidden bg-[var(--grad-canvas)] text-[#1B2B30]">
         <div
           className={`grid h-full min-h-0 transition-[grid-template-columns] duration-300 ${
             isSidebarCollapsed ? "grid-cols-[52px_1fr]" : "grid-cols-[204px_1fr]"

@@ -3,13 +3,10 @@ import ModalShell from "../../components/ModalShell";
 import {
   getAuthErrorMessage,
   sendEmailOtp,
-  sendPhoneOtp,
   setupUserPasscode,
   removeUserPasscode,
   verifyEmailOtp,
-  verifyPhoneOtp,
 } from "@backend/services/auth/authService";
-import { maskPhoneNumber } from "@shared/utils/profileSettingsUtils";
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -20,7 +17,6 @@ export default function PasscodeModal({
   mode = "setup", // 'setup' | 'change' | 'remove'
   onClose,
   onSuccess,
-  phoneNumber = "",
 }) {
   // Step definitions:
   // For 'change': 'request_change_permission' -> 'verify_change_permission' -> 'enter_new_passcode'
@@ -31,9 +27,6 @@ export default function PasscodeModal({
   const [confirmPasscode, setConfirmPasscode] = useState("");
   const [showPasscode, setShowPasscode] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
-  const [verificationMethod, setVerificationMethod] = useState(
-    authEmail ? "email" : phoneNumber ? "phone" : "email"
-  );
   const [error, setError] = useState("");
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,9 +50,8 @@ export default function PasscodeModal({
       setIsSendingCode(false);
       setIsSubmitting(false);
       setSecondsRemaining(0);
-      setVerificationMethod(authEmail ? "email" : phoneNumber ? "phone" : "email");
     }
-  }, [isOpen, mode, phoneNumber, authEmail]);
+  }, [isOpen, mode, authEmail]);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -79,26 +71,14 @@ export default function PasscodeModal({
     return `${user.slice(0, 2)}${"•".repeat(Math.min(user.length - 2, 5))}@${domain}`;
   }, [authEmail]);
 
-  const maskedPhone = useMemo(() => {
-    return phoneNumber ? maskPhoneNumber(phoneNumber) : "";
-  }, [phoneNumber]);
-
   if (!isOpen) return null;
 
   // --- SEND VERIFICATION CODE HELPERS ---
   const sendCodeToSelectedMethod = async () => {
-    if (verificationMethod === "phone" && !phoneNumber) {
-      throw new Error("No verified phone number linked to this account.");
-    }
-    if (verificationMethod === "email" && !authEmail) {
+    if (!authEmail) {
       throw new Error("No verified Gmail address linked to this account.");
     }
-
-    if (verificationMethod === "phone") {
-      await sendPhoneOtp(phoneNumber, { shouldCreateUser: false });
-    } else {
-      await sendEmailOtp(authEmail, { shouldCreateUser: false });
-    }
+    await sendEmailOtp(authEmail, { shouldCreateUser: false });
   };
 
   // 1. Change Passcode: Step 1 -> Request verification code to gain permission
@@ -125,18 +105,14 @@ export default function PasscodeModal({
 
     const cleanCode = (verificationCode || "").trim();
     if (!cleanCode || cleanCode.length < 6 || !/^\d{6,8}$/.test(cleanCode)) {
-      setError("Please enter the 6-digit verification code sent to your " + (verificationMethod === "phone" ? "phone" : "Gmail") + ".");
+      setError("Please enter the 6-digit verification code sent to your Gmail.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      if (verificationMethod === "phone") {
-        await verifyPhoneOtp({ phoneNumber, verificationCode: cleanCode });
-      } else {
-        await verifyEmailOtp({ email: authEmail, verificationCode: cleanCode });
-      }
+      await verifyEmailOtp({ email: authEmail, verificationCode: cleanCode });
 
       // Permission granted! Proceed to entering the new passcode
       setVerificationCode("");
@@ -218,18 +194,14 @@ export default function PasscodeModal({
 
     const cleanCode = (verificationCode || "").trim();
     if (!cleanCode || cleanCode.length < 6 || !/^\d{6,8}$/.test(cleanCode)) {
-      setError("Please enter the 6-digit verification code sent to your " + (verificationMethod === "phone" ? "phone" : "Gmail") + ".");
+      setError("Please enter the 6-digit verification code sent to your Gmail.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      if (verificationMethod === "phone") {
-        await verifyPhoneOtp({ phoneNumber, verificationCode: cleanCode });
-      } else {
-        await verifyEmailOtp({ email: authEmail, verificationCode: cleanCode });
-      }
+      await verifyEmailOtp({ email: authEmail, verificationCode: cleanCode });
 
       await setupUserPasscode({ passcode });
       onSuccess?.(
@@ -268,18 +240,14 @@ export default function PasscodeModal({
 
     const cleanCode = (verificationCode || "").trim();
     if (!cleanCode || cleanCode.length < 6 || !/^\d{6,8}$/.test(cleanCode)) {
-      setError("Please enter the 6-digit verification code sent to your " + (verificationMethod === "phone" ? "phone" : "Gmail") + ".");
+      setError("Please enter the 6-digit verification code sent to your Gmail.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      if (verificationMethod === "phone") {
-        await verifyPhoneOtp({ phoneNumber, verificationCode: cleanCode });
-      } else {
-        await verifyEmailOtp({ email: authEmail, verificationCode: cleanCode });
-      }
+      await verifyEmailOtp({ email: authEmail, verificationCode: cleanCode });
 
       await removeUserPasscode();
       onSuccess?.("6-digit Quick Passcode has been removed from your account.", false);
@@ -314,7 +282,7 @@ export default function PasscodeModal({
         title: "Remove 6-Digit Passcode",
         subtitle: step === "remove_confirm"
           ? "Verify your identity via OTP to disable quick passcode sign-in."
-          : `Enter the 6-digit code sent to your ${verificationMethod === "phone" ? "mobile number" : "Gmail"}.`,
+          : "Enter the 6-digit code sent to your Gmail.",
       };
     }
     if (mode === "change") {
@@ -327,7 +295,7 @@ export default function PasscodeModal({
       if (step === "verify_change_permission") {
         return {
           title: "Authorize Passcode Change",
-          subtitle: `Step 1 of 2: Enter the 6-digit code sent to your ${verificationMethod === "phone" ? "mobile number" : "Gmail"}.`,
+          subtitle: "Step 1 of 2: Enter the 6-digit code sent to your Gmail.",
         };
       }
       return {
@@ -340,7 +308,7 @@ export default function PasscodeModal({
       title: "Set Up 6-Digit Passcode",
       subtitle: step === "setup_input"
         ? "Create a 6-digit PIN for rapid and secure terminal sign-in."
-        : `Enter the 6-digit authorization code sent to your ${verificationMethod === "phone" ? "mobile number" : "Gmail"}.`,
+        : "Enter the 6-digit authorization code sent to your Gmail.",
     };
   })();
 
@@ -394,63 +362,18 @@ export default function PasscodeModal({
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">
-                Send 6-Digit Authorization Code To:
-              </label>
-              <div className="grid gap-2">
-                {authEmail && (
-                  <label
-                    className={`flex items-center justify-between rounded-xl border p-3 cursor-pointer transition ${
-                      verificationMethod === "email"
-                        ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-600"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="changeVerificationMethod"
-                        value="email"
-                        checked={verificationMethod === "email"}
-                        onChange={() => setVerificationMethod("email")}
-                        className="h-4 w-4 text-emerald-600 focus:ring-emerald-500"
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-slate-900">Gmail Verification Code</div>
-                        <div className="text-[11px] font-medium text-slate-500">{maskedEmail}</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-full">
-                      Primary
-                    </span>
-                  </label>
-                )}
-
-                {phoneNumber && (
-                  <label
-                    className={`flex items-center justify-between rounded-xl border p-3 cursor-pointer transition ${
-                      verificationMethod === "phone"
-                        ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-600"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="changeVerificationMethod"
-                        value="phone"
-                        checked={verificationMethod === "phone"}
-                        onChange={() => setVerificationMethod("phone")}
-                        className="h-4 w-4 text-emerald-600 focus:ring-emerald-500"
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-slate-900">Phone SMS OTP</div>
-                        <div className="text-[11px] font-medium text-slate-500">{maskedPhone}</div>
-                      </div>
-                    </div>
-                  </label>
-                )}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Authorization Destination
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-900">Gmail Verification Code</div>
+                  <div className="text-[11px] font-medium text-slate-500">{maskedEmail}</div>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-full">
+                  Primary
+                </span>
               </div>
             </div>
 
@@ -489,7 +412,7 @@ export default function PasscodeModal({
                 We sent a 6-digit authorization code to:
               </p>
               <p className="mt-1 text-sm font-black text-slate-900">
-                {verificationMethod === "phone" ? maskedPhone : maskedEmail}
+                {maskedEmail}
               </p>
             </div>
 
@@ -705,62 +628,19 @@ export default function PasscodeModal({
               </div>
 
               <div className="pt-2">
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">
-                  Send Authorization Code To:
-                </label>
-                <div className="grid gap-2">
-                  {authEmail && (
-                    <label
-                      className={`flex items-center justify-between rounded-xl border p-3 cursor-pointer transition ${
-                        verificationMethod === "email"
-                          ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-600"
-                          : "border-slate-200 hover:border-slate-300 bg-white"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="radio"
-                          name="setupVerificationMethod"
-                          value="email"
-                          checked={verificationMethod === "email"}
-                          onChange={() => setVerificationMethod("email")}
-                          className="h-4 w-4 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">Gmail Verification Code</div>
-                          <div className="text-[11px] font-medium text-slate-500">{maskedEmail}</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-full">
-                        Primary
-                      </span>
-                    </label>
-                  )}
-
-                  {phoneNumber && (
-                    <label
-                      className={`flex items-center justify-between rounded-xl border p-3 cursor-pointer transition ${
-                        verificationMethod === "phone"
-                          ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-600"
-                          : "border-slate-200 hover:border-slate-300 bg-white"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="radio"
-                          name="setupVerificationMethod"
-                          value="phone"
-                          checked={verificationMethod === "phone"}
-                          onChange={() => setVerificationMethod("phone")}
-                          className="h-4 w-4 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">Phone SMS OTP</div>
-                          <div className="text-[11px] font-medium text-slate-500">{maskedPhone}</div>
-                        </div>
-                      </div>
-                    </label>
-                  )}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Authorization Destination
+                  </div>
+                  <div className="mt-1 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">Gmail Verification Code</div>
+                      <div className="text-[11px] font-medium text-slate-500">{maskedEmail}</div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-full">
+                      Primary
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -800,7 +680,7 @@ export default function PasscodeModal({
                 We sent a 6-digit authorization code to:
               </p>
               <p className="mt-1 text-sm font-black text-slate-900">
-                {verificationMethod === "phone" ? maskedPhone : maskedEmail}
+                {maskedEmail}
               </p>
             </div>
 
@@ -897,60 +777,18 @@ export default function PasscodeModal({
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">
-                Authorize Removal Via:
-              </label>
-              <div className="grid gap-2">
-                {authEmail && (
-                  <label
-                    className={`flex items-center justify-between rounded-xl border p-3 cursor-pointer transition ${
-                      verificationMethod === "email"
-                        ? "border-red-500 bg-red-50/50 shadow-xs ring-1 ring-red-500"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="removeVerificationMethod"
-                        value="email"
-                        checked={verificationMethod === "email"}
-                        onChange={() => setVerificationMethod("email")}
-                        className="h-4 w-4 text-red-600 focus:ring-red-500"
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-slate-900">Gmail Verification Code</div>
-                        <div className="text-[11px] font-medium text-slate-500">{maskedEmail}</div>
-                      </div>
-                    </div>
-                  </label>
-                )}
-
-                {phoneNumber && (
-                  <label
-                    className={`flex items-center justify-between rounded-xl border p-3 cursor-pointer transition ${
-                      verificationMethod === "phone"
-                        ? "border-red-500 bg-red-50/50 shadow-xs ring-1 ring-red-500"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="removeVerificationMethod"
-                        value="phone"
-                        checked={verificationMethod === "phone"}
-                        onChange={() => setVerificationMethod("phone")}
-                        className="h-4 w-4 text-red-600 focus:ring-red-500"
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-slate-900">Phone SMS OTP</div>
-                        <div className="text-[11px] font-medium text-slate-500">{maskedPhone}</div>
-                      </div>
-                    </div>
-                  </label>
-                )}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Authorization Destination
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-900">Gmail Verification Code</div>
+                  <div className="text-[11px] font-medium text-slate-500">{maskedEmail}</div>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-red-700 bg-red-100/60 px-2 py-0.5 rounded-full">
+                  Primary
+                </span>
               </div>
             </div>
 
@@ -989,7 +827,7 @@ export default function PasscodeModal({
                 We sent a 6-digit authorization code to:
               </p>
               <p className="mt-1 text-sm font-black text-slate-900">
-                {verificationMethod === "phone" ? maskedPhone : maskedEmail}
+                {maskedEmail}
               </p>
             </div>
 

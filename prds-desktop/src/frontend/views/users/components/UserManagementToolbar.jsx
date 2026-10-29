@@ -13,11 +13,11 @@ export default function UserManagementToolbar({
   searchTerm = "",
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+    <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-xs">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         {/* Search input with clear button */}
         <div className="relative min-w-0 flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
             <SearchIcon />
           </span>
           <input
@@ -25,13 +25,13 @@ export default function UserManagementToolbar({
             value={searchTerm}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="Search user name, email, phone, role, or facility..."
-            className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-8 text-sm font-semibold text-[#0d1117] outline-none transition placeholder:text-neutral-400 focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100"
+            className="h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] pl-9 pr-8 text-sm font-semibold text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20"
           />
           {searchTerm && (
             <button
               type="button"
               onClick={() => onSearchChange("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5B7077] hover:text-[#1B2B30] cursor-pointer"
               aria-label="Clear search"
             >
               ×
@@ -43,7 +43,7 @@ export default function UserManagementToolbar({
         <select
           value={roleFilter}
           onChange={(event) => onRoleFilterChange(event.target.value)}
-          className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-bold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100 cursor-pointer"
+          className="h-10 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] outline-none transition focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 cursor-pointer"
         >
           <option value="ALL">All Roles</option>
           {roleOptions.map((option) => (
@@ -57,7 +57,7 @@ export default function UserManagementToolbar({
         <select
           value={facilityFilter}
           onChange={(event) => onFacilityFilterChange?.(event.target.value)}
-          className="h-10 max-w-xs rounded-lg border border-neutral-200 bg-white px-3 text-xs font-bold text-[#0d1117] outline-none transition focus:border-[#00a36c] focus:ring-2 focus:ring-emerald-100 cursor-pointer"
+          className="h-10 max-w-xs rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 text-xs font-bold text-[#1B2B30] outline-none transition focus:border-[#34769B] focus:ring-2 focus:ring-[#34769B]/20 cursor-pointer"
         >
           <option value="ALL">All Facilities</option>
           <option value="NONE">No facility assigned</option>
@@ -73,7 +73,7 @@ export default function UserManagementToolbar({
           <button
             type="button"
             onClick={onResetFilters}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-3.5 text-xs font-bold text-neutral-600 transition hover:bg-neutral-100 hover:text-black cursor-pointer shrink-0"
+            className="btn-secondary inline-flex h-10 items-center justify-center rounded-lg px-3.5 text-xs font-bold transition cursor-pointer shrink-0"
           >
             Reset Filters
           </button>

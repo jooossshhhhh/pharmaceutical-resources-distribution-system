@@ -109,6 +109,9 @@ export function useInventoryData({ isBhw = false }) {
     "facility_id",
     "medicine_id",
     "brand_name",
+    "supplier_name",
+    "supplier_address",
+    "supplier_contact",
     "quantity",
     "threshold",
     "batch_number",
@@ -333,12 +336,16 @@ export function useInventoryData({ isBhw = false }) {
     return groupedInventory.filter((item) => {
       const searchableText = [
         item.medicine?.generic_name,
+        item.brand_name,
         item.medicine?.brand_name,
+        item.supplier_name,
         item.medicine?.dosage,
         item.medicine?.unit_of_measure,
         item.facility?.facility_name,
-        ...(item.lots || []).map((lot) => lot.supplier?.supplier_name),
+        ...(item.lots || []).map((lot) => lot.brand_name),
+        ...(item.lots || []).map((lot) => lot.supplier_name || lot.supplier?.supplier_name),
         ...(item.lots || []).map((lot) => lot.batch_number),
+        ...(item.lots || []).map((lot) => lot.po_number),
       ]
         .filter(Boolean)
         .join(" ")
@@ -412,7 +419,9 @@ export function useInventoryData({ isBhw = false }) {
             po_number,
             unit_cost,
             brand_name,
-            origin_facility_id,
+            supplier_name,
+            supplier_address,
+            supplier_contact,
             intake_type,
             return_reason,
             status,
@@ -455,7 +464,7 @@ export function useInventoryData({ isBhw = false }) {
             try {
               const db = await getSqliteDb();
               const localRows = await db.select(
-                "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status, disposed_at, disposal_method, disposed_by FROM inventory"
+                "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, disposed_at, disposal_method, disposed_by FROM inventory"
               );
               for (const r of localRows || []) {
                 if (r.id) localLotMap.set(r.id, r);
@@ -474,6 +483,9 @@ export function useInventoryData({ isBhw = false }) {
               ...item,
               po_number: item.po_number || local?.po_number || null,
               brand_name: item.brand_name || local?.brand_name || null,
+              supplier_name: item.supplier_name || local?.supplier_name || null,
+              supplier_address: item.supplier_address || local?.supplier_address || null,
+              supplier_contact: item.supplier_contact || local?.supplier_contact || null,
               unit_cost: item.unit_cost ?? local?.unit_cost ?? 0,
               origin_facility_id: item.origin_facility_id || local?.origin_facility_id || null,
               intake_type: item.intake_type || local?.intake_type || "PROCUREMENT",
@@ -660,7 +672,7 @@ export function useInventoryData({ isBhw = false }) {
         "Unit of Measurement",
         "Lot Number",
         "Facility",
-        "Supplier",
+        ...(!isBhw ? ["Supplier"] : []),
         "Expired Quantity",
         ...(!isBhw ? ["Unit Cost (PHP)", "Estimated Loss (PHP)"] : []),
         "Date Expired",
@@ -678,11 +690,11 @@ export function useInventoryData({ isBhw = false }) {
 
         return [
           getMedicineName(item),
-          item.medicine?.brand_name || "",
+          item.brand_name || item.medicine?.brand_name || "",
           item.medicine?.unit_of_measure || "",
           (item.lots || [item]).map((lot) => normalizeLotNumber(lot.batch_number)).filter(Boolean).join(" | "),
           item.facility?.facility_name || "",
-          (item.lots || [item]).map((lot) => lot.supplier?.supplier_name).filter(Boolean).join(" | "),
+          ...(!isBhw ? [(item.lots || [item]).map((lot) => lot.supplier_name || lot.supplier?.supplier_name).filter(Boolean).join(" | ")] : []),
           qty,
           ...(!isBhw ? [unitCost.toFixed(2), loss.toFixed(2)] : []),
           item.expiration_date ? new Date(item.expiration_date).toISOString().slice(0, 10) : "",
@@ -707,7 +719,7 @@ export function useInventoryData({ isBhw = false }) {
       "Unit of Measurement",
       "Lot Number",
       "Facility",
-      "Supplier",
+      ...(!isBhw ? ["Supplier"] : []),
       "Quantity",
       "Threshold",
       "Status",
@@ -726,11 +738,11 @@ export function useInventoryData({ isBhw = false }) {
 
       return [
         getMedicineName(item),
-        item.medicine?.brand_name || "",
+        item.brand_name || item.medicine?.brand_name || "",
         item.medicine?.unit_of_measure || "",
         (item.lots || [item]).map((lot) => normalizeLotNumber(lot.batch_number)).filter(Boolean).join(" | "),
         item.facility?.facility_name || "",
-        (item.lots || [item]).map((lot) => lot.supplier?.supplier_name).filter(Boolean).join(" | "),
+        ...(!isBhw ? [(item.lots || [item]).map((lot) => lot.supplier_name || lot.supplier?.supplier_name).filter(Boolean).join(" | ")] : []),
         item.quantity,
         item.threshold,
         status.label,
@@ -755,6 +767,9 @@ export function useInventoryData({ isBhw = false }) {
       facility_id: item.facility_id,
       medicine_id: item.medicine_id,
       brand_name: item.brand_name || "",
+      supplier_name: item.supplier_name || item.supplier?.supplier_name || "",
+      supplier_address: item.supplier_address || item.supplier?.address || "",
+      supplier_contact: item.supplier_contact || item.supplier?.contact_number || "",
       origin_facility_id: null,
       intake_type: "PROCUREMENT",
       return_reason: null,
@@ -1009,6 +1024,9 @@ export function useInventoryData({ isBhw = false }) {
     if (!isEditing) {
       // Create mode: Multi-item PO batch
       const generatedPoNumber = normalizePoNumber(formValues.po_number);
+      const supplierName = (formValues.supplier_name || "").trim() || null;
+      const supplierAddress = (formValues.supplier_address || "").trim() || null;
+      const supplierContact = (formValues.supplier_contact || "").trim() || null;
 
       const recordsToInsert = (formValues.items || []).map((item) => {
         const id = item.id || crypto.randomUUID();
@@ -1017,7 +1035,6 @@ export function useInventoryData({ isBhw = false }) {
         return {
           id,
           facility_id: formValues.facility_id,
-          origin_facility_id: null,
           intake_type: "PROCUREMENT",
           return_reason: null,
           status: "ACTIVE",
@@ -1025,6 +1042,9 @@ export function useInventoryData({ isBhw = false }) {
           date_received: formValues.date_received,
           medicine_id: item.medicine_id,
           brand_name: brandName || null,
+          supplier_name: supplierName,
+          supplier_address: supplierAddress,
+          supplier_contact: supplierContact,
           batch_number: normalizeLotNumber(item.batch_number),
           quantity: Number(item.quantity),
           threshold: item.threshold !== "" ? Number(item.threshold) : 100,
@@ -1034,8 +1054,6 @@ export function useInventoryData({ isBhw = false }) {
         };
       });
 
-
-
       const isOnline = isCurrentNetworkOnline();
 
       if (!isOnline) {
@@ -1044,8 +1062,8 @@ export function useInventoryData({ isBhw = false }) {
             const db = await getSqliteDb();
             for (const rec of recordsToInsert) {
               await db.execute(
-                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, data_json, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
                 [
                   rec.id,
                   rec.facility_id,
@@ -1062,6 +1080,9 @@ export function useInventoryData({ isBhw = false }) {
                   rec.return_reason,
                   rec.status,
                   rec.brand_name,
+                  rec.supplier_name,
+                  rec.supplier_address,
+                  rec.supplier_contact,
                   JSON.stringify(rec),
                   rec.updated_at,
                 ]
@@ -1074,7 +1095,7 @@ export function useInventoryData({ isBhw = false }) {
 
         const offlineRecords = [];
         for (const payload of recordsToInsert) {
-          const { origin_facility_id, intake_type, return_reason, status, po_number, unit_cost, brand_name, ...standardPayload } = payload;
+          const { origin_facility_id, intake_type, return_reason, status, po_number, unit_cost, brand_name, supplier_name, supplier_address, supplier_contact, ...standardPayload } = payload;
           const insertPayload = createOfflineInsertPayload({ id: payload.id, ...standardPayload });
           const newRecord = {
             ...payload,
@@ -1109,8 +1130,8 @@ export function useInventoryData({ isBhw = false }) {
             const db = await getSqliteDb();
             for (const rec of recordsToInsert) {
               await db.execute(
-                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, data_json, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
                 [
                   rec.id,
                   rec.facility_id,
@@ -1127,6 +1148,9 @@ export function useInventoryData({ isBhw = false }) {
                   rec.return_reason,
                   rec.status,
                   rec.brand_name,
+                  rec.supplier_name,
+                  rec.supplier_address,
+                  rec.supplier_contact,
                   JSON.stringify(rec),
                   rec.updated_at,
                 ]
@@ -1146,7 +1170,7 @@ export function useInventoryData({ isBhw = false }) {
             String(insertRes.error.message || "").toLowerCase().includes("column")
           ) {
             const fallbackRecords = recordsToInsert.map((rec) => {
-              const { origin_facility_id, intake_type, return_reason, status, po_number, unit_cost, brand_name, ...rest } = rec;
+              const { origin_facility_id, intake_type, return_reason, status, po_number, unit_cost, brand_name, supplier_name, supplier_address, supplier_contact, ...rest } = rec;
               return { id: rec.id, ...rest };
             });
             insertRes = await supabase.from("inventory").insert(fallbackRecords);
@@ -1240,6 +1264,9 @@ export function useInventoryData({ isBhw = false }) {
       facility_id: formValues.facility_id,
       medicine_id: formValues.medicine_id,
       brand_name: formValues.brand_name?.trim() || null,
+      supplier_name: formValues.supplier_name?.trim() || null,
+      supplier_address: formValues.supplier_address?.trim() || null,
+      supplier_contact: formValues.supplier_contact?.trim() || null,
       quantity: Number(formValues.quantity),
       threshold: Number(formValues.threshold),
       batch_number: normalizeLotNumber(formValues.batch_number),
@@ -1269,13 +1296,17 @@ export function useInventoryData({ isBhw = false }) {
             payload.unit_cost !== "" && payload.unit_cost !== null && !isNaN(payload.unit_cost)
               ? Number(payload.unit_cost)
               : null,
+          p_brand_name: payload.brand_name || null,
+          p_supplier_name: payload.supplier_name || null,
+          p_supplier_address: payload.supplier_address || null,
+          p_supplier_contact: payload.supplier_contact || null,
         },
       });
       if (isTauriEnvironment()) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, threshold = $5, po_number = $6, unit_cost = $7, origin_facility_id = $8, intake_type = $9, return_reason = $10, brand_name = $11, updated_at = $12 WHERE id = $13`,
+            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, threshold = $5, po_number = $6, unit_cost = $7, origin_facility_id = $8, intake_type = $9, return_reason = $10, brand_name = $11, supplier_name = $12, supplier_address = $13, supplier_contact = $14, updated_at = $15 WHERE id = $16`,
             [
               payload.batch_number,
               payload.date_received,
@@ -1288,6 +1319,9 @@ export function useInventoryData({ isBhw = false }) {
               "PROCUREMENT",
               null,
               payload.brand_name,
+              payload.supplier_name,
+              payload.supplier_address,
+              payload.supplier_contact,
               payload.updated_at,
               selectedItem.id,
             ]
@@ -1317,7 +1351,7 @@ export function useInventoryData({ isBhw = false }) {
     }
 
     try {
-      const rpcResult = await supabase.rpc("update_inventory_batch", {
+      let rpcResult = await supabase.rpc("update_inventory_batch", {
         p_batch_number: payload.batch_number,
         p_date_received: payload.date_received,
         p_expiration_date: payload.expiration_date,
@@ -1331,7 +1365,29 @@ export function useInventoryData({ isBhw = false }) {
             ? Number(payload.unit_cost)
             : null,
         p_brand_name: payload.brand_name || null,
+        p_supplier_name: payload.supplier_name || null,
+        p_supplier_address: payload.supplier_address || null,
+        p_supplier_contact: payload.supplier_contact || null,
       });
+
+      if (rpcResult.error) {
+        // Fallback for older RPC signature if 13-param signature is not yet reloaded
+        rpcResult = await supabase.rpc("update_inventory_batch", {
+          p_batch_number: payload.batch_number,
+          p_date_received: payload.date_received,
+          p_expiration_date: payload.expiration_date,
+          p_inventory_id: selectedItem.id,
+          p_po_number: payload.po_number || null,
+          p_quantity: payload.quantity,
+          p_supplier_id: null,
+          p_threshold: payload.threshold,
+          p_unit_cost:
+            payload.unit_cost !== "" && payload.unit_cost !== null && !isNaN(payload.unit_cost)
+              ? Number(payload.unit_cost)
+              : null,
+          p_brand_name: payload.brand_name || null,
+        });
+      }
 
       if (rpcResult.error) {
         throw rpcResult.error;
@@ -1341,7 +1397,7 @@ export function useInventoryData({ isBhw = false }) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, threshold = $5, po_number = $6, unit_cost = $7, origin_facility_id = $8, intake_type = $9, return_reason = $10, brand_name = $11, updated_at = $12 WHERE id = $13`,
+            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, threshold = $5, po_number = $6, unit_cost = $7, origin_facility_id = $8, intake_type = $9, return_reason = $10, brand_name = $11, supplier_name = $12, supplier_address = $13, supplier_contact = $14, updated_at = $15 WHERE id = $16`,
             [
               payload.batch_number,
               payload.date_received,
@@ -1354,6 +1410,9 @@ export function useInventoryData({ isBhw = false }) {
               "PROCUREMENT",
               null,
               payload.brand_name,
+              payload.supplier_name,
+              payload.supplier_address,
+              payload.supplier_contact,
               payload.updated_at,
               selectedItem.id,
             ]

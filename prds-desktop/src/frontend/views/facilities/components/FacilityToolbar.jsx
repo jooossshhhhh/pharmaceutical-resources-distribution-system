@@ -20,12 +20,12 @@ export function FacilityToolbar({
   canManage = true,
 }) {
   return (
-    <section className="mt-4 rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
+    <section className="mt-4 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-xs">
       <div className="facilities-toolbar">
         <div className="facilities-toolbar-controls">
           {viewMode === "list" && (
             <label className="relative block min-w-0 flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
                 <SearchIcon />
               </span>
               <input
@@ -34,7 +34,7 @@ export function FacilityToolbar({
                 value={searchTerm}
                 onChange={(event) => onSearchChange(event.target.value)}
                 placeholder="Search by facility name, code, address, or stock condition..."
-                className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-sm font-medium text-neutral-700 outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                className="h-10 w-full rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] pl-9 pr-3 text-sm font-medium text-[#1B2B30] outline-none transition placeholder:text-[#5B7077] focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
               />
             </label>
           )}
@@ -45,7 +45,7 @@ export function FacilityToolbar({
                 <select
                   value={stockFilter}
                   onChange={(event) => onStockFilterChange(event.target.value)}
-                  className="h-10 w-full appearance-none rounded-lg border border-neutral-200 bg-white px-3 pr-9 text-sm font-black text-neutral-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                  className="h-10 w-full appearance-none rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 pr-9 text-sm font-bold text-[#1B2B30] outline-none transition focus:border-[#1F4E5A] focus:ring-2 focus:ring-[#1F4E5A]/20"
                 >
                   {stockChipOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -53,7 +53,7 @@ export function FacilityToolbar({
                     </option>
                   ))}
                 </select>
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
                   <ChevronDownIcon />
                 </span>
               </label>
@@ -62,7 +62,7 @@ export function FacilityToolbar({
               <button
                 type="button"
                 onClick={onSortToggle}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] text-[#5B7077] transition hover:border-[#1F4E5A] hover:bg-[#EBF3F5] hover:text-[#1F4E5A]"
                 aria-label={
                   sortDirection === "ASC"
                     ? "Sort facilities descending"
@@ -76,14 +76,14 @@ export function FacilityToolbar({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <div className="flex items-center rounded-lg border border-neutral-200 bg-white p-0.5">
+          <div className="flex items-center rounded-lg border border-[#CFDDE0] bg-[#F4F8F8] p-0.5">
             <button
               type="button"
               onClick={() => onViewModeChange("list")}
-              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-black transition ${
+              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-bold transition ${
                 viewMode === "list"
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "text-neutral-600 hover:bg-neutral-50"
+                  ? "bg-[#1F4E5A] text-white shadow-xs"
+                  : "text-[#5B7077] hover:bg-[#EBF3F5]"
               }`}
             >
               <ListIcon />
@@ -92,10 +92,10 @@ export function FacilityToolbar({
             <button
               type="button"
               onClick={() => onViewModeChange("map")}
-              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-black transition ${
+              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-bold transition ${
                 viewMode === "map"
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "text-neutral-600 hover:bg-neutral-50"
+                  ? "bg-[#1F4E5A] text-white shadow-xs"
+                  : "text-[#5B7077] hover:bg-[#EBF3F5]"
               }`}
             >
               <MapViewIcon />
@@ -106,7 +106,7 @@ export function FacilityToolbar({
             <button
               type="button"
               onClick={onAddFacility}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-sm font-black text-white shadow-sm transition hover:bg-neutral-800"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-linear-to-r from-[#1F4E5A] to-[#286575] hover:brightness-105 active:scale-[0.99] border border-[#1F4E5A] px-4 text-sm font-bold text-white shadow-xs transition-all"
             >
               <PlusIcon />
               Add Facility

@@ -136,7 +136,7 @@ function MedicineEmptyState({ hasMedicines, onAdd, onClearSearch }) {
           <button
             type="button"
             onClick={onAdd}
-            className="mt-1 rounded-lg bg-black px-4 py-2 text-sm font-black text-white hover:bg-neutral-800"
+            className="btn-primary mt-1 rounded-lg px-4 py-2 text-sm font-bold text-white shadow-xs transition cursor-pointer"
           >
             Add Medicine
           </button>

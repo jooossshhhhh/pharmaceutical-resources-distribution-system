@@ -239,15 +239,34 @@ export default function ChoReportModule() {
                 r.medicine ||
                 (r.medicine_id ? medicinesMap.get(String(r.medicine_id)) : null) ||
                 {};
+
+              const invMatch =
+                (r.inventory_id ? fetchedInventory.find((inv) => String(inv.id) === String(r.inventory_id)) : null) ||
+                (r.batch_number ? fetchedInventory.find((inv) => (inv.batch_number || "").trim().toUpperCase() === (r.batch_number || "").trim().toUpperCase()) : null) ||
+                (r.medicine_id ? fetchedInventory.find((inv) => String(inv.medicine_id) === String(r.medicine_id) && Number(inv.unit_cost) > 0) : null);
+
+              const resolvedCost =
+                Number(r.unit_cost_at_dispense) > 0
+                  ? Number(r.unit_cost_at_dispense)
+                  : Number(r.batch?.unit_cost) > 0
+                  ? Number(r.batch.unit_cost)
+                  : Number(invMatch?.unit_cost) > 0
+                  ? Number(invMatch.unit_cost)
+                  : Number(r.unit_cost) > 0
+                  ? Number(r.unit_cost)
+                  : Number(med.unit_cost ?? 0);
+
               return {
                 ...r,
+                unit_cost_at_dispense: resolvedCost,
+                unit_cost: resolvedCost,
                 medicine: {
                   ...med,
-                  generic_name: med.generic_name || r.generic_name || "",
-                  brand_name: med.brand_name || r.brand_name || "",
-                  dosage: med.dosage || r.dosage || "",
-                  unit_of_measure: med.unit_of_measure || r.unit_of_measure || "",
-                  unit_cost: Number(med.unit_cost ?? r.unit_cost ?? 0),
+                  generic_name: med.generic_name || r.generic_name || invMatch?.medicine?.generic_name || "",
+                  brand_name: med.brand_name || r.brand_name || invMatch?.brand_name || invMatch?.medicine?.brand_name || "",
+                  dosage: med.dosage || r.dosage || invMatch?.dosage || invMatch?.medicine?.dosage || "",
+                  unit_of_measure: med.unit_of_measure || r.unit_of_measure || invMatch?.unit_of_measure || invMatch?.medicine?.unit_of_measure || "",
+                  unit_cost: resolvedCost,
                 },
               };
             });
@@ -260,7 +279,7 @@ export default function ChoReportModule() {
                 id, facility_id, program_name, program_date, description, status, completed_at, cancelled_at,
                 medicines:program_medicines(
                   id, medicine_id, quantity_used,
-                  medicine:medicines(id, generic_name, brand_name, dosage, unit_of_measure, unit_cost)
+                  medicine:medicines(id, generic_name, dosage, unit_of_measure)
                 )
               `);
               if (progData && isMounted) {
@@ -269,13 +288,15 @@ export default function ChoReportModule() {
                   medicines: (prog.medicines || []).map((pm) => {
                     const medId = String(pm.medicine_id || pm.medicine?.id || "");
                     const catMed = medicinesMap.get(medId) || {};
-                    const unitCost = Number(pm.medicine?.unit_cost ?? catMed.unit_cost ?? pm.unit_cost ?? 0);
+                    const invMatch = fetchedInventory.find((inv) => String(inv.medicine_id) === medId && Number(inv.unit_cost) > 0);
+                    const unitCost = Number(pm.unit_cost ?? invMatch?.unit_cost ?? pm.medicine?.unit_cost ?? catMed.unit_cost ?? 0);
                     return {
                       ...pm,
                       unit_cost: unitCost,
                       medicine: {
                         ...catMed,
                         ...(pm.medicine || {}),
+                        brand_name: catMed.brand_name || invMatch?.brand_name || "",
                         unit_cost: unitCost,
                       },
                     };
@@ -368,10 +389,11 @@ export default function ChoReportModule() {
     return aggregateTopMedicines({
       dispensingRows: filteredDispensing,
       requestRows: filteredRequests,
+      inventoryRows: filteredInventory,
       selectedDate,
       limit: 5,
     });
-  }, [filteredDispensing, filteredRequests, selectedDate]);
+  }, [filteredDispensing, filteredRequests, filteredInventory, selectedDate]);
 
   const facilityDistribution = useMemo(() => {
     return aggregateFacilityDistribution({
@@ -385,10 +407,11 @@ export default function ChoReportModule() {
     return aggregateDailyDispensingTrend({
       dispensingRows: filteredDispensing,
       requestRows: filteredRequests,
+      inventoryRows: filteredInventory,
       year: selectedDate.getFullYear(),
       month: selectedDate.getMonth() + 1,
     });
-  }, [filteredDispensing, filteredRequests, selectedDate]);
+  }, [filteredDispensing, filteredRequests, filteredInventory, selectedDate]);
 
   const monthName = useMemo(() => {
     return new Intl.DateTimeFormat("en-US", { month: "long" }).format(selectedDate);
@@ -402,17 +425,19 @@ export default function ChoReportModule() {
     return aggregateHourlyDispensingFlow({
       dispensingRows: filteredDispensing,
       requestRows: filteredRequests,
+      inventoryRows: filteredInventory,
       selectedDate,
     });
-  }, [filteredDispensing, filteredRequests, selectedDate]);
+  }, [filteredDispensing, filteredRequests, filteredInventory, selectedDate]);
 
   const dailyTransactions = useMemo(() => {
     return getDailyDispensingTransactions({
       dispensingRows: filteredDispensing,
       requestRows: filteredRequests,
+      inventoryRows: filteredInventory,
       selectedDate,
     });
-  }, [filteredDispensing, filteredRequests, selectedDate]);
+  }, [filteredDispensing, filteredRequests, filteredInventory, selectedDate]);
 
   // For Monthly Inventory Reconciliation, the statutory ledger represents the
   // City Health Office (CHO) central warehouse stock (Sole Source of Truth).
@@ -484,10 +509,11 @@ export default function ChoReportModule() {
       dispensingRows: filteredDispensing,
       requestRows: filteredRequests,
       otherProgramsRows,
+      inventoryRows: filteredInventory,
       year: selectedPeriod.year,
       month: selectedPeriod.month,
     });
-  }, [filteredDispensing, filteredRequests, otherProgramsRows, selectedPeriod]);
+  }, [filteredDispensing, filteredRequests, otherProgramsRows, filteredInventory, selectedPeriod]);
 
   // Export handlers
   const handleExportRis = async () => {

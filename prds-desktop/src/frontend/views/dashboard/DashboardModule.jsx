@@ -85,11 +85,11 @@ const iconMap = {
 };
 
 const statusClass = {
-  APPROVED: "bg-emerald-100 text-emerald-700",
-  COMPLETED: "bg-blue-100 text-blue-700",
-  DISPENSED: "bg-blue-100 text-blue-700",
-  PENDING: "bg-orange-100 text-orange-700",
-  REJECTED: "bg-red-100 text-red-700",
+  APPROVED: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+  COMPLETED: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+  DISPENSED: "bg-[#E2F3EC] text-[#226048] border border-[#4C9F80]/20",
+  PENDING: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25",
+  REJECTED: "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30",
 };
 
 const getStatIcon = (key) => {
@@ -146,18 +146,18 @@ const formatLocalDate = (date) => {
 
 const expiringTone = (days) => {
   if (days == null) {
-    return "bg-neutral-100 text-neutral-600";
+    return "bg-[#E5EFF1] text-[#5B7077]";
   }
 
   if (days <= 30) {
-    return "bg-red-100 text-red-700";
+    return "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25";
   }
 
   if (days <= 60) {
-    return "bg-amber-100 text-amber-700";
+    return "bg-[#E3EEF5] text-[#1F4A66] border border-[#34769B]/25";
   }
 
-  return "bg-neutral-100 text-neutral-600";
+  return "bg-[#E5EFF1] text-[#5B7077]";
 };
 
 export default function DashboardModule() {
@@ -469,10 +469,41 @@ export default function DashboardModule() {
       const expiringRows = stockedRows
         .filter((row) => row.expiration_date >= todayDate && row.expiration_date <= cutoffDate)
         .slice(0, 5);
-      const stockAlertRows = inventoryData
-        .filter((row) => ["CRITICAL", "LOW"].includes(getStockStatus(row)))
+      const medMap = new Map();
+      for (const row of inventoryData) {
+        const key = `${row.facility_id}:${row.medicine_id}`;
+        const existing = medMap.get(key);
+        if (!existing) {
+          medMap.set(key, {
+            ...row,
+            totalQuantity: Number(row.quantity || 0),
+            maxThreshold: Number(row.threshold || 0),
+            batches: [row],
+          });
+        } else {
+          existing.totalQuantity += Number(row.quantity || 0);
+          existing.maxThreshold = Math.max(existing.maxThreshold, Number(row.threshold || 0));
+          existing.batches.push(row);
+        }
+      }
+
+      const stockAlertRows = Array.from(medMap.values())
+        .map((entry) => {
+          const status = getStockStatus({ quantity: entry.totalQuantity, threshold: entry.maxThreshold });
+          const batchLabel = entry.batches.length > 1
+            ? `${entry.batches.length} batches`
+            : entry.batches[0]?.batch_number || "-";
+          return {
+            ...entry,
+            quantity: entry.totalQuantity,
+            threshold: entry.maxThreshold,
+            batch_number: batchLabel,
+            riskStatus: status,
+          };
+        })
+        .filter((entry) => ["CRITICAL", "LOW"].includes(entry.riskStatus))
         .sort((first, second) =>
-          riskRank[getStockStatus(first)] - riskRank[getStockStatus(second)] ||
+          riskRank[first.riskStatus] - riskRank[second.riskStatus] ||
           Number(first.quantity || 0) - Number(second.quantity || 0)
         )
         .slice(0, 5);
@@ -605,22 +636,22 @@ export default function DashboardModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-[#d8dadc] bg-white px-3.5 py-3 shadow-sm shadow-neutral-200/40">
+      <section className="rounded-xl border border-[#CFDDE0] bg-[var(--grad-hero)] px-3.5 py-3 shadow-xs">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             {dashboardConfig.scopeLabel && (
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#34769B]">
                 {dashboardConfig.scopeLabel}
               </p>
             )}
-            <h2 className="mt-0.5 text-xl font-black tracking-tight text-[#0d1117]">
+            <h2 className="mt-0.5 text-xl font-black tracking-tight text-[#1B2B30]">
               {dashboardConfig.title}
             </h2>
-            <p className="mt-0.5 text-xs font-medium text-[#42474e]">
+            <p className="mt-0.5 text-xs font-medium text-[#5B7077]">
               {dashboardConfig.subtitle}
             </p>
             {lastRefreshedAt && !isOffline && (
-              <p className="mt-1 text-[11px] text-neutral-500">
+              <p className="mt-1 text-[11px] text-[#5B7077]">
                 Last refreshed {formatDateTime(new Date(lastRefreshedAt))}
               </p>
             )}
@@ -631,7 +662,7 @@ export default function DashboardModule() {
               onClick={loadDashboard}
               disabled={isOffline || isLoading}
               title="Refresh dashboard data"
-              className="inline-flex items-center gap-2 rounded-lg border border-[#d8dadc] bg-white px-3.5 py-2 text-xs font-black text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3.5 py-2 text-xs font-black text-[#1B2B30] shadow-xs transition hover:bg-[#E5EFF1] hover:border-[#CFDDE0] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
@@ -639,14 +670,14 @@ export default function DashboardModule() {
             <button
               type="button"
               onClick={() => navigate("/requests")}
-              className="rounded-lg bg-[#0d1117] px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-[#00a36c]"
+              className="btn-primary rounded-lg px-3.5 py-2 text-xs font-black text-white shadow-xs transition active:scale-[0.99]"
             >
               View Requests
             </button>
             <button
               type="button"
               onClick={() => navigate(inventoryPath)}
-              className="rounded-lg border border-[#d8dadc] bg-white px-3.5 py-2 text-xs font-black text-[#0d1117] shadow-sm transition hover:border-[#6be9c2] hover:bg-[#eff4ff]"
+              className="rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3.5 py-2 text-xs font-black text-[#1B2B30] shadow-xs transition hover:bg-[#E5EFF1]"
             >
               Stock Watch
             </button>
@@ -675,7 +706,7 @@ export default function DashboardModule() {
           className="min-w-0"
           title={isBhw ? "My Facility Stock Alerts" : "Stock Alerts"}
           action={
-            <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-black text-orange-700">
+            <span className="rounded-full bg-[#FBE9E3] border border-[#D9826B]/25 px-2.5 py-1 text-[10px] font-black text-[#8F3F2B]">
               {formatNumber(stats.criticalStock + stats.lowStock)} alerts
             </span>
           }
@@ -688,19 +719,19 @@ export default function DashboardModule() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <thead className="border-b border-[#CFDDE0]/80 bg-[#F9FBFB] text-[10px] font-bold uppercase tracking-wider text-[#5B7077]">
                   <tr><th className="py-2 pr-3">Medicine</th><th className="px-3 py-2">Facility</th><th className="px-3 py-2">Batch</th><th className="px-3 py-2 text-right">Qty / threshold</th><th className="py-2 pl-3">Risk</th></tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100">
+                <tbody className="divide-y divide-[#CFDDE0]/40">
                   {stockAlertRows.map((row) => {
-                    const risk = getStockStatus(row);
+                    const risk = row.riskStatus || getStockStatus(row);
                     return (
                       <tr key={row.id || row.inventory_id}>
-                        <td className="py-2.5 pr-3 font-semibold text-[#0d1117]">{row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}</td>
-                        <td className="px-3 py-2.5 text-neutral-600">{formatFacilityName(row.facility?.facility_name || row.facility_name) || "-"}</td>
-                        <td className="px-3 py-2.5 text-neutral-600">{row.batch_number || "-"}</td>
-                        <td className="px-3 py-2.5 text-right font-bold">{formatNumber(row.quantity)} / {formatNumber(row.threshold)}</td>
-                        <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${risk === "CRITICAL" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}>{risk === "CRITICAL" ? "Critical" : "Low"}</span></td>
+                        <td className="py-2.5 pr-3 font-semibold text-[#1B2B30]">{row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}</td>
+                        <td className="px-3 py-2.5 text-[#5B7077]">{formatFacilityName(row.facility?.facility_name || row.facility_name) || "-"}</td>
+                        <td className="px-3 py-2.5 text-[#5B7077]">{row.batch_number || "-"}</td>
+                        <td className="px-3 py-2.5 text-right font-bold text-[#1B2B30]">{formatNumber(row.quantity)} / {formatNumber(row.threshold)}</td>
+                        <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${risk === "CRITICAL" ? "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30" : "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25"}`}>{risk === "CRITICAL" ? "Critical" : "Low"}</span></td>
                       </tr>
                     );
                   })}
@@ -717,7 +748,7 @@ export default function DashboardModule() {
             <button
               type="button"
               onClick={() => navigate("/requests")}
-              className="text-xs font-black text-emerald-700 hover:text-emerald-800"
+              className="text-xs font-black text-[#34769B] hover:text-[#1F4A66]"
             >
               View all
             </button>
@@ -728,16 +759,16 @@ export default function DashboardModule() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[490px] text-left text-xs">
-                <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <thead className="border-b border-[#CFDDE0]/80 bg-[#F9FBFB] text-[10px] font-bold uppercase tracking-wider text-[#5B7077]">
                   <tr><th className="py-2 pr-3">Request</th><th className="px-3 py-2">Medicine</th><th className="px-3 py-2 text-right">Qty</th><th className="py-2 pl-3">Status</th></tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100">
+                <tbody className="divide-y divide-[#CFDDE0]/40">
                   {recentRequests.map((request) => (
                     <tr key={request.id}>
-                      <td className="py-2.5 pr-3 font-semibold text-[#0d1117]">{request.shortId}<span className="block text-[10px] font-normal text-neutral-500">{request.date}</span></td>
-                      <td className="px-3 py-2.5"><span className="block max-w-44 truncate">{request.medicine}</span><span className="text-[10px] text-neutral-500">{formatFacilityName(request.facility)}</span></td>
-                      <td className="px-3 py-2.5 text-right font-semibold">{formatNumber(request.quantity)}</td>
-                      <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${statusClass[request.status] || "bg-neutral-100 text-neutral-600"}`}>{formatRequestStatus(request.status)}</span></td>
+                      <td className="py-2.5 pr-3 font-semibold text-[#1B2B30]">{request.shortId}<span className="block text-[10px] font-normal text-[#5B7077]">{request.date}</span></td>
+                      <td className="px-3 py-2.5 text-[#1B2B30]"><span className="block max-w-44 truncate">{request.medicine}</span><span className="text-[10px] text-[#5B7077]">{formatFacilityName(request.facility)}</span></td>
+                      <td className="px-3 py-2.5 text-right font-semibold text-[#1B2B30]">{formatNumber(request.quantity)}</td>
+                      <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${statusClass[request.status] || "bg-[#E5EFF1] text-[#5B7077]"}`}>{formatRequestStatus(request.status)}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -752,7 +783,7 @@ export default function DashboardModule() {
         <Panel
           className="min-h-[220px]"
           title="Request Status"
-          action={<p className="text-xs font-bold text-neutral-500">All requests</p>}
+          action={<p className="text-xs font-bold text-[#5B7077]">All requests</p>}
         >
           <RequestStatusChart rows={requestStatus} />
         </Panel>
@@ -764,7 +795,7 @@ export default function DashboardModule() {
             <button
               type="button"
               onClick={() => navigate("/forecasting")}
-              className="text-xs font-black text-emerald-700 hover:text-emerald-800"
+              className="text-xs font-black text-[#34769B] hover:text-[#1F4A66]"
             >
               Full view
             </button>
@@ -801,19 +832,19 @@ export default function DashboardModule() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <thead className="border-b border-[#CFDDE0]/80 bg-[#F9FBFB] text-[10px] font-bold uppercase tracking-wider text-[#5B7077]">
                   <tr><th className="py-2 pr-3">Medicine</th><th className="px-3 py-2">Batch</th><th className="px-3 py-2">Facility</th><th className="px-3 py-2 text-right">Quantity</th><th className="py-2 pl-3">Expiry</th></tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100">
+                <tbody className="divide-y divide-[#CFDDE0]/40">
               {expiringRows.map((row) => {
                 const days = daysUntil(row.expiration_date);
 
                 return (
                   <tr key={row.id}>
-                    <td className="py-2.5 pr-3 font-semibold">{row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}</td>
-                    <td className="px-3 py-2.5 text-neutral-600">{row.batch_number || "-"}</td>
-                    <td className="px-3 py-2.5 text-neutral-600">{row.facility?.facility_name || row.facility_name || "-"}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold">{formatNumber(row.quantity)}</td>
+                    <td className="py-2.5 pr-3 font-semibold text-[#1B2B30]">{row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}</td>
+                    <td className="px-3 py-2.5 text-[#5B7077]">{row.batch_number || "-"}</td>
+                    <td className="px-3 py-2.5 text-[#5B7077]">{row.facility?.facility_name || row.facility_name || "-"}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-[#1B2B30]">{formatNumber(row.quantity)}</td>
                     <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${expiringTone(days)}`}>{row.expiration_date || "-"} · {days == null ? "Unknown" : `${days}d`}</span></td>
                   </tr>
                 );
@@ -826,7 +857,7 @@ export default function DashboardModule() {
 
         <Panel
           title="Operational Worklist"
-          action={<p className="text-xs font-bold text-neutral-500">Needs attention</p>}
+          action={<p className="text-xs font-bold text-[#5B7077]">Needs attention</p>}
         >
           <div className="grid gap-2">
             {workItems.map((item) => (
@@ -866,18 +897,16 @@ export default function DashboardModule() {
 function WorkItem({ label, onClick, tone, value }) {
   const toneClass =
     tone === "red"
-      ? "border-red-100 bg-red-50 text-red-700"
-      : tone === "orange"
-        ? "border-orange-100 bg-orange-50 text-orange-700"
-        : tone === "amber"
-          ? "border-amber-100 bg-amber-50 text-amber-700"
-          : "border-emerald-100 bg-emerald-50 text-emerald-700";
+      ? "border-[#D9826B]/30 bg-[#FBE9E3] text-[#8F3F2B]"
+      : tone === "orange" || tone === "amber"
+        ? "border-[#D9826B]/25 bg-[#FBE9E3] text-[#8F3F2B]"
+        : "border-[#4C9F80]/20 bg-[#E2F3EC] text-[#226048]";
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-3.5 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${toneClass}`}
+      className={`rounded-xl border px-3.5 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-xs ${toneClass}`}
     >
       <p className="text-2xl font-black">{formatNumber(value)}</p>
       <p className="mt-1.5 text-xs font-black uppercase tracking-[0.14em]">
