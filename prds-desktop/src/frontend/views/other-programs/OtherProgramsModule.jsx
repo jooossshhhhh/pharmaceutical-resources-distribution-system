@@ -70,7 +70,7 @@ const getRelativeDateLabel = (dateStr) => {
     return { label: "Tomorrow", style: "bg-[#e6f0f7] text-[#34769B] ring-[#34769B]/30" };
   }
   if (dateStr < today) {
-    return { label: "Past Due", style: "bg-[#faeed6] text-[#b8741a] ring-[#E09453]/30" };
+    return { label: "Past Due", style: "bg-[#FBE9E3] text-[#8F3F2B] ring-[#D9826B]/30" };
   }
   return null;
 };
@@ -572,17 +572,23 @@ export default function OtherProgramsModule() {
             <button
               type="button"
               onClick={() => setStatusFilter("ALL")}
-              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs cursor-pointer ${
+              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
                 statusFilter === "ALL"
-                  ? "border-[#1F4E5A] bg-[#EBF3F5] ring-2 ring-[#1F4E5A]/20"
-                  : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#1F4E5A]/40"
+                  ? "border-[#1F4E5A] bg-white shadow-md ring-2 ring-[#1F4E5A]/15"
+                  : "border-[#CFDDE0] bg-white shadow-xs hover:border-[#1F4E5A]/40 hover:shadow-sm"
               }`}
             >
               <div className="flex items-start justify-between">
                 <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
                   Total Programs
                 </span>
-                <span className="rounded-lg bg-[#E5EFF1] p-2 text-[#1B2B30] group-hover:bg-[#CFDDE0]">
+                <span
+                  className={`rounded-lg p-2 transition-colors duration-150 ${
+                    statusFilter === "ALL"
+                      ? "bg-[#1F4E5A] text-white"
+                      : "bg-[#E5EFF1] text-[#1F4E5A] group-hover:bg-[#1F4E5A] group-hover:text-white"
+                  }`}
+                >
                   <ClipboardList className="h-4 w-4" />
                 </span>
               </div>
@@ -602,17 +608,23 @@ export default function OtherProgramsModule() {
               onClick={() =>
                 setStatusFilter(statusFilter === "UPCOMING" ? "ALL" : "UPCOMING")
               }
-              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs cursor-pointer ${
+              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
                 statusFilter === "UPCOMING"
-                  ? "border-[#34769B] bg-[#e6f0f7] ring-2 ring-[#34769B]/20"
-                  : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#34769B]/40"
+                  ? "border-[#34769B] bg-white shadow-md ring-2 ring-[#34769B]/15"
+                  : "border-[#CFDDE0] bg-white shadow-xs hover:border-[#34769B]/40 hover:shadow-sm"
               }`}
             >
               <div className="flex items-start justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-[#34769B]">
+                <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
                   Upcoming Missions
                 </span>
-                <span className="rounded-lg bg-[#e6f0f7] p-2 text-[#34769B] group-hover:bg-[#34769B]/10">
+                <span
+                  className={`rounded-lg p-2 transition-colors duration-150 ${
+                    statusFilter === "UPCOMING"
+                      ? "bg-[#34769B] text-white"
+                      : "bg-[#E3EEF5] text-[#34769B] group-hover:bg-[#34769B] group-hover:text-white"
+                  }`}
+                >
                   <CalendarDays className="h-4 w-4" />
                 </span>
               </div>
@@ -632,17 +644,23 @@ export default function OtherProgramsModule() {
               onClick={() =>
                 setStatusFilter(statusFilter === "COMPLETED" ? "ALL" : "COMPLETED")
               }
-              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs cursor-pointer ${
+              className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
                 statusFilter === "COMPLETED"
-                  ? "border-[#4C9F80] bg-[#E8F5F1] ring-2 ring-[#4C9F80]/20"
-                  : "border-[#CFDDE0] bg-[#F9FBFB] hover:border-[#4C9F80]/40"
+                  ? "border-[#4C9F80] bg-white shadow-md ring-2 ring-[#4C9F80]/15"
+                  : "border-[#CFDDE0] bg-white shadow-xs hover:border-[#4C9F80]/40 hover:shadow-sm"
               }`}
             >
               <div className="flex items-start justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-[#2D7A5D]">
+                <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
                   Completed Missions
                 </span>
-                <span className="rounded-lg bg-[#E8F5F1] p-2 text-[#2D7A5D] group-hover:bg-[#4C9F80]/20">
+                <span
+                  className={`rounded-lg p-2 transition-colors duration-150 ${
+                    statusFilter === "COMPLETED"
+                      ? "bg-[#4C9F80] text-white"
+                      : "bg-[#E2F3EC] text-[#226048] group-hover:bg-[#4C9F80] group-hover:text-white"
+                  }`}
+                >
                   <CheckCircle2 className="h-4 w-4" />
                 </span>
               </div>
@@ -657,12 +675,12 @@ export default function OtherProgramsModule() {
             </button>
 
             {/* Card 4: Total Reserved Units */}
-            <div className="flex flex-col justify-between rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4">
+            <div className="flex flex-col justify-between rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
               <div className="flex items-start justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-[#b8741a]">
+                <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
                   Reserved Units
                 </span>
-                <span className="rounded-lg bg-[#faeed6] p-2 text-[#b8741a]">
+                <span className="rounded-lg bg-[#E5EFF1] p-2 text-[#1F4E5A]">
                   <Boxes className="h-4 w-4" />
                 </span>
               </div>
@@ -875,36 +893,52 @@ export default function OtherProgramsModule() {
                 {!isLoading && pagination.totalCount === 0 && (
                   <tr>
                     <td colSpan="5" className="px-6 py-16 text-center">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E5EFF1] border border-[#CFDDE0] text-[#1F4E5A]">
                         <ClipboardList className="h-6 w-6" />
                       </div>
                       <p className="mt-3 text-base font-bold text-[#0d1117]">
                         {searchTerm
                           ? "No matching programs found"
+                          : statusFilter === "UPCOMING"
+                          ? "No upcoming missions scheduled"
+                          : statusFilter === "COMPLETED"
+                          ? "No completed missions recorded"
                           : "No programs recorded yet"}
                       </p>
-                      <p className="mt-1 text-sm text-[#69717d]">
+                      <p className="mt-1 text-sm text-[#5B7077]">
                         {searchTerm
                           ? "Try searching for a different program name, description, or medicine."
+                          : statusFilter !== "ALL"
+                          ? "There are currently no outreach missions matching this status filter."
                           : "Add an outreach mission or program to allocate and reserve medicines."}
                       </p>
-                      {searchTerm ? (
-                        <button
-                          type="button"
-                          onClick={() => setSearchTerm("")}
-                          className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#d8dadc] bg-white px-3 text-xs font-bold text-[#0d1117] hover:bg-slate-50"
-                        >
-                          Clear Search
-                        </button>
-                      ) : (
+                      <div className="mt-4 flex items-center justify-center gap-2">
+                        {searchTerm && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchTerm("")}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#CFDDE0] bg-white px-3 text-xs font-bold text-[#1B2B30] hover:bg-[#F4F8F8] transition cursor-pointer"
+                          >
+                            Clear Search
+                          </button>
+                        )}
+                        {statusFilter !== "ALL" && !searchTerm && (
+                          <button
+                            type="button"
+                            onClick={() => setStatusFilter("ALL")}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#CFDDE0] bg-white px-3 text-xs font-bold text-[#1F4E5A] hover:bg-[#F4F8F8] transition cursor-pointer"
+                          >
+                            Show All Programs
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={openCreate}
-                          className="btn-primary mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold text-white shadow-xs transition cursor-pointer"
+                          className="btn-primary inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold text-white shadow-xs transition cursor-pointer"
                         >
                           <Plus className="h-3.5 w-3.5" /> Add Program
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 )}

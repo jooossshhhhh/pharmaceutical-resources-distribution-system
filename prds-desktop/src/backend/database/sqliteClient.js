@@ -122,7 +122,6 @@ async function initializeSqliteSchema() {
       facility_id TEXT,
       medicine_id TEXT,
       quantity INTEGER DEFAULT 0,
-      threshold INTEGER DEFAULT 0,
       batch_number TEXT,
       po_number TEXT,
       unit_cost REAL,
@@ -141,6 +140,16 @@ async function initializeSqliteSchema() {
       disposed_by TEXT,
       data_json TEXT,
       updated_at DATETIME
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS facility_medicine_thresholds (
+      id TEXT PRIMARY KEY,
+      facility_id TEXT,
+      medicine_id TEXT,
+      threshold INTEGER DEFAULT 0,
+      is_custom INTEGER DEFAULT 0,
+      updated_at DATETIME,
+      UNIQUE(facility_id, medicine_id)
     );`,
 
     `CREATE TABLE IF NOT EXISTS patients (
@@ -192,6 +201,8 @@ async function initializeSqliteSchema() {
       medicine_id TEXT,
       medicine_name TEXT,
       brand_name TEXT,
+      dosage TEXT,
+      unit_of_measure TEXT,
       lot_no TEXT,
       quantity INTEGER,
       unit_cost REAL,
@@ -322,6 +333,8 @@ async function initializeSqliteSchema() {
   await ensureStockReturnColumn("medicine_id", "TEXT");
   await ensureStockReturnColumn("medicine_name", "TEXT");
   await ensureStockReturnColumn("brand_name", "TEXT");
+  await ensureStockReturnColumn("dosage", "TEXT");
+  await ensureStockReturnColumn("unit_of_measure", "TEXT");
   await ensureStockReturnColumn("quantity", "INTEGER");
   await ensureStockReturnColumn("unit_cost", "REAL");
   await ensureStockReturnColumn("expiration_date", "TEXT");

@@ -110,8 +110,31 @@ export const dataClient = {
             break;
           case "inventory":
             await db.execute(
-              "INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, date_received, expiration_date, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.facility_id, record.medicine_id, record.quantity, record.threshold, record.batch_number, record.date_received, record.expiration_date, jsonStr]
+              `INSERT OR REPLACE INTO inventory (
+                id, facility_id, medicine_id, quantity, threshold, batch_number, po_number,
+                unit_cost, date_received, expiration_date, origin_facility_id, intake_type,
+                return_reason, status, brand_name, supplier_name, data_json, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                record.id,
+                record.facility_id,
+                record.medicine_id,
+                record.quantity,
+                record.threshold || 0,
+                record.batch_number,
+                record.po_number || null,
+                record.unit_cost || null,
+                record.date_received,
+                record.expiration_date,
+                record.origin_facility_id || null,
+                record.intake_type || "PROCUREMENT",
+                record.return_reason || null,
+                record.status || "ACTIVE",
+                record.brand_name || null,
+                record.supplier_name || null,
+                jsonStr,
+                record.updated_at || new Date().toISOString(),
+              ]
             );
             break;
           case "patients":
@@ -138,10 +161,10 @@ export const dataClient = {
             await db.execute(
               `INSERT OR REPLACE INTO stock_returns (
                 id, return_id, facility_id, source_inventory_id, medicine_id, medicine_name,
-                brand_name, lot_no, quantity, unit_cost, expiration_date, reason, status,
+                brand_name, dosage, unit_of_measure, lot_no, quantity, unit_cost, expiration_date, reason, status,
                 remarks, submitted_by_id, submitted_at, confirmed_by_id, confirmed_at,
                 created_at, updated_at, is_synced, data_json
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 record.id,
                 record.return_id || record.id,
@@ -150,6 +173,8 @@ export const dataClient = {
                 record.medicine_id,
                 record.medicine_name,
                 record.brand_name || null,
+                record.dosage || null,
+                record.unit_of_measure || null,
                 record.lot_no,
                 record.quantity,
                 record.unit_cost,

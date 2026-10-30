@@ -5,6 +5,7 @@ import {
   amountToWords,
   buildInventoryImportPayloads,
   buildInventoryMedicineRows,
+  calculateDynamicThreshold,
   calculatePoTotals,
   createEmptyPoItem,
   DISPOSAL_METHODS,
@@ -12,11 +13,13 @@ import {
   emptyReturnReceiptForm,
   formatDate,
   formatDateTime,
+  formatReturnId,
   getExpiredDays,
   getExpiryStatus,
   getLotStatus,
   getReturnReasonLabel,
   getStockStatus,
+  getThresholdCalculationDetails,
   isDisposedLot,
   isLotExpired,
   isLotNumberUsed,
@@ -217,6 +220,14 @@ test("normalizePoNumber cleans invalid punctuation while retaining hyphens and s
   assert.equal(normalizePoNumber("  PO #04-21-26!  "), "PO 04-21-26");
   assert.equal(normalizePoNumber(""), "");
   assert.equal(normalizePoNumber(null), "");
+});
+
+test("formatReturnId normalizes legacy long return IDs and retains standard short IDs", () => {
+  assert.equal(formatReturnId("RET-HCINAYAGAN-20261029-HGKO"), "RET-HGKO1029");
+  assert.equal(formatReturnId("RET-HGKO2601"), "RET-HGKO2601");
+  assert.equal(formatReturnId("ret-1"), "ret-1");
+  assert.equal(formatReturnId(""), "");
+  assert.equal(formatReturnId(null), "");
 });
 
 test("createEmptyPoItem and emptyPoReceiptForm initialize correct structures", () => {
@@ -422,3 +433,75 @@ test("emptyInventoryForm and emptyPoReceiptForm contain supplier fields", () => 
   assert.ok("supplier_address" in emptyPoReceiptForm);
   assert.ok("supplier_contact" in emptyPoReceiptForm);
 });
+
+test("calculateDynamicThreshold correctly computes buffer using ADC when available", () => {
+  // ADC = 5.2 units/day -> 30-day buffer: 5.2 * 30 = 156
+  const threshold1 = calculateDynamicThreshold({ adc: 5.2, quantity: 500 });
+  assert.equal(threshold1, 156);
+
+  // ADC = 0.5 units/day -> 30-day buffer: 0.5 * 30 = 15
+  const threshold2 = calculateDynamicThreshold({ adc: 0.5, quantity: 100 });
+  assert.equal(threshold2, 15);
+
+  // ADC = 0.01 units/day -> Math.max(1, Math.ceil(0.3)) = 1
+  const threshold3 = calculateDynamicThreshold({ adc: 0.01, quantity: 50 });
+  assert.equal(threshold3, 1);
+});
+
+test("calculateDynamicThreshold falls back to batch quantity ratio when no ADC is available", () => {
+  // Batch quantity 1,000 units with 20% fallback ratio -> 200
+  const threshold1 = calculateDynamicThreshold({ adc: null, quantity: 1000 });
+  assert.equal(threshold1, 200);
+
+  // Batch quantity 100 units with 20% fallback ratio -> 20
+  const threshold2 = calculateDynamicThreshold({ adc: 0, quantity: 100 });
+  assert.equal(threshold2, 20);
+
+  // Small batch quantity 20 units -> Math.max(10, Math.round(4)) = 10
+  const threshold3 = calculateDynamicThreshold({ adc: null, quantity: 20 });
+  assert.equal(threshold3, 10);
+});
+
+test("calculateDynamicThreshold falls back to default minimum baseline when neither ADC nor quantity is available", () => {
+  const threshold = calculateDynamicThreshold({ adc: null, quantity: 0 });
+  assert.equal(threshold, 50);
+
+  const customDefault = calculateDynamicThreshold({ adc: 0, quantity: 0, defaultMinimum: 100 });
+  assert.equal(customDefault, 100);
+});
+
+test("getThresholdCalculationDetails returns comprehensive metadata for UI display", () => {
+  const adcDetails = getThresholdCalculationDetails({ adc: 5.33, quantity: 1000 });
+  assert.equal(adcDetails.threshold, 160);
+  assert.equal(adcDetails.method, "ADC");
+  assert.equal(adcDetails.isAdcBased, true);
+  assert.ok(adcDetails.description.includes("30-day safety buffer"));
+  assert.ok(adcDetails.shortLabel.includes("30d buffer"));
+
+  const ratioDetails = getThresholdCalculationDetails({ adc: null, quantity: 500 });
+  assert.equal(ratioDetails.threshold, 100);
+  assert.equal(ratioDetails.method, "RATIO");
+  assert.equal(ratioDetails.isAdcBased, false);
+  assert.ok(ratioDetails.description.includes("20% buffer of batch volume"));
+
+  const defaultDetails = getThresholdCalculationDetails({ adc: null, quantity: 0 });
+  assert.equal(defaultDetails.threshold, 50);
+  assert.equal(defaultDetails.method, "DEFAULT");
+  assert.equal(defaultDetails.isAdcBased, false);
+});
+
+test("calculateDynamicThreshold correctly scales down for barangay health station batch sizes", () => {
+  // A typical BHW allocation of 40 units -> 20% = 8 -> bounded by min threshold 10
+  const bhwThreshold40 = calculateDynamicThreshold({ adc: null, quantity: 40 });
+  assert.equal(bhwThreshold40, 10);
+
+  // A BHW allocation of 100 units -> 20% = 20
+  const bhwThreshold100 = calculateDynamicThreshold({ adc: null, quantity: 100 });
+  assert.equal(bhwThreshold100, 20);
+
+  // BHW with known 30-day dispensing ADC of 0.8 units/day * 14-day lead buffer = 11.2 -> 12 units
+  const bhwWithAdc = calculateDynamicThreshold({ adc: 0.8, quantity: 40, bufferDays: 14 });
+  assert.equal(bhwWithAdc, 12);
+});
+
+

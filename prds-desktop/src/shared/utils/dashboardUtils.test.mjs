@@ -7,6 +7,7 @@ import {
   getDashboardLayoutGroups,
   getDashboardRoleConfig,
   getDashboardStatCards,
+  getDashboardStockAlertRows,
   getMonthlyDispensedQuantity,
 } from "./dashboardUtils.js";
 
@@ -134,3 +135,97 @@ test("monthly dispensing excludes voided and history-only rows and other months"
 
   assert.equal(quantity, 80);
 });
+
+test("monthly dispensing includes completed request item quantities when requestRows are provided", () => {
+  const now = new Date("2026-09-20T12:00:00Z");
+  const dispensingRows = [
+    { dispense_date: "2026-09-01T10:00:00Z", quantity: 50, record_type: "LIVE_DISPENSING", voided_at: null },
+  ];
+  const requestRows = [
+    {
+      status: "COMPLETED",
+      approved_at: "2026-09-05T10:00:00Z",
+      items: [{ quantity: 150 }, { quantity: 50 }],
+    },
+    {
+      status: "PENDING",
+      approved_at: "2026-09-05T10:00:00Z",
+      items: [{ quantity: 300 }],
+    },
+    {
+      status: "COMPLETED",
+      approved_at: "2026-08-25T10:00:00Z",
+      items: [{ quantity: 400 }],
+    },
+  ];
+
+  const total = getMonthlyDispensedQuantity(dispensingRows, requestRows, now);
+  // 50 (walk-in) + 200 (completed in Sept) = 250
+  assert.equal(total, 250);
+});
+
+test("getDashboardStockAlertRows aggregates multiple batches per facility to prevent false low-stock alerts", () => {
+  const inventoryRows = [
+    // Ascorbic drops: batch 1 (140) + batch 2 (20) = 160 total vs threshold 150 -> Healthy (no alert)
+    {
+      facility_id: "fac-cho",
+      medicine_id: "med-ascorbic",
+      batch_number: "0827023",
+      quantity: 140,
+      threshold: 150,
+      medicine: { generic_name: "Ascorbic", dosage: "100 mg/mL, 15 mL" },
+    },
+    {
+      facility_id: "fac-cho",
+      medicine_id: "med-ascorbic",
+      batch_number: "0827024",
+      quantity: 20,
+      threshold: 150,
+      medicine: { generic_name: "Ascorbic", dosage: "100 mg/mL, 15 mL" },
+    },
+    // Amoxicillin: batch 1 (30) vs threshold 100 -> Low stock (alert)
+    {
+      facility_id: "fac-cho",
+      medicine_id: "med-amox",
+      batch_number: "0827025",
+      quantity: 30,
+      threshold: 100,
+      medicine: { generic_name: "Amoxicillin", dosage: "500 mg" },
+    },
+    // Paracetamol: batch 1 (2) + batch 2 (3) = 5 total vs threshold 100 (<= 25) -> Critical stock (alert)
+    {
+      facility_id: "fac-cho",
+      medicine_id: "med-para",
+      batch_number: "0827026",
+      quantity: 2,
+      threshold: 100,
+      medicine: { generic_name: "Paracetamol", dosage: "500 mg" },
+    },
+    {
+      facility_id: "fac-cho",
+      medicine_id: "med-para",
+      batch_number: "0827027",
+      quantity: 3,
+      threshold: 100,
+      medicine: { generic_name: "Paracetamol", dosage: "500 mg" },
+    },
+  ];
+
+  const alerts = getDashboardStockAlertRows(inventoryRows);
+
+  // med-ascorbic has 160 total > 150 threshold -> NOT in alerts!
+  assert.equal(alerts.some((a) => a.medicine_id === "med-ascorbic"), false);
+
+  // 2 items in alerts: Paracetamol (Critical) sorted before Amoxicillin (Low)
+  assert.equal(alerts.length, 2);
+  assert.equal(alerts[0].medicine_id, "med-para");
+  assert.equal(alerts[0].riskStatus, "CRITICAL");
+  assert.equal(alerts[0].quantity, 5);
+  assert.equal(alerts[0].batch_number, "2 batches");
+
+  assert.equal(alerts[1].medicine_id, "med-amox");
+  assert.equal(alerts[1].riskStatus, "LOW");
+  assert.equal(alerts[1].quantity, 30);
+  assert.equal(alerts[1].batch_number, "0827025");
+});
+

@@ -881,6 +881,171 @@ test("processMonthlyInventoryData consolidates duplicate inventory entries of th
   assert.equal(totals.totalBegVal, expectedTotalBeg);
 });
 
+test("processMonthlyInventoryData records confirmed stock returns in additional deliveries/returns and reconciles beginning inventory accurately", () => {
+  const inventoryRows = [
+    {
+      medicine_id: "med-ascorbic",
+      batch_number: "0827023",
+      quantity: 140, // remaining count on hand at end of October
+      expiration_date: "2027-12-31",
+      medicine: {
+        id: "med-ascorbic",
+        generic_name: "Ascorbic Acid (Vitamin C)",
+        dosage: "500 mg",
+        unit_of_measure: "BOTTLE",
+        unit_cost: 45,
+      },
+    },
+  ];
+
+  const dispensingRows = [
+    {
+      medicine_id: "med-ascorbic",
+      batch_number: "0827023",
+      quantity: 70, // 70 units issued during October
+      dispense_date: "2026-10-15",
+    },
+  ];
+
+  const stockReturnsRows = [
+    {
+      id: "ret-1",
+      return_id: "SR-202610-001",
+      medicine_id: "med-ascorbic",
+      lot_no: "0827023",
+      quantity: 20, // 20 units confirmed returned to CHO in October
+      unit_cost: 45,
+      status: "CONFIRMED",
+      confirmed_at: "2026-10-25T14:30:00Z",
+    },
+    {
+      id: "ret-2",
+      return_id: "SR-202610-002",
+      medicine_id: "med-ascorbic",
+      lot_no: "0827023",
+      quantity: 10,
+      unit_cost: 45,
+      status: "PENDING", // PENDING return should be excluded from additional deliveries
+      submitted_at: "2026-10-28T10:00:00Z",
+    },
+    {
+      id: "ret-3",
+      return_id: "SR-202609-001",
+      medicine_id: "med-ascorbic",
+      lot_no: "0827023",
+      quantity: 15,
+      unit_cost: 45,
+      status: "CONFIRMED",
+      confirmed_at: "2026-09-15T09:00:00Z", // September return should not affect October additional
+    },
+  ];
+
+  const { items, totals } = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows,
+    requestRows: [],
+    otherProgramsRows: [],
+    stockReturnsRows,
+    year: 2026,
+    month: 10,
+  });
+
+  assert.equal(items.length, 1);
+  const ascorbic = items[0];
+
+  // Additional Deliveries/Returns (Columns L, M, N)
+  assert.equal(ascorbic.additionalQty, 20, "Confirmed return must populate additionalQty");
+  assert.equal(ascorbic.unitCost, 45);
+  assert.equal(ascorbic.addTotal, 20 * 45, "Additional total valuation must be 900");
+
+  // Reconciled Beginning Balance (Columns I, J, K):
+  // Beginning Qty = Remaining (140) + Issued (70) - Additional (20) = 190
+  assert.equal(ascorbic.beginningQty, 190, "Beginning balance must properly account for the 20 returned units");
+  assert.equal(ascorbic.begTotal, 190 * 45);
+
+  // Gross Summation (Columns O, P, Q):
+  // Gross Qty = Beginning (190) + Additional (20) = 210
+  assert.equal(ascorbic.grossQty, 210);
+  assert.equal(ascorbic.grossTotal, 210 * 45);
+
+  // Less Issuances (Columns R, S, T):
+  assert.equal(ascorbic.issuedQty, 70);
+  assert.equal(ascorbic.issuedTotal, 70 * 45);
+
+  // Ending Remaining Balance (Columns AB, AC, AD):
+  assert.equal(ascorbic.remainingQty, 140);
+  assert.equal(ascorbic.remainingTotal, 140 * 45);
+
+  // Mathematical conservation of inventory check:
+  // Remaining = Gross - Issued = 210 - 70 = 140
+  assert.equal(ascorbic.grossQty - ascorbic.issuedQty, ascorbic.remainingQty);
+  assert.equal(totals.totalBegVal, 190 * 45);
+  assert.equal(totals.totalAddVal, 20 * 45);
+  assert.equal(totals.totalGrossVal, 210 * 45);
+  assert.equal(totals.totalIssuedVal, 70 * 45);
+  assert.equal(totals.totalRemVal, 140 * 45);
+});
+
+test("processMonthlyInventoryData appends synthetic inventory row when a confirmed return lot is not present in CHO warehouse inventory", () => {
+  const inventoryRows = [
+    {
+      medicine_id: "med-paracetamol",
+      batch_number: "PARA-001",
+      quantity: 50,
+      expiration_date: "2027-06-30",
+      medicine: {
+        id: "med-paracetamol",
+        generic_name: "Paracetamol",
+        dosage: "500 mg",
+        unit_of_measure: "TABLET",
+        unit_cost: 2.5,
+      },
+    },
+  ];
+
+  const stockReturnsRows = [
+    {
+      id: "ret-synth",
+      return_id: "SR-202610-099",
+      medicine_id: "med-vitb",
+      medicine_name: "Vitamin B Complex",
+      dosage: "100 mg",
+      unit_of_measure: "TABLET",
+      brand_name: "Neurobion",
+      lot_no: "VB-9988",
+      quantity: 30,
+      unit_cost: 15,
+      expiration_date: "2027-11-30",
+      status: "CONFIRMED",
+      confirmed_at: "2026-10-20T08:00:00Z",
+    },
+  ];
+
+  const { items, totals } = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows: [],
+    requestRows: [],
+    otherProgramsRows: [],
+    stockReturnsRows,
+    year: 2026,
+    month: 10,
+  });
+
+  assert.equal(items.length, 2, "Should include original inventory row plus synthetic returned row");
+
+  const vitB = items.find((i) => i.lotNo === "VB-9988");
+  assert.ok(vitB, "Synthetic row for returned lot VB-9988 must exist");
+  assert.equal(vitB.itemDescription, "Vitamin B Complex 100 mg");
+  assert.equal(vitB.beginningQty, 0);
+  assert.equal(vitB.additionalQty, 30);
+  assert.equal(vitB.grossQty, 30);
+  assert.equal(vitB.remainingQty, 30);
+  assert.equal(vitB.unitCost, 15);
+  assert.equal(vitB.addTotal, 30 * 15);
+  assert.equal(vitB.grossTotal, 30 * 15);
+  assert.equal(vitB.remainingTotal, 30 * 15);
+});
+
 
 
 

@@ -140,7 +140,6 @@ export default function ForecastingModule() {
                 facility_id,
                 medicine_id,
                 quantity,
-                threshold,
                 expiration_date,
                 batch_number,
                 facility:facilities!inventory_facility_id_fkey(facility_name),

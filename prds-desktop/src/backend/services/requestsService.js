@@ -190,7 +190,7 @@ export const getRequestsData = async ({ facilityId = null } = {}) => {
         .order("facility_name", { ascending: true }),
       supabase
         .from("inventory")
-        .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date, po_number, unit_cost, date_received, brand_name")
+        .select("id, facility_id, medicine_id, quantity, batch_number, expiration_date, po_number, unit_cost, date_received, brand_name")
         .then(async (res) => {
           if (
             res.error &&
@@ -200,7 +200,7 @@ export const getRequestsData = async ({ facilityId = null } = {}) => {
           ) {
             return supabase
               .from("inventory")
-              .select("id, facility_id, medicine_id, quantity, threshold, batch_number, expiration_date, brand_name");
+              .select("id, facility_id, medicine_id, quantity, batch_number, expiration_date, brand_name");
           }
           return res;
         }),
@@ -380,7 +380,7 @@ export const getBhwRequestsData = async ({ facilityId }) => {
     supabase.rpc("get_cho_inventory_medicines"),
     supabase
       .from("inventory")
-      .select("id, facility_id, medicine_id, quantity, threshold, brand_name")
+      .select("id, facility_id, medicine_id, quantity, brand_name")
       .eq("facility_id", facilityId),
   ]);
 

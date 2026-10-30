@@ -27,13 +27,18 @@ const CustomTooltip = ({ active, payload }) => {
   return null;
 };
 
-export default function TopMedicinesChart({ data = [] }) {
+export default function TopMedicinesChart({
+  data = [],
+  title = "Top Medicines Dispensed Today",
+  subtitle = "By quantity & cost",
+  emptyMessage = "No dispensing records recorded for this selected period.",
+}) {
   if (!data || data.length === 0) {
     return (
       <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-5 shadow-xs flex flex-col items-center justify-center min-h-[260px] text-center">
         <p className="text-xs font-semibold text-[#1B2B30]">No Medicines Dispensed</p>
         <p className="text-[11.5px] text-[#5B7077] mt-1">
-          No dispensing records recorded for this selected date.
+          {emptyMessage}
         </p>
       </div>
     );
@@ -43,10 +48,10 @@ export default function TopMedicinesChart({ data = [] }) {
     <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-[#1B2B30]">
-          Top Medicines Dispensed Today
+          {title}
         </h3>
         <span className="text-[11px] font-medium text-[#5B7077]">
-          By quantity & cost
+          {subtitle}
         </span>
       </div>
 

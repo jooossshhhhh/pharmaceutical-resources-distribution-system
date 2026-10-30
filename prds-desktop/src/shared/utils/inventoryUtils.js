@@ -20,7 +20,8 @@ export const emptyInventoryForm = {
 export const createEmptyPoItem = (
   id = typeof globalThis.crypto?.randomUUID === "function"
     ? globalThis.crypto.randomUUID()
-    : `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    : `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  initialValues = {}
 ) => ({
   id,
   medicine_id: "",
@@ -29,7 +30,9 @@ export const createEmptyPoItem = (
   quantity: "",
   unit_cost: "",
   threshold: "100",
+  is_threshold_custom: false,
   expiration_date: "",
+  ...initialValues,
 });
 
 export const RETURN_REASON_OPTIONS = [
@@ -72,6 +75,45 @@ export const normalizePoNumber = (value) =>
   String(value || "")
     .trim()
     .replace(/[^\w\s-]/gi, "");
+
+/**
+ * Formats/normalizes any Return ID into the compact standard format: RET-XXXXXXXX
+ * Converts old long format (e.g. RET-HCINAYAGAN-20261029-HGKO) into clean short format (RET-HGKO1029).
+ */
+export const formatReturnId = (rawId = "") => {
+  if (!rawId) return "";
+  const str = String(rawId).trim();
+
+  // If already standard RET- + 8 alphanumeric chars, return as is (uppercase)
+  if (/^RET-[A-Z0-9]{8}$/i.test(str)) {
+    return str.toUpperCase();
+  }
+
+  // If it's the old long format: RET-[FACILITY]-[YYYYMMDD]-[SUFFIX]
+  // e.g. RET-HCINAYAGAN-20261029-HGKO -> RET-HGKO1029
+  const oldLongMatch = str.match(/^RET-[A-Z0-9]+-(\d{4})(\d{2})(\d{2})-([A-Z0-9]+)$/i);
+  if (oldLongMatch) {
+    const [, _year, month, day, suffix] = oldLongMatch;
+    return `RET-${suffix.toUpperCase()}${month}${day}`;
+  }
+
+  // If it's an old compound format with 3 or more segments (e.g. RET-xxx-yyy-zzz)
+  const segments = str.split("-");
+  if (segments.length >= 3 && segments[0].toUpperCase() === "RET") {
+    const lastSeg = segments[segments.length - 1].toUpperCase();
+    const midSeg = segments[segments.length - 2].toUpperCase();
+    const candidate = `${lastSeg}${midSeg}`.replace(/[^A-Z0-9]/g, "");
+    return `RET-${candidate.slice(0, 8).padEnd(8, "0")}`;
+  }
+
+  // If it starts with RET- and has more than 12 chars
+  if (str.toUpperCase().startsWith("RET-") && str.length > 12) {
+    const rest = str.slice(4).replace(/[^A-Z0-9]/g, "").toUpperCase();
+    return `RET-${rest.slice(-8).padEnd(8, "0")}`;
+  }
+
+  return str;
+};
 
 export const calculatePoTotals = (items = []) => {
   return items.reduce(
@@ -664,7 +706,7 @@ export const getLotStatus = (lot) => {
 
   return {
     key: "ACTIVE",
-    label: "Active",
+    label: "Available",
     badgeClass: "bg-[#E8F5F1] text-[#2D7A5D] border border-[#4C9F80]/25",
   };
 };
@@ -688,5 +730,77 @@ export const getReturnReasonLabel = (reason) => {
 export const isDisposedLot = (lot) => {
   if (!lot) return false;
   return lot.status === "DISPOSED" || Boolean(lot.disposed_at);
+};
+
+/**
+ * Dynamically computes a suggested inventory restock threshold based on:
+ * 1. Average Daily Consumption (ADC) if dispensing history is available (bufferDays default: 30 days)
+ * 2. Received batch quantity ratio if no ADC exists (fallbackRatio default: 20%)
+ * 3. Default minimum baseline (default: 50 units)
+ */
+export const calculateDynamicThreshold = ({
+  adc = null,
+  quantity = 0,
+  bufferDays = 30,
+  fallbackRatio = 0.20,
+  defaultMinimum = 50,
+} = {}) => {
+  const numericAdc = Number(adc);
+  if (Number.isFinite(numericAdc) && numericAdc > 0) {
+    return Math.max(1, Math.ceil(numericAdc * bufferDays));
+  }
+
+  const numericQty = Number(quantity);
+  if (Number.isFinite(numericQty) && numericQty > 0) {
+    return Math.max(10, Math.round(numericQty * fallbackRatio));
+  }
+
+  return defaultMinimum;
+};
+
+/**
+ * Returns detailed calculation metadata for display in the UI so pharmacists
+ * know why a particular threshold is suggested and can decide whether to accept or edit it.
+ */
+export const getThresholdCalculationDetails = ({
+  adc = null,
+  quantity = 0,
+  bufferDays = 30,
+  fallbackRatio = 0.20,
+  defaultMinimum = 50,
+} = {}) => {
+  const numericAdc = Number(adc);
+  if (Number.isFinite(numericAdc) && numericAdc > 0) {
+    const threshold = Math.max(1, Math.ceil(numericAdc * bufferDays));
+    const roundedAdc = Math.round(numericAdc * 10) / 10;
+    return {
+      threshold,
+      method: "ADC",
+      isAdcBased: true,
+      description: `Auto-calculated ${bufferDays}-day safety buffer (~${roundedAdc}/day consumption)`,
+      shortLabel: `${bufferDays}d buffer (${roundedAdc}/day)`,
+    };
+  }
+
+  const numericQty = Number(quantity);
+  if (Number.isFinite(numericQty) && numericQty > 0) {
+    const threshold = Math.max(10, Math.round(numericQty * fallbackRatio));
+    const percent = Math.round(fallbackRatio * 100);
+    return {
+      threshold,
+      method: "RATIO",
+      isAdcBased: false,
+      description: `Auto-calculated ${percent}% buffer of batch volume (${formatNumber(numericQty)} units)`,
+      shortLabel: `${percent}% of batch`,
+    };
+  }
+
+  return {
+    threshold: defaultMinimum,
+    method: "DEFAULT",
+    isAdcBased: false,
+    description: `Standard baseline buffer (${defaultMinimum} units)`,
+    shortLabel: `Default (${defaultMinimum})`,
+  };
 };
 

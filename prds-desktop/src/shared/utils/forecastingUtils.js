@@ -907,7 +907,9 @@ const getLatestForecastQuantity = (forecastRows, medicineId) => {
 };
 
 const getMedicineForId = (medicineId, forecastRows, inventoryRows) => {
-  const row = [...forecastRows, ...inventoryRows].find((candidate) => candidate.medicine_id === medicineId);
+  const row = [...forecastRows, ...inventoryRows].find(
+    (candidate) => candidate.medicine_id === medicineId && candidate.medicine
+  );
   return row?.medicine || null;
 };
 

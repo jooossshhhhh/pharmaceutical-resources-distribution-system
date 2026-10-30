@@ -16,6 +16,8 @@ const createEmptyItem = () => ({
   medicine_id: "",
   medicine_name: "",
   brand_name: "",
+  dosage: "",
+  unit_of_measure: "",
   quantity: "",
   unit_cost: 0,
   expiration_date: "",
@@ -53,10 +55,9 @@ export default function RecordStockReturnModal({
     );
   }, [facilities]);
 
-  const selectedFacility = useMemo(
-    () => facilities.find((facility) => facility.id === formValues.facility_id) || null,
-    [facilities, formValues.facility_id]
-  );
+  const selectedFacility = useMemo(() => {
+    return (facilities || []).find((facility) => facility.id === formValues.facility_id) || null;
+  }, [facilities, formValues.facility_id]);
 
   // Available stock batches at the selected returning facility
   const facilityInventory = useMemo(() => {
@@ -68,16 +69,24 @@ export default function RecordStockReturnModal({
           Number(item.quantity) > 0
       )
       .map((item) => {
-        const med = medicines.find((m) => m.id === item.medicine_id) || item.medicine || {};
+        const med = (medicines || []).find((m) => m.id === item.medicine_id) || item.medicine || {};
+        const cost =
+          item.unit_cost != null && Number(item.unit_cost) > 0
+            ? Number(item.unit_cost)
+            : med?.unit_cost != null
+            ? Number(med.unit_cost)
+            : 0;
         return {
           ...item,
           generic_name: item.medicine_name || med.generic_name || "Unknown Medicine",
           brand_name: item.brand_name || med.brand_name || "",
+          dosage: item.dosage || med.dosage || "",
+          unit_of_measure: item.unit_of_measure || item.packaging_unit || med.unit_of_measure || med.packaging_unit || "unit",
           lot_no: item.lot_no || item.batch_number || "—",
-          unit_cost: isBhw ? 0 : item.unit_cost,
+          unit_cost: cost,
         };
       });
-  }, [inventory, formValues.facility_id, medicines, isBhw]);
+  }, [inventory, formValues.facility_id, medicines]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -120,6 +129,8 @@ export default function RecordStockReturnModal({
                 medicine_id: "",
                 medicine_name: "",
                 brand_name: "",
+                dosage: "",
+                unit_of_measure: "",
                 expiration_date: "",
                 unit_cost: 0,
                 available_stock: 0,
@@ -134,17 +145,19 @@ export default function RecordStockReturnModal({
     const batch = facilityInventory.find((b) => b.id === inventoryId);
     if (!batch) return;
 
-    const matchedMed = medicines.find((m) => m.id === batch.medicine_id);
-    const cost = isBhw
-      ? 0
-      : batch.unit_cost != null && Number(batch.unit_cost) > 0
-      ? Number(batch.unit_cost)
-      : matchedMed?.unit_cost != null
-      ? Number(matchedMed.unit_cost)
-      : 0;
+    const matchedMed = (medicines || []).find((m) => m.id === batch.medicine_id);
+    const cost =
+      batch.unit_cost != null && Number(batch.unit_cost) > 0
+        ? Number(batch.unit_cost)
+        : matchedMed?.unit_cost != null
+        ? Number(matchedMed.unit_cost)
+        : 0;
 
     const resolvedBrand = batch.brand_name || matchedMed?.brand_name || "";
     const resolvedGeneric = batch.generic_name || matchedMed?.generic_name || batch.medicine_name || "";
+    const resolvedDosage = batch.dosage || matchedMed?.dosage || "";
+    const resolvedUnitOfMeasure =
+      batch.unit_of_measure || batch.packaging_unit || matchedMed?.unit_of_measure || matchedMed?.packaging_unit || "unit";
 
     setItems((prev) =>
       prev.map((item, idx) =>
@@ -156,6 +169,8 @@ export default function RecordStockReturnModal({
               medicine_id: batch.medicine_id || "",
               medicine_name: resolvedGeneric,
               brand_name: resolvedBrand || "Generic (No Brand)",
+              dosage: resolvedDosage,
+              unit_of_measure: resolvedUnitOfMeasure,
               expiration_date: batch.expiration_date || "",
               unit_cost: cost,
               available_stock: Number(batch.quantity) || 0,
@@ -262,7 +277,9 @@ export default function RecordStockReturnModal({
         items: items.map((it) => ({
           ...it,
           quantity: parseInt(it.quantity, 10),
-          unit_cost: isBhw ? 0 : (parseFloat(it.unit_cost) || 0),
+          unit_cost: parseFloat(it.unit_cost) || 0,
+          dosage: it.dosage || null,
+          unit_of_measure: it.unit_of_measure || null,
         })),
       };
 
@@ -446,13 +463,15 @@ export default function RecordStockReturnModal({
                         <option value="">Choose batch on hand...</option>
                         {facilityInventory.map((invItem) => {
                           const isAlreadySelected = otherSelectedIds.has(invItem.id);
+                          const dosagePart = invItem.dosage ? ` (${invItem.dosage})` : "";
+                          const unitPart = invItem.unit_of_measure ? ` ${invItem.unit_of_measure}` : " units";
                           return (
                             <option
                               key={invItem.id}
                               value={invItem.id}
                               disabled={isAlreadySelected}
                             >
-                              Lot: {invItem.lot_no} — {invItem.generic_name}
+                              Lot: {invItem.lot_no} — {invItem.generic_name}{dosagePart} — {invItem.quantity}{unitPart} on hand
                               {isAlreadySelected ? " (Already added)" : ""}
                             </option>
                           );
@@ -468,16 +487,28 @@ export default function RecordStockReturnModal({
                   </div>
 
                   {/* Complete Medicine & Batch Attributes Grid */}
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                    <div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+                    <div className="sm:col-span-2">
                       <label className="mb-1 block text-xs font-bold text-neutral-700">
-                        Medicine Name
+                        Medicine Name (Generic)
                       </label>
                       <input
                         type="text"
                         value={item.medicine_name || "—"}
                         readOnly
                         className="h-10 w-full rounded-lg border border-neutral-200 bg-neutral-100 px-3 text-xs font-bold text-[#0d1117] outline-none cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-neutral-700">
+                        Dosage / Strength
+                      </label>
+                      <input
+                        type="text"
+                        value={item.dosage || "—"}
+                        readOnly
+                        className="h-10 w-full rounded-lg border border-neutral-200 bg-neutral-100 px-3 text-xs font-bold text-neutral-800 outline-none cursor-not-allowed"
                       />
                     </div>
 
@@ -490,6 +521,18 @@ export default function RecordStockReturnModal({
                         value={item.brand_name || "Generic (No Brand)"}
                         readOnly
                         className="h-10 w-full rounded-lg border border-neutral-200 bg-neutral-100 px-3 text-xs font-bold text-emerald-900 outline-none cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-neutral-700">
+                        Packaging / Unit of Measure
+                      </label>
+                      <input
+                        type="text"
+                        value={item.unit_of_measure || "unit"}
+                        readOnly
+                        className="h-10 w-full rounded-lg border border-neutral-200 bg-neutral-100 px-3 text-xs font-semibold text-neutral-800 capitalize outline-none cursor-not-allowed"
                       />
                     </div>
 
@@ -536,7 +579,7 @@ export default function RecordStockReturnModal({
                       />
                       {item.available_stock > 0 && (
                         <p className="mt-0.5 text-[10px] font-semibold text-neutral-500">
-                          Max available: {item.available_stock} units
+                          Max available: {item.available_stock} {item.unit_of_measure || "units"}
                         </p>
                       )}
                     </div>

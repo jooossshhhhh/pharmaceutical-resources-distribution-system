@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
 import { getDispensingHistory } from "@backend/services/dispensingService";
 import { getRequestsData } from "@backend/services/requestsService";
+import { fetchStockReturns } from "@backend/services/stockReturnsService";
 import { supabase } from "@backend/client/supabase";
 import { useAuth } from "../../context/useAuth";
 import { useNetworkStatus } from "@backend/sync/networkStatus";
@@ -127,6 +128,7 @@ export default function ChoReportModule() {
     const meds = getSnapshot(STORAGE_KEYS.MEDICINES, []);
     return enrichInventoryRows(rawInv, meds);
   });
+  const [stockReturnsRows, setStockReturnsRows] = useState(() => getSnapshot(STORAGE_KEYS.STOCK_RETURNS, []));
   const [selectedFacilityId, setSelectedFacilityId] = useState("ALL");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [reportScope, setReportScope] = useState("daily"); // 'daily' | 'monthly'
@@ -144,9 +146,10 @@ export default function ChoReportModule() {
       (inventoryRows && inventoryRows.length > 0) ||
       (dispensingRows && dispensingRows.length > 0) ||
       (requestRows && requestRows.length > 0) ||
-      (otherProgramsRows && otherProgramsRows.length > 0)
+      (otherProgramsRows && otherProgramsRows.length > 0) ||
+      (stockReturnsRows && stockReturnsRows.length > 0)
     );
-  }, [inventoryRows, dispensingRows, requestRows, otherProgramsRows]);
+  }, [inventoryRows, dispensingRows, requestRows, otherProgramsRows, stockReturnsRows]);
 
   const [showSkeleton, setShowSkeleton] = useState(false);
 
@@ -174,12 +177,16 @@ export default function ChoReportModule() {
     async function loadReportData() {
       setIsLoading(true);
       try {
-        const [dispensingRes, requestsDataRes] = await Promise.allSettled([
+        const [dispensingRes, requestsDataRes, stockReturnsRes] = await Promise.allSettled([
           getDispensingHistory(),
           getRequestsData(),
+          fetchStockReturns(),
         ]);
 
         if (isMounted) {
+          if (stockReturnsRes.status === "fulfilled" && Array.isArray(stockReturnsRes.value)) {
+            setStockReturnsRows(stockReturnsRes.value);
+          }
           const medicinesSnapshot = getSnapshot(STORAGE_KEYS.MEDICINES, []);
           const medicinesMap = new Map(medicinesSnapshot.map((m) => [String(m.id), m]));
 
@@ -458,6 +465,7 @@ export default function ChoReportModule() {
       dispensingRows: filteredDispensing,
       requestRows: filteredRequests,
       otherProgramsRows,
+      stockReturnsRows,
       year: selectedPeriod.year,
       month: selectedPeriod.month,
     });
@@ -498,7 +506,7 @@ export default function ChoReportModule() {
       },
       activeProgramCount: activeProgs.length,
     };
-  }, [filteredInventory, filteredDispensing, filteredRequests, otherProgramsRows, selectedPeriod]);
+  }, [monthlyInventory, filteredDispensing, filteredRequests, otherProgramsRows, stockReturnsRows, selectedPeriod]);
 
   // Monthly Dispensing Distribution across the 3 workflows:
   // 1. Medicine Requests (Barangay Health Stations)
@@ -539,6 +547,7 @@ export default function ChoReportModule() {
         dispensingRows: filteredDispensing,
         requestRows: filteredRequests,
         otherProgramsRows,
+        stockReturnsRows,
         year: selectedPeriod.year,
         month: selectedPeriod.month,
         facilityName: "VMCH MEDICINE SUPPLIES",

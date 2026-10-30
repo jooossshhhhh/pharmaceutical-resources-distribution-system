@@ -21,26 +21,31 @@ const CustomTooltip = ({ active, payload }) => {
   return null;
 };
 
-export default function FacilityDistributionChart({ data = [] }) {
+export default function FacilityDistributionChart({
+  data = [],
+  title = "Medicines Given by Health Center",
+  subtitle = "CHO vs. Barangays",
+  emptyMessage = "No medicines were distributed for this selected period.",
+}) {
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white border border-[#d8dadc] rounded-xl p-5 shadow-xs flex flex-col items-center justify-center min-h-[260px] text-center">
-        <p className="text-xs font-semibold text-[#0d1117]">No Distribution Data</p>
-        <p className="text-[11.5px] text-[#42474e] mt-1">
-          No medicines were distributed on this date.
+      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-5 shadow-xs flex flex-col items-center justify-center min-h-[260px] text-center">
+        <p className="text-xs font-semibold text-[#1B2B30]">No Distribution Data</p>
+        <p className="text-[11.5px] text-[#5B7077] mt-1">
+          {emptyMessage}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white border border-[#d8dadc] rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
+    <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-bold text-[#0d1117]">
-          Medicines Given by Health Center
+        <h3 className="text-sm font-bold text-[#1B2B30]">
+          {title}
         </h3>
-        <span className="text-[11px] font-medium text-[#42474e]">
-          CHO vs. Barangays
+        <span className="text-[11px] font-medium text-[#5B7077]">
+          {subtitle}
         </span>
       </div>
 
@@ -75,9 +80,9 @@ export default function FacilityDistributionChart({ data = [] }) {
                   className="h-2.5 w-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: item.color }}
                 />
-                <span className="text-[#0d1117] truncate font-medium">{item.name}</span>
+                <span className="text-[#1B2B30] truncate font-medium">{item.name}</span>
               </div>
-              <span className="font-semibold text-[#42474e] shrink-0">
+              <span className="font-semibold text-[#5B7077] shrink-0">
                 {item.percentage}%
               </span>
             </div>

@@ -1,5 +1,14 @@
-import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Boxes,
+  AlertOctagon,
+  AlertTriangle,
+  Clock,
+  PackageX,
+  Archive,
+  ShieldAlert,
+} from "lucide-react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
@@ -19,6 +28,7 @@ import { MedicineStockDetailsView } from "./components/MedicineStockDetailsView"
 
 export default function BhwInventoryModule() {
   const { profile } = useAuth();
+  const location = useLocation();
   const data = useInventoryData({ isBhw: true });
   const [viewingMedicine, setViewingMedicine] = useState(null);
 
@@ -34,6 +44,7 @@ export default function BhwInventoryModule() {
     searchTerm,
     setSearchTerm,
     stockFilter,
+    setStockFilter,
     inventorySort,
     currentPage,
     setCurrentPage,
@@ -48,7 +59,22 @@ export default function BhwInventoryModule() {
     clearFilters,
     toggleStockFilter,
     handleExportExcel,
+    handleUpdateThreshold,
   } = data;
+
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const state = location.state;
+    if (!state) return;
+    if (state.filterMedicineName) {
+      setSearchTerm(state.filterMedicineName);
+    }
+    if (state.stockFilter) {
+      setStockFilter(state.stockFilter);
+    }
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate, setSearchTerm, setStockFilter]);
 
   const activeViewingItem = useMemo(() => {
     if (!viewingMedicine) return null;
@@ -81,6 +107,8 @@ export default function BhwInventoryModule() {
           isBhw={true}
           facilityName={profile?.facility_name || "Barangay Health Station"}
           onBack={() => setViewingMedicine(null)}
+          onUpdateThreshold={handleUpdateThreshold}
+          consumptionByMedicine={consumptionByMedicine}
         />
       ) : (
         <>
@@ -106,24 +134,32 @@ export default function BhwInventoryModule() {
               <MetricCard
                 label="Expired Medicines"
                 value={formatNumber(expiredSummary.totalItems)}
+                icon={<AlertOctagon className="h-4 w-4" />}
+                tone="red"
                 sub="in your health station"
                 compact
               />
               <MetricCard
                 label="Total Expired Units"
                 value={formatNumber(expiredSummary.totalUnits)}
+                icon={<PackageX className="h-4 w-4" />}
+                tone="orange"
                 sub="locked from dispensing"
                 compact
               />
               <MetricCard
                 label="Quarantined Batches"
                 value={formatNumber(expiredSummary.totalLots ?? expiredSummary.totalItems)}
+                icon={<Archive className="h-4 w-4" />}
+                tone="blue"
                 sub="batches requiring return"
                 compact
               />
               <MetricCard
                 label="Disposal Status"
                 value={expiredSummary.status}
+                icon={<ShieldAlert className="h-4 w-4" />}
+                tone="amber"
                 sub="quarantined for disposal"
                 compact
               />
@@ -133,14 +169,21 @@ export default function BhwInventoryModule() {
               <MetricCard
                 label="All Stock"
                 value={formatNumber(summary.totalItems)}
+                icon={<Boxes className="h-4 w-4" />}
+                tone="blue"
                 sub="in your health station"
-                onClick={() => toggleStockFilter("ALL")}
+                onClick={() => {
+                  setStockFilter("ALL");
+                  setCurrentPage(1);
+                }}
                 active={stockFilter === "ALL"}
                 compact
               />
               <MetricCard
                 label="Critical Stock"
                 value={formatNumber(summary.critical)}
+                icon={<AlertOctagon className="h-4 w-4" />}
+                tone="red"
                 sub={
                   summary.stockedOut > 0
                     ? `${formatNumber(summary.stockedOut)} fully stocked out`
@@ -153,6 +196,8 @@ export default function BhwInventoryModule() {
               <MetricCard
                 label="Low Stock"
                 value={formatNumber(summary.low)}
+                icon={<AlertTriangle className="h-4 w-4" />}
+                tone="amber"
                 sub="restock recommended"
                 onClick={() => toggleStockFilter("LOW")}
                 active={stockFilter === "LOW"}
@@ -161,6 +206,8 @@ export default function BhwInventoryModule() {
               <MetricCard
                 label="Near Expiry"
                 value={formatNumber(summary.expiring)}
+                icon={<Clock className="h-4 w-4" />}
+                tone="orange"
                 sub="within the next 30 days"
                 onClick={() => toggleStockFilter("EXPIRING")}
                 active={stockFilter === "EXPIRING"}

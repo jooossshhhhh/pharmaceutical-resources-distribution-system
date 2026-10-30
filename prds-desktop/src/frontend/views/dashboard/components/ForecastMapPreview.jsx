@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Filter, RotateCcw } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRight, Building2, Filter, RotateCcw } from "lucide-react";
 import FacilityMap from "./FacilityMap";
 
 export default function ForecastMapPreview({
@@ -19,14 +20,24 @@ export default function ForecastMapPreview({
   showExpand = true,
   showMetrics = true,
   title = "City of Naga Health Center Coverage",
+  onManageFacilities = null,
 }) {
-  const [metricFilter, setMetricFilter] = useState("all"); // 'all' | 'demand' | 'review'
+  const navigate = useNavigate();
+  const [metricFilter, setMetricFilter] = useState("all"); // 'all' | 'demand' | 'review' | 'healthy'
 
   const mappedCount = (Array.isArray(facilities) ? facilities : []).filter((facility) => {
     const latitude = Number(facility.latitude);
     const longitude = Number(facility.longitude);
     return Number.isFinite(latitude) && Number.isFinite(longitude);
   }).length;
+
+  const healthyCount = useMemo(() => {
+    const list = Array.isArray(facilities) ? facilities : [];
+    return list.filter((f) => {
+      const status = (stockStatusByFacility || {})[f.id] || "HEALTHY";
+      return status === "HEALTHY" || status === "MONITOR";
+    }).length;
+  }, [facilities, stockStatusByFacility]);
 
   const mapHeightClass = mapClassName || (compact ? "min-h-80 md:min-h-72" : "min-h-72");
 
@@ -38,37 +49,53 @@ export default function ForecastMapPreview({
     }
   };
 
+  const filterLabel =
+    metricFilter === "review"
+      ? "Stock Areas to Review"
+      : metricFilter === "healthy"
+        ? "Healthy Facilities"
+        : metricFilter === "demand"
+          ? "Demand Areas"
+          : "";
+
+  const filterColor =
+    metricFilter === "review"
+      ? "text-[#8F3F2B]"
+      : metricFilter === "healthy"
+        ? "text-[#226048]"
+        : "text-[#34769B]";
+
   return (
-    <section className={`overflow-hidden rounded-xl border border-[#d8dadc] bg-white shadow-sm shadow-neutral-200/50 ${className}`}>
-      <div className={`flex flex-wrap items-center justify-between gap-4 border-b border-neutral-100 ${compact ? "px-4 py-3" : "px-5 py-4"}`}>
+    <section className={`overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#CFDDE0] bg-white px-5 py-3.5">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#1F4E5A]">
             {eyebrow}
           </p>
-          <h2 className="mt-1 text-base font-black text-[#0d1117]">
+          <h2 className="mt-0.5 text-base font-black text-[#1B2B30]">
             {title}
           </h2>
-          <p className={`${compact ? "mt-0.5 text-xs" : "mt-1 text-sm"} font-medium text-neutral-500`}>
+          <p className="mt-0.5 text-xs font-medium text-[#5B7077]">
             {description}
           </p>
         </div>
 
         {/* Active Filter Pill / Reset Button */}
         {metricFilter !== "all" && (
-          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs shadow-xs">
-            <span className="flex items-center gap-1.5 font-bold text-neutral-700">
-              <Filter className="h-3.5 w-3.5 text-emerald-700" />
+          <div className="flex items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3 py-1.5 text-xs shadow-xs">
+            <span className="flex items-center gap-1.5 font-bold text-[#1B2B30]">
+              <Filter className="h-3.5 w-3.5 text-[#1F4E5A]" />
               <span>
                 Filtered by:{" "}
-                <strong className="text-emerald-800">
-                  {metricFilter === "demand" ? "Expected Demand" : "Stock Review"}
+                <strong className={filterColor}>
+                  {filterLabel}
                 </strong>
               </span>
             </span>
             <button
               type="button"
               onClick={() => setMetricFilter("all")}
-              className="flex items-center gap-1 rounded bg-white px-2 py-0.5 font-black text-neutral-700 shadow-xs hover:bg-neutral-100 hover:text-black transition"
+              className="flex items-center gap-1 rounded bg-white px-2 py-0.5 text-xs font-black text-[#1B2B30] shadow-xs border border-[#CFDDE0] hover:bg-[#E5EFF1] transition"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -80,8 +107,8 @@ export default function ForecastMapPreview({
       <div
         className={
           showMetrics
-            ? `grid gap-3 ${compact ? "p-3 md:grid-cols-[minmax(0,1fr)_140px]" : "p-5 lg:grid-cols-[minmax(0,1fr)_190px]"}`
-            : "grid gap-3 p-3"
+            ? "grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_205px]"
+            : "grid gap-3 p-4"
         }
       >
         <FacilityMap
@@ -98,7 +125,7 @@ export default function ForecastMapPreview({
         />
 
         {showMetrics && (
-          <div className={`${compact ? "flex flex-col justify-between gap-2" : "grid gap-3"}`}>
+          <div className="flex flex-col gap-2.5 h-full">
             <ForecastMetric
               compact={compact}
               label="Mapped Facilities"
@@ -110,23 +137,36 @@ export default function ForecastMapPreview({
             />
             <ForecastMetric
               compact={compact}
-              label="Expected Use"
-              value={forecastTotal}
-              tone="blue"
-              isActive={metricFilter === "demand"}
-              onClick={() => handleMetricClick("demand")}
-              helperText="Filter demand centers"
+              label="Healthy Stock"
+              value={healthyCount}
+              tone="green"
+              isActive={metricFilter === "healthy"}
+              onClick={() => handleMetricClick("healthy")}
+              helperText="Normal stock levels"
             />
             <ForecastMetric
               compact={compact}
-              label="Stock Areas to Review"
+              label="Areas to Review"
               value={lowStockCount}
               tone="orange"
               isActive={metricFilter === "review"}
               onClick={() => handleMetricClick("review")}
               hasLiveAlert={lowStockCount > 0}
-              helperText="Filter low/critical stock"
+              helperText="Low or critical stock"
             />
+
+            <button
+              type="button"
+              onClick={() => (onManageFacilities ? onManageFacilities() : navigate("/facilities"))}
+              className="mt-auto flex items-center justify-between gap-2 rounded-xl border border-[#CFDDE0] bg-white px-3.5 py-3 text-xs font-black text-[#1F4E5A] shadow-xs hover:bg-[#E5EFF1] hover:border-[#1F4E5A]/40 transition group cursor-pointer"
+              title="Open full facilities directory"
+            >
+              <span className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-[#34769B]" />
+                <span>Facility Directory</span>
+              </span>
+              <ArrowRight className="h-3.5 w-3.5 text-[#5B7077] group-hover:translate-x-0.5 transition-transform" />
+            </button>
           </div>
         )}
       </div>
@@ -146,24 +186,24 @@ function ForecastMetric({
 }) {
   const toneClasses = {
     emerald: {
-      bg: "bg-emerald-50 hover:bg-emerald-100/70 text-emerald-800 border-emerald-100",
-      activeRing: "ring-2 ring-emerald-600 bg-emerald-100/80 border-emerald-300 shadow-sm",
-      pill: "bg-emerald-200/90 text-emerald-900",
+      bg: "bg-[#E8F5F1] hover:bg-[#D5EFE7] text-[#1F4E5A] border border-[#4C9F80]/30",
+      activeRing: "ring-2 ring-[#1F4E5A] bg-[#D5EFE7] border-[#4C9F80] shadow-xs",
+      pill: "bg-[#1F4E5A] text-white",
     },
-    blue: {
-      bg: "bg-blue-50 hover:bg-blue-100/70 text-blue-800 border-blue-100",
-      activeRing: "ring-2 ring-blue-600 bg-blue-100/80 border-blue-300 shadow-sm",
-      pill: "bg-blue-200/90 text-blue-900",
+    green: {
+      bg: "bg-[#E2F3EC] hover:bg-[#D0EBDF] text-[#226048] border border-[#4C9F80]/30",
+      activeRing: "ring-2 ring-[#4C9F80] bg-[#D0EBDF] border-[#4C9F80] shadow-xs",
+      pill: "bg-[#4C9F80] text-white",
     },
     orange: {
-      bg: "bg-orange-50 hover:bg-orange-100/70 text-orange-800 border-orange-100",
-      activeRing: "ring-2 ring-orange-600 bg-orange-100/80 border-orange-300 shadow-sm",
-      pill: "bg-orange-200/90 text-orange-900",
+      bg: "bg-[#FBE9E3] hover:bg-[#F7D8CE] text-[#8F3F2B] border border-[#D9826B]/30",
+      activeRing: "ring-2 ring-[#D9826B] bg-[#F7D8CE] border-[#D9826B] shadow-xs",
+      pill: "bg-[#8F3F2B] text-white",
     },
   }[tone] || {
-    bg: "bg-neutral-50 hover:bg-neutral-100 text-neutral-800 border-neutral-100",
-    activeRing: "ring-2 ring-neutral-600",
-    pill: "bg-neutral-200 text-neutral-800",
+    bg: "bg-[#F9FBFB] hover:bg-[#E5EFF1] text-[#1B2B30] border border-[#CFDDE0]",
+    activeRing: "ring-2 ring-[#1F4E5A] bg-[#E5EFF1]",
+    pill: "bg-[#5B7077] text-white",
   };
 
   return (
@@ -171,11 +211,11 @@ function ForecastMetric({
       type="button"
       onClick={onClick}
       className={`group relative w-full text-left rounded-xl border transition-all duration-200 cursor-pointer ${
-        compact ? "px-3 py-2.5" : "px-4 py-3"
-      } ${toneClasses.bg} ${isActive ? toneClasses.activeRing : "hover:border-neutral-200/70"}`}
+        compact ? "px-3 py-2.5" : "px-3.5 py-3"
+      } ${toneClasses.bg} ${isActive ? toneClasses.activeRing : "hover:border-[#CFDDE0]"}`}
     >
       <div className="flex items-center justify-between gap-1">
-        <p className={`${compact ? "text-xl" : "text-2xl"} font-black tracking-tight`}>
+        <p className="text-2xl font-black tracking-tight">
           {Number(value || 0).toLocaleString()}
         </p>
         <div className="flex items-center gap-1.5">
@@ -186,7 +226,7 @@ function ForecastMetric({
             </span>
           )}
           {isActive && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${toneClasses.pill}`}>
+            <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${toneClasses.pill}`}>
               Active
             </span>
           )}
@@ -195,11 +235,10 @@ function ForecastMetric({
 
       <p className="mt-1 text-xs font-black uppercase tracking-wide opacity-90">{label}</p>
       {helperText && !compact && (
-        <p className="mt-0.5 text-[10px] font-semibold opacity-65 group-hover:opacity-95 transition-opacity">
+        <p className="mt-0.5 text-[10.5px] font-semibold opacity-70 group-hover:opacity-100 transition-opacity">
           {isActive ? "Click to clear filter" : helperText}
         </p>
       )}
     </button>
   );
 }
-

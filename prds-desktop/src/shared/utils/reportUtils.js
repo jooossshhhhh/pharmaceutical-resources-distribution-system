@@ -396,7 +396,7 @@ export const calculateReportKpis = ({
 };
 
 /**
- * Aggregates top dispensed medicines for the selected date (Horizontal Bar Chart)
+ * Aggregates top dispensed medicines for the selected date or month (Horizontal Bar Chart)
  */
 export const aggregateTopMedicines = ({
   dispensingRows = [],
@@ -405,8 +405,12 @@ export const aggregateTopMedicines = ({
   selectedDate = new Date(),
   limit = 5,
   medicinesMap = null,
+  monthScope = false,
+  year = new Date().getFullYear(),
+  month = new Date().getMonth() + 1,
 }) => {
   const targetDateKey = toDateKey(selectedDate);
+  const targetMonthPrefix = `${year}-${String(month).padStart(2, "0")}`;
   const inventoryIndex = createInventoryIndex(inventoryRows);
   const map = new Map();
 
@@ -426,7 +430,8 @@ export const aggregateTopMedicines = ({
   // Combine walk-ins
   dispensingRows.forEach((r) => {
     if (r.voided_at) return false;
-    if (toDateKey(r.dispense_date || r.created_at) !== targetDateKey) return;
+    const rowKey = toDateKey(r.dispense_date || r.created_at);
+    if (monthScope ? !rowKey.startsWith(targetMonthPrefix) : rowKey !== targetDateKey) return;
     const med = r.medicine || {};
     const name = med.generic_name
       ? `${med.generic_name}${med.dosage ? ` ${med.dosage}` : ""}`
@@ -441,8 +446,12 @@ export const aggregateTopMedicines = ({
   });
 
   // Combine completed request items
-  const bhwItems = extractCompletedRequestItems(requestRows, targetDateKey, resolvedMedsMap, inventoryIndex);
+  const bhwItems = extractCompletedRequestItems(requestRows, monthScope ? null : targetDateKey, resolvedMedsMap, inventoryIndex);
   bhwItems.forEach((item) => {
+    if (monthScope) {
+      const itemKey = toDateKey(item.approvedAt);
+      if (!itemKey.startsWith(targetMonthPrefix)) return;
+    }
     const med = item.medicine || {};
     const name = med.generic_name
       ? `${med.generic_name}${med.dosage ? ` ${med.dosage}` : ""}`
@@ -470,15 +479,20 @@ export const aggregateFacilityDistribution = ({
   dispensingRows = [],
   requestRows = [],
   selectedDate = new Date(),
+  monthScope = false,
+  year = new Date().getFullYear(),
+  month = new Date().getMonth() + 1,
 }) => {
   const targetDateKey = toDateKey(selectedDate);
+  const targetMonthPrefix = `${year}-${String(month).padStart(2, "0")}`;
   const facilityCounts = new Map();
 
   // 1. In-house walk-ins belong to "Pharmacy Dispensing (CHO)"
   let choWalkInUnits = 0;
   dispensingRows.forEach((r) => {
     if (r.voided_at) return;
-    if (toDateKey(r.dispense_date || r.created_at) !== targetDateKey) return;
+    const rowKey = toDateKey(r.dispense_date || r.created_at);
+    if (monthScope ? !rowKey.startsWith(targetMonthPrefix) : rowKey !== targetDateKey) return;
     choWalkInUnits += Number(r.quantity) || 0;
   });
 
@@ -487,8 +501,12 @@ export const aggregateFacilityDistribution = ({
   }
 
   // 2. Completed requests to Barangay Health Centers
-  const bhwItems = extractCompletedRequestItems(requestRows, targetDateKey);
+  const bhwItems = extractCompletedRequestItems(requestRows, monthScope ? null : targetDateKey);
   bhwItems.forEach((item) => {
+    if (monthScope) {
+      const itemKey = toDateKey(item.approvedAt);
+      if (!itemKey.startsWith(targetMonthPrefix)) return;
+    }
     const name = item.facilityName || "Barangay Health Center";
     facilityCounts.set(name, (facilityCounts.get(name) || 0) + item.quantity);
   });

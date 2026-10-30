@@ -149,7 +149,12 @@ test("isChoFacility accurately distinguishes the City Health Office central hub"
   assert.equal(isChoFacility({ facility_type: "MAIN_HEALTH_CENTER" }), true);
   assert.equal(isChoFacility({ facility_name: "City Health Office - City of Naga" }), true);
   assert.equal(isChoFacility({ facility_name: "Central Health Office - City of Naga" }), true);
-  assert.equal(isChoFacility({ facility_name: "City Health Office Naga" }), true);
+  assert.equal(isChoFacility("City Health Office - City of Naga"), true);
+  assert.equal(isChoFacility("CHO"), true);
+  assert.equal(isChoFacility("CHO-NAGA"), true);
+  assert.equal(isChoFacility("CHO Naga"), true);
+  assert.equal(isChoFacility("Inayagan Barangay Health Center"), false);
+  assert.equal(isChoFacility("Tuyan Health Center"), false);
 
   // Standard health stations should return false
   assert.equal(isChoFacility({ facility_code: "IHC", facility_name: "Inayagan Health Station" }), false);

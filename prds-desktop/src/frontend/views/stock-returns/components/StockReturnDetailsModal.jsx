@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -14,43 +14,36 @@ import {
   getReturnReasonLabel,
   getReturnReasonTone,
   getReturnStatusBadge,
+  resolveStockReturnMedicineInfo,
 } from "@backend/services/stockReturnsService";
-import { formatCurrency, formatDate, formatNumber } from "@shared/utils/inventoryUtils";
-
-/**
- * Returns clean brand name or empty string if generic/none.
- */
-const formatBrandName = (brand) => {
-  if (!brand) return "";
-  const trimmed = String(brand).trim();
-  const lower = trimmed.toLowerCase();
-  if (
-    lower === "generic" ||
-    lower === "generic (no brand)" ||
-    lower === "none" ||
-    lower === "n/a" ||
-    lower === "—" ||
-    lower === "-"
-  ) {
-    return "";
-  }
-  return trimmed;
-};
+import { formatCurrency, formatDate, formatNumber, formatReturnId } from "@shared/utils/inventoryUtils";
 
 export default function StockReturnDetailsModal({
   isOpen,
   onClose,
   returnRecord,
   allReturns = [],
+  medicines = [],
+  inventory = [],
   onRecordUpdated,
   currentUserProfile,
 }) {
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
 
+  const medicinesMap = useMemo(() => {
+    const map = new Map();
+    for (const m of medicines || []) {
+      if (m.id) map.set(m.id, m);
+      if (m.generic_name) map.set(m.generic_name.toLowerCase().trim(), m);
+    }
+    return map;
+  }, [medicines]);
+
   if (!isOpen || !returnRecord) return null;
 
-  const isCho = currentUserProfile?.role === "PHARMA_I" || currentUserProfile?.role === "PHARMA_II";
+  const isBhw = currentUserProfile?.role === "BHW";
+  const isCho = !isBhw && (currentUserProfile?.role === "PHARMA_I" || currentUserProfile?.role === "PHARMA_II");
   const statusBadge = getReturnStatusBadge(returnRecord.status);
   const isConfirmed = statusBadge.value === "CONFIRMED";
   const reasonTone = getReturnReasonTone(returnRecord.reason);
@@ -58,7 +51,11 @@ export default function StockReturnDetailsModal({
 
   const targetReturnId = returnRecord.return_id || returnRecord.return_slip_no;
   const matchingItems = targetReturnId && allReturns?.length
-    ? allReturns.filter((r) => (r.return_id || r.return_slip_no) === targetReturnId)
+    ? allReturns.filter((r) => {
+        const idA = formatReturnId(r.return_id || r.return_slip_no);
+        const idB = formatReturnId(targetReturnId);
+        return idA === idB || (r.return_id || r.return_slip_no) === targetReturnId;
+      })
     : [];
 
   const lineItems = Array.isArray(returnRecord.items) && returnRecord.items.length > 0
@@ -67,17 +64,18 @@ export default function StockReturnDetailsModal({
     ? matchingItems
     : [returnRecord];
 
+  const resolveItemMedicine = (item) =>
+    resolveStockReturnMedicineInfo(item, { medicinesMap, medicines, inventory });
+
   const totalQty = lineItems.reduce((acc, it) => acc + (parseInt(it.quantity, 10) || 0), 0);
   const totalValue = lineItems.reduce((acc, it) => {
-    const itemQty = parseInt(it.quantity, 10) || 0;
-    const itemCost = parseFloat(it.unit_cost) || 0;
-    return acc + itemQty * itemCost;
+    const info = resolveItemMedicine(it);
+    return acc + info.itemTotal;
   }, 0);
 
   const returnIdDisplay =
-    returnRecord.return_id ||
-    returnRecord.return_slip_no ||
-    (returnRecord.id ? `RET-${String(returnRecord.id).slice(0, 8).toUpperCase()}` : "-");
+    formatReturnId(returnRecord.return_id || returnRecord.return_slip_no) ||
+    (returnRecord.id ? formatReturnId(returnRecord.id) : "-");
 
   const facilityName = returnRecord.facility?.facility_name || "Barangay Health Center";
 
@@ -91,7 +89,7 @@ export default function StockReturnDetailsModal({
     try {
       const itemsToConfirm = lineItems.length > 0 ? lineItems : [returnRecord];
       await Promise.all(
-        itemsToConfirm.map((it) => confirmStockReturn(it.id, currentUserProfile.id))
+        itemsToConfirm.map((it) => confirmStockReturn(it.id || it.return_id, currentUserProfile.id))
       );
       onRecordUpdated?.({
         ...returnRecord,
@@ -99,6 +97,18 @@ export default function StockReturnDetailsModal({
         confirmed_by_id: currentUserProfile.id,
         confirmed_at: new Date().toISOString(),
       });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("prds:inventory-changed", {
+            detail: { action: "RETURN_CONFIRMED" },
+          })
+        );
+        window.dispatchEvent(
+          new CustomEvent("prds:stock-returns-changed", {
+            detail: { action: "RETURN_CONFIRMED" },
+          })
+        );
+      }
       onClose();
     } catch (err) {
       console.error("[StockReturnDetailsModal] Confirmation error:", err);
@@ -150,22 +160,22 @@ export default function StockReturnDetailsModal({
           )}
 
           {/* Section 1: Overview Grid (Balanced 2x2 with Reorganized Confirmation Details) */}
-          <section className="grid grid-cols-1 gap-3 sm:gap-4 rounded-xl border border-neutral-200 bg-neutral-50/70 p-4 text-xs sm:grid-cols-2">
+          <section className="grid grid-cols-1 gap-2.5 sm:gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/70 p-3.5 text-xs sm:grid-cols-2">
             <div>
-              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-neutral-400">
                 Returning Station
               </span>
-              <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-[#0d1117]">
+              <p className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-[#0d1117]">
                 <Building2 className="h-4 w-4 text-emerald-700 shrink-0" />
                 <span>{facilityName}</span>
               </p>
             </div>
 
             <div>
-              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-neutral-400">
                 Date Submitted / Returned
               </span>
-              <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-[#0d1117]">
+              <p className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-[#0d1117]">
                 <Calendar className="h-4 w-4 text-neutral-400 shrink-0" />
                 <span>
                   {returnRecord.return_date || returnRecord.submitted_at
@@ -178,29 +188,29 @@ export default function StockReturnDetailsModal({
             </div>
 
             <div>
-              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-neutral-400">
                 Reason
               </span>
-              <div className="mt-1">
-                <span className={`inline-flex rounded-md px-2.5 py-0.5 text-xs font-bold ${reasonTone}`}>
+              <div className="mt-0.5">
+                <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-bold ${reasonTone}`}>
                   {reasonLabel}
                 </span>
               </div>
             </div>
 
             <div>
-              <span className="block text-[11px] font-black uppercase tracking-wider text-neutral-400">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-neutral-400">
                 Confirmation Details
               </span>
               {isConfirmed ? (
-                <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-emerald-800">
+                <p className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-emerald-800">
                   <UserCheck className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>
                     Confirmed on {formatDate(returnRecord.confirmed_at || returnRecord.return_date)} by CHO Pharmacist
                   </span>
                 </p>
               ) : (
-                <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-amber-700">
+                <p className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-amber-700">
                   <span className="inline-block h-2 w-2 rounded-full bg-amber-500 shrink-0" />
                   <span>Pending CHO Confirmation</span>
                 </p>
@@ -208,23 +218,22 @@ export default function StockReturnDetailsModal({
             </div>
 
             {returnRecord.remarks && (
-              <div className="sm:col-span-2 pt-2.5 border-t border-neutral-200/60">
-                <span className="text-[11px] font-black uppercase tracking-wider text-neutral-400 mr-2">
+              <div className="sm:col-span-2 pt-2 border-t border-neutral-200/60">
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 mr-2">
                   Remarks:
                 </span>
-                <span className="text-xs sm:text-sm font-medium text-neutral-700">{returnRecord.remarks}</span>
+                <span className="text-xs font-medium text-neutral-700">{returnRecord.remarks}</span>
               </div>
             )}
           </section>
 
           {/* Section 2: Returned Line Items Table */}
-          <section className="overflow-hidden rounded-xl border border-neutral-200">
+          <section className="overflow-hidden rounded-xl border border-neutral-200/80 bg-white">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left text-xs sm:text-sm">
-                <thead className="border-b border-neutral-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <thead className="border-b border-neutral-200/80 bg-neutral-50/80 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-4 py-2.5 whitespace-nowrap">Medicine Name</th>
-                    <th className="px-4 py-2.5 whitespace-nowrap">Medicine Brand</th>
+                    <th className="px-4 py-2.5 min-w-[240px]">Medicine Information</th>
                     <th className="px-4 py-2.5 whitespace-nowrap">Batch / Lot</th>
                     <th className="px-4 py-2.5 whitespace-nowrap">Expiration Date</th>
                     <th className="px-4 py-2.5 text-right whitespace-nowrap">Quantity</th>
@@ -234,36 +243,72 @@ export default function StockReturnDetailsModal({
                 </thead>
                 <tbody className="divide-y divide-neutral-100 bg-white">
                   {lineItems.map((item, idx) => {
-                    const itemQty = parseInt(item.quantity, 10) || 0;
-                    const itemCost = parseFloat(item.unit_cost) || 0;
-                    const itemTotal = itemQty * itemCost;
-                    const brandDisplay = formatBrandName(item.brand_name);
+                    const info = resolveItemMedicine(item);
 
                     return (
                       <tr key={item.id || idx} className="hover:bg-neutral-50/50 transition-colors">
-                        <td className="px-4 py-3 align-middle font-black text-[#0d1117] text-sm">
-                          {item.medicine_name || item.medicine?.generic_name || "Medicine Name"}
+                        {/* Column 1: Unified, Compact Medicine Information */}
+                        <td className="px-4 py-2.5 align-middle">
+                          <div className="min-w-0">
+                            <div className="flex items-baseline gap-1.5 flex-wrap">
+                              <span className="font-bold text-[#0d1117] text-sm leading-tight">
+                                {info.genericName}
+                              </span>
+                              {info.dosage && (
+                                <span className="text-xs font-medium text-neutral-600">
+                                  {info.dosage}
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-neutral-500 font-medium">
+                              {info.brand ? (
+                                <span>
+                                  Brand: <strong className="font-semibold text-neutral-700">{info.brand}</strong>
+                                </span>
+                              ) : (
+                                <span className="text-neutral-400 italic">No brand (Generic)</span>
+                              )}
+                              {info.unit && (
+                                <>
+                                  <span className="text-neutral-300">·</span>
+                                  <span>
+                                    Unit: <span className="font-semibold text-neutral-700">{info.unit}</span>
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </td>
-                        <td className="px-4 py-3 align-middle text-neutral-700 font-medium text-xs sm:text-sm">
-                          {brandDisplay}
-                        </td>
-                        <td className="px-4 py-3 align-middle font-mono font-semibold text-neutral-700 text-xs sm:text-sm whitespace-nowrap">
+
+                        {/* Column 2: Batch / Lot */}
+                        <td className="px-4 py-2.5 align-middle font-mono font-bold text-neutral-800 text-xs sm:text-sm whitespace-nowrap">
                           {item.lot_no || item.batch_number || "—"}
                         </td>
-                        <td className="px-4 py-3 align-middle text-neutral-700 font-medium text-xs sm:text-sm whitespace-nowrap">
+
+                        {/* Column 3: Expiration Date */}
+                        <td className="px-4 py-2.5 align-middle text-neutral-700 font-medium text-xs sm:text-sm whitespace-nowrap">
                           {item.expiration_date ? formatDate(item.expiration_date) : "—"}
                         </td>
-                        <td className="px-4 py-3 align-middle text-right font-black text-[#0d1117] text-sm tabular-nums whitespace-nowrap">
-                          {formatNumber(itemQty)}
+
+                        {/* Column 4: Quantity */}
+                        <td className="px-4 py-2.5 align-middle text-right font-black text-[#0d1117] text-sm tabular-nums whitespace-nowrap">
+                          {formatNumber(info.itemQty)}
+                          <span className="ml-1 text-xs font-semibold text-neutral-500 lowercase">
+                            {info.unit}
+                          </span>
                         </td>
+
+                        {/* Column 5: Unit Cost (CHO only) */}
                         {isCho && (
-                          <td className="px-4 py-3 align-middle text-right font-semibold text-neutral-700 text-xs sm:text-sm whitespace-nowrap">
-                            {itemCost > 0 ? formatCurrency(itemCost) : "—"}
+                          <td className="px-4 py-2.5 align-middle text-right font-semibold text-neutral-700 text-xs sm:text-sm whitespace-nowrap">
+                            {info.itemCost > 0 ? formatCurrency(info.itemCost) : "—"}
                           </td>
                         )}
+
+                        {/* Column 6: Total Value (CHO only) */}
                         {isCho && (
-                          <td className="px-4 py-3 align-middle text-right font-black text-emerald-800 text-sm whitespace-nowrap">
-                            {itemTotal > 0 ? formatCurrency(itemTotal) : "—"}
+                          <td className="px-4 py-2.5 align-middle text-right font-black text-emerald-800 text-sm whitespace-nowrap">
+                            {info.itemTotal > 0 ? formatCurrency(info.itemTotal) : "—"}
                           </td>
                         )}
                       </tr>
@@ -275,7 +320,7 @@ export default function StockReturnDetailsModal({
           </section>
 
           {/* Section 3: Summary Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50/70 px-4 py-2.5 text-xs sm:text-sm text-neutral-600">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-4 py-2 text-xs sm:text-sm text-neutral-600">
             <span className="font-bold text-[#0d1117]">Return Item Summary</span>
             <div className="flex items-center gap-4">
               <span>
@@ -283,7 +328,7 @@ export default function StockReturnDetailsModal({
               </span>
               {isCho && (
                 <span>
-                  Total Valuation: <strong className="font-black text-sm text-emerald-800">{formatCurrency(totalValue)}</strong>
+                  Total Cost: <strong className="font-black text-sm text-emerald-800">{formatCurrency(totalValue)}</strong>
                 </span>
               )}
             </div>

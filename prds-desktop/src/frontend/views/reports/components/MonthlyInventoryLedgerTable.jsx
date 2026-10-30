@@ -30,8 +30,7 @@ export default function MonthlyInventoryLedgerTable({
   month = new Date().getMonth() + 1,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL"); // ALL, ISSUED, PROGRAM, LOW, EXPIRED
-  const [viewMode, setViewMode] = useState("full"); // "full" (all columns) or "condensed"
+  const [statusFilter, setStatusFilter] = useState("ALL"); // ALL, ISSUED, PROGRAM, EXPIRED
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
@@ -102,8 +101,6 @@ export default function MonthlyInventoryLedgerTable({
       result = result.filter((item) => (item.issuedQty || 0) > 0);
     } else if (statusFilter === "PROGRAM") {
       result = result.filter((item) => (item.programQty || 0) > 0);
-    } else if (statusFilter === "LOW") {
-      result = result.filter((item) => (item.remainingQty || 0) > 0 && (item.remainingQty || 0) <= 20);
     } else if (statusFilter === "EXPIRED") {
       result = result.filter((item) => (item.expiredQty || 0) > 0);
     }
@@ -171,32 +168,6 @@ export default function MonthlyInventoryLedgerTable({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* View Mode Toggle */}
-          <div className="inline-flex items-center bg-slate-100 border border-slate-200 p-0.5 rounded-lg text-xs">
-            <button
-              type="button"
-              onClick={() => setViewMode("full")}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
-                viewMode === "full"
-                  ? "bg-white text-[#0d1117] shadow-xs"
-                  : "text-[#42474e] hover:text-[#0d1117]"
-              }`}
-            >
-              Full Ledger
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("condensed")}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
-                viewMode === "condensed"
-                  ? "bg-white text-[#0d1117] shadow-xs"
-                  : "text-[#42474e] hover:text-[#0d1117]"
-              }`}
-            >
-              Condensed View
-            </button>
-          </div>
-
           {/* Quick Export Button */}
           {onExportExcel && (
             <button
@@ -245,7 +216,6 @@ export default function MonthlyInventoryLedgerTable({
             { id: "ALL", label: "All Items" },
             { id: "ISSUED", label: "With Issuances" },
             { id: "PROGRAM", label: "Program Transferred" },
-            { id: "LOW", label: "Low Stock (≤20)" },
             { id: "EXPIRED", label: "Expired" },
           ].map((pill) => (
             <button
@@ -296,30 +266,26 @@ export default function MonthlyInventoryLedgerTable({
               <th colSpan={6} className="px-3 py-2 border-r border-[#d8dadc] bg-slate-100">
                 Medicine Identification
               </th>
-              <th colSpan={viewMode === "full" ? 3 : 2} className="px-3 py-1.5 text-center border-r border-[#d8dadc] bg-slate-200/70">
+              <th colSpan={3} className="px-3 py-1.5 text-center border-r border-[#d8dadc] bg-slate-200/70">
                 <div>Beginning Balance</div>
                 <div className="text-[10px] font-semibold text-slate-600 tracking-normal">{begDateLabel}</div>
               </th>
-              {viewMode === "full" && (
-                <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-blue-100/70 text-blue-900">
-                  Additional Stocks
-                </th>
-              )}
-              <th colSpan={viewMode === "full" ? 3 : 2} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-slate-100">
+              <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-blue-100/70 text-blue-900">
+                Additional Stocks
+              </th>
+              <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-slate-100">
                 Summation (Gross)
               </th>
-              <th colSpan={viewMode === "full" ? 3 : 2} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-emerald-100/70 text-emerald-900">
+              <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-emerald-100/70 text-emerald-900">
                 Less: Issuances
               </th>
-              <th colSpan={viewMode === "full" ? 4 : 3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-purple-100/70 text-purple-900">
+              <th colSpan={4} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-purple-100/70 text-purple-900">
                 Transferred to Other Programs
               </th>
-              {viewMode === "full" && (
-                <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-red-100/70 text-red-900">
-                  Expired
-                </th>
-              )}
-              <th colSpan={viewMode === "full" ? 3 : 2} className="px-3 py-1.5 text-center bg-emerald-200/80 text-emerald-950">
+              <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-red-100/70 text-red-900">
+                Expired
+              </th>
+              <th colSpan={3} className="px-3 py-1.5 text-center bg-emerald-200/80 text-emerald-950">
                 <div>Remaining Balance</div>
                 <div className="text-[10px] font-semibold text-emerald-900 tracking-normal">{remDateLabel}</div>
               </th>
@@ -337,48 +303,38 @@ export default function MonthlyInventoryLedgerTable({
 
               {/* Beginning */}
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">QUANTITY</th>
-              {viewMode === "full" && <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">UNIT COST</th>}
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">UNIT COST</th>
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">TOTAL COST</th>
 
               {/* Additions */}
-              {viewMode === "full" && (
-                <>
-                  <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-blue-900">QUANTITY</th>
-                  <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-blue-900">UNIT COST</th>
-                  <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-blue-900">TOTAL COST</th>
-                </>
-              )}
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-blue-900">QUANTITY</th>
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-blue-900">UNIT COST</th>
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-blue-900">TOTAL COST</th>
 
               {/* Summation */}
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">QUANTITY</th>
-              {viewMode === "full" && <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">UNIT COST</th>}
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">UNIT COST</th>
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc]">TOTAL COST</th>
 
               {/* Issuances */}
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-emerald-900">QUANTITY</th>
-              {viewMode === "full" && <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-emerald-900">UNIT COST</th>}
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-emerald-900">UNIT COST</th>
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-emerald-900">TOTAL COST</th>
 
               {/* Area / Program */}
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-purple-900">QUANTITY</th>
-              {viewMode === "full" && <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-purple-900">UNIT COST</th>}
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-purple-900">UNIT COST</th>
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-purple-900">TOTAL COST</th>
               <th className="px-3 py-1.5 border-r border-[#d8dadc] text-purple-900">AREA / PROGRAM</th>
 
               {/* Expired */}
-              {viewMode === "full" && (
-                <>
-                  <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-red-900">QUANTITY</th>
-                  <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-red-900">UNIT COST</th>
-                  <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-red-900">TOTAL COST</th>
-                </>
-              )}
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-red-900">QUANTITY</th>
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-red-900">UNIT COST</th>
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-red-900">TOTAL COST</th>
 
               {/* Remaining */}
               <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-emerald-950 font-bold">QUANTITY</th>
-              {viewMode === "full" && (
-                <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-emerald-950">UNIT COST</th>
-              )}
+              <th className="px-2.5 py-1.5 text-right border-r border-[#d8dadc] text-emerald-950">UNIT COST</th>
               <th className="px-2.5 py-1.5 text-right text-emerald-950 font-bold">TOTAL COST</th>
             </tr>
           </thead>
@@ -387,7 +343,7 @@ export default function MonthlyInventoryLedgerTable({
           <tbody className="divide-y divide-[#d8dadc]/60">
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={viewMode === "full" ? 28 : 17} className="py-12 text-center text-[#42474e]">
+                <td colSpan={28} className="py-12 text-center text-[#42474e]">
                   <AlertCircle className="h-6 w-6 mx-auto text-slate-300 mb-1.5" />
                   <span className="font-semibold text-xs text-[#0d1117]">No inventory records found.</span>
                   <p className="text-[11px] text-[#42474e] mt-0.5">
@@ -405,7 +361,7 @@ export default function MonthlyInventoryLedgerTable({
                         §
                       </td>
                       <td
-                        colSpan={viewMode === "full" ? 27 : 16}
+                        colSpan={27}
                         className="px-3 py-1 font-mono text-xs text-amber-950 font-bold"
                       >
                         {group.headerText || "PO NO."}
@@ -447,110 +403,92 @@ export default function MonthlyInventoryLedgerTable({
                             {item.expiryDate}
                           </td>
 
-                    {/* Beginning */}
-                    <td className="px-2.5 py-1.5 text-right font-medium border-r border-[#d8dadc]/60">
-                      {item.beginningQty.toLocaleString()}
-                    </td>
-                    {viewMode === "full" && (
-                      <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                        {formatPeso(item.unitCost)}
-                      </td>
-                    )}
-                    <td className="px-2.5 py-1.5 text-right font-semibold text-[#0d1117] border-r border-[#d8dadc]/60">
-                      {formatPeso(item.begTotal)}
-                    </td>
+                          {/* Beginning */}
+                          <td className="px-2.5 py-1.5 text-right font-medium border-r border-[#d8dadc]/60">
+                            {item.beginningQty.toLocaleString()}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
+                            {formatPeso(item.unitCost)}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right font-semibold text-[#0d1117] border-r border-[#d8dadc]/60">
+                            {formatPeso(item.begTotal)}
+                          </td>
 
-                    {/* Additions */}
-                    {viewMode === "full" && (
-                      <>
-                        <td className="px-2.5 py-1.5 text-right text-blue-800 border-r border-[#d8dadc]/60">
-                          {item.additionalQty > 0 ? item.additionalQty.toLocaleString() : "-"}
-                        </td>
-                        <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                          {item.additionalQty > 0 ? formatPeso(item.unitCost) : "-"}
-                        </td>
-                        <td className="px-2.5 py-1.5 text-right font-semibold text-blue-900 border-r border-[#d8dadc]/60">
-                          {item.addTotal > 0 ? formatPeso(item.addTotal) : "-"}
-                        </td>
-                      </>
-                    )}
+                          {/* Additions */}
+                          <td className="px-2.5 py-1.5 text-right text-blue-800 border-r border-[#d8dadc]/60">
+                            {item.additionalQty > 0 ? item.additionalQty.toLocaleString() : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.additionalQty > 0 ? formatPeso(item.unitCost) : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right font-semibold text-blue-900 border-r border-[#d8dadc]/60">
+                            {item.addTotal > 0 ? formatPeso(item.addTotal) : "-"}
+                          </td>
 
-                    {/* Summation */}
-                    <td className="px-2.5 py-1.5 text-right font-semibold border-r border-[#d8dadc]/60">
-                      {item.grossQty.toLocaleString()}
-                    </td>
-                    {viewMode === "full" && (
-                      <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                        {item.grossQty > 0 ? formatPeso(item.unitCost) : "-"}
-                      </td>
-                    )}
-                    <td className="px-2.5 py-1.5 text-right font-bold text-[#0d1117] border-r border-[#d8dadc]/60">
-                      {formatPeso(item.grossTotal)}
-                    </td>
+                          {/* Summation */}
+                          <td className="px-2.5 py-1.5 text-right font-semibold border-r border-[#d8dadc]/60">
+                            {item.grossQty.toLocaleString()}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.grossQty > 0 ? formatPeso(item.unitCost) : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right font-bold text-[#0d1117] border-r border-[#d8dadc]/60">
+                            {formatPeso(item.grossTotal)}
+                          </td>
 
-                    {/* Issuances */}
-                    <td className="px-2.5 py-1.5 text-right text-emerald-800 border-r border-[#d8dadc]/60">
-                      {item.issuedQty > 0 ? item.issuedQty.toLocaleString() : "-"}
-                    </td>
-                    {viewMode === "full" && (
-                      <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                        {item.issuedQty > 0 ? formatPeso(item.unitCost) : "-"}
-                      </td>
-                    )}
-                    <td className="px-2.5 py-1.5 text-right font-semibold text-emerald-900 border-r border-[#d8dadc]/60">
-                      {item.issuedTotal > 0 ? formatPeso(item.issuedTotal) : "-"}
-                    </td>
+                          {/* Issuances */}
+                          <td className="px-2.5 py-1.5 text-right text-emerald-800 border-r border-[#d8dadc]/60">
+                            {item.issuedQty > 0 ? item.issuedQty.toLocaleString() : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.issuedQty > 0 ? formatPeso(item.unitCost) : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right font-semibold text-emerald-900 border-r border-[#d8dadc]/60">
+                            {item.issuedTotal > 0 ? formatPeso(item.issuedTotal) : "-"}
+                          </td>
 
-                    {/* Transferred to Other Programs */}
-                    <td className="px-2.5 py-1.5 text-right text-purple-800 border-r border-[#d8dadc]/60">
-                      {item.programQty > 0 ? item.programQty.toLocaleString() : "-"}
-                    </td>
-                    {viewMode === "full" && (
-                      <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                        {item.programQty > 0 ? formatPeso(item.unitCost) : "-"}
-                      </td>
-                    )}
-                    <td className="px-2.5 py-1.5 text-right font-semibold text-purple-900 border-r border-[#d8dadc]/60">
-                      {item.programTotal > 0 ? formatPeso(item.programTotal) : "-"}
-                    </td>
-                    <td className="px-3 py-1.5 border-r border-[#d8dadc]/60">
-                      {item.programName ? (
-                        <span className="font-semibold text-purple-900 text-xs">
-                          {item.programName}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
+                          {/* Transferred to Other Programs */}
+                          <td className="px-2.5 py-1.5 text-right text-purple-800 border-r border-[#d8dadc]/60">
+                            {item.programQty > 0 ? item.programQty.toLocaleString() : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.programQty > 0 ? formatPeso(item.unitCost) : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right font-semibold text-purple-900 border-r border-[#d8dadc]/60">
+                            {item.programTotal > 0 ? formatPeso(item.programTotal) : "-"}
+                          </td>
+                          <td className="px-3 py-1.5 border-r border-[#d8dadc]/60">
+                            {item.programName ? (
+                              <span className="font-semibold text-purple-900 text-xs">
+                                {item.programName}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
 
-                    {/* Expired */}
-                    {viewMode === "full" && (
-                      <>
-                        <td className="px-2.5 py-1.5 text-right text-red-700 border-r border-[#d8dadc]/60">
-                          {item.expiredQty > 0 ? item.expiredQty.toLocaleString() : "-"}
-                        </td>
-                        <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                          {item.expiredQty > 0 ? formatPeso(item.unitCost) : "-"}
-                        </td>
-                        <td className="px-2.5 py-1.5 text-right font-semibold text-red-800 border-r border-[#d8dadc]/60">
-                          {item.expiredTotal > 0 ? formatPeso(item.expiredTotal) : "-"}
-                        </td>
-                      </>
-                    )}
+                          {/* Expired */}
+                          <td className="px-2.5 py-1.5 text-right text-red-700 border-r border-[#d8dadc]/60">
+                            {item.expiredQty > 0 ? item.expiredQty.toLocaleString() : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
+                            {item.expiredQty > 0 ? formatPeso(item.unitCost) : "-"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right font-semibold text-red-800 border-r border-[#d8dadc]/60">
+                            {item.expiredTotal > 0 ? formatPeso(item.expiredTotal) : "-"}
+                          </td>
 
-                    {/* Remaining */}
-                    <td className="px-2.5 py-1.5 text-right font-bold text-emerald-950 border-r border-[#d8dadc]/60">
-                      {item.remainingQty.toLocaleString()}
-                    </td>
-                    {viewMode === "full" && (
-                      <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                        {formatPeso(item.unitCost)}
-                      </td>
-                    )}
-                    <td className="px-2.5 py-1.5 text-right font-bold text-emerald-950">
-                      {formatPeso(item.remainingTotal)}
-                    </td>
-                  </tr>
+                          {/* Remaining */}
+                          <td className="px-2.5 py-1.5 text-right font-bold text-emerald-950 border-r border-[#d8dadc]/60">
+                            {item.remainingQty.toLocaleString()}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
+                            {formatPeso(item.unitCost)}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right font-bold text-emerald-950">
+                            {formatPeso(item.remainingTotal)}
+                          </td>
+                        </tr>
                       );
                     })}
                   </Fragment>
@@ -566,52 +504,44 @@ export default function MonthlyInventoryLedgerTable({
                 TOTAL
               </td>
               <td className="px-2.5 py-2 text-right border-r border-[#CFDDE0]">-</td>
-              {viewMode === "full" && <td className="px-2.5 py-2 text-right border-r border-[#CFDDE0]">-</td>}
+              <td className="px-2.5 py-2 text-right border-r border-[#CFDDE0]">-</td>
               <td className="px-2.5 py-2 text-right text-[#1F4E5A] border-r border-[#CFDDE0]">
                 {formatPeso(filteredTotals.begVal)}
               </td>
 
-              {viewMode === "full" && (
-                <>
-                  <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-                  <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-                  <td className="px-2.5 py-2 text-right text-blue-950 border-r border-[#d8dadc]">
-                    {formatPeso(filteredTotals.addVal)}
-                  </td>
-                </>
-              )}
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
+              <td className="px-2.5 py-2 text-right text-blue-950 border-r border-[#d8dadc]">
+                {formatPeso(filteredTotals.addVal)}
+              </td>
 
               <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-              {viewMode === "full" && <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>}
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
               <td className="px-2.5 py-2 text-right text-slate-900 border-r border-[#d8dadc]">
                 {formatPeso(filteredTotals.grossVal)}
               </td>
 
               <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-              {viewMode === "full" && <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>}
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
               <td className="px-2.5 py-2 text-right text-emerald-950 border-r border-[#d8dadc]">
                 {formatPeso(filteredTotals.issuedVal)}
               </td>
 
               <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-              {viewMode === "full" && <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>}
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
               <td className="px-2.5 py-2 text-right text-purple-950 border-r border-[#d8dadc]">
                 {formatPeso(filteredTotals.progVal)}
               </td>
               <td className="px-2.5 py-2 text-center border-r border-[#d8dadc]">-</td>
 
-              {viewMode === "full" && (
-                <>
-                  <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-                  <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
-                  <td className="px-2.5 py-2 text-right text-red-950 border-r border-[#d8dadc]">
-                    {formatPeso(filteredTotals.expiredVal)}
-                  </td>
-                </>
-              )}
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
+              <td className="px-2.5 py-2 text-right text-red-950 border-r border-[#d8dadc]">
+                {formatPeso(filteredTotals.expiredVal)}
+              </td>
 
               <td className="px-2.5 py-2 text-right border-r border-[#d8dadc] text-emerald-950">-</td>
-              {viewMode === "full" && <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>}
+              <td className="px-2.5 py-2 text-right border-r border-[#d8dadc]">-</td>
               <td className="px-2.5 py-2 text-right text-emerald-950 text-sm font-extrabold">
                 {formatPeso(filteredTotals.remVal)}
               </td>

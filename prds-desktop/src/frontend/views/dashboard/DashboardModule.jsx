@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Clock,
+  Package,
+  Pill,
+  RefreshCw,
+  Users,
+} from "lucide-react";
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
@@ -10,12 +18,20 @@ import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "@backend/database/snaps
 import { isCurrentNetworkOnline, setNetworkOnlineState, useNetworkStatus } from "@backend/sync/networkStatus";
 import { fetchAllRows, getFriendlyDashboardErrorMessage } from "@backend/sync/syncUtils";
 import EmptyState from "./components/EmptyState";
-import ForecastDemandBars from "./components/ForecastDemandBars";
 import ForecastMapPreview from "./components/ForecastMapPreview";
-import MonthlyDispensingChart from "./components/InventoryFlowChart";
 import Panel from "./components/Panel";
 import RequestStatusChart from "./components/RequestStatusChart";
 import StatCard from "./components/StatCard";
+import DailyTrendChart from "../reports/components/DailyTrendChart";
+import TopMedicinesChart from "../reports/components/TopMedicinesChart";
+import FacilityDistributionChart from "../reports/components/FacilityDistributionChart";
+import ForecastPreviewPanel from "./components/ForecastPreviewPanel";
+import {
+  aggregateDailyDispensingTrend,
+  aggregateFacilityDistribution,
+  aggregateTopMedicines,
+} from "@shared/utils/reportUtils";
+import { buildForecastAnalytics } from "@shared/utils/forecastingUtils";
 import {
   buildFacilityDemand,
   buildFacilityStockStatus,
@@ -27,61 +43,18 @@ import {
   getDashboardLayoutGroups,
   getDashboardRoleConfig,
   getDashboardStatCards,
+  getDashboardStockAlertRows,
   getMonthlyDispensedQuantity,
   getStockStatus,
 } from "@shared/utils/dashboardUtils";
 import { formatFacilityName } from "@shared/utils/facilityFormat";
+import { reconcileConfirmedReturnsIntoInventory } from "@backend/services/stockReturnsService";
 
 const defaultRequestStatus = {
   APPROVED: 0,
   PENDING: 0,
   DISPENSED: 0,
   REJECTED: 0,
-};
-
-const iconMap = {
-  approvals: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="m16 11 2 2 4-4" />
-    </svg>
-  ),
-  alerts: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M12 9v4M12 17h.01" />
-      <path d="M10.3 4.3 2.7 17.5A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.5L13.7 4.3a2 2 0 0 0-3.4 0Z" />
-    </svg>
-  ),
-  expiring: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M12 8v4l3 3" />
-      <path d="M3 5h18M5 5v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5" />
-    </svg>
-  ),
-  facilities: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M5 21V7l7-4 7 4v14" />
-      <path d="M9 21v-6h6v6M9 10h.01M15 10h.01" />
-    </svg>
-  ),
-  medicine: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="m10 21 8.5-8.5a4 4 0 0 0-5.66-5.66L4.34 15.34A4 4 0 0 0 10 21Z" />
-      <path d="m8 12 4 4" />
-    </svg>
-  ),
-  requests: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M7 3h8l4 4v14H7V3Z" />
-      <path d="M14 3v5h5M10 13h6M10 17h4" />
-    </svg>
-  ),
-  transfers: (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M7 7h11l-3-3M17 17H6l3 3" />
-    </svg>
-  ),
 };
 
 const statusClass = {
@@ -94,15 +67,15 @@ const statusClass = {
 
 const getStatIcon = (key) => {
   const iconByKey = {
-    stockedBatches: iconMap.medicine,
-    dispensedThisMonth: iconMap.transfers,
-    activePatients: iconMap.facilities,
-    criticalStock: iconMap.alerts,
-    lowStock: iconMap.alerts,
-    pendingRequests: iconMap.requests,
+    stockedBatches: <Package className="h-4 w-4" />,
+    dispensedThisMonth: <Pill className="h-4 w-4" />,
+    activePatients: <Users className="h-4 w-4" />,
+    pendingRequests: <Clock className="h-4 w-4" />,
+    criticalStock: <AlertCircle className="h-4 w-4" />,
+    lowStock: <AlertTriangle className="h-4 w-4" />,
   };
 
-  return iconByKey[key] || iconMap.requests;
+  return iconByKey[key] || <Clock className="h-4 w-4" />;
 };
 
 const getDisplayValue = (value) => {
@@ -193,6 +166,8 @@ export default function DashboardModule() {
   const [stockAlertRows, setStockAlertRows] = useState(() => cachedDashboard?.stockAlertRows || cachedDashboard?.lowStockRows || []);
   const [expiringRows, setExpiringRows] = useState(() => cachedDashboard?.expiringRows || []);
   const [dispensingRows, setDispensingRows] = useState(() => cachedDashboard?.dispensingRows || []);
+  const [rawDispensing, setRawDispensing] = useState(() => cachedDashboard?.rawDispensing || getSnapshot(STORAGE_KEYS.DISPENSING, []) || []);
+  const [allRequests, setAllRequests] = useState(() => cachedDashboard?.allRequests || getSnapshot(STORAGE_KEYS.REQUESTS, []) || []);
   const [requestStatus, setRequestStatus] = useState(() => cachedDashboard?.requestStatus || defaultRequestStatus);
   const [stockStatusByFacility, setStockStatusByFacility] = useState(() => cachedDashboard?.stockStatusByFacility || {});
   const [inventoryRows, setInventoryRows] = useState(() => cachedDashboard?.inventoryRows || []);
@@ -200,6 +175,107 @@ export default function DashboardModule() {
   const [isLoading, setIsLoading] = useState(() => !cachedDashboard);
   const [dashboardError, setDashboardError] = useState("");
   const [lastRefreshedAt, setLastRefreshedAt] = useState(() => cachedDashboard?.refreshedAt || null);
+
+  const currentMonthName = useMemo(() => {
+    return new Intl.DateTimeFormat("en-US", { month: "long" }).format(new Date());
+  }, []);
+
+  const dailyTrendData = useMemo(() => {
+    const now = new Date();
+    return aggregateDailyDispensingTrend({
+      dispensingRows: rawDispensing,
+      requestRows: allRequests,
+      inventoryRows,
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+    });
+  }, [rawDispensing, allRequests, inventoryRows]);
+
+  const topMedicinesData = useMemo(() => {
+    const now = new Date();
+    return aggregateTopMedicines({
+      dispensingRows: rawDispensing,
+      requestRows: allRequests,
+      inventoryRows,
+      monthScope: true,
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+      limit: 5,
+    });
+  }, [rawDispensing, allRequests, inventoryRows]);
+
+  const forecastPreviewData = useMemo(() => {
+    const summaryMap = new Map();
+
+    (rawDispensing || []).forEach((row) => {
+      if (row.voided_at || !row.medicine_id) return;
+      const dateStr = row.dispense_date || row.created_at;
+      if (!dateStr) return;
+      const monthKey = `${String(dateStr).slice(0, 7)}-01`;
+      const key = `${row.medicine_id}:${monthKey}`;
+      const cur = summaryMap.get(key) || {
+        medicine_id: row.medicine_id,
+        month: monthKey,
+        total_dispensed: 0,
+      };
+      cur.total_dispensed += Number(row.quantity || 0);
+      summaryMap.set(key, cur);
+    });
+
+    (allRequests || []).forEach((req) => {
+      if (req.status !== "COMPLETED" && req.status !== "DISPENSED") return;
+      const dateStr = req.approved_at || req.request_date;
+      if (!dateStr) return;
+      const monthKey = `${String(dateStr).slice(0, 7)}-01`;
+      (req.items || []).forEach((item) => {
+        if (!item.medicine_id) return;
+        const key = `${item.medicine_id}:${monthKey}`;
+        const cur = summaryMap.get(key) || {
+          medicine_id: item.medicine_id,
+          month: monthKey,
+          total_dispensed: 0,
+        };
+        cur.total_dispensed += Number(item.quantity || 0);
+        summaryMap.set(key, cur);
+      });
+    });
+
+    const dispensingSummaryRows = Array.from(summaryMap.values());
+
+    return buildForecastAnalytics({
+      dispensingRows: dispensingSummaryRows,
+      forecastRows,
+      inventoryRows,
+      facilities,
+      monthWindow: 1,
+    });
+  }, [rawDispensing, allRequests, forecastRows, inventoryRows, facilities]);
+
+  const totalProjectedDemand = useMemo(() => {
+    return (forecastPreviewData?.trendingMedicines || []).reduce(
+      (sum, row) => sum + Number(row.nextMonthDemand || row.projectedDemand || 0),
+      0
+    );
+  }, [forecastPreviewData]);
+
+  const forecastRiskCount = useMemo(() => {
+    return (forecastPreviewData?.trendingMedicines || []).filter(
+      (row) =>
+        row.circularRisk?.type === "stockout" ||
+        (row.coverageMonths !== null && row.coverageMonths < 1.0)
+    ).length;
+  }, [forecastPreviewData]);
+
+  const facilityDistributionData = useMemo(() => {
+    const now = new Date();
+    return aggregateFacilityDistribution({
+      dispensingRows: rawDispensing,
+      requestRows: allRequests,
+      monthScope: true,
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+    });
+  }, [rawDispensing, allRequests]);
 
   const hasOfflineData = Boolean(
     cachedDashboard?.inventoryRows?.length ||
@@ -256,42 +332,6 @@ export default function DashboardModule() {
     () => getDashboardLayoutGroups(statCards),
     [statCards]
   );
-  const workItems = useMemo(() => {
-    const items = [
-      {
-        label: dashboardConfig.requestLabel,
-        onClick: () => navigate("/requests?status=pending"),
-        tone: "orange",
-        value: stats.pendingRequests,
-      },
-      {
-        label: "Stock Watch",
-        onClick: () => navigate(inventoryPath),
-        tone: "red",
-        value: stats.criticalStock + stats.lowStock,
-      },
-    ];
-
-    if (dashboardConfig.canReviewUsers) {
-      items.splice(1, 0, {
-        label: "Account Approval",
-        onClick: () => navigate("/users"),
-        tone: "emerald",
-        value: stats.pendingApprovals,
-      });
-    }
-
-    return items;
-  }, [
-    dashboardConfig.canReviewUsers,
-    dashboardConfig.requestLabel,
-    inventoryPath,
-    navigate,
-    stats.lowStock,
-    stats.pendingApprovals,
-    stats.pendingRequests,
-    stats.criticalStock,
-  ]);
 
   const loadDashboardFromLocal = () => {
     const direct = getSnapshot(STORAGE_KEYS.DASHBOARD, null);
@@ -317,6 +357,16 @@ export default function DashboardModule() {
       setStockAlertRows(dashboardData.stockAlertRows || dashboardData.lowStockRows || []);
       setExpiringRows(dashboardData.expiringRows || []);
       setDispensingRows(dashboardData.dispensingRows || []);
+      setRawDispensing(
+        dashboardData.rawDispensing ||
+        getSnapshot(STORAGE_KEYS.DISPENSING, []) ||
+        []
+      );
+      setAllRequests(
+        dashboardData.allRequests ||
+        getSnapshot(STORAGE_KEYS.REQUESTS, []) ||
+        []
+      );
       setRequestStatus(dashboardData.requestStatus || defaultRequestStatus);
       setStockStatusByFacility(dashboardData.stockStatusByFacility || {});
       setInventoryRows(dashboardData.inventoryRows || []);
@@ -379,9 +429,9 @@ export default function DashboardModule() {
             facility_id,
             medicine_id,
             quantity,
-            threshold,
             batch_number,
             expiration_date,
+            unit_cost,
             medicine:medicines(generic_name, dosage, unit_of_measure),
             facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code)
           `)
@@ -391,9 +441,16 @@ export default function DashboardModule() {
         scope(
           supabase
             .from("forecasting")
-            .select("id, predicted_quantity, forecast_month, facility_id")
+            .select(`
+              id,
+              medicine_id,
+              facility_id,
+              forecast_month,
+              predicted_quantity,
+              medicine:medicines(generic_name, dosage, unit_of_measure)
+            `)
             .order("forecast_month", { ascending: false })
-            .limit(24)
+            .limit(48)
         ),
         dashboardConfig.canReviewUsers
           ? supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "PENDING")
@@ -401,7 +458,20 @@ export default function DashboardModule() {
         fetchAllRows(() => scope(
           supabase
             .from("medicine_requests")
-            .select("id, status")
+            .select(`
+              id,
+              facility_id,
+              status,
+              request_date,
+              approved_at,
+              items:medicine_request_items(
+                id,
+                medicine_id,
+                quantity,
+                medicine:medicines(generic_name, dosage, unit_of_measure)
+              ),
+              facility:facilities(id, facility_name, facility_code)
+            `)
             .order("request_date", { ascending: false })
             .order("id", { ascending: false })
         )),
@@ -425,7 +495,16 @@ export default function DashboardModule() {
         fetchAllRows(() => scope(
           supabase
             .from("medicine_dispensing")
-            .select("id, dispense_date, quantity, record_type, voided_at")
+            .select(`
+              id,
+              dispense_date,
+              quantity,
+              record_type,
+              voided_at,
+              unit_cost_at_dispense,
+              medicine_id,
+              medicine:medicines(generic_name, dosage, unit_of_measure)
+            `)
             .gte("dispense_date", chartStart.toISOString())
             .lt("dispense_date", nextMonthStart.toISOString())
             .is("voided_at", null)
@@ -438,6 +517,11 @@ export default function DashboardModule() {
             .from("patients")
             .select("id", { count: "exact", head: true })
             .is("archived_at", null)
+        ),
+        scope(
+          supabase
+            .from("facility_medicine_thresholds")
+            .select("facility_id, medicine_id, threshold")
         ),
       ]);
 
@@ -459,7 +543,19 @@ export default function DashboardModule() {
       }
 
       const scopedFacilities = facilityRowsResult.data || [];
-      const inventoryData = inventoryResult || [];
+      const thresholdMap = new Map();
+      (thresholdsResult?.data || []).forEach((t) => {
+        if (t.facility_id && t.medicine_id) {
+          thresholdMap.set(`${t.facility_id}:${t.medicine_id}`, Number(t.threshold || 0));
+        }
+      });
+      const rawInventoryData = (inventoryResult || []).map((row) => ({
+        ...row,
+        threshold: thresholdMap.get(`${row.facility_id}:${row.medicine_id}`) ?? 0,
+      }));
+      const inventoryData = await reconcileConfirmedReturnsIntoInventory(rawInventoryData, {
+        facilities: scopedFacilities,
+      });
       const inventoryMetrics = getDashboardInventoryMetrics(inventoryData);
       const stockedRows = inventoryData.filter((row) => Number(row.quantity || 0) > 0);
       const riskRank = { CRITICAL: 0, LOW: 1 };
@@ -469,45 +565,12 @@ export default function DashboardModule() {
       const expiringRows = stockedRows
         .filter((row) => row.expiration_date >= todayDate && row.expiration_date <= cutoffDate)
         .slice(0, 5);
-      const medMap = new Map();
-      for (const row of inventoryData) {
-        const key = `${row.facility_id}:${row.medicine_id}`;
-        const existing = medMap.get(key);
-        if (!existing) {
-          medMap.set(key, {
-            ...row,
-            totalQuantity: Number(row.quantity || 0),
-            maxThreshold: Number(row.threshold || 0),
-            batches: [row],
-          });
-        } else {
-          existing.totalQuantity += Number(row.quantity || 0);
-          existing.maxThreshold = Math.max(existing.maxThreshold, Number(row.threshold || 0));
-          existing.batches.push(row);
-        }
-      }
+      const stockAlertRows = getDashboardStockAlertRows(inventoryData);
+      const requestRowsData = Array.isArray(requestRowsResult)
+        ? requestRowsResult
+        : (requestRowsResult?.data || []);
 
-      const stockAlertRows = Array.from(medMap.values())
-        .map((entry) => {
-          const status = getStockStatus({ quantity: entry.totalQuantity, threshold: entry.maxThreshold });
-          const batchLabel = entry.batches.length > 1
-            ? `${entry.batches.length} batches`
-            : entry.batches[0]?.batch_number || "-";
-          return {
-            ...entry,
-            quantity: entry.totalQuantity,
-            threshold: entry.maxThreshold,
-            batch_number: batchLabel,
-            riskStatus: status,
-          };
-        })
-        .filter((entry) => ["CRITICAL", "LOW"].includes(entry.riskStatus))
-        .sort((first, second) =>
-          riskRank[first.riskStatus] - riskRank[second.riskStatus] ||
-          Number(first.quantity || 0) - Number(second.quantity || 0)
-        )
-        .slice(0, 5);
-      const statusSummary = (requestRowsResult.data || []).reduce(
+      const statusSummary = requestRowsData.reduce(
         (summary, row) => {
           const status = row.status === "COMPLETED" ? "DISPENSED" : row.status;
           if (summary[status] !== undefined) {
@@ -545,7 +608,11 @@ export default function DashboardModule() {
 
       const compiledStats = {
         ...inventoryMetrics,
-        dispensedThisMonth: getMonthlyDispensedQuantity(dispensingResult || [], now),
+        dispensedThisMonth: getMonthlyDispensedQuantity(
+          dispensingResult || [],
+          requestRowsData,
+          now
+        ),
         activePatients: activePatientsResult.count || 0,
         pendingRequests: pendingRequestsResult.count || 0,
         pendingApprovals: pendingApprovalsResult.count || 0,
@@ -557,6 +624,8 @@ export default function DashboardModule() {
       setStockAlertRows(stockAlertRows);
       setExpiringRows(expiringRows);
       setDispensingRows(dispensingChartData);
+      setRawDispensing(dispensingResult || []);
+      setAllRequests(requestRowsData);
       setRequestStatus(statusSummary);
       setStockStatusByFacility(buildFacilityStockStatus(inventoryData));
       setInventoryRows(inventoryData);
@@ -572,6 +641,8 @@ export default function DashboardModule() {
         stockAlertRows,
         expiringRows,
         dispensingRows: dispensingChartData,
+        rawDispensing: dispensingResult || [],
+        allRequests: requestRowsData,
         requestStatus: statusSummary,
         stockStatusByFacility: buildFacilityStockStatus(inventoryData),
         inventoryRows: inventoryData,
@@ -685,7 +756,7 @@ export default function DashboardModule() {
         </div>
       </section>
 
-      <section className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(155px,1fr))] gap-2.5">
+      <section className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map((card) => (
           <StatCard
             key={card.key}
@@ -693,7 +764,17 @@ export default function DashboardModule() {
             icon={getStatIcon(card.key)}
             isLoading={isDashboardLoading}
             label={card.label}
-            onClick={() => navigate(card.to)}
+            onClick={() => {
+              if (card.key === "lowStock") {
+                navigate(card.to, { state: { stockFilter: "LOW" } });
+              } else if (card.key === "criticalStock") {
+                navigate(card.to, { state: { stockFilter: "CRITICAL" } });
+              } else if (card.key === "stockedBatches") {
+                navigate(card.to, { state: { stockFilter: "ALL" } });
+              } else {
+                navigate(card.to);
+              }
+            }}
             tone={card.tone}
             value={getDisplayValue(card.value)}
           />
@@ -706,9 +787,19 @@ export default function DashboardModule() {
           className="min-w-0"
           title={isBhw ? "My Facility Stock Alerts" : "Stock Alerts"}
           action={
-            <span className="rounded-full bg-[#FBE9E3] border border-[#D9826B]/25 px-2.5 py-1 text-[10px] font-black text-[#8F3F2B]">
-              {formatNumber(stats.criticalStock + stats.lowStock)} alerts
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-[#FBE9E3] border border-[#D9826B]/25 px-2.5 py-1 text-[10px] font-black text-[#8F3F2B]">
+                {formatNumber(stats.criticalStock + stats.lowStock)}{" "}
+                {stats.criticalStock + stats.lowStock === 1 ? "alert" : "alerts"}
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate(inventoryPath)}
+                className="text-xs font-black text-[#34769B] hover:text-[#1F4A66]"
+              >
+                View all
+              </button>
+            </div>
           }
         >
           {stockAlertRows.length === 0 ? (
@@ -718,20 +809,65 @@ export default function DashboardModule() {
             />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-xs">
+              <table className="w-full text-left text-xs">
                 <thead className="border-b border-[#CFDDE0]/80 bg-[#F9FBFB] text-[10px] font-bold uppercase tracking-wider text-[#5B7077]">
-                  <tr><th className="py-2 pr-3">Medicine</th><th className="px-3 py-2">Facility</th><th className="px-3 py-2">Batch</th><th className="px-3 py-2 text-right">Qty / threshold</th><th className="py-2 pl-3">Risk</th></tr>
+                  <tr>
+                    <th className="py-2 pr-3">Medicine</th>
+                    <th className="px-3 py-2">Facility</th>
+                    <th className="px-3 py-2 text-right">Stock / Limit</th>
+                    <th className="py-2 pl-3">Risk</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-[#CFDDE0]/40">
                   {stockAlertRows.map((row) => {
                     const risk = row.riskStatus || getStockStatus(row);
                     return (
-                      <tr key={row.id || row.inventory_id}>
-                        <td className="py-2.5 pr-3 font-semibold text-[#1B2B30]">{row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}</td>
-                        <td className="px-3 py-2.5 text-[#5B7077]">{formatFacilityName(row.facility?.facility_name || row.facility_name) || "-"}</td>
-                        <td className="px-3 py-2.5 text-[#5B7077]">{row.batch_number || "-"}</td>
-                        <td className="px-3 py-2.5 text-right font-bold text-[#1B2B30]">{formatNumber(row.quantity)} / {formatNumber(row.threshold)}</td>
-                        <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${risk === "CRITICAL" ? "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30" : "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25"}`}>{risk === "CRITICAL" ? "Critical" : "Low"}</span></td>
+                      <tr
+                        key={row.id || row.inventory_id}
+                        title="Click to view in inventory"
+                        onClick={() => {
+                          const medName = row.medicine?.generic_name || row.generic_name;
+                          const facId = row.facility_id || row.facility?.id;
+                          navigate(isBhw ? "/inventory-bhw" : "/inventory", {
+                            state: {
+                              filterMedicineName: medName,
+                              facilityFilter: isBhw ? undefined : (facId || "ALL"),
+                              stockFilter: risk === "CRITICAL" ? "CRITICAL" : "LOW",
+                            },
+                          });
+                        }}
+                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="py-2.5 pr-3 font-semibold text-[#1B2B30]">
+                          <span className="block max-w-44 truncate">
+                            {row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}
+                          </span>
+                          <span className="text-[10px] font-normal text-[#5B7077]">
+                            Batch: {row.batch_number || "-"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-[#5B7077]">
+                          <span className="block max-w-36 truncate">
+                            {formatFacilityName(row.facility?.facility_name || row.facility_name) || "-"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-bold text-[#1B2B30]">
+                          <span>{formatNumber(row.quantity)}</span>
+                          <span className="block text-[10px] font-normal text-[#5B7077]">
+                            Limit: {formatNumber(row.threshold)}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pl-3">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              risk === "CRITICAL"
+                                ? "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/30"
+                                : "bg-[#FBE9E3] text-[#8F3F2B] border border-[#D9826B]/25"
+                            }`}
+                          >
+                            {risk === "CRITICAL" ? "Critical" : "Low"}
+                          </span>
+                        </td>
                       </tr>
                     );
                   })}
@@ -758,7 +894,7 @@ export default function DashboardModule() {
             <EmptyState title="No recent requests" hint="Submitted requests will appear here." />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[490px] text-left text-xs">
+              <table className="w-full text-left text-xs">
                 <thead className="border-b border-[#CFDDE0]/80 bg-[#F9FBFB] text-[10px] font-bold uppercase tracking-wider text-[#5B7077]">
                   <tr><th className="py-2 pr-3">Request</th><th className="px-3 py-2">Medicine</th><th className="px-3 py-2 text-right">Qty</th><th className="py-2 pl-3">Status</th></tr>
                 </thead>
@@ -778,93 +914,41 @@ export default function DashboardModule() {
         </Panel>
       </section>
 
-      {/* Operational Analytics: Request Status & Forecast Demand */}
-      <section className="mt-3 grid gap-3 md:grid-cols-2">
-        <Panel
-          className="min-h-[220px]"
-          title="Request Status"
-          action={<p className="text-xs font-bold text-[#5B7077]">All requests</p>}
-        >
-          <RequestStatusChart rows={requestStatus} />
-        </Panel>
-
-        <Panel
-          className="min-h-[220px]"
-          title="Forecast Demand"
-          action={
-            <button
-              type="button"
-              onClick={() => navigate("/forecasting")}
-              className="text-xs font-black text-[#34769B] hover:text-[#1F4A66]"
-            >
-              Full view
-            </button>
-          }
-        >
-          <ForecastDemandBars rows={forecastRows} />
-        </Panel>
-      </section>
-
-      {/* Consumption Trend */}
+      {/* Consumption Trend (Daily Area Chart from Report Module) */}
       <section className="mt-3">
-        <Panel
-          className="min-h-[320px]"
-          title="Consumption Trend"
-          action={<p className="text-xs font-bold text-neutral-500">Dispensed units by month</p>}
-        >
-          <MonthlyDispensingChart rows={dispensingRows} />
-        </Panel>
+        <DailyTrendChart data={dailyTrendData} monthName={currentMonthName} />
       </section>
 
-      {/* Expiring Medicines & Operational Worklist */}
-      <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)]">
-        <Panel
-          title={isBhw ? "My Facility Expiring Medicines" : "Expiring Medicines"}
-          action={
-            <span className="text-xs font-semibold text-neutral-500">In stock · next 90 days</span>
-          }
-        >
-          {expiringRows.length === 0 ? (
-            <EmptyState
-              title="No expiring medicines"
-              hint="Batches expiring within 90 days will appear here."
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-xs">
-                <thead className="border-b border-[#CFDDE0]/80 bg-[#F9FBFB] text-[10px] font-bold uppercase tracking-wider text-[#5B7077]">
-                  <tr><th className="py-2 pr-3">Medicine</th><th className="px-3 py-2">Batch</th><th className="px-3 py-2">Facility</th><th className="px-3 py-2 text-right">Quantity</th><th className="py-2 pl-3">Expiry</th></tr>
-                </thead>
-                <tbody className="divide-y divide-[#CFDDE0]/40">
-              {expiringRows.map((row) => {
-                const days = daysUntil(row.expiration_date);
+      {/* Analytics & Pipeline (Report Module Top Medicines, Facility Distribution, & Request Pipeline) */}
+      <section className="mt-3 grid gap-3 lg:grid-cols-3">
+        <TopMedicinesChart
+          data={topMedicinesData}
+          title="Top Dispensed Medicines"
+          subtitle={`${currentMonthName} by volume`}
+          emptyMessage="No dispensing recorded for this month yet."
+        />
+        <FacilityDistributionChart
+          data={facilityDistributionData}
+          title="Distribution by Health Center"
+          subtitle="CHO vs. Barangay Centers"
+          emptyMessage="No distribution records for this month yet."
+        />
+        <RequestStatusChart
+          rows={requestStatus}
+          title="Request Status Pipeline"
+          subtitle="All requests"
+        />
+      </section>
 
-                return (
-                  <tr key={row.id}>
-                    <td className="py-2.5 pr-3 font-semibold text-[#1B2B30]">{row.medicine?.generic_name || row.generic_name} {row.medicine?.dosage || row.dosage}</td>
-                    <td className="px-3 py-2.5 text-[#5B7077]">{row.batch_number || "-"}</td>
-                    <td className="px-3 py-2.5 text-[#5B7077]">{row.facility?.facility_name || row.facility_name || "-"}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold text-[#1B2B30]">{formatNumber(row.quantity)}</td>
-                    <td className="py-2.5 pl-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${expiringTone(days)}`}>{row.expiration_date || "-"} · {days == null ? "Unknown" : `${days}d`}</span></td>
-                  </tr>
-                );
-              })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Panel>
-
-        <Panel
-          title="Operational Worklist"
-          action={<p className="text-xs font-bold text-[#5B7077]">Needs attention</p>}
-        >
-          <div className="grid gap-2">
-            {workItems.map((item) => (
-              <WorkItem key={item.label} {...item} />
-            ))}
-          </div>
-        </Panel>
+      {/* Demand Forecasting & Stock Runway Preview (Replaced Expiring Medicines) */}
+      <section className="mt-3">
+        <ForecastPreviewPanel
+          items={forecastPreviewData?.trendingMedicines || []}
+          totalProjectedDemand={totalProjectedDemand}
+          riskCount={forecastRiskCount}
+          onNavigate={() => navigate("/forecasting")}
+          isBhw={isBhw}
+        />
       </section>
 
       {/* Strategic Geographic Health Network (Final Section of Dashboard) */}
@@ -875,7 +959,7 @@ export default function DashboardModule() {
             fitToCoverage
             mapClassName="min-h-[26rem] md:min-h-[30rem]"
             demandByFacility={demandByFacility}
-            description="Facility locations, stock health, and projected demand from current system records."
+            description="Facility locations, stock health, and coverage across Naga City health network."
             eyebrow="Geographic Health Network"
             facilities={facilities}
             forecastTotal={forecastTotal}
@@ -891,27 +975,5 @@ export default function DashboardModule() {
       )}
 
       </AdminShell>
-  );
-}
-
-function WorkItem({ label, onClick, tone, value }) {
-  const toneClass =
-    tone === "red"
-      ? "border-[#D9826B]/30 bg-[#FBE9E3] text-[#8F3F2B]"
-      : tone === "orange" || tone === "amber"
-        ? "border-[#D9826B]/25 bg-[#FBE9E3] text-[#8F3F2B]"
-        : "border-[#4C9F80]/20 bg-[#E2F3EC] text-[#226048]";
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border px-3.5 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-xs ${toneClass}`}
-    >
-      <p className="text-2xl font-black">{formatNumber(value)}</p>
-      <p className="mt-1.5 text-xs font-black uppercase tracking-[0.14em]">
-        {label}
-      </p>
-    </button>
   );
 }

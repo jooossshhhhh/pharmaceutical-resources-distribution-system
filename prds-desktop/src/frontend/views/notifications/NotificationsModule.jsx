@@ -170,20 +170,16 @@ export default function NotificationsModule() {
     if (roleFilter !== "ALL") count++;
     if (facilityId !== "ALL") count++;
     if (dateMode !== "all") count++;
-    if (readFilter !== "all") count++;
     return count;
-  }, [roleFilter, facilityId, dateMode, readFilter]);
+  }, [roleFilter, facilityId, dateMode]);
 
   const hasAnyFiltersActive = useMemo(() => {
     return (
-      keyword.trim() !== "" ||
-      category !== "all" ||
-      readFilter !== "all" ||
       roleFilter !== "ALL" ||
       facilityId !== "ALL" ||
       dateMode !== "all"
     );
-  }, [keyword, category, readFilter, roleFilter, facilityId, dateMode]);
+  }, [roleFilter, facilityId, dateMode]);
 
   const panelLabel = useMemo(() => {
     return getNotificationPanelLabel({
@@ -410,7 +406,7 @@ export default function NotificationsModule() {
           {/* Search and Quick Filter Pills */}
           <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Search Input */}
-            <div className="relative min-w-0 sm:w-80">
+            <div className="relative min-w-0 w-full sm:w-72 md:w-80 lg:w-[22rem] xl:w-[26rem]">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
                 <SearchIcon className="h-4 w-4" />
               </span>
@@ -434,7 +430,7 @@ export default function NotificationsModule() {
             </div>
 
             {/* Quick Pills */}
-            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex flex-nowrap shrink-0 items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               {/* All Pill */}
               <button
                 type="button"
@@ -442,18 +438,18 @@ export default function NotificationsModule() {
                   setCategory("all");
                   setReadFilter("all");
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "all" && readFilter === "all"
                     ? "bg-[#1F4E5A] text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-neutral-100 hover:text-black"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>All</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "all" && readFilter === "all"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.total}
@@ -466,18 +462,18 @@ export default function NotificationsModule() {
                 onClick={() => {
                   setReadFilter((prev) => (prev === "unread" ? "all" : "unread"));
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   readFilter === "unread"
-                    ? "bg-emerald-700 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-emerald-50 hover:text-emerald-800"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Unread</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     readFilter === "unread"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.unread}
@@ -490,18 +486,18 @@ export default function NotificationsModule() {
                 onClick={() => {
                   setCategory((prev) => (prev === "low_stock" ? "all" : "low_stock"));
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "low_stock"
-                    ? "bg-red-700 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-red-50 hover:text-red-700"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Low Stock</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "low_stock"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.lowStock}
@@ -514,18 +510,18 @@ export default function NotificationsModule() {
                 onClick={() => {
                   setCategory((prev) => (prev === "requests" ? "all" : "requests"));
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "requests"
-                    ? "bg-amber-600 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-amber-50 hover:text-amber-800"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Requests</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "requests"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.requests}
@@ -538,18 +534,18 @@ export default function NotificationsModule() {
                 onClick={() => {
                   setCategory((prev) => (prev === "transfers" ? "all" : "transfers"));
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "transfers"
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-blue-50 hover:text-blue-800"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Transfers</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "transfers"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.transfers}
@@ -562,17 +558,17 @@ export default function NotificationsModule() {
                 onClick={() => {
                   setCategory((prev) => (prev === "facility" ? "all" : "facility"));
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "facility"
                     ? "bg-[#1F4E5A] text-white shadow-xs"
-                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#EBF3F5] hover:text-[#1F4E5A]"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Facility</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "facility"
-                      ? "bg-white/20"
+                      ? "bg-white/20 text-white"
                       : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
@@ -582,44 +578,18 @@ export default function NotificationsModule() {
             </div>
           </div>
 
-          {/* Active Filter Removable Tags (Shown whenever any filter is applied) */}
+          {/* Active Filter Removable Tags (Shown whenever advanced filters are active) */}
           {hasAnyFiltersActive && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 bg-neutral-50/60 px-4 py-2 text-xs">
-              <span className="font-bold text-neutral-500">Active filters:</span>
-
-              {category !== "all" && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
-                  Type: {notificationTypeFilters.find((f) => f.value === category)?.label || category}
-                  <button
-                    type="button"
-                    onClick={() => setCategory("all")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-
-              {readFilter !== "all" && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
-                  Status: {readFilter === "unread" ? "Unread only" : "Read only"}
-                  <button
-                    type="button"
-                    onClick={() => setReadFilter("all")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
+            <div className="flex flex-wrap items-center gap-2 border-t border-[#CFDDE0] bg-[#F9FBFB] px-4 py-2 text-xs">
+              <span className="font-bold text-[#5B7077]">Active filters:</span>
 
               {roleFilter !== "ALL" && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#CFDDE0] bg-white px-2 py-0.5 font-bold text-[#1B2B30]">
                   Role: {roleLabels[roleFilter] || roleFilter}
                   <button
                     type="button"
                     onClick={() => setRoleFilter("ALL")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
+                    className="ml-1 text-[#5B7077] hover:text-red-600 cursor-pointer"
                   >
                     ×
                   </button>
@@ -627,12 +597,12 @@ export default function NotificationsModule() {
               )}
 
               {facilityId !== "ALL" && activeFacilityName && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#CFDDE0] bg-white px-2 py-0.5 font-bold text-[#1B2B30]">
                   Facility: {activeFacilityName}
                   <button
                     type="button"
                     onClick={() => setFacilityId("ALL")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
+                    className="ml-1 text-[#5B7077] hover:text-red-600 cursor-pointer"
                   >
                     ×
                   </button>
@@ -640,7 +610,7 @@ export default function NotificationsModule() {
               )}
 
               {dateMode !== "all" && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#CFDDE0] bg-white px-2 py-0.5 font-bold text-[#1B2B30]">
                   Date: {notificationDateModes.find((m) => m.value === dateMode)?.label || dateMode}
                   <button
                     type="button"
@@ -650,20 +620,7 @@ export default function NotificationsModule() {
                       setStartDate("");
                       setEndDate("");
                     }}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-
-              {keyword && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
-                  "{keyword}"
-                  <button
-                    type="button"
-                    onClick={() => setKeyword("")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
+                    className="ml-1 text-[#5B7077] hover:text-red-600 cursor-pointer"
                   >
                     ×
                   </button>
@@ -673,7 +630,7 @@ export default function NotificationsModule() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="ml-auto font-black text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
+                className="ml-auto font-black text-[#1F4E5A] hover:text-[#286575] hover:underline cursor-pointer"
               >
                 Reset All
               </button>

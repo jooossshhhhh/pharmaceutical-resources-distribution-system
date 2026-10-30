@@ -67,7 +67,6 @@ export const getWalkInInventory = async (facilityId) => {
           facility_id,
           medicine_id,
           quantity,
-          threshold,
           batch_number,
           date_received,
           expiration_date,

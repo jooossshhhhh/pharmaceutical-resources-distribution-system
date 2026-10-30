@@ -51,29 +51,31 @@ export function RequestMetricCard({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       aria-pressed={onClick ? active : undefined}
-      className={`group rounded-xl border px-4 py-3 text-left shadow-xs transition-all duration-200 ${
+      className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
         active
-          ? "border-[#34769B] bg-[#34769B] text-white shadow-sm"
-          : "border-[#CFDDE0] bg-[#F9FBFB] text-[#1B2B30] hover:-translate-y-0.5 hover:border-[#34769B]/40 hover:shadow-xs"
+          ? "border-[#1F4E5A] bg-white shadow-md ring-2 ring-[#1F4E5A]/15"
+          : "border-[#CFDDE0] bg-white shadow-xs hover:border-[#1F4E5A]/40 hover:shadow-sm"
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className={`text-[10px] font-black uppercase tracking-[0.14em] ${active ? "text-white/80" : "text-[#5B7077]"}`}>
-            {label}
-          </p>
-          <p className="mt-3 text-2xl font-black leading-none">{value}</p>
-          <p className={`mt-1 truncate text-[11px] font-semibold ${active ? "text-white/80" : "text-[#5B7077]"}`}>
-            {note}
-          </p>
-        </div>
-        <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-            active ? "bg-white/20 text-white" : "bg-[#E5EFF1] text-[#5B7077] group-hover:bg-[#E3EEF5] group-hover:text-[#34769B]"
-          }`}
-        >
-          {icon}
+      <div className="flex items-start justify-between">
+        <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
+          {label}
         </span>
+        {icon && (
+          <span
+            className={`rounded-lg p-2 transition-colors duration-150 ${
+              active
+                ? "bg-[#1F4E5A] text-white"
+                : "bg-[#E5EFF1] text-[#1F4E5A] group-hover:bg-[#1F4E5A] group-hover:text-white"
+            }`}
+          >
+            {icon}
+          </span>
+        )}
+      </div>
+      <div className="mt-3">
+        <p className="text-2xl font-black text-[#1B2B30] leading-none">{value}</p>
+        {note && <p className="mt-1 text-xs text-[#5B7077]">{note}</p>}
       </div>
     </Component>
   );

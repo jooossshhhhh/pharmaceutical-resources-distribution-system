@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ClipboardList,
   Clock,
   FileSpreadsheet,
   FileText,
@@ -746,7 +747,14 @@ function RequestSummaryCards({ onSelectStatus, statusFilter, summary }) {
   const cards = [
     {
       active: statusFilter === "ALL",
+      activeBorder: "border-[#1F4E5A]",
+      activeRing: "ring-[#1F4E5A]/15",
       description: "All recorded requisitions",
+      hoverBorder: "border-[#1F4E5A]/40",
+      icon: ClipboardList,
+      iconActiveClass: "bg-[#1F4E5A] text-white",
+      iconInactiveClass:
+        "bg-[#E5EFF1] text-[#1F4E5A] group-hover:bg-[#1F4E5A] group-hover:text-white",
       id: "total",
       label: "Total Requests",
       onClick: () => onSelectStatus("ALL"),
@@ -754,7 +762,14 @@ function RequestSummaryCards({ onSelectStatus, statusFilter, summary }) {
     },
     {
       active: statusFilter === "PENDING",
+      activeBorder: "border-[#34769B]",
+      activeRing: "ring-[#34769B]/15",
       description: "Awaiting CHO action",
+      hoverBorder: "border-[#34769B]/40",
+      icon: Clock,
+      iconActiveClass: "bg-[#34769B] text-white",
+      iconInactiveClass:
+        "bg-[#E3EEF5] text-[#34769B] group-hover:bg-[#34769B] group-hover:text-white",
       id: "pending",
       label: "Pending Review",
       onClick: () => onSelectStatus(statusFilter === "PENDING" ? "ALL" : "PENDING"),
@@ -762,7 +777,14 @@ function RequestSummaryCards({ onSelectStatus, statusFilter, summary }) {
     },
     {
       active: statusFilter === "APPROVED",
+      activeBorder: "border-[#2D7A5D]",
+      activeRing: "ring-[#2D7A5D]/15",
       description: "Ready for release / pickup",
+      hoverBorder: "border-[#2D7A5D]/40",
+      icon: Package,
+      iconActiveClass: "bg-[#2D7A5D] text-white",
+      iconInactiveClass:
+        "bg-[#E8F5F1] text-[#2D7A5D] group-hover:bg-[#2D7A5D] group-hover:text-white",
       id: "approved",
       label: "Approved",
       onClick: () => onSelectStatus(statusFilter === "APPROVED" ? "ALL" : "APPROVED"),
@@ -770,7 +792,14 @@ function RequestSummaryCards({ onSelectStatus, statusFilter, summary }) {
     },
     {
       active: statusFilter === "COMPLETED",
+      activeBorder: "border-[#4C9F80]",
+      activeRing: "ring-[#4C9F80]/15",
       description: "Fulfilled requisitions",
+      hoverBorder: "border-[#4C9F80]/40",
+      icon: CheckCircle2,
+      iconActiveClass: "bg-[#4C9F80] text-white",
+      iconInactiveClass:
+        "bg-[#E2F3EC] text-[#226048] group-hover:bg-[#4C9F80] group-hover:text-white",
       id: "completed",
       label: "Completed",
       onClick: () => onSelectStatus(statusFilter === "COMPLETED" ? "ALL" : "COMPLETED"),
@@ -780,33 +809,43 @@ function RequestSummaryCards({ onSelectStatus, statusFilter, summary }) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {cards.map((card) => (
-        <button
-          key={card.id}
-          type="button"
-          onClick={card.onClick}
-          className={`group rounded-xl border bg-[#F9FBFB] p-4 text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm cursor-pointer ${
-            card.active ? "border-[#34769B] ring-2 ring-[#34769B]/20" : "border-[#CFDDE0] hover:border-[#34769B]/40"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-2xl font-black tracking-tight text-[#1B2B30] leading-none">
-              {card.value}
-            </p>
-            {card.active && (
-              <span className="rounded-full bg-[#E3EEF5] px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#1F4A66]">
-                Selected
+      {cards.map((card) => {
+        const Icon = card.icon;
+
+        return (
+          <button
+            key={card.id}
+            type="button"
+            onClick={card.onClick}
+            className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
+              card.active
+                ? `${card.activeBorder} bg-white shadow-md ring-2 ${card.activeRing}`
+                : `border-[#CFDDE0] bg-white shadow-xs hover:${card.hoverBorder} hover:shadow-sm`
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
+                {card.label}
               </span>
-            )}
-          </div>
-          <p className="mt-2 text-xs font-black uppercase tracking-[0.14em] text-neutral-500">
-            {card.label}
-          </p>
-          <p className="mt-1 line-clamp-1 text-xs font-semibold text-neutral-400">
-            {card.description}
-          </p>
-        </button>
-      ))}
+              <span
+                className={`rounded-lg p-2 transition-colors duration-150 ${
+                  card.active ? card.iconActiveClass : card.iconInactiveClass
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-[#1B2B30] leading-none">
+                {card.value}
+              </p>
+              <p className="mt-1 text-xs text-[#5B7077]">
+                {card.description}
+              </p>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }

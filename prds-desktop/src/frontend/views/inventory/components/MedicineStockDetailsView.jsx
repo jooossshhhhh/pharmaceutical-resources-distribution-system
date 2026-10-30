@@ -4,10 +4,13 @@ import {
   Building2,
   Calendar,
   Package,
+  Plus,
   ShieldAlert,
+  Sliders,
 } from "lucide-react";
 import { InventoryLotTable } from "../inventoryComponents";
 import BatchDetailsModal from "./BatchDetailsModal";
+import BhwThresholdModal from "./BhwThresholdModal";
 import {
   formatCurrency,
   formatDate,
@@ -18,6 +21,7 @@ import {
   isLotExpired,
 } from "@shared/utils/inventoryUtils";
 import { formatMedicineCategories } from "@shared/utils/medicineUtils";
+import { isChoFacility } from "@shared/utils/facilityUtils";
 
 export default function MedicineStockDetailsView({
   item,
@@ -26,9 +30,20 @@ export default function MedicineStockDetailsView({
   onBack,
   onEditLot,
   onDisposeLot,
+  onAddBatch,
+  onUpdateThreshold,
+  consumptionByMedicine = {},
   facilityName = "CHO Naga",
 }) {
+  const resolvedFacilityName =
+    (typeof item?.facility === "string" ? item.facility : item?.facility?.facility_name) ||
+    (typeof facilityName === "string" ? facilityName : facilityName?.facility_name) ||
+    "CHO Naga";
+  const effectiveFacility = item?.facility || resolvedFacilityName;
+  const isBarangayFacility = isBhw || (Boolean(effectiveFacility) && !isChoFacility(effectiveFacility));
+
   const [selectedBatchLot, setSelectedBatchLot] = useState(null);
+  const [isThresholdModalOpen, setIsThresholdModalOpen] = useState(false);
   const selectedBatchLotRef = useRef(selectedBatchLot);
   useEffect(() => {
     selectedBatchLotRef.current = selectedBatchLot;
@@ -61,6 +76,20 @@ export default function MedicineStockDetailsView({
   const allLots = useMemo(() => {
     return item?.lots?.length ? item.lots : [item];
   }, [item]);
+
+  const isReturnBatch = (l) =>
+    l?.intake_type === "RETURN" ||
+    (typeof l?.po_number === "string" && l.po_number.startsWith("RET-")) ||
+    Boolean(l?.origin_facility_id) ||
+    Boolean(l?.return_reason);
+
+  const procurementLotsCount = useMemo(() => {
+    return allLots.filter((l) => !isReturnBatch(l)).length;
+  }, [allLots]);
+
+  const returnedLotsCount = useMemo(() => {
+    return allLots.filter((l) => isReturnBatch(l)).length;
+  }, [allLots]);
 
   const totalUnits = useMemo(() => {
     return allLots.reduce((sum, l) => sum + Number(l.quantity || 0), 0);
@@ -108,6 +137,18 @@ export default function MedicineStockDetailsView({
             </span>
           </div>
         </div>
+
+        {canManage && onAddBatch && (
+          <button
+            type="button"
+            onClick={onAddBatch}
+            className="btn-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:brightness-105 active:scale-[0.98] transition cursor-pointer"
+            title="Record new batch for this medicine"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add Batch</span>
+          </button>
+        )}
       </div>
 
       {/* Hero Medicine Identification Banner - Clean & Uncluttered */}
@@ -124,7 +165,7 @@ export default function MedicineStockDetailsView({
 
               <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-700">
                 <Building2 className="h-3 w-3 text-neutral-500" />
-                {facilityName}
+                {resolvedFacilityName}
               </span>
 
               {categories && (
@@ -145,7 +186,7 @@ export default function MedicineStockDetailsView({
             )}
           </div>
 
-          {/* Clean Stock Status Badge */}
+          {/* Clean Stock Status Badge & Action */}
           <div className="flex items-center gap-2 pt-1 sm:pt-0">
             <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
               Status:
@@ -164,8 +205,8 @@ export default function MedicineStockDetailsView({
           </div>
         </div>
 
-        {/* 3 Focused, Non-Redundant Metric Cards */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Focused Metric Cards - Always 4 Balanced Cards */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Card 1: Available Stock & Total Cost */}
           <div
             className={`rounded-xl p-3.5 border ${
@@ -190,7 +231,7 @@ export default function MedicineStockDetailsView({
                 </span>
               )}
             </div>
-            {!isBhw ? (
+            {!isBarangayFacility ? (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-600 font-medium">
                 <span className="font-semibold text-neutral-500">Total Cost:</span>
                 <strong className="font-bold text-[#0d1117]">{formatCurrency(totalValuation)}</strong>
@@ -218,9 +259,54 @@ export default function MedicineStockDetailsView({
                 lot{allLots.length === 1 ? "" : "s"} on hand
               </span>
             </div>
+            {!isBarangayFacility ? (
+              <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-neutral-500">
+                <span>{procurementLotsCount} Procurement</span>
+                <span>·</span>
+                <span className={returnedLotsCount > 0 ? "text-emerald-700 font-bold" : ""}>
+                  {returnedLotsCount} Returned
+                </span>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-neutral-500">
+                <span>Batch lots currently tracked</span>
+              </div>
+            )}
           </div>
 
-          {/* Card 3: Nearest Expiration */}
+          {/* Card 3: Threshold (Medicine & Batches Reorder Point) */}
+          <div className="rounded-xl border border-neutral-200/80 bg-[#f8f9fa] p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
+                Threshold
+              </span>
+              <Sliders className="h-4 w-4 text-teal-600" />
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-[#0d1117]">
+                {formatNumber(item.threshold || 0)}
+              </span>
+              {unit && (
+                <span className="text-xs font-bold lowercase text-neutral-500">
+                  {unit}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex items-center justify-between text-xs font-semibold text-neutral-500">
+              <span>minimum safety stock</span>
+              {onUpdateThreshold && (
+                <button
+                  type="button"
+                  onClick={() => setIsThresholdModalOpen(true)}
+                  className="text-[11px] font-bold text-teal-700 hover:text-teal-800 hover:underline cursor-pointer"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Card 4: Nearest Expiration */}
           <div className="rounded-xl border border-neutral-200/80 bg-[#f8f9fa] p-3.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
@@ -259,8 +345,8 @@ export default function MedicineStockDetailsView({
       <InventoryLotTable
         lots={allLots}
         canEdit={canManage}
-        isBhw={isBhw}
-        showProcurement={!isBhw}
+        isBhw={isBarangayFacility}
+        showProcurement={!isBarangayFacility}
         onSelectLot={(lot) => setSelectedBatchLot(lot)}
       />
 
@@ -269,13 +355,25 @@ export default function MedicineStockDetailsView({
         isOpen={Boolean(selectedBatchLot)}
         lot={selectedBatchLot}
         medicine={item}
-        facilityName={facilityName}
+        facilityName={resolvedFacilityName}
         canEdit={canManage}
-        isBhw={isBhw}
+        isBhw={isBarangayFacility}
         onClose={() => setSelectedBatchLot(null)}
         onEditLot={onEditLot}
         onDisposeLot={onDisposeLot}
       />
+
+      {/* Medicine / Station Threshold Edit Modal */}
+      {isThresholdModalOpen && (
+        <BhwThresholdModal
+          isOpen={isThresholdModalOpen}
+          item={item}
+          facilityName={resolvedFacilityName}
+          consumptionByMedicine={consumptionByMedicine}
+          onClose={() => setIsThresholdModalOpen(false)}
+          onSave={onUpdateThreshold}
+        />
+      )}
     </div>
   );
 }

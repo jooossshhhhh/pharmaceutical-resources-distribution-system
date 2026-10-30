@@ -38,6 +38,7 @@ export default function DesktopTitlebar({ isPinned: propIsPinned, onTogglePin })
       setInternalPinned((prev) => {
         const next = !prev;
         localStorage.setItem("prds-titlebar-pinned", String(next));
+        window.dispatchEvent(new Event("prds-titlebar-pin-change"));
         return next;
       });
     }

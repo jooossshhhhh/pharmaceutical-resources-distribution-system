@@ -57,9 +57,6 @@ create table inventory (
     quantity integer not null
         check (quantity >= 0),
 
-    threshold integer not null
-        check (threshold >= 0),
-
     batch_number text not null,
  
     po_number text,

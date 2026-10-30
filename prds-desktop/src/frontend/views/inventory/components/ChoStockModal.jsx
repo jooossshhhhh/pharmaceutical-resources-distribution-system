@@ -6,11 +6,13 @@ import {
   Check,
   CheckCircle2,
   FileText,
+  Info,
   Package,
   Plus,
   Receipt,
   Search,
   ShieldCheck,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -18,10 +20,12 @@ import {
 import ModalShell from "../../../components/ModalShell";
 import { Field, InventoryLotTable, PlusIcon, SelectField } from "../inventoryComponents";
 import {
+  calculateDynamicThreshold,
   calculatePoTotals,
   formatCurrency,
   formatDate,
   formatNumber,
+  getThresholdCalculationDetails,
   getExpiredDays,
   getExpiryStatus,
   getMedicineName,
@@ -139,6 +143,12 @@ export function ChoStockModal({
     () => calculatePoTotals(formValues?.items || []),
     [formValues?.items]
   );
+
+  const editLotSubtotal = useMemo(() => {
+    const qty = Number(formValues?.quantity || 0);
+    const cost = Number(formValues?.unit_cost || 0);
+    return qty > 0 && cost > 0 ? qty * cost : null;
+  }, [formValues?.quantity, formValues?.unit_cost]);
 
   const handleProceedToPreview = (e) => {
     if (e && typeof e.preventDefault === "function") {
@@ -502,255 +512,337 @@ export function ChoStockModal({
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-start">
-                              <div className="lg:col-span-3">
-                                <SearchableMedicinePicker
-                                  medicines={medicines}
-                                  value={item.medicine_id}
-                                  hasError={Boolean(itemErrors[itemId]?.medicine_id)}
-                                  onSelect={(medId) => {
-                                    onPoItemChange(item.id, "medicine_id", medId);
-                                    clearItemError(itemId, "medicine_id");
-                                  }}
-                                  label="Medicine"
-                                  required
-                                />
-                                {itemErrors[itemId]?.medicine_id && (
-                                  <div
-                                    role="alert"
-                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
-                                  >
-                                    <div className="flex items-start gap-1.5 leading-snug">
-                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
-                                      <span>{itemErrors[itemId].medicine_id}</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => clearItemError(itemId, "medicine_id")}
-                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
-                                      title="Dismiss error"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
+                            {(() => {
+                              const threshDetails = getThresholdCalculationDetails({
+                                adc: consumptionByMedicine[item.medicine_id],
+                                quantity: item.quantity,
+                              });
+                              const isCustom = Boolean(item.is_threshold_custom);
 
-                              <div className="lg:col-span-2">
-                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
-                                  Brand
-                                </label>
-                                <input
-                                  type="text"
-                                  autoComplete="off"
-                                  placeholder="e.g. Biogesic"
-                                  value={item.brand_name || ""}
-                                  onChange={(e) => {
-                                    onPoItemChange(item.id, "brand_name", e.target.value);
-                                    clearItemWarning(itemId, "brand_name");
-                                  }}
-                                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
-                                    itemWarnings[itemId]?.brand_name
-                                      ? "border-amber-400 bg-amber-50/20 focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
-                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                                  }`}
-                                />
-                                {itemWarnings[itemId]?.brand_name && (
-                                  <div
-                                    role="alert"
-                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-800 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
-                                  >
-                                    <div className="flex items-start gap-1.5 leading-snug">
-                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
-                                      <span>{itemWarnings[itemId].brand_name}</span>
+                              return (
+                                <div className="space-y-3">
+                                  {/* Row 1: Medicine Identification & Batch Traceability */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-start">
+                                    <div className="lg:col-span-5">
+                                      <SearchableMedicinePicker
+                                        medicines={medicines}
+                                        value={item.medicine_id}
+                                        hasError={Boolean(itemErrors[itemId]?.medicine_id)}
+                                        onSelect={(medId) => {
+                                          onPoItemChange(item.id, "medicine_id", medId);
+                                          clearItemError(itemId, "medicine_id");
+                                        }}
+                                        label="Medicine"
+                                        required
+                                      />
+                                      {itemErrors[itemId]?.medicine_id && (
+                                        <div
+                                          role="alert"
+                                          className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                        >
+                                          <div className="flex items-start gap-1.5 leading-snug">
+                                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                            <span>{itemErrors[itemId].medicine_id}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => clearItemError(itemId, "medicine_id")}
+                                            className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                            title="Dismiss error"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => clearItemWarning(itemId, "brand_name")}
-                                      className="text-amber-600 hover:text-amber-800 p-0.5 rounded cursor-pointer shrink-0"
-                                      title="Dismiss warning"
-                                      aria-label="Dismiss brand warning"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
 
-                              <div className="lg:col-span-2">
-                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
-                                  Lot Number <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                  type="text"
-                                  autoComplete="off"
-                                  autoCorrect="off"
-                                  spellCheck="false"
-                                  data-form-type="other"
-                                  placeholder="e.g. FGOLSA23"
-                                  value={item.batch_number}
-                                  onChange={(e) => {
-                                    onPoItemChange(item.id, "batch_number", e.target.value);
-                                    clearItemError(itemId, "batch_number");
-                                  }}
-                                  className={`h-10 w-full rounded-lg border bg-white px-3 font-mono text-sm font-bold uppercase tracking-wider text-[#0d1117] outline-none transition placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-neutral-400 ${
-                                    itemErrors[itemId]?.batch_number
-                                      ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                                  }`}
-                                  required
-                                />
-                                {itemErrors[itemId]?.batch_number && (
-                                  <div
-                                    role="alert"
-                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
-                                  >
-                                    <div className="flex items-start gap-1.5 leading-snug">
-                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
-                                      <span>{itemErrors[itemId].batch_number}</span>
+                                    <div className="lg:col-span-3">
+                                      <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
+                                        Brand
+                                      </label>
+                                      <input
+                                        type="text"
+                                        autoComplete="off"
+                                        placeholder="e.g. Biogesic"
+                                        value={item.brand_name || ""}
+                                        onChange={(e) => {
+                                          onPoItemChange(item.id, "brand_name", e.target.value);
+                                          clearItemWarning(itemId, "brand_name");
+                                        }}
+                                        className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
+                                          itemWarnings[itemId]?.brand_name
+                                            ? "border-amber-400 bg-amber-50/20 focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                                            : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                        }`}
+                                      />
+                                      {itemWarnings[itemId]?.brand_name && (
+                                        <div
+                                          role="alert"
+                                          className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-800 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                        >
+                                          <div className="flex items-start gap-1.5 leading-snug">
+                                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
+                                            <span>{itemWarnings[itemId].brand_name}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => clearItemWarning(itemId, "brand_name")}
+                                            className="text-amber-600 hover:text-amber-800 p-0.5 rounded cursor-pointer shrink-0"
+                                            title="Dismiss warning"
+                                            aria-label="Dismiss brand warning"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => clearItemError(itemId, "batch_number")}
-                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
-                                      title="Dismiss error"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
 
-                              <div className="lg:col-span-1">
-                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5 truncate" title="Quantity">
-                                  Qty <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                  type="number"
-                                  autoComplete="off"
-                                  min="1"
-                                  placeholder="0"
-                                  value={item.quantity}
-                                  onChange={(e) => {
-                                    onPoItemChange(item.id, "quantity", e.target.value);
-                                    clearItemError(itemId, "quantity");
-                                  }}
-                                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
-                                    itemErrors[itemId]?.quantity
-                                      ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                                  }`}
-                                  required
-                                />
-                                {itemErrors[itemId]?.quantity && (
-                                  <div
-                                    role="alert"
-                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
-                                  >
-                                    <div className="flex items-start gap-1.5 leading-snug">
-                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
-                                      <span>{itemErrors[itemId].quantity}</span>
+                                    <div className="lg:col-span-4">
+                                      <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
+                                        Lot Number <span className="text-red-500">*</span>
+                                      </label>
+                                      <input
+                                        type="text"
+                                        autoComplete="off"
+                                        autoCorrect="off"
+                                        spellCheck="false"
+                                        data-form-type="other"
+                                        placeholder="e.g. FGOLSA23"
+                                        value={item.batch_number}
+                                        onChange={(e) => {
+                                          onPoItemChange(item.id, "batch_number", e.target.value);
+                                          clearItemError(itemId, "batch_number");
+                                        }}
+                                        className={`h-10 w-full rounded-lg border bg-white px-3 font-mono text-sm font-bold uppercase tracking-wider text-[#0d1117] outline-none transition placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-neutral-400 ${
+                                          itemErrors[itemId]?.batch_number
+                                            ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                            : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                        }`}
+                                        required
+                                      />
+                                      {itemErrors[itemId]?.batch_number && (
+                                        <div
+                                          role="alert"
+                                          className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                        >
+                                          <div className="flex items-start gap-1.5 leading-snug">
+                                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                            <span>{itemErrors[itemId].batch_number}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => clearItemError(itemId, "batch_number")}
+                                            className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                            title="Dismiss error"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => clearItemError(itemId, "quantity")}
-                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
-                                      title="Dismiss error"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
                                   </div>
-                                )}
-                              </div>
 
-                              <div className="lg:col-span-2">
-                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
-                                  Unit Cost (₱)
-                                </label>
-                                <div className="relative">
-                                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-neutral-400">
-                                    ₱
-                                  </span>
-                                  <input
-                                    type="number"
-                                    autoComplete="off"
-                                    min="0"
-                                    step="0.01"
-                                    placeholder="0.00"
-                                    value={item.unit_cost}
-                                    onChange={(e) => {
-                                      onPoItemChange(item.id, "unit_cost", e.target.value);
-                                      clearItemError(itemId, "unit_cost");
-                                    }}
-                                    className={`h-10 w-full rounded-lg border bg-white pl-7 pr-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
-                                      itemErrors[itemId]?.unit_cost
-                                        ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                                        : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                                    }`}
-                                  />
+                                  {/* Row 2: Quantities, Dynamic Threshold, Valuation & Dates */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-start pt-1">
+                                    <div className="lg:col-span-2">
+                                      <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5 truncate" title="Quantity">
+                                        Qty <span className="text-red-500">*</span>
+                                      </label>
+                                      <input
+                                        type="number"
+                                        autoComplete="off"
+                                        min="1"
+                                        placeholder="0"
+                                        value={item.quantity}
+                                        onChange={(e) => {
+                                          onPoItemChange(item.id, "quantity", e.target.value);
+                                          clearItemError(itemId, "quantity");
+                                        }}
+                                        className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
+                                          itemErrors[itemId]?.quantity
+                                            ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                            : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                        }`}
+                                        required
+                                      />
+                                      {itemErrors[itemId]?.quantity && (
+                                        <div
+                                          role="alert"
+                                          className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                        >
+                                          <div className="flex items-start gap-1.5 leading-snug">
+                                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                            <span>{itemErrors[itemId].quantity}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => clearItemError(itemId, "quantity")}
+                                            className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                            title="Dismiss error"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="lg:col-span-4">
+                                      <div className="flex items-center justify-between mb-1.5">
+                                        <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 truncate">
+                                          Min Threshold <span className="text-red-500">*</span>
+                                        </label>
+                                        {isCustom ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => onPoItemChange(item.id, "threshold_reset", "")}
+                                            className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 transition cursor-pointer"
+                                            title={`Reset to auto-calculated threshold (${threshDetails.threshold})`}
+                                          >
+                                            Custom • Reset ({threshDetails.threshold})
+                                          </button>
+                                        ) : (
+                                          <span
+                                            className="inline-flex items-center gap-1 text-[10px] font-bold text-[#1F4E5A] bg-[#E5EFF1] border border-[#34769B]/20 rounded px-1.5 py-0.5"
+                                            title={threshDetails.description}
+                                          >
+                                            ✨ Auto ({threshDetails.shortLabel})
+                                          </span>
+                                        )}
+                                      </div>
+                                      <input
+                                        type="number"
+                                        autoComplete="off"
+                                        min="0"
+                                        placeholder={String(threshDetails.threshold)}
+                                        value={item.threshold ?? ""}
+                                        onChange={(e) => {
+                                          onPoItemChange(item.id, "threshold", e.target.value);
+                                          clearItemError(itemId, "threshold");
+                                        }}
+                                        className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
+                                          itemErrors[itemId]?.threshold
+                                            ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                            : isCustom
+                                              ? "border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                                              : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                        }`}
+                                        required
+                                      />
+                                      <p className="mt-1 text-[10px] font-medium text-neutral-500 truncate" title={threshDetails.description}>
+                                        {threshDetails.description}
+                                      </p>
+                                      {itemErrors[itemId]?.threshold && (
+                                        <div
+                                          role="alert"
+                                          className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                        >
+                                          <div className="flex items-start gap-1.5 leading-snug">
+                                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                            <span>{itemErrors[itemId].threshold}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => clearItemError(itemId, "threshold")}
+                                            className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                            title="Dismiss error"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="lg:col-span-3">
+                                      <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
+                                        Unit Cost (₱)
+                                      </label>
+                                      <div className="relative">
+                                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-neutral-400">
+                                          ₱
+                                        </span>
+                                        <input
+                                          type="number"
+                                          autoComplete="off"
+                                          min="0"
+                                          step="0.01"
+                                          placeholder="0.00"
+                                          value={item.unit_cost}
+                                          onChange={(e) => {
+                                            onPoItemChange(item.id, "unit_cost", e.target.value);
+                                            clearItemError(itemId, "unit_cost");
+                                          }}
+                                          className={`h-10 w-full rounded-lg border bg-white pl-7 pr-3 text-sm font-bold text-[#0d1117] outline-none transition placeholder:text-neutral-400 ${
+                                            itemErrors[itemId]?.unit_cost
+                                              ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                              : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                          }`}
+                                        />
+                                      </div>
+                                      {itemErrors[itemId]?.unit_cost && (
+                                        <div
+                                          role="alert"
+                                          className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                        >
+                                          <div className="flex items-start gap-1.5 leading-snug">
+                                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                            <span>{itemErrors[itemId].unit_cost}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => clearItemError(itemId, "unit_cost")}
+                                            className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                            title="Dismiss error"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="lg:col-span-3">
+                                      <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
+                                        Expiry Date <span className="text-red-500">*</span>
+                                      </label>
+                                      <input
+                                        type="date"
+                                        min={getTomorrowDateString()}
+                                        value={item.expiration_date || ""}
+                                        onChange={(e) => {
+                                          onPoItemChange(item.id, "expiration_date", e.target.value);
+                                          clearItemError(itemId, "expiration_date");
+                                        }}
+                                        className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition ${
+                                          itemErrors[itemId]?.expiration_date
+                                            ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                                            : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                        }`}
+                                        required
+                                      />
+                                      {itemErrors[itemId]?.expiration_date && (
+                                        <div
+                                          role="alert"
+                                          className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
+                                        >
+                                          <div className="flex items-start gap-1.5 leading-snug">
+                                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
+                                            <span>{itemErrors[itemId].expiration_date}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => clearItemError(itemId, "expiration_date")}
+                                            className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
+                                            title="Dismiss error"
+                                            aria-label="Dismiss expiration date error"
+                                          >
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                {itemErrors[itemId]?.unit_cost && (
-                                  <div
-                                    role="alert"
-                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
-                                  >
-                                    <div className="flex items-start gap-1.5 leading-snug">
-                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
-                                      <span>{itemErrors[itemId].unit_cost}</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => clearItemError(itemId, "unit_cost")}
-                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
-                                      title="Dismiss error"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="lg:col-span-2">
-                                <label className="block text-xs font-black uppercase tracking-wide text-neutral-600 mb-1.5">
-                                  Expiry Date <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                  type="date"
-                                  min={getTomorrowDateString()}
-                                  value={item.expiration_date || ""}
-                                  onChange={(e) => {
-                                    onPoItemChange(item.id, "expiration_date", e.target.value);
-                                    clearItemError(itemId, "expiration_date");
-                                  }}
-                                  className={`h-10 w-full rounded-lg border bg-white px-3 text-sm font-semibold text-[#0d1117] outline-none transition ${
-                                    itemErrors[itemId]?.expiration_date
-                                      ? "border-red-400 bg-red-50/20 focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                                      : "border-neutral-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                                  }`}
-                                  required
-                                />
-                                {itemErrors[itemId]?.expiration_date && (
-                                  <div
-                                    role="alert"
-                                    className="mt-1.5 flex items-start justify-between gap-1.5 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150"
-                                  >
-                                    <div className="flex items-start gap-1.5 leading-snug">
-                                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-red-600" />
-                                      <span>{itemErrors[itemId].expiration_date}</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => clearItemError(itemId, "expiration_date")}
-                                      className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer shrink-0"
-                                      title="Dismiss error"
-                                      aria-label="Dismiss expiration date error"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}
@@ -852,10 +944,9 @@ export function ChoStockModal({
                       <Field
                         label="Supplier Name"
                         name="supplier_name"
-                        placeholder="Enter supplier name"
+                        placeholder="Enter supplier name (optional)"
                         value={formValues.supplier_name || ""}
                         onChange={onChange}
-                        required
                       />
 
                       <Field
@@ -908,11 +999,12 @@ export function ChoStockModal({
               {/* Right Column: Quantities, Unit Cost & Shelf Life Dates */}
               <div className="space-y-4">
                 <StockFormSection
-                  title="Stock Quantities & Valuation"
-                  description="Initial receipt volume, critical restock threshold, and unit cost."
+                  title="Quantity and Cost"
+                  description="Initial receipt volume and unit purchase price."
                 >
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3 min-w-0">
+                  <div className="space-y-3.5">
+                    {/* Row 1: Stock Quantity and Unit Cost side-by-side */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                       <Field
                         label="Stock Quantity"
                         name="quantity"
@@ -925,28 +1017,28 @@ export function ChoStockModal({
                       />
 
                       <Field
-                        label="Minimum Threshold"
-                        name="threshold"
+                        label="Unit Cost (₱)"
+                        name="unit_cost"
                         type="number"
                         min="0"
-                        placeholder="0"
-                        value={formValues.threshold}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formValues.unit_cost ?? ""}
                         onChange={onChange}
-                        hint="Safety buffer before low-stock alert triggers (e.g. 50–100 for high-volume tablets, 5–20 for specialized vials/creams)."
-                        required
                       />
                     </div>
 
-                    <Field
-                      label="Unit Cost (₱)"
-                      name="unit_cost"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={formValues.unit_cost ?? ""}
-                      onChange={onChange}
-                    />
+                    {/* Estimated Total Lot Value Banner */}
+                    {editLotSubtotal !== null && (
+                      <div className="flex items-center justify-between rounded-lg bg-emerald-50/70 border border-emerald-200/60 px-3 py-2 text-xs">
+                        <span className="font-semibold text-emerald-800">
+                          Est. Batch Total Value
+                        </span>
+                        <span className="font-black text-emerald-700">
+                          {formatCurrency(editLotSubtotal)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </StockFormSection>
 
@@ -1165,6 +1257,7 @@ function StockIntakePreview({
                 <th className="px-3 py-2.5">Brand</th>
                 <th className="px-3 py-2.5">Lot Number</th>
                 <th className="px-3 py-2.5 text-right">Quantity</th>
+                <th className="px-3 py-2.5 text-center">Min. Threshold</th>
                 <th className="px-3 py-2.5 text-right">Unit Cost</th>
                 <th className="px-3 py-2.5 text-right">Subtotal</th>
                 <th className="px-3 py-2.5 text-center">Expiration Date</th>
@@ -1202,6 +1295,20 @@ function StockIntakePreview({
                     <td className="px-3 py-2.5 text-right font-black text-neutral-900">
                       {formatNumber(qty)}
                     </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold bg-neutral-100 text-neutral-800 border border-neutral-200">
+                        {formatNumber(item.threshold || 0)}
+                        {item.is_threshold_custom ? (
+                          <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/60 px-1 rounded">
+                            Custom
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-semibold text-[#1F4E5A] bg-[#E5EFF1] border border-[#34769B]/20 px-1 rounded">
+                            Auto
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-3 py-2.5 text-right font-medium text-neutral-700">
                       {formatCurrency(cost)}
                     </td>
@@ -1217,14 +1324,15 @@ function StockIntakePreview({
             </tbody>
             <tfoot className="border-t-2 border-neutral-200 bg-[#fbfaf8] font-black text-neutral-900">
               <tr>
-                <td colSpan={3} className="px-3 py-2.5 uppercase text-[11px] text-neutral-600">
+                <td colSpan={4} className="px-3 py-2.5 uppercase text-[11px] text-neutral-600">
                   Total Batch Intake
                 </td>
                 <td className="px-3 py-2.5 text-right text-neutral-950">
                   {formatNumber(poTotals.totalQuantity)}
                 </td>
+                <td className="px-3 py-2.5"></td>
                 <td className="px-3 py-2.5 text-right text-[10px] uppercase text-neutral-500">
-                  Total Valuation
+                  Total Cost
                 </td>
                 <td className="px-3 py-2.5 text-right text-sm text-emerald-700 bg-emerald-50/50">
                   {formatCurrency(poTotals.totalAmount)}

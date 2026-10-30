@@ -155,13 +155,11 @@ export default function ActivityLogsModule() {
 
   const hasAnyFiltersActive = useMemo(() => {
     return (
-      keyword.trim() !== "" ||
-      category !== "all" ||
       roleFilter !== "ALL" ||
       facilityId !== "ALL" ||
       dateMode !== "all"
     );
-  }, [keyword, category, roleFilter, facilityId, dateMode]);
+  }, [roleFilter, facilityId, dateMode]);
 
   const panelLabel = useMemo(() => {
     return getActivityLogPanelLabel({
@@ -367,7 +365,7 @@ export default function ActivityLogsModule() {
           {/* Search and Quick Activity Filter Pills */}
           <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Search Input */}
-            <div className="relative min-w-0 sm:w-80">
+            <div className="relative min-w-0 w-full sm:w-72 md:w-80 lg:w-[22rem] xl:w-[26rem]">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5B7077]">
                 <SearchIcon className="h-4 w-4" />
               </span>
@@ -391,12 +389,12 @@ export default function ActivityLogsModule() {
             </div>
 
             {/* Quick Pills */}
-            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex flex-nowrap shrink-0 items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               {/* All Activity */}
               <button
                 type="button"
                 onClick={() => setCategory("all")}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "all"
                     ? "bg-[#1F4E5A] text-white shadow-xs"
                     : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
@@ -406,7 +404,7 @@ export default function ActivityLogsModule() {
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "all"
-                      ? "bg-white/20"
+                      ? "bg-white/20 text-white"
                       : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
@@ -418,17 +416,17 @@ export default function ActivityLogsModule() {
               <button
                 type="button"
                 onClick={() => setCategory((prev) => (prev === "inventory" ? "all" : "inventory"))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "inventory"
-                    ? "bg-[#4C9F80] text-white shadow-xs"
-                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#E8F5F1] hover:text-[#2D7A5D]"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Inventory</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "inventory"
-                      ? "bg-white/20"
+                      ? "bg-white/20 text-white"
                       : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
@@ -440,17 +438,17 @@ export default function ActivityLogsModule() {
               <button
                 type="button"
                 onClick={() => setCategory((prev) => (prev === "dispensing" ? "all" : "dispensing"))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "dispensing"
-                    ? "bg-[#4C9F80] text-white shadow-xs"
-                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#E8F5F1] hover:text-[#2D7A5D]"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Dispensing</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "dispensing"
-                      ? "bg-white/20"
+                      ? "bg-white/20 text-white"
                       : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
@@ -462,18 +460,18 @@ export default function ActivityLogsModule() {
               <button
                 type="button"
                 onClick={() => setCategory((prev) => (prev === "requests" ? "all" : "requests"))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "requests"
-                    ? "bg-amber-600 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-amber-50 hover:text-amber-800"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Requests</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "requests"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.requests}
@@ -484,18 +482,18 @@ export default function ActivityLogsModule() {
               <button
                 type="button"
                 onClick={() => setCategory((prev) => (prev === "transfers" ? "all" : "transfers"))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "transfers"
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-blue-50 hover:text-blue-800"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Transfers</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "transfers"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.transfers}
@@ -506,18 +504,18 @@ export default function ActivityLogsModule() {
               <button
                 type="button"
                 onClick={() => setCategory((prev) => (prev === "patients" ? "all" : "patients"))}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
                   category === "patients"
-                    ? "bg-purple-700 text-white shadow-xs"
-                    : "bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-purple-50 hover:text-purple-800"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
                 }`}
               >
                 <span>Patients</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     category === "patients"
-                      ? "bg-white/20"
-                      : "bg-neutral-200/80 text-neutral-700"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
                   }`}
                 >
                   {counts.patients}
@@ -526,31 +524,18 @@ export default function ActivityLogsModule() {
             </div>
           </div>
 
-          {/* Active Filter Removable Tags (Shown whenever any filter is active) */}
+          {/* Active Filter Removable Tags (Shown whenever advanced filters are active) */}
           {hasAnyFiltersActive && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 bg-neutral-50/60 px-4 py-2 text-xs">
-              <span className="font-bold text-neutral-500">Active filters:</span>
-
-              {category !== "all" && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
-                  Action: {allowedCategories.find((c) => c.value === category)?.label || category}
-                  <button
-                    type="button"
-                    onClick={() => setCategory("all")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
+            <div className="flex flex-wrap items-center gap-2 border-t border-[#CFDDE0] bg-[#F9FBFB] px-4 py-2 text-xs">
+              <span className="font-bold text-[#5B7077]">Active filters:</span>
 
               {roleFilter !== "ALL" && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#CFDDE0] bg-white px-2 py-0.5 font-bold text-[#1B2B30]">
                   Role: {activityRoleLabels[roleFilter] || roleFilter}
                   <button
                     type="button"
                     onClick={() => setRoleFilter("ALL")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
+                    className="ml-1 text-[#5B7077] hover:text-red-600 cursor-pointer"
                   >
                     ×
                   </button>
@@ -558,12 +543,12 @@ export default function ActivityLogsModule() {
               )}
 
               {facilityId !== "ALL" && activeFacilityName && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#CFDDE0] bg-white px-2 py-0.5 font-bold text-[#1B2B30]">
                   Facility: {activeFacilityName}
                   <button
                     type="button"
                     onClick={() => setFacilityId("ALL")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
+                    className="ml-1 text-[#5B7077] hover:text-red-600 cursor-pointer"
                   >
                     ×
                   </button>
@@ -571,7 +556,7 @@ export default function ActivityLogsModule() {
               )}
 
               {dateMode !== "all" && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[#CFDDE0] bg-white px-2 py-0.5 font-bold text-[#1B2B30]">
                   Date: {activityDateModes.find((m) => m.value === dateMode)?.label || dateMode}
                   <button
                     type="button"
@@ -581,20 +566,7 @@ export default function ActivityLogsModule() {
                       setStartDate("");
                       setEndDate("");
                     }}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-
-              {keyword && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 font-bold text-[#0d1117]">
-                  "{keyword}"
-                  <button
-                    type="button"
-                    onClick={() => setKeyword("")}
-                    className="ml-1 text-neutral-400 hover:text-red-600 cursor-pointer"
+                    className="ml-1 text-[#5B7077] hover:text-red-600 cursor-pointer"
                   >
                     ×
                   </button>
@@ -604,7 +576,7 @@ export default function ActivityLogsModule() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="ml-auto font-black text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
+                className="ml-auto font-black text-[#1F4E5A] hover:text-[#286575] hover:underline cursor-pointer"
               >
                 Reset All
               </button>

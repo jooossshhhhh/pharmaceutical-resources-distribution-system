@@ -13,6 +13,7 @@ import {
   Search,
   ShieldAlert,
   Trash2,
+  Truck,
   X,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
+  formatReturnId,
   getExpiredDays,
   getExpiryStatus,
   getLotStatus,
@@ -35,36 +37,102 @@ import {
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
 import PaginationControls from "../../components/PaginationControls";
 import ModalShell from "../../components/ModalShell";
+import { isChoFacility } from "@shared/utils/facilityUtils";
 
-export function MetricCard({ label, value, sub, onClick, active, compact = false }) {
-  const interactiveClass = onClick
-    ? "cursor-pointer transition hover:-translate-y-0.5 hover:border-[#34769B] hover:shadow-xs"
-    : "";
-  const activeClass = active ? "border-[#34769B] ring-2 ring-[#E3EEF5]" : "border-[#CFDDE0]";
+const toneConfig = {
+  blue: {
+    hoverBorder: "hover:border-[#1F4E5A]/40",
+    iconBg: "bg-[#E5EFF1] text-[#1F4E5A] group-hover:bg-[#1F4E5A] group-hover:text-white",
+    activeBorder: "border-[#1F4E5A] ring-2 ring-[#1F4E5A]/15 shadow-md",
+    activeIconBg: "bg-[#1F4E5A] text-white",
+  },
+  pine: {
+    hoverBorder: "hover:border-[#1F4E5A]/40",
+    iconBg: "bg-[#E5EFF1] text-[#1F4E5A] group-hover:bg-[#1F4E5A] group-hover:text-white",
+    activeBorder: "border-[#1F4E5A] ring-2 ring-[#1F4E5A]/15 shadow-md",
+    activeIconBg: "bg-[#1F4E5A] text-white",
+  },
+  teal: {
+    hoverBorder: "hover:border-[#4C9F80]/40",
+    iconBg: "bg-[#E2F3EC] text-[#226048] group-hover:bg-[#4C9F80] group-hover:text-white",
+    activeBorder: "border-[#4C9F80] ring-2 ring-[#4C9F80]/15 shadow-md",
+    activeIconBg: "bg-[#4C9F80] text-white",
+  },
+  emerald: {
+    hoverBorder: "hover:border-[#4C9F80]/40",
+    iconBg: "bg-[#E2F3EC] text-[#226048] group-hover:bg-[#4C9F80] group-hover:text-white",
+    activeBorder: "border-[#4C9F80] ring-2 ring-[#4C9F80]/15 shadow-md",
+    activeIconBg: "bg-[#4C9F80] text-white",
+  },
+  amber: {
+    hoverBorder: "hover:border-[#dc8939]/50",
+    iconBg: "bg-[#FDF3E9] text-[#965315] group-hover:bg-[#dc8939] group-hover:text-white",
+    activeBorder: "border-[#dc8939] ring-2 ring-[#dc8939]/20 shadow-md",
+    activeIconBg: "bg-[#dc8939] text-white",
+  },
+  orange: {
+    hoverBorder: "hover:border-[#D9826B]/50",
+    iconBg: "bg-[#FBE9E3] text-[#8F3F2B] group-hover:bg-[#D9826B] group-hover:text-white",
+    activeBorder: "border-[#D9826B] ring-2 ring-[#D9826B]/20 shadow-md",
+    activeIconBg: "bg-[#D9826B] text-white",
+  },
+  red: {
+    hoverBorder: "hover:border-[#D9826B]/60",
+    iconBg: "bg-[#FBE9E3] text-[#8F3F2B] group-hover:bg-[#8F3F2B] group-hover:text-white",
+    activeBorder: "border-[#D9826B] ring-2 ring-[#D9826B]/25 shadow-md",
+    activeIconBg: "bg-[#8F3F2B] text-white",
+  },
+};
+
+export function MetricCard({
+  label,
+  value,
+  sub,
+  onClick,
+  active = false,
+  icon,
+  tone = "blue",
+  compact = false,
+}) {
+  const toneSetting = toneConfig[tone] || toneConfig.blue;
+  const Element = onClick ? "button" : "article";
 
   return (
-    <article
+    <Element
+      type={onClick ? "button" : undefined}
       onClick={onClick}
-      className={`group rounded-xl border bg-[#F9FBFB] text-left shadow-xs ${compact ? "p-2.5 px-3.5" : "p-3.5"
-        } ${interactiveClass} ${activeClass}`}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
+      title={sub || label}
+      className={`group flex flex-col justify-between rounded-xl border bg-white p-3.5 text-left transition-all duration-150 ${
+        onClick
+          ? `cursor-pointer hover:-translate-y-0.5 hover:shadow-sm ${
+              active
+                ? `${toneSetting.activeBorder} shadow-md`
+                : `border-[#CFDDE0] shadow-xs ${toneSetting.hoverBorder}`
+            }`
+          : "border-[#CFDDE0] shadow-xs"
+      }`}
     >
-      <p
-        className={`font-black tracking-tight text-[#1B2B30] ${compact ? "text-xl leading-tight" : "mt-1 text-2xl"
-          }`}
-      >
-        {value}
-      </p>
-      <p className={`${compact ? "text-xs" : "text-sm"} font-black text-[#5B7077]`}>
-        {label}
-      </p>
-      {sub && (
-        <p className={`${compact ? "mt-0.5" : "mt-1"} text-xs font-medium leading-4 text-[#5B7077]/80 truncate`}>
-          {sub}
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[11px] font-black uppercase tracking-wider text-[#5B7077]">
+          {label}
+        </span>
+        {icon && (
+          <span
+            className={`rounded-lg p-1.5 transition-colors duration-150 shrink-0 ${
+              active ? toneSetting.activeIconBg : toneSetting.iconBg
+            }`}
+          >
+            {icon}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3">
+        <p className="text-2xl font-black leading-none tracking-tight text-[#1B2B30]">
+          {value}
         </p>
-      )}
-    </article>
+      </div>
+    </Element>
   );
 }
 
@@ -77,10 +145,11 @@ export function InventoryTabToggle({
       <button
         type="button"
         onClick={() => onSelectTab("DISPENSABLE")}
-        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${activeTab === "DISPENSABLE"
+        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${
+          activeTab === "DISPENSABLE"
             ? "bg-[#34769B] text-white shadow-xs"
             : "text-[#5B7077] hover:text-[#1B2B30] hover:bg-[#F9FBFB]/60"
-          }`}
+        }`}
       >
         <Package className="h-3.5 w-3.5" />
         <span>Dispensable Stock</span>
@@ -89,10 +158,11 @@ export function InventoryTabToggle({
       <button
         type="button"
         onClick={() => onSelectTab("EXPIRED")}
-        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${activeTab === "EXPIRED"
+        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold transition-all cursor-pointer ${
+          activeTab === "EXPIRED"
             ? "bg-[#D9826B] text-white shadow-xs"
             : "text-[#5B7077] hover:text-[#1B2B30] hover:bg-[#F9FBFB]/60"
-          }`}
+        }`}
       >
         <Lock className="h-3.5 w-3.5" />
         <span>Expired Stocks</span>
@@ -103,19 +173,21 @@ export function InventoryTabToggle({
 
 export function FacilityPicker({
   facilities = [],
-  value = "ALL",
+  value = "",
   onSelect,
   className = "",
   dropdownClassName = "",
+  showAllOption = false,
+  allOptionLabel = "All Health Centers (City-Wide)",
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const containerRef = useRef(null);
 
   const selectedFacility = useMemo(() => {
-    if (!value || value === "ALL") return null;
+    if (!value || (showAllOption && value === "ALL")) return null;
     return facilities.find((facility) => facility.id === value) || null;
-  }, [facilities, value]);
+  }, [facilities, value, showAllOption]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -157,7 +229,7 @@ export function FacilityPicker({
     setSearchTerm("");
   };
 
-  const isAllSelected = !value || value === "ALL";
+  const isAllSelected = showAllOption && (!value || value === "ALL");
 
   return (
     <div ref={containerRef} className={`relative shrink-0 ${className}`}>
@@ -172,7 +244,7 @@ export function FacilityPicker({
           <Building2 className="h-4 w-4 text-[#1F4E5A] shrink-0" />
           <span className="truncate">
             {isAllSelected
-              ? "All Health Centers (City-Wide)"
+              ? allOptionLabel
               : selectedFacility?.facility_name || "Select Health Center"}
           </span>
         </div>
@@ -208,7 +280,7 @@ export function FacilityPicker({
           </div>
 
           <div className="max-h-64 overflow-y-auto py-1">
-            {(!searchTerm || "all health centers city-wide".includes(searchTerm.toLowerCase())) && (
+            {showAllOption && (!searchTerm || allOptionLabel.toLowerCase().includes(searchTerm.toLowerCase())) && (
               <>
                 <button
                   type="button"
@@ -220,7 +292,7 @@ export function FacilityPicker({
                 >
                   <div className="flex items-center gap-2">
                     <Building2 className="h-3.5 w-3.5 text-[#2D7A5D]" />
-                    <span>All Health Centers (City-Wide)</span>
+                    <span>{allOptionLabel}</span>
                   </div>
                   {isAllSelected && <Check className="h-3.5 w-3.5 text-[#2D7A5D]" />}
                 </button>
@@ -582,28 +654,10 @@ export function InventoryTable({
               <th className="w-[18%] px-4 py-2.5">Brand name</th>
               <th className="w-[14%] px-4 py-2.5">Unit of Measurement</th>
               <th className="w-[18%] px-4 py-2.5">
-                <button
-                  type="button"
-                  onClick={() => onSort("quantity")}
-                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[#34769B]"
-                >
-                  {isExpiredTab ? "Expired Qty" : "Stock Level"}
-                  <SortArrowIcon
-                    direction={sortKey === "quantity" ? sortDirection : null}
-                  />
-                </button>
+                {isExpiredTab ? "Expired Qty" : "Stock Level"}
               </th>
               <th className="w-[18%] px-4 py-2.5">
-                <button
-                  type="button"
-                  onClick={() => onSort("expiration_date")}
-                  className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[#34769B]"
-                >
-                  {isExpiredTab ? "Date Expired" : "Expiration Date"}
-                  <SortArrowIcon
-                    direction={sortKey === "expiration_date" ? sortDirection : null}
-                  />
-                </button>
+                {isExpiredTab ? "Date Expired" : "Expiration Date"}
               </th>
             </tr>
           </thead>
@@ -787,8 +841,40 @@ export function InventoryLotTable({
   onSelectLot,
   showActions = false,
 }) {
-  const displayedLots = lots;
-  const shouldShowProcurement = showProcurement && !isBhw;
+  const isBarangayLot = Boolean(lots.length > 0 && lots[0]?.facility && !isChoFacility(lots[0].facility));
+  const shouldShowProcurement = showProcurement && !isBhw && !isBarangayLot;
+
+  const isReturnBatch = (lot) =>
+    lot?.intake_type === "RETURN" ||
+    (typeof lot?.po_number === "string" && lot.po_number.startsWith("RET-")) ||
+    Boolean(lot?.origin_facility_id) ||
+    Boolean(lot?.return_reason);
+
+  const procurementLots = useMemo(
+    () => lots.filter((lot) => !isReturnBatch(lot)),
+    [lots]
+  );
+
+  const returnedLots = useMemo(
+    () => lots.filter((lot) => isReturnBatch(lot)),
+    [lots]
+  );
+
+  const [activeCategory, setActiveCategory] = useState(() =>
+    procurementLots.length === 0 && returnedLots.length > 0 ? "RETURNED" : "PROCUREMENT"
+  ); // "PROCUREMENT" | "RETURNED"
+
+  useEffect(() => {
+    if (procurementLots.length === 0 && returnedLots.length > 0 && activeCategory === "PROCUREMENT") {
+      setActiveCategory("RETURNED");
+    }
+  }, [procurementLots.length, returnedLots.length]);
+
+  const displayedLots = useMemo(() => {
+    if (!shouldShowProcurement) return lots;
+    if (activeCategory === "RETURNED") return returnedLots;
+    return procurementLots;
+  }, [shouldShowProcurement, activeCategory, procurementLots, returnedLots, lots]);
 
   const {
     currentPage,
@@ -816,15 +902,72 @@ export function InventoryLotTable({
 
   return (
     <section className="rounded-xl border border-[#d8dadc] bg-white shadow-2xs overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-[#fafaf9] px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <p className="text-xs font-black uppercase tracking-wider text-[#0d1117]">
-            Lot Records
-          </p>
-          <span className="inline-flex items-center rounded-full bg-neutral-200/80 px-2 py-0.5 text-[10px] font-bold text-neutral-700">
-            {displayedLots.length}
-          </span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-neutral-100 bg-[#fafaf9] px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-black uppercase tracking-wider text-[#0d1117]">
+              Lot Records
+            </p>
+            <span className="inline-flex items-center rounded-full bg-neutral-200/80 px-2 py-0.5 text-[10px] font-bold text-neutral-700">
+              {displayedLots.length}
+            </span>
+          </div>
+
+          {shouldShowProcurement && (
+            <div className="inline-flex items-center rounded-lg bg-[#E5EFF1] p-0.5 border border-[#CFDDE0] shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory("PROCUREMENT");
+                  setCurrentPage(1);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+                  activeCategory === "PROCUREMENT"
+                    ? "bg-[#34769B] text-white shadow-xs"
+                    : "text-[#5B7077] hover:text-[#1B2B30]"
+                }`}
+              >
+                <Truck className="h-3 w-3" />
+                <span>Procurement Stock</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    activeCategory === "PROCUREMENT"
+                      ? "bg-white/20 text-white"
+                      : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  {procurementLots.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory("RETURNED");
+                  setCurrentPage(1);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+                  activeCategory === "RETURNED"
+                    ? "bg-[#1E7452] text-white shadow-xs"
+                    : "text-[#5B7077] hover:text-[#1B2B30]"
+                }`}
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Returned Stock</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    activeCategory === "RETURNED"
+                      ? "bg-white/20 text-white"
+                      : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  {returnedLots.length}
+                </span>
+              </button>
+            </div>
+          )}
         </div>
+
         {onSelectLot && (
           <p className="text-[11px] font-semibold text-neutral-400">
             {canEdit
@@ -838,13 +981,23 @@ export function InventoryLotTable({
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
             <tr>
-              {shouldShowProcurement && <th className="px-4 py-2.5">PO #</th>}
+              {shouldShowProcurement && (
+                <th className="px-4 py-2.5">
+                  {activeCategory === "RETURNED" ? "Return Slip #" : "PO #"}
+                </th>
+              )}
               <th className="px-4 py-2.5">Lot No.</th>
-              {shouldShowProcurement && <th className="px-4 py-2.5">Supplier</th>}
+              {shouldShowProcurement && (
+                <th className="px-4 py-2.5">
+                  {activeCategory === "RETURNED" ? "Returning Station" : "Supplier"}
+                </th>
+              )}
               <th className="px-4 py-2.5">Quantity</th>
-              <th className="px-4 py-2.5">Received</th>
+              <th className="px-4 py-2.5">
+                {activeCategory === "RETURNED" ? "Restocked" : "Received"}
+              </th>
               <th className="px-4 py-2.5">Expiration</th>
-              <th className="px-4 py-2.5">Status</th>
+              <th className="px-4 py-2.5">Batch Status</th>
               {hasActions && <th className="px-4 py-2.5 text-center">Action</th>}
             </tr>
           </thead>
@@ -858,15 +1011,25 @@ export function InventoryLotTable({
                 >
                   <div className="max-w-md mx-auto">
                     <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
-                      <Package className="h-5 w-5" />
+                      {activeCategory === "RETURNED" ? (
+                        <RotateCcw className="h-5 w-5 text-emerald-600" />
+                      ) : (
+                        <Package className="h-5 w-5" />
+                      )}
                     </div>
                     <p className="font-bold text-[#0d1117]">
-                      {shouldShowProcurement ? "No Supplier Deliveries" : "No Stock Batches"}
+                      {activeCategory === "RETURNED"
+                        ? "No Returned Stock Batches"
+                        : activeCategory === "PROCUREMENT"
+                          ? "No Supplier Deliveries"
+                          : "No Stock Batches"}
                     </p>
                     <p className="mt-0.5 text-xs text-neutral-400">
-                      {shouldShowProcurement
-                        ? "No stock batches for this medicine have been recorded via Supplier Purchase Order."
-                        : "No stock batches have been recorded for this medicine."}
+                      {activeCategory === "RETURNED"
+                        ? "No batches for this medicine have been returned from Barangay Health Stations."
+                        : activeCategory === "PROCUREMENT"
+                          ? "No stock batches for this medicine have been recorded via Supplier Purchase Order."
+                          : "No stock batches have been recorded for this medicine."}
                     </p>
                   </div>
                 </td>
@@ -896,9 +1059,16 @@ export function InventoryLotTable({
                     {/* Column 1: PO Number (CHO only) */}
                     {shouldShowProcurement && (
                       <td className="px-4 py-3 align-top whitespace-nowrap">
-                        <span className="font-mono text-xs font-bold text-neutral-600">
-                          {normalizePoNumber(lot.po_number) || "—"}
-                        </span>
+                        {lot.intake_type === "RETURN" || (typeof lot.po_number === "string" && lot.po_number.startsWith("RET-")) ? (
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            <RotateCcw className="h-3 w-3 text-emerald-600 shrink-0" />
+                            {formatReturnId(lot.po_number) || "RETURN"}
+                          </span>
+                        ) : (
+                          <span className="font-mono text-xs font-bold text-neutral-600">
+                            {normalizePoNumber(lot.po_number) || "—"}
+                          </span>
+                        )}
                       </td>
                     )}
 
@@ -923,18 +1093,35 @@ export function InventoryLotTable({
                     {shouldShowProcurement && (
                       <td className="px-4 py-3 align-top">
                         <div className="max-w-[200px]">
-                          <p className="font-bold text-[#0d1117] text-xs truncate">
-                            {lot.supplier_name || lot.supplier?.supplier_name || "—"}
-                          </p>
-                          {lot.supplier_contact ? (
-                            <p className="text-[11px] font-medium text-neutral-500 truncate">
-                              {lot.supplier_contact}
-                            </p>
-                          ) : lot.supplier_address ? (
-                            <p className="text-[11px] font-medium text-neutral-500 truncate">
-                              {lot.supplier_address}
-                            </p>
-                          ) : null}
+                          {lot.intake_type === "RETURN" || (typeof lot.po_number === "string" && lot.po_number.startsWith("RET-")) ? (
+                            <div>
+                              <p className="font-bold text-emerald-900 text-xs truncate">
+                                {lot.origin_facility?.facility_name ||
+                                  (lot.supplier_name && lot.supplier_name.startsWith("Returned from ")
+                                    ? lot.supplier_name.replace("Returned from ", "")
+                                    : lot.supplier_name) ||
+                                  "Barangay Health Center"}
+                              </p>
+                              <p className="text-[10px] font-medium text-emerald-700 truncate">
+                                {lot.return_reason ? `Reason: ${lot.return_reason}` : "Station Return"}
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="font-bold text-[#0d1117] text-xs truncate">
+                                {lot.supplier_name || lot.supplier?.supplier_name || "—"}
+                              </p>
+                              {lot.supplier_contact ? (
+                                <p className="text-[11px] font-medium text-neutral-500 truncate">
+                                  {lot.supplier_contact}
+                                </p>
+                              ) : lot.supplier_address ? (
+                                <p className="text-[11px] font-medium text-neutral-500 truncate">
+                                  {lot.supplier_address}
+                                </p>
+                              ) : null}
+                            </>
+                          )}
                         </div>
                       </td>
                     )}
@@ -989,9 +1176,24 @@ export function InventoryLotTable({
 
                     {/* Column 5: Stock Health */}
                     <td className="px-4 py-3 align-top whitespace-nowrap">
-                      <span className={'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-black ' + status.badgeClass}>
-                        {status.label}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-black ' + status.badgeClass}>
+                          {status.label}
+                        </span>
+                        {shouldShowProcurement && activeCategory === "ALL" && (
+                          isReturnBatch(lot) ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <RotateCcw className="h-2.5 w-2.5" />
+                              Return
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                              <Truck className="h-2.5 w-2.5" />
+                              Procurement
+                            </span>
+                          )
+                        )}
+                      </div>
                     </td>
 
                     {/* Column 6: Action */}

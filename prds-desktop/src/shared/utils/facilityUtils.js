@@ -249,6 +249,17 @@ export const sortFacilities = (facilities, sortDirection = "ASC") => {
 
 export const isChoFacility = (facility) => {
   if (!facility) return false;
+  if (typeof facility === "string") {
+    const lower = facility.toLowerCase();
+    const upper = facility.toUpperCase();
+    return (
+      upper === "CHO" ||
+      upper === "CHO-NAGA" ||
+      lower.includes("city health office") ||
+      lower.includes("central health office") ||
+      lower.includes("cho naga")
+    );
+  }
   const code = (facility.facility_code || "").toUpperCase();
   const type = (facility.facility_type || "").toUpperCase();
   const name = (facility.facility_name || "").toLowerCase();
@@ -258,6 +269,7 @@ export const isChoFacility = (facility) => {
     type === "CHO" ||
     type === "MAIN_HEALTH_CENTER" ||
     name.includes("city health office") ||
-    name.includes("central health office")
+    name.includes("central health office") ||
+    name.includes("cho naga")
   );
 };

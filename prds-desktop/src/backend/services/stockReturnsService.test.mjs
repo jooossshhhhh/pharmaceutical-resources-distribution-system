@@ -9,6 +9,9 @@ import {
   getReturnReasonLabel,
   getReturnReasonTone,
   getReturnStatusBadge,
+  formatBrandName,
+  reconcileConfirmedReturnsIntoInventory,
+  resolveStockReturnMedicineInfo,
   RETURN_REASON_OPTIONS,
   RETURN_STATUS_OPTIONS,
 } from "./stockReturnsService.js";
@@ -84,15 +87,15 @@ test("flattenStockReturnRows converts legacy slip item data into finalized stock
   assert.equal(rows[0].status, "RECEIVED");
 });
 
-test("generateReturnId and generateReturnSlipNo format return IDs accurately with facility code and date", () => {
+test("generateReturnId and generateReturnSlipNo format return IDs accurately with compact format", () => {
   const returnId = generateReturnId("BHW-ALPACO");
-  assert.match(returnId, /^RET-BHWALPACO-\d{8}-[A-Z0-9]{4}$/);
+  assert.match(returnId, /^RET-[A-Z0-9]{8}$/);
 
   const slipNo = generateReturnSlipNo("BHW-ALPACO");
-  assert.match(slipNo, /^RET-BHWALPACO-\d{8}-[A-Z0-9]{4}$/);
+  assert.match(slipNo, /^RET-[A-Z0-9]{8}$/);
 
   const fallbackReturnId = generateReturnId();
-  assert.match(fallbackReturnId, /^RET-BHW-\d{8}-[A-Z0-9]{4}$/);
+  assert.match(fallbackReturnId, /^RET-[A-Z0-9]{8}$/);
 });
 
 test("return reason and status helpers return proper labels and tone badges", () => {
@@ -181,4 +184,224 @@ test("buildStockReturnPayload defaults unit_cost to 0 when omitted by BHW submis
   assert.equal(result.status, "PENDING");
   assert.equal(result.quantity, 25);
 });
+
+test("buildStockReturnPayload captures complete medicine information including dosage and unit_of_measure", () => {
+  const result = buildStockReturnPayload({
+    formValues: {
+      lot_no: "LOT-8821",
+      medicine_id: "med-500",
+      quantity: "15",
+      unit_cost: "12.75",
+      expiration_date: "2027-06-30",
+      reason: "REALLOCATION",
+      dosage: "500 mg",
+      unit_of_measure: "capsule",
+      brand_name: "Amoxil Extra",
+      facility_id: "bhw-alpaco",
+    },
+    medicine: {
+      id: "med-500",
+      generic_name: "Amoxicillin",
+      brand_name: "Amoxil",
+      dosage: "250 mg",
+      unit_of_measure: "tablet",
+    },
+    userProfile: {
+      id: "user-bhw",
+      role: "BHW",
+      facility_id: "bhw-alpaco",
+    },
+  });
+
+  assert.equal(result.medicine_name, "Amoxicillin");
+  assert.equal(result.dosage, "500 mg");
+  assert.equal(result.brand_name, "Amoxil Extra");
+  assert.equal(result.unit_of_measure, "capsule");
+  assert.equal(result.lot_no, "LOT-8821");
+  assert.equal(result.quantity, 15);
+  assert.equal(result.unit_cost, 12.75);
+});
+
+test("flattenStockReturnRows preserves dosage and unit_of_measure from items and medicine relation", () => {
+  const rows = flattenStockReturnRows([
+    {
+      id: "ret-200",
+      source_facility_id: "facility-bhw",
+      source_facility: { id: "facility-bhw", facility_name: "BHS Poblacion" },
+      return_reason: "EXCESS_STOCK",
+      status: "CONFIRMED",
+      items: [
+        {
+          id: "item-201",
+          batch_number: "BATCH-441",
+          quantity: 20,
+          unit_cost: "5.00",
+          dosage: "10 mg",
+          unit_of_measure: "bottle",
+          expiration_date: "2028-01-01",
+          medicine: { generic_name: "Cetirizine", brand_name: "Alnix", dosage: "5 mg", unit_of_measure: "tablet" },
+        },
+      ],
+    },
+  ]);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].dosage, "10 mg");
+  assert.equal(rows[0].unit_of_measure, "bottle");
+  assert.equal(rows[0].medicine_name, "Cetirizine");
+  assert.equal(rows[0].brand_name, "Alnix");
+  assert.equal(rows[0].lot_no, "BATCH-441");
+});
+
+test("formatBrandName strips generic placeholders and preserves valid brand names", () => {
+  assert.equal(formatBrandName("Ritemed"), "Ritemed");
+  assert.equal(formatBrandName("  Biogesic  "), "Biogesic");
+  assert.equal(formatBrandName("Generic"), "");
+  assert.equal(formatBrandName("Generic (No Brand)"), "");
+  assert.equal(formatBrandName("none"), "");
+  assert.equal(formatBrandName("N/A"), "");
+  assert.equal(formatBrandName("—"), "");
+  assert.equal(formatBrandName(null), "");
+});
+
+test("resolveStockReturnMedicineInfo resolves full medicine details including dosage via partial match and lot lookup", () => {
+  const medicines = [
+    {
+      id: "med-ascorbic",
+      generic_name: "Ascorbic Acid",
+      dosage: "500 mg",
+      unit_of_measure: "tablet",
+      unit_cost: "2.50",
+    },
+  ];
+
+  const medicinesMap = new Map();
+  medicinesMap.set("med-ascorbic", medicines[0]);
+  medicinesMap.set("ascorbic acid", medicines[0]);
+
+  const inventory = [
+    {
+      id: "inv-1",
+      lot_no: "0827023",
+      medicine_id: "med-ascorbic",
+      brand_name: "Ritemed",
+      dosage: "500 mg",
+      unit_of_measure: "tablet",
+      unit_cost: 2.5,
+    },
+  ];
+
+  // 1. Test item having only "Ascorbic" as medicine_name (user's exact scenario from screenshot)
+  const resolved = resolveStockReturnMedicineInfo(
+    {
+      medicine_name: "Ascorbic",
+      brand_name: "Ritemed",
+      lot_no: "0827023",
+      quantity: 20,
+    },
+    { medicinesMap, medicines, inventory }
+  );
+
+  assert.equal(resolved.genericName, "Ascorbic");
+  assert.equal(resolved.brand, "Ritemed");
+  assert.equal(resolved.dosage, "500 mg");
+  assert.equal(resolved.unit, "tablet");
+  assert.equal(resolved.itemQty, 20);
+  assert.equal(resolved.itemCost, 2.5);
+  assert.equal(resolved.itemTotal, 50);
+
+  // 2. Test fallback when dosage is embedded in medicine name
+  const regexResolved = resolveStockReturnMedicineInfo(
+    {
+      medicine_name: "Paracetamol 500mg",
+      brand_name: "Biogesic",
+      quantity: 10,
+    },
+    { medicinesMap: new Map(), medicines: [], inventory: [] }
+  );
+
+  assert.equal(regexResolved.dosage, "500mg");
+  assert.equal(regexResolved.brand, "Biogesic");
+  assert.equal(regexResolved.itemQty, 10);
+});
+
+test("reconcileConfirmedReturnsIntoInventory correctly generates returned lots and attaches them to CHO inventory", async () => {
+  const choFacility = {
+    id: "cho-id",
+    facility_name: "City Health Office - City of Naga",
+    facility_code: "CHO-NAGA",
+  };
+  const bCenter = {
+    id: "inayagan-id",
+    facility_name: "Inayagan Barangay Health Center",
+    facility_code: "HC-INAYAGAN",
+  };
+
+  const facilities = [choFacility, bCenter];
+  const medicines = [
+    {
+      id: "med-ascorbic",
+      generic_name: "Ascorbic",
+      dosage: "100 mg/mL, 15 mL oral drops",
+      unit_of_measure: "bottle",
+      unit_cost: 45,
+    },
+  ];
+
+  const currentInventory = [
+    {
+      id: "proc-1",
+      facility_id: "cho-id",
+      medicine_id: "med-ascorbic",
+      batch_number: "0827023",
+      po_number: "PO-2026-001",
+      intake_type: "PROCUREMENT",
+      quantity: 140,
+      unit_cost: 45,
+      expiration_date: "2027-01-27",
+    },
+  ];
+
+  // Save confirmed return into snapshot
+  const { saveSnapshot, saveUserSession, STORAGE_KEYS } = await import("../database/snapshotStore.js");
+  saveUserSession({ id: "user-test" }, { id: "user-test", role: "CHO_PHARMACIST" });
+
+  const testReturn = {
+    id: "ret-user-test-1",
+    return_id: "RET-HCINAYAGAN-20261029-HGKO",
+    facility_id: "inayagan-id",
+    medicine_id: "med-ascorbic",
+    medicine_name: "Ascorbic",
+    brand_name: "Ritemed",
+    lot_no: "0827023",
+    quantity: 20,
+    unit_cost: 0,
+    expiration_date: "2027-01-27",
+    reason: "REALLOCATION",
+    status: "CONFIRMED",
+  };
+  saveSnapshot(STORAGE_KEYS.STOCK_RETURNS, [testReturn]);
+
+  const reconciled = await reconcileConfirmedReturnsIntoInventory(currentInventory, {
+    facilities,
+    medicines,
+    stockReturns: [testReturn],
+  });
+
+  // Reconciled inventory should now contain both procurement and returned lots
+  assert.equal(reconciled.length, 2);
+
+  const returnLot = reconciled.find((it) => it.id === "inv_ret_ret-user-test-1");
+  assert.ok(returnLot, "Returned lot must be present in reconciled inventory");
+  assert.equal(returnLot.facility_id, "cho-id");
+  assert.equal(returnLot.medicine_id, "med-ascorbic");
+  assert.equal(returnLot.batch_number, "0827023");
+  assert.equal(returnLot.po_number, "RET-HGKO1029");
+  assert.equal(returnLot.quantity, 20);
+  assert.equal(returnLot.unit_cost, 45, "Unit cost should resolve from existing batch when 0");
+  assert.equal(returnLot.intake_type, "RETURN");
+  assert.equal(returnLot.status, "ACTIVE");
+  assert.equal(returnLot.supplier_name, "Returned from Inayagan Barangay Health Center");
+});
+
 

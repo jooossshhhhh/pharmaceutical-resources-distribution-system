@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
+  Boxes,
   Building2,
   Calendar,
   CheckCircle2,
-  Download,
+  Clock,
   Package,
   Pill,
   Plus,
   Receipt,
   RefreshCw,
+  RotateCcw,
   Search,
   X,
 } from "lucide-react";
@@ -18,22 +20,22 @@ import AdminShell from "../../components/layout/AdminShell";
 import PaginationControls from "../../components/PaginationControls";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
-import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { getSqliteDb, isTauriEnvironment } from "@backend/database/sqliteClient";
 import {
   calculateStockReturnKpis,
   fetchStockReturns,
+  formatReturnId,
   getReturnReasonLabel,
   getReturnReasonTone,
   getReturnStatusBadge,
+  resolveStockReturnMedicineInfo,
   RETURN_STATUS_OPTIONS,
 } from "@backend/services/stockReturnsService";
 import { formatCurrency, formatDate, formatNumber } from "@shared/utils/inventoryUtils";
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
-import { MetricCard } from "../inventory/inventoryComponents";
 import RecordStockReturnModal from "./components/RecordStockReturnModal";
 import StockReturnDetailsModal from "./components/StockReturnDetailsModal";
-
-const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
 
 export default function StockReturnsModule() {
   const { profile } = useAuth();
@@ -66,9 +68,62 @@ export default function StockReturnsModule() {
         facilityId: isBhw ? profile?.facility_id : undefined,
       });
       setReturnsList(data);
+
+      let currentMeds = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+      if (currentMeds.length === 0 && isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          const rows = await db.select("SELECT id, generic_name, dosage, unit_of_measure, data_json FROM medicines");
+          if (rows?.length) {
+            currentMeds = rows.map((r) => {
+              let parsed = {};
+              try { parsed = r.data_json ? JSON.parse(r.data_json) : {}; } catch {}
+              return { ...parsed, id: r.id, generic_name: r.generic_name, dosage: r.dosage, unit_of_measure: r.unit_of_measure };
+            });
+            saveSnapshot(STORAGE_KEYS.MEDICINES, currentMeds);
+          }
+        } catch (e) {
+          console.warn("[StockReturnsModule] SQLite medicines read fallback:", e);
+        }
+      }
+
       setFacilities(getSnapshot(STORAGE_KEYS.FACILITIES, []));
-      setMedicines(getSnapshot(STORAGE_KEYS.MEDICINES, []));
-      setInventory(getSnapshot(STORAGE_KEYS.INVENTORY, []));
+      setMedicines(currentMeds);
+
+      let currentInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+      if (isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          const invRows = await db.select(
+            "SELECT id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, data_json FROM inventory WHERE quantity > 0"
+          );
+          if (invRows?.length) {
+            currentInv = invRows.map((r) => {
+              let parsed = {};
+              try { parsed = r.data_json ? JSON.parse(r.data_json) : {}; } catch {}
+              return { ...parsed, ...r };
+            });
+            saveSnapshot(STORAGE_KEYS.INVENTORY, currentInv);
+          }
+        } catch (e) {
+          console.warn("[StockReturnsModule] SQLite inventory read fallback:", e);
+        }
+      }
+      if (currentInv.length === 0 && isCurrentNetworkOnline()) {
+        try {
+          const { data: remoteInv } = await supabase
+            .from("inventory")
+            .select("id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name")
+            .gt("quantity", 0);
+          if (remoteInv?.length) {
+            currentInv = remoteInv;
+            saveSnapshot(STORAGE_KEYS.INVENTORY, currentInv);
+          }
+        } catch (e) {
+          console.warn("[StockReturnsModule] Remote inventory read fallback:", e);
+        }
+      }
+      setInventory(currentInv);
     } catch (err) {
       console.error("[StockReturnsModule] Failed to load stock returns:", err);
     } finally {
@@ -100,6 +155,15 @@ export default function StockReturnsModule() {
       ),
     [facilities]
   );
+
+  const medicinesMap = useMemo(() => {
+    const map = new Map();
+    for (const m of medicines || []) {
+      if (m.id) map.set(m.id, m);
+      if (m.generic_name) map.set(m.generic_name.toLowerCase().trim(), m);
+    }
+    return map;
+  }, [medicines]);
 
   const baseReturns = useMemo(() => {
     if (isBhw && profile?.facility_id) {
@@ -178,49 +242,6 @@ export default function StockReturnsModule() {
     setTimeout(() => setNotice(""), 5000);
   };
 
-  const handleExportCsv = () => {
-    const headers = [
-      "Return ID",
-      "Return Date",
-      ...(!isBhw ? ["Returning Facility"] : []),
-      "Medicine Name",
-      "Brand Name",
-      "Batch / Lot No",
-      "Quantity",
-      ...(!isBhw ? ["Unit Cost (PHP)", "Total Value (PHP)"] : []),
-      "Expiration Date",
-      "Reason",
-      "Status",
-    ];
-
-    const rows = filteredReturns.map((item) => {
-      const qty = parseInt(item.quantity, 10) || 0;
-      const cost = parseFloat(item.unit_cost) || 0;
-      return [
-        item.return_id || item.return_slip_no || String(item.id || "").slice(0, 8),
-        item.return_date || item.submitted_at ? formatDate(item.return_date || item.submitted_at) : "",
-        ...(!isBhw ? [item.facility?.facility_name || ""] : []),
-        item.medicine_name || "",
-        item.brand_name || "",
-        item.lot_no || item.batch_number || "",
-        qty,
-        ...(!isBhw ? [cost.toFixed(2), (qty * cost).toFixed(2)] : []),
-        item.expiration_date ? formatDate(item.expiration_date) : "",
-        getReturnReasonLabel(item.reason),
-        getReturnStatusBadge(item.status).label,
-      ];
-    });
-
-    const csvContent = [headers.map(escapeCsv).join(","), ...rows.map((row) => row.map(escapeCsv).join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `PRDS_Stock_Returns_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <AdminShell profile={profile} onSignOut={logoutUser}>
       <div className="space-y-4 pb-12">
@@ -266,14 +287,6 @@ export default function StockReturnsModule() {
               </button>
               <button
                 type="button"
-                onClick={handleExportCsv}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#d8dadc] bg-white px-3.5 text-xs font-bold text-neutral-700 shadow-2xs hover:bg-neutral-50 hover:border-neutral-300 transition cursor-pointer"
-              >
-                <Download className="h-3.5 w-3.5 text-neutral-600" />
-                Export CSV
-              </button>
-              <button
-                type="button"
                 onClick={() => setIsRecordModalOpen(true)}
                 className="btn-primary inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-bold text-white shadow-xs hover:brightness-105 active:scale-[0.98] transition cursor-pointer"
               >
@@ -285,26 +298,137 @@ export default function StockReturnsModule() {
         </section>
 
         {/* Metric Summary Cards in standard PRDS format */}
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <MetricCard
-            label="Pending Confirmation"
-            value={formatNumber(kpis.pendingConfirmationCount)}
-            onClick={() => setStatusFilter((prev) => (prev === "PENDING" ? "ALL" : "PENDING"))}
-            active={statusFilter === "PENDING"}
-            compact
-          />
-          <MetricCard
-            label="Confirmed Returns"
-            value={formatNumber(kpis.confirmedCount)}
-            onClick={() => setStatusFilter((prev) => (prev === "CONFIRMED" ? "ALL" : "CONFIRMED"))}
-            active={statusFilter === "CONFIRMED"}
-            compact
-          />
-          <MetricCard
-            label="Returned Units"
-            value={formatNumber(kpis.totalUnitsReturned)}
-            compact
-          />
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Card 1: Total Returns */}
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter("ALL");
+              pagination.setCurrentPage(1);
+            }}
+            className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
+              statusFilter === "ALL"
+                ? "border-[#1F4E5A] bg-white shadow-md ring-2 ring-[#1F4E5A]/15"
+                : "border-[#CFDDE0] bg-white shadow-xs hover:border-[#1F4E5A]/40 hover:shadow-sm"
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
+                Total Returns
+              </span>
+              <span
+                className={`rounded-lg p-2 transition-colors duration-150 ${
+                  statusFilter === "ALL"
+                    ? "bg-[#1F4E5A] text-white"
+                    : "bg-[#E5EFF1] text-[#1F4E5A] group-hover:bg-[#1F4E5A] group-hover:text-white"
+                }`}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-[#1B2B30] leading-none">
+                {formatNumber(kpis.totalReturns)}
+              </p>
+              <p className="mt-1 text-xs text-[#5B7077]">
+                All recorded return slips
+              </p>
+            </div>
+          </button>
+
+          {/* Card 2: Pending Confirmation */}
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter((prev) => (prev === "PENDING" ? "ALL" : "PENDING"));
+              pagination.setCurrentPage(1);
+            }}
+            className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
+              statusFilter === "PENDING"
+                ? "border-[#34769B] bg-white shadow-md ring-2 ring-[#34769B]/15"
+                : "border-[#CFDDE0] bg-white shadow-xs hover:border-[#34769B]/40 hover:shadow-sm"
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
+                Pending Confirmation
+              </span>
+              <span
+                className={`rounded-lg p-2 transition-colors duration-150 ${
+                  statusFilter === "PENDING"
+                    ? "bg-[#34769B] text-white"
+                    : "bg-[#E3EEF5] text-[#34769B] group-hover:bg-[#34769B] group-hover:text-white"
+                }`}
+              >
+                <Clock className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-[#1B2B30] leading-none">
+                {formatNumber(kpis.pendingConfirmationCount)}
+              </p>
+              <p className="mt-1 text-xs text-[#5B7077]">
+                Awaiting CHO verification
+              </p>
+            </div>
+          </button>
+
+          {/* Card 3: Confirmed Returns */}
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter((prev) => (prev === "CONFIRMED" ? "ALL" : "CONFIRMED"));
+              pagination.setCurrentPage(1);
+            }}
+            className={`group flex flex-col justify-between rounded-xl border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 cursor-pointer ${
+              statusFilter === "CONFIRMED"
+                ? "border-[#4C9F80] bg-white shadow-md ring-2 ring-[#4C9F80]/15"
+                : "border-[#CFDDE0] bg-white shadow-xs hover:border-[#4C9F80]/40 hover:shadow-sm"
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
+                Confirmed Returns
+              </span>
+              <span
+                className={`rounded-lg p-2 transition-colors duration-150 ${
+                  statusFilter === "CONFIRMED"
+                    ? "bg-[#4C9F80] text-white"
+                    : "bg-[#E2F3EC] text-[#226048] group-hover:bg-[#4C9F80] group-hover:text-white"
+                }`}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-[#1B2B30] leading-none">
+                {formatNumber(kpis.confirmedCount)}
+              </p>
+              <p className="mt-1 text-xs text-[#5B7077]">
+                Restocked into inventory
+              </p>
+            </div>
+          </button>
+
+          {/* Card 4: Returned Units */}
+          <div className="flex flex-col justify-between rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-[#5B7077]">
+                Returned Units
+              </span>
+              <span className="rounded-lg bg-[#E5EFF1] p-2 text-[#1F4E5A]">
+                <Boxes className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-[#1B2B30] leading-none">
+                {formatNumber(kpis.totalUnitsReturned)}
+              </p>
+              <p className="mt-1 text-xs text-[#5B7077]">
+                Total medicine units
+              </p>
+            </div>
+          </div>
         </section>
 
         {/* Filter and Search Bar */}
@@ -386,9 +510,9 @@ export default function StockReturnsModule() {
             <table className="w-full min-w-[850px] text-left text-sm">
               <thead className="sticky top-0 z-10 border-b border-slate-200/80 bg-white text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Return ID</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Return ID</th>
                   {!isBhw && <th className="px-4 py-3">Returning Facility</th>}
-                  <th className="px-4 py-3">Medicine</th>
+                  <th className="px-4 py-3 min-w-[220px]">Medicine Information</th>
                   <th className="px-4 py-3">Batch / Lot</th>
                   <th className="px-4 py-3">Expiration Date</th>
                   <th className="px-4 py-3 text-right">Quantity</th>
@@ -414,9 +538,10 @@ export default function StockReturnsModule() {
                   pagination.paginatedRows.map((item) => {
                     const statusBadge = getReturnStatusBadge(item.status);
                     const returnIdDisplay =
-                      item.return_id ||
-                      item.return_slip_no ||
-                      (item.id ? `RET-${String(item.id).slice(0, 8).toUpperCase()}` : "—");
+                      formatReturnId(item.return_id || item.return_slip_no) ||
+                      (item.id ? formatReturnId(item.id) : "—");
+
+                    const info = resolveStockReturnMedicineInfo(item, { medicinesMap, medicines, inventory });
 
                     return (
                       <tr
@@ -425,7 +550,7 @@ export default function StockReturnsModule() {
                         className="group cursor-pointer transition hover:bg-emerald-50/30"
                       >
                         {/* Return ID (Clean ID only, no date subheading) */}
-                        <td className="px-4 py-3.5 align-middle">
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
                           <span className="font-mono text-xs font-bold text-[#0d1117] tracking-tight">
                             {returnIdDisplay}
                           </span>
@@ -440,14 +565,38 @@ export default function StockReturnsModule() {
                           </td>
                         )}
 
-                        {/* Medicine Generic & Brand */}
+                        {/* Medicine Information (Unified generic, brand, dosage, and unit) */}
                         <td className="px-4 py-3.5 align-middle">
-                          <p className="text-xs font-bold text-[#0d1117] leading-tight">
-                            {item.medicine_name || "Medicine Item"}
-                          </p>
-                          <p className="mt-0.5 text-[11px] font-medium text-neutral-500">
-                            {item.brand_name || "Generic"}
-                          </p>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-bold text-[#0d1117] leading-tight">
+                              {info.genericName}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {info.brand ? (
+                                <span className="inline-flex items-center rounded bg-neutral-100 px-1.5 py-0.2 text-[10px] font-bold text-neutral-700 border border-neutral-200/70">
+                                  Brand: {info.brand}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded bg-neutral-100/70 px-1.5 py-0.2 text-[10px] font-medium text-neutral-500">
+                                  Generic
+                                </span>
+                              )}
+                              {info.dosage ? (
+                                <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.2 text-[10px] font-semibold text-blue-700 border border-blue-200/60">
+                                  Dosage: {info.dosage}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded bg-neutral-50 px-1.5 py-0.2 text-[10px] font-medium text-neutral-400 border border-neutral-200/50">
+                                  Dosage: N/A
+                                </span>
+                              )}
+                              {info.unit && (
+                                <span className="inline-flex items-center rounded bg-slate-50 px-1.5 py-0.2 text-[10px] font-medium text-slate-600 border border-slate-200/60">
+                                  Unit: {info.unit}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </td>
 
                         {/* Batch / Lot */}
@@ -461,9 +610,12 @@ export default function StockReturnsModule() {
                         </td>
 
                         {/* Quantity */}
-                        <td className="px-4 py-3.5 align-middle text-right">
+                        <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
                           <span className="text-xs font-black text-[#0d1117] tabular-nums">
-                            {formatNumber(item.quantity)}
+                            {formatNumber(info.itemQty || item.quantity)}
+                          </span>
+                          <span className="ml-1 text-[11px] font-semibold text-neutral-500 lowercase">
+                            {info.unit || "units"}
                           </span>
                         </td>
 
@@ -516,6 +668,8 @@ export default function StockReturnsModule() {
         onClose={() => setSelectedReturnRecord(null)}
         returnRecord={selectedReturnRecord}
         allReturns={returnsList}
+        medicines={medicines}
+        inventory={inventory}
         onRecordUpdated={handleRecordUpdated}
         currentUserProfile={profile}
       />

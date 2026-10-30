@@ -127,17 +127,23 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           const expiresAt = activeSession.expires_at ? activeSession.expires_at * 1000 : 0;
           // Refresh if expired or within 2 minutes of expiry
           if (!expiresAt || expiresAt - Date.now() < 120000) {
-            await supabase.auth.refreshSession();
+            const { data: refreshed } = await supabase.auth.refreshSession();
+            if (refreshed?.session) activeSession = refreshed.session;
           }
         } else {
           // No active in-memory session (e.g. offline passcode login) - restore session using persisted tokens
-          await restoreSupabaseSessionIfAvailable();
+          activeSession = await restoreSupabaseSessionIfAvailable();
+        }
+
+        // If no authenticated Supabase session is available, skip cloud pull to prevent unauthenticated anon queries
+        if (!activeSession?.access_token) {
+          updateSyncStatus("IDLE");
+          return false;
         }
       } catch (authRefreshErr) {
         console.warn("Proactive auth session check warning during sync:", authRefreshErr);
-        try {
-          await restoreSupabaseSessionIfAvailable();
-        } catch {}
+        updateSyncStatus("IDLE");
+        return false;
       }
     }
 
@@ -411,7 +417,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           facility_id,
           medicine_id,
           quantity,
-          threshold,
           batch_number,
           po_number,
           unit_cost,
@@ -432,7 +437,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           facility_id,
           medicine_id,
           quantity,
-          threshold,
           batch_number,
           date_received,
           expiration_date,
@@ -595,6 +599,8 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             medicine_id,
             medicine_name,
             brand_name,
+            dosage,
+            unit_of_measure,
             lot_no,
             quantity,
             unit_cost,
@@ -608,7 +614,8 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             confirmed_at,
             created_at,
             updated_at,
-            facility:facilities!stock_returns_facility_id_fkey(id, facility_name, facility_code)
+            facility:facilities!stock_returns_facility_id_fkey(id, facility_name, facility_code),
+            medicine:medicines(id, generic_name, dosage, unit_of_measure)
           `);
           if (wm) {
             q = q.gt("updated_at", wm);
@@ -1162,7 +1169,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 inv.facility_id,
                 inv.medicine_id,
                 inv.quantity,
-                inv.threshold,
                 inv.batch_number,
                 poNumber,
                 unitCost,
@@ -1188,7 +1194,6 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 "facility_id",
                 "medicine_id",
                 "quantity",
-                "threshold",
                 "batch_number",
                 "po_number",
                 "unit_cost",

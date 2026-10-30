@@ -11,6 +11,8 @@ import { createOfflineInsertPayload, enqueueMutation } from "../sync/outboxQueue
 import { computeAdc, computeReorderQty } from "@shared/utils/demandUtils";
 import {
   buildInventoryMedicineRows,
+  calculateDynamicThreshold,
+  getThresholdCalculationDetails,
   createEmptyPoItem,
   emptyPoReceiptForm,
   emptyReturnReceiptForm,
@@ -33,6 +35,8 @@ import {
   pageSize,
   sortInventoryRows,
 } from "@shared/utils/inventoryUtils";
+import { reconcileConfirmedReturnsIntoInventory } from "./stockReturnsService";
+import { isChoFacility } from "@shared/utils/facilityUtils";
 
 const STORAGE_PREFIX = "prds-inventory:";
 
@@ -65,16 +69,26 @@ export function useInventoryData({ isBhw = false }) {
     () => readStored(`${STORAGE_PREFIX}${profile?.id}:search`) || ""
   );
   const [facilityFilter, setFacilityFilter] = useState(() => {
+    if (location.state?.facilityFilter && location.state.facilityFilter !== "ALL") {
+      return location.state.facilityFilter;
+    }
     const facilityParam = new URLSearchParams(location.search).get("facility");
-    if (facilityParam) {
+    if (facilityParam && facilityParam !== "ALL") {
       return facilityParam;
     }
     if (isBhw) {
       return profile?.facility_id || "";
     }
-    return readStored(`${STORAGE_PREFIX}${profile?.id}:facility`) || "ALL";
+    const stored = readStored(`${STORAGE_PREFIX}${profile?.id}:facility`);
+    if (stored && stored !== "ALL") {
+      return stored;
+    }
+    return ownFacilityId || "";
   });
   const [stockFilter, setStockFilter] = useState(() => {
+    if (location.state?.stockFilter) {
+      return location.state.stockFilter;
+    }
     const stockParam = new URLSearchParams(location.search).get("stock");
     if (stockParam && STOCK_PARAM_MAP[stockParam]) {
       return STOCK_PARAM_MAP[stockParam];
@@ -83,11 +97,11 @@ export function useInventoryData({ isBhw = false }) {
   });
   const [inventoryTab, setInventoryTab] = useState(() => {
     const tabParam = new URLSearchParams(location.search).get("tab");
-    if (tabParam && ["EXPIRED", "DISPENSABLE"].includes(tabParam.toUpperCase())) {
+    if (tabParam && ["EXPIRED", "DISPENSABLE", "RETURNED"].includes(tabParam.toUpperCase())) {
       return tabParam.toUpperCase();
     }
     const stored = readStored(`${STORAGE_PREFIX}${profile?.id}:tab`);
-    if (stored && ["EXPIRED", "DISPENSABLE"].includes(stored.toUpperCase())) {
+    if (stored && ["EXPIRED", "DISPENSABLE", "RETURNED"].includes(stored.toUpperCase())) {
       return stored.toUpperCase();
     }
     return "DISPENSABLE";
@@ -166,16 +180,37 @@ export function useInventoryData({ isBhw = false }) {
     }
   }, [profile?.id, inventoryTab]);
 
-  const viewingOwnFacility = facilityFilter === ownFacilityId;
+  const defaultFacilityId = useMemo(() => {
+    return (
+      ownFacilityId ||
+      facilities.find((f) => isChoFacility(f))?.id ||
+      facilities[0]?.id ||
+      null
+    );
+  }, [ownFacilityId, facilities]);
+
+  // Keep facilityFilter synced with a valid health facility if it is currently unset or "ALL"
+  useEffect(() => {
+    if (!isBhw && (!facilityFilter || facilityFilter === "ALL") && defaultFacilityId) {
+      setFacilityFilter(defaultFacilityId);
+    }
+  }, [isBhw, facilityFilter, defaultFacilityId]);
+
+  const activeFacilityId = useMemo(() => {
+    if (facilityFilter && facilityFilter !== "ALL") {
+      return facilityFilter;
+    }
+    return defaultFacilityId;
+  }, [facilityFilter, defaultFacilityId]);
+
+  const viewingOwnFacility = Boolean(
+    (facilityFilter && facilityFilter === ownFacilityId) ||
+    (!facilityFilter && defaultFacilityId === ownFacilityId)
+  );
 
   const scopeInventory = useMemo(() => {
-    // Exclude stock returns (tracked in dedicated Stock Returns module)
-    const baseLots = inventory.filter(
-      (item) =>
-        item.intake_type !== "RETURN" &&
-        !(typeof item.po_number === "string" && item.po_number.startsWith("RET-")) &&
-        !isReturnedLot(item)
-    );
+    // Include both procurement stock and confirmed restocked returns in inventory
+    const baseLots = inventory;
 
     if (isBhw) {
       return ownFacilityId
@@ -183,19 +218,25 @@ export function useInventoryData({ isBhw = false }) {
         : [];
     }
 
-    // For CHO Pharmacist: Wide view across whole city of Naga health centers
     // On Expired Stocks tab, show all quarantined expired stocks across facilities for condemnation tracking
-    if (inventoryTab !== "EXPIRED" && facilityFilter && facilityFilter !== "ALL") {
-      return baseLots.filter((item) => item.facility_id === facilityFilter);
+    if (inventoryTab === "EXPIRED") {
+      return baseLots;
+    }
+
+    // For CHO Pharmacist: Filter by selected health center (default to CHO Naga)
+    const targetId = activeFacilityId;
+    if (targetId) {
+      return baseLots.filter((item) => item.facility_id === targetId);
     }
 
     return baseLots;
-  }, [inventory, isBhw, ownFacilityId, facilityFilter, inventoryTab]);
+  }, [inventory, isBhw, ownFacilityId, activeFacilityId, inventoryTab]);
 
   const selectedFacility = useMemo(() => {
-    if (!facilityFilter || facilityFilter === "ALL") return null;
-    return facilities.find((facility) => facility.id === facilityFilter) || null;
-  }, [facilities, facilityFilter]);
+    const targetId = activeFacilityId;
+    if (!targetId) return null;
+    return facilities.find((facility) => facility.id === targetId) || null;
+  }, [facilities, activeFacilityId]);
 
   // Partition scope inventory into dispensable and expired quarantined commercial lots
   const dispensableLots = useMemo(() => {
@@ -207,6 +248,28 @@ export function useInventoryData({ isBhw = false }) {
       (lot) => isLotExpired(lot) && Number(lot.quantity || 0) > 0 && !isDisposedLot(lot)
     );
   }, [scopeInventory]);
+
+  const returnedLots = useMemo(() => {
+    const rawReturned = inventory.filter(
+      (item) => isReturnedLot(item) && !isLotExpired(item) && !isDisposedLot(item) && Number(item.quantity || 0) > 0
+    );
+
+    if (isBhw) {
+      return ownFacilityId
+        ? rawReturned.filter((item) => item.facility_id === ownFacilityId || item.origin_facility_id === ownFacilityId)
+        : [];
+    }
+
+    const targetFilter = activeFacilityId;
+
+    if (targetFilter) {
+      return rawReturned.filter(
+        (item) => item.facility_id === targetFilter || item.origin_facility_id === targetFilter
+      );
+    }
+
+    return rawReturned;
+  }, [inventory, isBhw, ownFacilityId, activeFacilityId]);
 
   // Grouped medicine rows for dispensable stock
   const groupedDispensableInventory = useMemo(
@@ -220,16 +283,22 @@ export function useInventoryData({ isBhw = false }) {
     [expiredLots]
   );
 
+  // Grouped medicine rows for returned stock
+  const groupedReturnedInventory = useMemo(
+    () => buildInventoryMedicineRows(returnedLots),
+    [returnedLots]
+  );
+
   // Active grouped inventory based on selected tab
   const groupedInventory = useMemo(() => {
     if (inventoryTab === "EXPIRED") return groupedExpiredInventory;
+    if (inventoryTab === "RETURNED") return groupedReturnedInventory;
     return groupedDispensableInventory;
-  }, [inventoryTab, groupedExpiredInventory, groupedDispensableInventory]);
+  }, [inventoryTab, groupedExpiredInventory, groupedReturnedInventory, groupedDispensableInventory]);
 
   const dispensableItemCount = groupedDispensableInventory.length;
   const expiredItemCount = groupedExpiredInventory.length;
-  const returnedItemCount = 0;
-  const returnedLots = [];
+  const returnedItemCount = groupedReturnedInventory.length;
 
   const ownFacilityName =
     profile?.facility_name ||
@@ -278,12 +347,29 @@ export function useInventoryData({ isBhw = false }) {
     };
   }, [groupedExpiredInventory, expiredLots, isBhw]);
 
-  const returnsSummary = {
-    totalItems: 0,
-    totalUnits: 0,
-    totalBarangays: 0,
-    latestReturnDate: null,
-  };
+  // Dedicated metrics for Returned Stock Inventory tab
+  const returnedSummary = useMemo(() => {
+    const totalItems = groupedReturnedInventory.length;
+    let totalUnits = 0;
+    let totalValue = 0;
+
+    returnedLots.forEach((lot) => {
+      const qty = Number(lot.quantity || 0);
+      const unitCost = Number(lot.unit_cost || lot.medicine?.unit_cost || 0);
+      totalUnits += qty;
+      totalValue += qty * unitCost;
+    });
+
+    return {
+      totalItems,
+      totalUnits,
+      totalLots: returnedLots.length,
+      totalValue: isBhw ? 0 : totalValue,
+      status: "Available for Dispensing",
+    };
+  }, [groupedReturnedInventory, returnedLots, isBhw]);
+
+  const returnsSummary = returnedSummary;
 
   const facilityOptions = useMemo(() => {
     return [...facilities].sort((first, second) => {
@@ -299,7 +385,7 @@ export function useInventoryData({ isBhw = false }) {
   }, [facilities, ownFacilityId]);
 
   const consumptionByMedicine = useMemo(() => {
-    const targetFacilityId = isBhw ? ownFacilityId : (facilityFilter === "ALL" ? null : facilityFilter);
+    const targetFacilityId = isBhw ? ownFacilityId : activeFacilityId;
     const scopeIds = targetFacilityId ? new Set([targetFacilityId]) : null;
     const rows = scopeIds
       ? dispensingSummary.filter((row) => scopeIds.has(row.facility_id))
@@ -316,7 +402,7 @@ export function useInventoryData({ isBhw = false }) {
     });
 
     return map;
-  }, [dispensingSummary, facilityFilter, isBhw, ownFacilityId]);
+  }, [dispensingSummary, activeFacilityId, isBhw, ownFacilityId]);
 
   const reorderQtyByItemId = useMemo(() => {
     const map = {};
@@ -388,9 +474,9 @@ export function useInventoryData({ isBhw = false }) {
     return (
       searchTerm.trim() !== "" ||
       stockFilter !== "ALL" ||
-      (!isBhw && inventoryTab !== "EXPIRED" && facilityFilter !== "ALL" && facilityFilter !== "")
+      (!isBhw && inventoryTab !== "EXPIRED" && Boolean(activeFacilityId) && activeFacilityId !== defaultFacilityId)
     );
-  }, [searchTerm, stockFilter, facilityFilter, isBhw, inventoryTab]);
+  }, [searchTerm, stockFilter, activeFacilityId, isBhw, inventoryTab, defaultFacilityId]);
 
   const loadInventory = useCallback(async (silent = false) => {
     const cachedInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
@@ -399,8 +485,54 @@ export function useInventoryData({ isBhw = false }) {
     }
     setInventoryError("");
 
-    // If completely offline, use local cached snapshot and exit
+    // If completely offline, use local cached snapshot / SQLite and reconcile confirmed returns
     if (!isCurrentNetworkOnline()) {
+      let offlineInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+      let facData = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+      let medData = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+      let offlineThresholdMap = new Map();
+      if (isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          const localInv = await db.select("SELECT * FROM inventory");
+          if (localInv && localInv.length > 0) {
+            offlineInv = localInv;
+          }
+          if (facData.length === 0) {
+            facData = await db.select("SELECT * FROM facilities");
+          }
+          if (medData.length === 0) {
+            medData = await db.select("SELECT * FROM medicines");
+          }
+          const fmtRows = await db.select(
+            "SELECT facility_id, medicine_id, threshold FROM facility_medicine_thresholds"
+          );
+          for (const fmt of fmtRows || []) {
+            offlineThresholdMap.set(`${fmt.facility_id}:${fmt.medicine_id}`, Number(fmt.threshold || 0));
+          }
+        } catch {}
+      }
+      const hydratedOfflineInv = offlineInv.map((item) => ({
+        ...item,
+        threshold: offlineThresholdMap.get(`${item.facility_id}:${item.medicine_id}`) ?? item.threshold ?? 0,
+        facility:
+          item.facility ||
+          (item.facility_id ? facData.find((facility) => facility.id === item.facility_id) || null : null),
+        medicine:
+          item.medicine ||
+          (item.medicine_id ? medData.find((med) => med.id === item.medicine_id) || null : null),
+        origin_facility:
+          item.origin_facility ||
+          (item.origin_facility_id
+            ? facData.find((facility) => facility.id === item.origin_facility_id) || null
+            : null),
+      }));
+      const reconciledInv = await reconcileConfirmedReturnsIntoInventory(hydratedOfflineInv, {
+        facilities: facData,
+        medicines: medData,
+      });
+      setInventory(reconciledInv);
+      saveSnapshot(STORAGE_KEYS.INVENTORY, reconciledInv);
       setIsLoading(false);
       return;
     }
@@ -414,14 +546,11 @@ export function useInventoryData({ isBhw = false }) {
             facility_id,
             medicine_id,
             quantity,
-            threshold,
             batch_number,
             po_number,
             unit_cost,
             brand_name,
             supplier_name,
-            supplier_address,
-            supplier_contact,
             intake_type,
             return_reason,
             status,
@@ -436,6 +565,7 @@ export function useInventoryData({ isBhw = false }) {
         if (
           result.error &&
           (result.error.code === "42703" ||
+            result.error.code === "PGRST204" ||
             String(result.error.message || "").toLowerCase().includes("does not exist") ||
             String(result.error.message || "").toLowerCase().includes("column"))
         ) {
@@ -446,7 +576,6 @@ export function useInventoryData({ isBhw = false }) {
               facility_id,
               medicine_id,
               quantity,
-              threshold,
               batch_number,
               date_received,
               expiration_date,
@@ -457,26 +586,27 @@ export function useInventoryData({ isBhw = false }) {
             .order("updated_at", { ascending: false });
         }
 
-        if (result.data) {
-          let localLotMap = new Map();
-          let localBatchKeyMap = new Map();
-          if (isTauriEnvironment()) {
-            try {
-              const db = await getSqliteDb();
-              const localRows = await db.select(
-                "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, disposed_at, disposal_method, disposed_by FROM inventory"
-              );
-              for (const r of localRows || []) {
-                if (r.id) localLotMap.set(r.id, r);
-                const bKey = `${r.facility_id || ""}:${r.medicine_id || ""}:${normalizeLotNumber(r.batch_number)}`;
-                localBatchKeyMap.set(bKey, r);
-              }
-            } catch (err) {
-              console.warn("Could not query local SQLite inventory:", err);
+        let localLotMap = new Map();
+        let localBatchKeyMap = new Map();
+        let localRows = [];
+        if (isTauriEnvironment()) {
+          try {
+            const db = await getSqliteDb();
+            localRows = await db.select(
+              "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, disposed_at, disposal_method, disposed_by, quantity, date_received, expiration_date FROM inventory"
+            );
+            for (const r of localRows || []) {
+              if (r.id) localLotMap.set(r.id, r);
+              const bKey = `${r.facility_id || ""}:${r.medicine_id || ""}:${normalizeLotNumber(r.batch_number)}`;
+              localBatchKeyMap.set(bKey, r);
             }
+          } catch (err) {
+            console.warn("Could not query local SQLite inventory:", err);
           }
+        }
 
-          result.data = result.data.map((item) => {
+        if (result.data) {
+          const remoteRows = result.data.map((item) => {
             const bKey = `${item.facility_id || ""}:${item.medicine_id || ""}:${normalizeLotNumber(item.batch_number)}`;
             const local = localLotMap.get(item.id) || localBatchKeyMap.get(bKey);
             return {
@@ -496,6 +626,15 @@ export function useInventoryData({ isBhw = false }) {
               disposed_by: item.disposed_by || local?.disposed_by || null,
             };
           });
+
+          const remoteIds = new Set(remoteRows.map((r) => r.id));
+          const missingLocalRows = (localRows || []).filter(
+            (r) => !remoteIds.has(r.id) && !isDisposedLot(r)
+          );
+
+          result.data = [...remoteRows, ...missingLocalRows];
+        } else if (localRows.length > 0) {
+          result.data = localRows.filter((r) => !isDisposedLot(r));
         }
 
         return result;
@@ -506,6 +645,7 @@ export function useInventoryData({ isBhw = false }) {
         facilitiesResult,
         medicinesResult,
         dispensingResult,
+        thresholdsResult,
       ] = await Promise.all([
         fetchInventorySafely(),
         supabase
@@ -520,50 +660,95 @@ export function useInventoryData({ isBhw = false }) {
         supabase
           .from("monthly_dispensing_summary")
           .select("facility_id, medicine_id, month, total_dispensed"),
+        supabase
+          .from("facility_medicine_thresholds")
+          .select("id, facility_id, medicine_id, threshold, is_custom"),
       ]);
 
-      const firstError = [
-        inventoryResult,
-        facilitiesResult,
-        medicinesResult,
-        dispensingResult,
-      ].find((result) => result.error)?.error;
+      let facData = facilitiesResult.data || [];
+      let medData = medicinesResult.data || [];
+      let rawInvData = inventoryResult.data || [];
 
-      if (firstError) {
-        if (cachedInv.length === 0) {
-          setInventoryError(firstError.message);
+      const thresholdMap = new Map();
+      (thresholdsResult?.data || []).forEach((t) => {
+        if (t.facility_id && t.medicine_id) {
+          thresholdMap.set(`${t.facility_id}:${t.medicine_id}`, Number(t.threshold || 0));
         }
-        setIsLoading(false);
-        return;
+      });
+
+      if (isTauriEnvironment()) {
+        try {
+          const db = await getSqliteDb();
+          if (facData.length === 0) facData = await db.select("SELECT * FROM facilities");
+          if (medData.length === 0) medData = await db.select("SELECT * FROM medicines");
+          if (rawInvData.length === 0) rawInvData = await db.select("SELECT * FROM inventory");
+
+          const localThresholdRows = await db.select(
+            "SELECT facility_id, medicine_id, threshold FROM facility_medicine_thresholds"
+          );
+          for (const lt of localThresholdRows || []) {
+            const key = `${lt.facility_id}:${lt.medicine_id}`;
+            if (!thresholdMap.has(key)) {
+              thresholdMap.set(key, Number(lt.threshold || 0));
+            }
+          }
+
+          if (thresholdsResult?.data && thresholdsResult.data.length > 0) {
+            for (const t of thresholdsResult.data) {
+              await db.execute(
+                `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = excluded.is_custom, updated_at = excluded.updated_at`,
+                [t.id || crypto.randomUUID(), t.facility_id, t.medicine_id, t.threshold, t.is_custom ? 1 : 0, new Date().toISOString()]
+              );
+            }
+          }
+        } catch (dbErr) {
+          console.warn("Could not query or sync local SQLite thresholds:", dbErr);
+        }
       }
 
-      const facData = facilitiesResult.data || [];
-      const invData = (inventoryResult.data || []).map((item) => ({
+      const invData = rawInvData.map((item) => ({
         ...item,
+        threshold: thresholdMap.get(`${item.facility_id}:${item.medicine_id}`) ?? item.threshold ?? 0,
+        facility:
+          item.facility ||
+          (item.facility_id ? facData.find((facility) => facility.id === item.facility_id) || null : null),
+        medicine:
+          item.medicine ||
+          (item.medicine_id ? medData.find((med) => med.id === item.medicine_id) || null : null),
         origin_facility:
           item.origin_facility ||
           (item.origin_facility_id
             ? facData.find((facility) => facility.id === item.origin_facility_id) || null
             : null),
       }));
-      const medData = medicinesResult.data || [];
+
+      const reconciledInv = await reconcileConfirmedReturnsIntoInventory(invData, {
+        facilities: facData,
+        medicines: medData,
+      });
+
       const supData = [];
       const dispData = dispensingResult.data || [];
 
-      setInventory(invData);
+      setInventory(reconciledInv);
       setFacilities(facData);
       setMedicines(medData);
       setSuppliers(supData);
       setDispensingSummary(dispData);
 
       // Save to local snapshot store for instant offline access!
-      saveSnapshot(STORAGE_KEYS.INVENTORY, invData);
+      saveSnapshot(STORAGE_KEYS.INVENTORY, reconciledInv);
       saveSnapshot(STORAGE_KEYS.FACILITIES, facData);
       saveSnapshot(STORAGE_KEYS.MEDICINES, medData);
       saveSnapshot(STORAGE_KEYS.SUPPLIERS, supData);
       saveSnapshot(STORAGE_KEYS.DISPENSING_SUMMARY, dispData);
 
       setFacilityFilter((currentFilter) => {
+        if (currentFilter === "ALL") {
+          return "ALL";
+        }
         if (facData.some((facility) => facility.id === currentFilter)) {
           return currentFilter;
         }
@@ -590,6 +775,18 @@ export function useInventoryData({ isBhw = false }) {
   }, [loadInventory]);
 
   useEffect(() => {
+    const handleInventoryChange = () => {
+      loadInventory(true);
+    };
+    window.addEventListener("prds:inventory-changed", handleInventoryChange);
+    window.addEventListener("prds:stock-returns-changed", handleInventoryChange);
+    return () => {
+      window.removeEventListener("prds:inventory-changed", handleInventoryChange);
+      window.removeEventListener("prds:stock-returns-changed", handleInventoryChange);
+    };
+  }, [loadInventory]);
+
+  useEffect(() => {
     const channel = supabase
       .channel("inventory-sync")
       .on(
@@ -611,6 +808,9 @@ export function useInventoryData({ isBhw = false }) {
     const initialItem = createEmptyPoItem();
     if (preselectedMedicineId) {
       initialItem.medicine_id = preselectedMedicineId;
+      const adc = consumptionByMedicine[preselectedMedicineId];
+      initialItem.threshold = String(calculateDynamicThreshold({ adc, quantity: 0 }));
+      initialItem.is_threshold_custom = false;
     }
     const initialValues = {
       ...emptyPoReceiptForm,
@@ -646,7 +846,7 @@ export function useInventoryData({ isBhw = false }) {
 
   const clearFilters = () => {
     setSearchTerm("");
-    setFacilityFilter(isBhw ? (ownFacilityId || "") : "ALL");
+    setFacilityFilter(isBhw ? (ownFacilityId || "") : (defaultFacilityId || ""));
     setStockFilter("ALL");
     setCurrentPage(1);
   };
@@ -657,7 +857,7 @@ export function useInventoryData({ isBhw = false }) {
   };
 
   const selectInventoryTab = (tab) => {
-    const validTab = tab === "EXPIRED" ? "EXPIRED" : "DISPENSABLE";
+    const validTab = tab === "EXPIRED" ? "EXPIRED" : tab === "RETURNED" ? "RETURNED" : "DISPENSABLE";
     setInventoryTab(validTab);
     setStockFilter("ALL");
     setSearchTerm("");
@@ -665,6 +865,49 @@ export function useInventoryData({ isBhw = false }) {
   };
 
   const handleExportExcel = () => {
+    if (inventoryTab === "RETURNED") {
+      const headers = [
+        "Medicine",
+        "Brand",
+        "Dosage",
+        "Unit of Measurement",
+        "Lot Number",
+        "Return ID",
+        "Returning Station",
+        "Active Quantity",
+        ...(!isBhw ? ["Unit Cost (PHP)", "Total Value (PHP)"] : []),
+        "Expiration Date",
+        "Status",
+      ];
+
+      const rows = sortedInventory.map((item) => {
+        const unitCost = Number(item.unit_cost || item.medicine?.unit_cost || 0);
+        const qty = Number(item.quantity || 0);
+        const total = qty * unitCost;
+
+        return [
+          getMedicineName(item),
+          item.brand_name || item.medicine?.brand_name || "",
+          item.medicine?.dosage || "",
+          item.medicine?.unit_of_measure || "",
+          (item.lots || [item]).map((lot) => normalizeLotNumber(lot.batch_number)).filter(Boolean).join(" | "),
+          (item.lots || [item]).map((lot) => lot.po_number).filter(Boolean).join(" | "),
+          (item.lots || [item]).map((lot) => lot.origin_facility?.facility_name || lot.supplier_name || "").filter(Boolean).join(" | "),
+          qty,
+          ...(!isBhw ? [unitCost.toFixed(2), total.toFixed(2)] : []),
+          item.expiration_date ? new Date(item.expiration_date).toISOString().slice(0, 10) : "",
+          "Available for Dispensing",
+        ];
+      });
+
+      downloadExportFile({
+        filename: `PRDS-Returned-Stock-Inventory-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        headers,
+        rows,
+      });
+      return;
+    }
+
     if (inventoryTab === "EXPIRED") {
       const headers = [
         "Medicine",
@@ -819,10 +1062,61 @@ export function useInventoryData({ isBhw = false }) {
         if (field === "batch_number") {
           formattedValue = normalizeLotNumber(value);
         }
-        return {
+
+        const nextItem = {
           ...item,
           [field]: formattedValue,
         };
+
+        if (field === "medicine_id") {
+          // Check if facility already has an established threshold for this medicine
+          const existingInv = inventory.find(
+            (inv) =>
+              inv.facility_id === currentValues.facility_id &&
+              inv.medicine_id === value &&
+              Number(inv.threshold) > 0
+          );
+          if (existingInv) {
+            nextItem.threshold = String(existingInv.threshold);
+            nextItem.is_threshold_custom = true;
+          } else if (!item.is_threshold_custom) {
+            const adc = consumptionByMedicine[value];
+            nextItem.threshold = String(
+              calculateDynamicThreshold({ adc, quantity: item.quantity })
+            );
+            nextItem.is_threshold_custom = false;
+          }
+        } else if (field === "quantity") {
+          if (!item.is_threshold_custom) {
+            const existingInv = inventory.find(
+              (inv) =>
+                inv.facility_id === currentValues.facility_id &&
+                inv.medicine_id === item.medicine_id &&
+                Number(inv.threshold) > 0
+            );
+            if (existingInv) {
+              nextItem.threshold = String(existingInv.threshold);
+              nextItem.is_threshold_custom = true;
+            } else {
+              const adc = consumptionByMedicine[item.medicine_id];
+              if (!adc || adc <= 0) {
+                nextItem.threshold = String(
+                  calculateDynamicThreshold({ adc: null, quantity: value })
+                );
+              }
+            }
+          }
+        } else if (field === "threshold") {
+          nextItem.is_threshold_custom = true;
+        } else if (field === "threshold_reset") {
+          const adc = consumptionByMedicine[item.medicine_id];
+          nextItem.threshold = String(
+            calculateDynamicThreshold({ adc, quantity: item.quantity })
+          );
+          nextItem.is_threshold_custom = false;
+        }
+
+        return nextItem;
       });
       return {
         ...currentValues,
@@ -939,8 +1233,8 @@ export function useInventoryData({ isBhw = false }) {
       return "Inventory location could not be detected. Please reload the page and try again.";
     }
 
-    if (!formValues.medicine_id || !formValues.supplier_name?.trim()) {
-      return "Medicine and supplier name are required.";
+    if (!formValues.medicine_id) {
+      return "Medicine is required.";
     }
 
     if (!normalizeLotNumber(formValues.batch_number)) {
@@ -1028,6 +1322,20 @@ export function useInventoryData({ isBhw = false }) {
       const supplierAddress = (formValues.supplier_address || "").trim() || null;
       const supplierContact = (formValues.supplier_contact || "").trim() || null;
 
+      const thresholdsToUpsert = (formValues.items || []).map((item) => ({
+        facility_id: formValues.facility_id,
+        medicine_id: item.medicine_id,
+        threshold:
+          item.threshold !== ""
+            ? Number(item.threshold)
+            : calculateDynamicThreshold({
+                adc: consumptionByMedicine[item.medicine_id],
+                quantity: item.quantity,
+              }),
+        is_custom: Boolean(item.is_threshold_custom),
+        updated_at: new Date().toISOString(),
+      }));
+
       const recordsToInsert = (formValues.items || []).map((item) => {
         const id = item.id || crypto.randomUUID();
         const med = medicines.find((m) => m.id === item.medicine_id);
@@ -1047,7 +1355,6 @@ export function useInventoryData({ isBhw = false }) {
           supplier_contact: supplierContact,
           batch_number: normalizeLotNumber(item.batch_number),
           quantity: Number(item.quantity),
-          threshold: item.threshold !== "" ? Number(item.threshold) : 100,
           unit_cost: item.unit_cost !== "" && item.unit_cost !== null ? Number(item.unit_cost) : 0,
           expiration_date: item.expiration_date,
           updated_at: new Date().toISOString(),
@@ -1062,14 +1369,13 @@ export function useInventoryData({ isBhw = false }) {
             const db = await getSqliteDb();
             for (const rec of recordsToInsert) {
               await db.execute(
-                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
                 [
                   rec.id,
                   rec.facility_id,
                   rec.medicine_id,
                   rec.quantity,
-                  rec.threshold,
                   rec.batch_number,
                   rec.po_number,
                   rec.unit_cost,
@@ -1086,6 +1392,14 @@ export function useInventoryData({ isBhw = false }) {
                   JSON.stringify(rec),
                   rec.updated_at,
                 ]
+              );
+            }
+            for (const thr of thresholdsToUpsert) {
+              await db.execute(
+                `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = excluded.is_custom, updated_at = excluded.updated_at`,
+                [crypto.randomUUID(), thr.facility_id, thr.medicine_id, thr.threshold, thr.is_custom ? 1 : 0, thr.updated_at]
               );
             }
           } catch (dbErr) {
@@ -1130,14 +1444,13 @@ export function useInventoryData({ isBhw = false }) {
             const db = await getSqliteDb();
             for (const rec of recordsToInsert) {
               await db.execute(
-                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
                 [
                   rec.id,
                   rec.facility_id,
                   rec.medicine_id,
                   rec.quantity,
-                  rec.threshold,
                   rec.batch_number,
                   rec.po_number,
                   rec.unit_cost,
@@ -1156,8 +1469,26 @@ export function useInventoryData({ isBhw = false }) {
                 ]
               );
             }
+            for (const thr of thresholdsToUpsert) {
+              await db.execute(
+                `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = excluded.is_custom, updated_at = excluded.updated_at`,
+                [crypto.randomUUID(), thr.facility_id, thr.medicine_id, thr.threshold, thr.is_custom ? 1 : 0, thr.updated_at]
+              );
+            }
           } catch (dbErr) {
             console.warn("Failed to write to local SQLite on save inventory:", dbErr);
+          }
+        }
+
+        if (thresholdsToUpsert.length > 0) {
+          try {
+            await supabase
+              .from("facility_medicine_thresholds")
+              .upsert(thresholdsToUpsert, { onConflict: "facility_id,medicine_id" });
+          } catch (thrErr) {
+            console.warn("Could not upsert facility_medicine_thresholds:", thrErr);
           }
         }
 
@@ -1196,15 +1527,14 @@ export function useInventoryData({ isBhw = false }) {
               const db = await getSqliteDb();
               for (const rec of recordsToInsert) {
                 await db.execute(
-                  `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, threshold, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                  `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
                   [
                     rec.id || crypto.randomUUID(),
                     rec.facility_id,
                     rec.medicine_id,
                     rec.supplier_id,
                     rec.quantity,
-                    rec.threshold,
                     rec.batch_number,
                     rec.po_number,
                     rec.unit_cost,
@@ -1268,7 +1598,7 @@ export function useInventoryData({ isBhw = false }) {
       supplier_address: formValues.supplier_address?.trim() || null,
       supplier_contact: formValues.supplier_contact?.trim() || null,
       quantity: Number(formValues.quantity),
-      threshold: Number(formValues.threshold),
+      threshold: Number(formValues.threshold ?? selectedItem?.threshold ?? 0),
       batch_number: normalizeLotNumber(formValues.batch_number),
       po_number: normalizePoNumber(formValues.po_number) || null,
       unit_cost: formValues.unit_cost !== "" && formValues.unit_cost !== null ? Number(formValues.unit_cost) : null,
@@ -1306,13 +1636,12 @@ export function useInventoryData({ isBhw = false }) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, threshold = $5, po_number = $6, unit_cost = $7, origin_facility_id = $8, intake_type = $9, return_reason = $10, brand_name = $11, supplier_name = $12, supplier_address = $13, supplier_contact = $14, updated_at = $15 WHERE id = $16`,
+            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, po_number = $5, unit_cost = $6, origin_facility_id = $7, intake_type = $8, return_reason = $9, brand_name = $10, supplier_name = $11, supplier_address = $12, supplier_contact = $13, updated_at = $14 WHERE id = $15`,
             [
               payload.batch_number,
               payload.date_received,
               payload.expiration_date,
               payload.quantity,
-              payload.threshold,
               payload.po_number,
               payload.unit_cost,
               null,
@@ -1326,6 +1655,14 @@ export function useInventoryData({ isBhw = false }) {
               selectedItem.id,
             ]
           );
+          if (payload.threshold !== undefined && payload.threshold !== null) {
+            await db.execute(
+              `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
+               VALUES ($1, $2, $3, $4, 1, $5)
+               ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at`,
+              [crypto.randomUUID(), payload.facility_id, payload.medicine_id, payload.threshold, payload.updated_at]
+            );
+          }
         } catch (dbErr) {
           console.warn("Failed to update local SQLite on batch edit:", dbErr);
         }
@@ -1397,13 +1734,12 @@ export function useInventoryData({ isBhw = false }) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, threshold = $5, po_number = $6, unit_cost = $7, origin_facility_id = $8, intake_type = $9, return_reason = $10, brand_name = $11, supplier_name = $12, supplier_address = $13, supplier_contact = $14, updated_at = $15 WHERE id = $16`,
+            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, po_number = $5, unit_cost = $6, origin_facility_id = $7, intake_type = $8, return_reason = $9, brand_name = $10, supplier_name = $11, supplier_address = $12, supplier_contact = $13, updated_at = $14 WHERE id = $15`,
             [
               payload.batch_number,
               payload.date_received,
               payload.expiration_date,
               payload.quantity,
-              payload.threshold,
               payload.po_number,
               payload.unit_cost,
               null,
@@ -1417,6 +1753,14 @@ export function useInventoryData({ isBhw = false }) {
               selectedItem.id,
             ]
           );
+          if (payload.threshold !== undefined && payload.threshold !== null) {
+            await db.execute(
+              `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
+               VALUES ($1, $2, $3, $4, 1, $5)
+               ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at`,
+              [crypto.randomUUID(), payload.facility_id, payload.medicine_id, payload.threshold, payload.updated_at]
+            );
+          }
         } catch (dbErr) {
           console.warn("Failed to update local SQLite on batch edit:", dbErr);
         }
@@ -1579,6 +1923,107 @@ export function useInventoryData({ isBhw = false }) {
     }
   };
 
+  const handleUpdateThreshold = async ({ medicineId, threshold, facilityId }) => {
+    const targetFacilityId = facilityId || profile?.facility_id;
+    if (!targetFacilityId) {
+      const err = new Error("Facility ID could not be detected. Please reload and try again.");
+      setInventoryError(err.message);
+      throw err;
+    }
+
+    if (isBhw && targetFacilityId !== profile?.facility_id) {
+      const err = new Error("You can only edit inventory thresholds for your own barangay health station.");
+      setInventoryError(err.message);
+      throw err;
+    }
+
+    const numericThreshold = Number(threshold);
+    if (!Number.isFinite(numericThreshold) || numericThreshold < 0) {
+      const err = new Error("Threshold must be zero or higher.");
+      setInventoryError(err.message);
+      throw err;
+    }
+
+    setIsSaving(true);
+    setInventoryError("");
+
+    try {
+      const isOnline = isCurrentNetworkOnline();
+
+      if (!isOnline) {
+        await enqueueMutation({
+          mutationType: "RPC",
+          target: "update_bhw_inventory_threshold",
+          payload: {
+            p_medicine_id: medicineId,
+            p_threshold: numericThreshold,
+            p_facility_id: targetFacilityId,
+          },
+        });
+
+        if (isTauriEnvironment()) {
+          try {
+            const db = await getSqliteDb();
+            const nowIso = new Date().toISOString();
+            await db.execute(
+              "INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at) VALUES ($1, $2, $3, $4, 1, $5) ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at",
+              [crypto.randomUUID(), targetFacilityId, medicineId, numericThreshold, nowIso]
+            );
+          } catch (dbErr) {
+            console.warn("Failed to update local SQLite on threshold update:", dbErr);
+          }
+        }
+      } else {
+        const { error } = await supabase.rpc("update_bhw_inventory_threshold", {
+          p_medicine_id: medicineId,
+          p_threshold: numericThreshold,
+          p_facility_id: targetFacilityId,
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        if (isTauriEnvironment()) {
+          try {
+            const db = await getSqliteDb();
+            const nowIso = new Date().toISOString();
+            await db.execute(
+              "INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at) VALUES ($1, $2, $3, $4, 1, $5) ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at",
+              [crypto.randomUUID(), targetFacilityId, medicineId, numericThreshold, nowIso]
+            );
+          } catch (dbErr) {
+            console.warn("Failed to update local SQLite cache on threshold update:", dbErr);
+          }
+        }
+      }
+
+      setInventory((prev) => {
+        const updated = prev.map((item) => {
+          if (item.facility_id === targetFacilityId && item.medicine_id === medicineId) {
+            return {
+              ...item,
+              threshold: numericThreshold,
+              is_threshold_custom: true,
+              updated_at: new Date().toISOString(),
+            };
+          }
+          return item;
+        });
+        saveSnapshot(STORAGE_KEYS.INVENTORY, updated);
+        return updated;
+      });
+
+      return { success: true, threshold: numericThreshold };
+    } catch (err) {
+      const msg = err.message || "Failed to update inventory threshold.";
+      setInventoryError(msg);
+      throw err;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return {
     profile,
     canManage,
@@ -1602,12 +2047,14 @@ export function useInventoryData({ isBhw = false }) {
     returnedLots,
     summary,
     expiredSummary,
+    returnedSummary,
     returnsSummary,
     reorderQtyByItemId,
     searchTerm,
     setSearchTerm,
     facilityFilter,
     stockFilter,
+    setStockFilter,
     inventorySort,
     currentPage,
     setCurrentPage,
@@ -1637,5 +2084,6 @@ export function useInventoryData({ isBhw = false }) {
     handleRemovePoItem,
     handleSaveInventory,
     handleDisposeStock,
+    handleUpdateThreshold,
   };
 }

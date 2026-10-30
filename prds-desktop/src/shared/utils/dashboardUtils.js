@@ -60,8 +60,8 @@ export const getDashboardStatCards = ({ config, inventoryPath, stats }) => {
     { key: "dispensedThisMonth", label: "Dispensed This Month", description: `Valid dispensing quantity this month ${facilityLabel}.`, tone: "teal", to: "/dispensing", value: stats.dispensedThisMonth },
     { key: "activePatients", label: "Active Patients", description: `Patients not archived ${facilityLabel}.`, tone: "emerald", to: "/patients", value: stats.activePatients },
     { key: "pendingRequests", label: config?.role === "BHW" ? "My Pending Requests" : "Pending Requests", description: "Requests waiting for review or action.", tone: "orange", to: "/requests?status=pending", value: stats.pendingRequests },
-    { key: "criticalStock", label: "Critical Stock", description: "Batches at immediate-restock level.", tone: "red", to: inventoryPath, value: stats.criticalStock },
-    { key: "lowStock", label: "Low Stock", description: "Batches below their configured threshold.", tone: "orange", to: inventoryPath, value: stats.lowStock },
+    { key: "criticalStock", label: "Critical Medicines", description: `Medicines at critical stockout level ${facilityLabel}.`, tone: "red", to: inventoryPath, value: stats.criticalStock },
+    { key: "lowStock", label: "Low Stock Medicines", description: `Medicines below reorder threshold ${facilityLabel}.`, tone: "orange", to: inventoryPath, value: stats.lowStock },
   ];
 };
 
@@ -168,21 +168,105 @@ export const getDashboardInventoryMetrics = (inventoryRows = []) => {
   return metrics;
 };
 
+export const getDashboardStockAlertRows = (inventoryData = []) => {
+  const riskRank = { CRITICAL: 0, LOW: 1 };
+  const medMap = new Map();
+
+  for (const row of inventoryData || []) {
+    const key = `${row.facility_id || "global"}:${row.medicine_id || row.id}`;
+    const existing = medMap.get(key);
+    const rowQty = Number(row.quantity || 0);
+    const rowThreshold = Number(row.threshold || 0);
+
+    if (!existing) {
+      medMap.set(key, {
+        ...row,
+        totalQuantity: rowQty,
+        maxThreshold: rowThreshold,
+        batches: [row],
+      });
+    } else {
+      existing.totalQuantity += rowQty;
+      existing.maxThreshold = Math.max(existing.maxThreshold, rowThreshold);
+      existing.batches.push(row);
+    }
+  }
+
+  return Array.from(medMap.values())
+    .map((entry) => {
+      const status = getStockStatus({
+        quantity: entry.totalQuantity,
+        threshold: entry.maxThreshold,
+      });
+      const batchLabel =
+        entry.batches.length > 1
+          ? `${entry.batches.length} batches`
+          : entry.batches[0]?.batch_number || "-";
+
+      return {
+        ...entry,
+        quantity: entry.totalQuantity,
+        threshold: entry.maxThreshold,
+        riskStatus: status,
+        batch_number: batchLabel,
+      };
+    })
+    .filter((row) => ["CRITICAL", "LOW"].includes(row.riskStatus))
+    .sort(
+      (first, second) =>
+        riskRank[first.riskStatus] - riskRank[second.riskStatus] ||
+        Number(first.quantity || 0) - Number(second.quantity || 0)
+    )
+    .slice(0, 5);
+};
+
 export const countActivePatients = (patientRows = []) =>
   patientRows.filter((patient) => !patient.archived_at).length;
 
-export const getMonthlyDispensedQuantity = (dispensingRows = [], now = new Date()) => {
+export const getMonthlyDispensedQuantity = (
+  dispensingRows = [],
+  requestRowsOrNow = new Date(),
+  maybeNow = new Date()
+) => {
+  let requestRows = [];
+  let now = new Date();
+
+  if (requestRowsOrNow instanceof Date) {
+    now = requestRowsOrNow;
+  } else if (Array.isArray(requestRowsOrNow)) {
+    requestRows = requestRowsOrNow;
+    now = maybeNow instanceof Date ? maybeNow : new Date();
+  }
+
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return dispensingRows.reduce((sum, row) => {
-    const date = new Date(row.dispense_date);
+
+  const walkInTotal = dispensingRows.reduce((sum, row) => {
+    const rawDate = row.dispense_date || row.created_at;
+    if (!rawDate) return sum;
+    const date = new Date(rawDate);
     if (
-      !row.dispense_date || Number.isNaN(date.getTime()) ||
-      date < monthStart || date >= nextMonthStart || row.voided_at ||
+      Number.isNaN(date.getTime()) ||
+      date < monthStart ||
+      date >= nextMonthStart ||
+      row.voided_at ||
       row.record_type === "HISTORY_ONLY"
     ) return sum;
     return sum + Number(row.quantity || 0);
   }, 0);
+
+  const requestTotal = requestRows.reduce((sum, req) => {
+    if (req.status !== "COMPLETED") return sum;
+    const rawDate = req.approved_at || req.received_at || req.updated_at || req.request_date;
+    if (!rawDate) return sum;
+    const date = new Date(rawDate);
+    if (Number.isNaN(date.getTime()) || date < monthStart || date >= nextMonthStart) return sum;
+    const items = req.items || [];
+    const itemsSum = items.reduce((iSum, item) => iSum + Number(item.quantity || 0), 0);
+    return sum + itemsSum;
+  }, 0);
+
+  return walkInTotal + requestTotal;
 };
 
 const stockStatusRank = {
@@ -333,14 +417,7 @@ export const compileDashboardSnapshot = ({
     .filter((row) => row.expiration_date >= todayDate && row.expiration_date <= cutoffDate)
     .slice(0, 5);
 
-  const riskRank = { CRITICAL: 0, LOW: 1 };
-  const stockAlertRows = inventoryData
-    .filter((row) => ["CRITICAL", "LOW"].includes(getStockStatus(row)))
-    .sort((first, second) =>
-      riskRank[getStockStatus(first)] - riskRank[getStockStatus(second)] ||
-      Number(first.quantity || 0) - Number(second.quantity || 0)
-    )
-    .slice(0, 5);
+  const stockAlertRows = getDashboardStockAlertRows(inventoryData);
 
   const scopedRequests = isBhw && facilityId
     ? requests.filter((r) => r.facility_id === facilityId)
@@ -401,7 +478,7 @@ export const compileDashboardSnapshot = ({
 
   const compiledStats = {
     ...inventoryMetrics,
-    dispensedThisMonth: getMonthlyDispensedQuantity(validDispensing, now),
+    dispensedThisMonth: getMonthlyDispensedQuantity(validDispensing, scopedRequests, now),
     activePatients: scopedPatients.length,
     pendingRequests: pendingRequestsCount,
     pendingApprovals: pendingApprovalsCount,
@@ -418,6 +495,8 @@ export const compileDashboardSnapshot = ({
     stockAlertRows,
     expiringRows,
     dispensingRows,
+    rawDispensing: validDispensing,
+    allRequests: scopedRequests,
     requestStatus: statusSummary,
     stockStatusByFacility: buildFacilityStockStatus(inventoryData),
     inventoryRows: inventoryData,

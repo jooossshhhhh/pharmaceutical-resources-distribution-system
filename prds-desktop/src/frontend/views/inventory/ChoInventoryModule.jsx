@@ -1,5 +1,14 @@
 import { useState, useMemo, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  Boxes,
+  AlertOctagon,
+  AlertTriangle,
+  Clock,
+  PackageX,
+  Banknote,
+  ShieldAlert,
+} from "lucide-react";
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
@@ -18,6 +27,7 @@ import { formatCurrency, formatDate, formatNumber } from "@shared/utils/inventor
 import { useInventoryData } from "@backend/services/inventoryData";
 import { ChoStockModal } from "./components/ChoStockModal";
 import { MedicineStockDetailsView } from "./components/MedicineStockDetailsView";
+import { isChoFacility } from "@shared/utils/facilityUtils";
 
 export default function ChoInventoryModule() {
   const { profile } = useAuth();
@@ -47,9 +57,11 @@ export default function ChoInventoryModule() {
     expiredItemCount,
     summary,
     expiredSummary,
+    returnedSummary,
     searchTerm,
     setSearchTerm,
     stockFilter,
+    setStockFilter,
     inventorySort,
     currentPage,
     setCurrentPage,
@@ -77,37 +89,50 @@ export default function ChoInventoryModule() {
     handleRemovePoItem,
     handleSaveInventory,
     handleDisposeStock,
+    handleUpdateThreshold,
   } = data;
 
+  const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    if (location.state?.filterMedicineName) {
-      setSearchTerm(location.state.filterMedicineName);
-      window.history.replaceState({}, document.title);
+    const state = location.state;
+    if (!state) return;
+
+    if (state.filterMedicineName) {
+      setSearchTerm(state.filterMedicineName);
     }
-  }, [location.state, setSearchTerm]);
+    if (state.stockFilter) {
+      setStockFilter(state.stockFilter);
+    }
+    if (state.facilityFilter) {
+      selectFacility(state.facilityFilter);
+    }
+
+    // Clear React Router location state immediately so future clicks on category cards are not overridden
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate, setSearchTerm, setStockFilter, selectFacility]);
 
   const headerTitle =
     inventoryTab === "EXPIRED"
       ? "Expired Stocks Quarantine"
       : selectedFacility
         ? `${selectedFacility.facility_name} Inventory`
-        : "All Health Centers Inventory";
+        : "City Health Office - City of Naga Inventory";
 
   const headerDescription =
     inventoryTab === "EXPIRED"
       ? "Quarantined expired medicines pending condemnation protocol and disposal."
       : selectedFacility
         ? `Track medicine stock levels and lot batches for ${selectedFacility.facility_name}.`
-        : "City-wide view of medicine stock levels across all Naga City health centers.";
+        : "Track medicine stock levels and lot batches for City Health Office - City of Naga.";
 
   const totalItemsSub =
     inventoryTab === "EXPIRED"
       ? "quarantined for disposal"
       : selectedFacility
         ? `in ${selectedFacility.facility_name}`
-        : "across all Naga health centers";
+        : "in City Health Office - City of Naga";
 
   const criticalSub = summary.stockedOut > 0 ? `${formatNumber(summary.stockedOut)} fully stocked out` : "needs immediate restock";
 
@@ -119,6 +144,11 @@ export default function ChoInventoryModule() {
       ) || viewingMedicine
     );
   }, [filteredInventory, viewingMedicine]);
+
+  const isBarangayView = useMemo(() => {
+    const viewingFacility = activeViewingItem?.facility || selectedFacility;
+    return Boolean(viewingFacility && !isChoFacility(viewingFacility));
+  }, [activeViewingItem, selectedFacility]);
 
   const handleSelectTab = (tab) => {
     setViewingMedicine(null);
@@ -137,12 +167,14 @@ export default function ChoInventoryModule() {
         <MedicineStockDetailsView
           item={activeViewingItem}
           canManage={canManage}
-          isBhw={false}
+          isBhw={isBarangayView}
           facilityName={activeViewingItem?.facility?.facility_name || selectedFacility?.facility_name || "City Health Office - City of Naga"}
           onBack={() => setViewingMedicine(null)}
           onEditLot={(lot) => openItemModal(lot, "edit")}
           onDisposeLot={(lot) => setDisposingLot(lot)}
           onAddBatch={() => openCreateModal("PROCUREMENT", activeViewingItem?.medicine_id)}
+          onUpdateThreshold={handleUpdateThreshold}
+          consumptionByMedicine={consumptionByMedicine}
         />
       ) : (
         <>
@@ -161,6 +193,7 @@ export default function ChoInventoryModule() {
                     value={facilityFilter}
                     onSelect={selectFacility}
                     className="w-full sm:w-64"
+                    showAllOption={false}
                   />
                 )}
                 <InventoryTabToggle
@@ -176,24 +209,32 @@ export default function ChoInventoryModule() {
           <MetricCard
             label="Expired Medicines"
             value={formatNumber(expiredSummary.totalItems)}
+            icon={<AlertOctagon className="h-4 w-4" />}
+            tone="red"
             sub={totalItemsSub}
             compact
           />
           <MetricCard
             label="Total Expired Units"
             value={formatNumber(expiredSummary.totalUnits)}
+            icon={<PackageX className="h-4 w-4" />}
+            tone="orange"
             sub="locked from dispensing"
             compact
           />
           <MetricCard
             label="Estimated Loss Value"
             value={formatCurrency(expiredSummary.totalLossValue)}
+            icon={<Banknote className="h-4 w-4" />}
+            tone="blue"
             sub="based on unit acquisition cost"
             compact
           />
           <MetricCard
             label="Disposal Status"
             value={expiredSummary.status}
+            icon={<ShieldAlert className="h-4 w-4" />}
+            tone="amber"
             sub="quarantined for disposal"
             compact
           />
@@ -203,14 +244,21 @@ export default function ChoInventoryModule() {
           <MetricCard
             label="All Stock"
             value={formatNumber(summary.totalItems)}
+            icon={<Boxes className="h-4 w-4" />}
+            tone="blue"
             sub={totalItemsSub}
-            onClick={() => toggleStockFilter("ALL")}
+            onClick={() => {
+              setStockFilter("ALL");
+              setCurrentPage(1);
+            }}
             active={stockFilter === "ALL"}
             compact
           />
           <MetricCard
             label="Critical Stock"
             value={formatNumber(summary.critical)}
+            icon={<AlertOctagon className="h-4 w-4" />}
+            tone="red"
             sub={criticalSub}
             onClick={() => toggleStockFilter("CRITICAL")}
             active={stockFilter === "CRITICAL"}
@@ -219,6 +267,8 @@ export default function ChoInventoryModule() {
           <MetricCard
             label="Low Stock"
             value={formatNumber(summary.low)}
+            icon={<AlertTriangle className="h-4 w-4" />}
+            tone="amber"
             sub="restock recommended"
             onClick={() => toggleStockFilter("LOW")}
             active={stockFilter === "LOW"}
@@ -227,6 +277,8 @@ export default function ChoInventoryModule() {
           <MetricCard
             label="Near Expiry"
             value={formatNumber(summary.expiring)}
+            icon={<Clock className="h-4 w-4" />}
+            tone="orange"
             sub="within the next 30 days"
             onClick={() => toggleStockFilter("EXPIRING")}
             active={stockFilter === "EXPIRING"}
@@ -238,9 +290,7 @@ export default function ChoInventoryModule() {
       <section className="mt-3.5 overflow-hidden rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-xs">
         <div className="flex flex-col gap-2.5 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
           <h2 className="text-base font-black text-[#1B2B30]">
-            {inventoryTab === "EXPIRED"
-              ? "Expired Stocks List"
-              : "Dispensable Stock List"}
+            {inventoryTab === "EXPIRED" ? "Expired Stocks List" : "Dispensable Stock List"}
           </h2>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="relative block sm:w-80">
@@ -285,7 +335,7 @@ export default function ChoInventoryModule() {
                     Condemnation Report
                   </button>
                 ) : (
-                  (viewingOwnFacility || !selectedFacility || facilityFilter === "ALL") && (
+                  (viewingOwnFacility || isChoFacility(selectedFacility)) && (
                     <button
                       type="button"
                       onClick={() => openCreateModal("PROCUREMENT")}
@@ -317,7 +367,7 @@ export default function ChoInventoryModule() {
           totalPages={totalPages}
           onPageChange={setCurrentPage}
           isExpiredTab={inventoryTab === "EXPIRED"}
-          showFacility={inventoryTab === "EXPIRED" || !selectedFacility || facilityFilter === "ALL"}
+          showFacility={inventoryTab === "EXPIRED"}
         />
       </section>
     </>

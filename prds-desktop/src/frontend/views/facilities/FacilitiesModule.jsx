@@ -205,7 +205,6 @@ export default function FacilitiesModule() {
             batch_number,
             quantity,
             expiration_date,
-            threshold,
             medicine:medicines(generic_name, dosage)
           `),
         supabase
@@ -491,19 +490,6 @@ export default function FacilitiesModule() {
         </p>
       )}
 
-      <section className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-5 shadow-xs">
-        <div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#1F4E5A]">
-              Facility Command
-            </p>
-            <h2 className="mt-1 text-xl font-bold text-[#1B2B30]">Facilities</h2>
-            <p className="mt-1 max-w-2xl text-sm font-medium text-[#5B7077]">
-              Manage healthcare facilities, stock health, request activity, and map coverage.
-            </p>
-          </div>
-        </div>
-      </section>
 
       <FacilityToolbar
         canManage={canManage}
@@ -732,15 +718,17 @@ function FacilityMiniMap({ facility }) {
 
 function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("overview");
+  const [inventoryFilter, setInventoryFilter] = useState("ALL");
   const [isScrolled, setIsScrolled] = useState(false);
-  const inventorySectionRef = useRef(null);
-  const profileSectionRef = useRef(null);
-  const requestsSectionRef = useRef(null);
-  const forecastSectionRef = useRef(null);
+
   const healthMeta = getHealthMeta(facility.stockHealth);
-  const stockRows = [...facility.inventoryRows]
-    .sort((first, second) => getStockPercent(first) - getStockPercent(second))
-    .slice(0, 6);
+  const sortedInventory = useMemo(() => {
+    return [...facility.inventoryRows].sort(
+      (first, second) => getStockPercent(first) - getStockPercent(second)
+    );
+  }, [facility.inventoryRows]);
+
   const criticalCount = facility.stockCounts.CRITICAL;
   const lowCount = facility.stockCounts.LOW;
   const alertCount = criticalCount + lowCount;
@@ -748,7 +736,16 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
     (item) => getExpiryMeta(item.expiration_date) != null
   ).length;
   const attentionTotal = alertCount + expiringCount;
-  const recentRequests = facility.requestRows.slice(0, 5);
+
+  const attentionRows = useMemo(() => {
+    return sortedInventory.filter((item) =>
+      ["CRITICAL", "LOW"].includes(getStockStatus(item))
+    );
+  }, [sortedInventory]);
+
+  const displayedStockRows =
+    inventoryFilter === "ATTENTION" ? attentionRows : sortedInventory;
+
   const requestCounts = {
     approved: facility.requestRows.filter(
       (request) => request.status === "APPROVED" || request.status === "COMPLETED"
@@ -756,7 +753,6 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
     pending: facility.requestRows.filter((request) => request.status === "PENDING").length,
     denied: facility.requestRows.filter((request) => request.status === "REJECTED").length,
   };
-  const forecastRows = facility.forecastRows.slice(0, 5);
 
   const forecastTrend = useMemo(() => {
     const byMonth = new Map();
@@ -779,12 +775,6 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
   }, [facility.forecastRows]);
 
   const forecastMax = Math.max(1, ...forecastTrend.map((month) => month.total));
-  const attentionRows = stockRows.filter((item) =>
-    ["CRITICAL", "LOW"].includes(getStockStatus(item))
-  );
-  const otherRows = stockRows.filter(
-    (item) => !["CRITICAL", "LOW"].includes(getStockStatus(item))
-  );
 
   const renderStockRow = (item) => {
     const percent = getStockPercent(item);
@@ -793,32 +783,38 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
     const expiryMeta = getExpiryMeta(item.expiration_date);
 
     return (
-      <div key={item.id} className="rounded-lg border border-neutral-100 p-3">
+      <div
+        key={item.id}
+        className="rounded-xl border border-[#CFDDE0] bg-white p-3.5 shadow-xs transition hover:border-[#1F4E5A]/40"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-black text-black">{getMedicineName(item)}</p>
-            <p className="truncate text-xs font-medium text-neutral-500">
-              Batch {item.batch_number} - Exp. {formatDate(item.expiration_date)}
+            <p className="truncate text-sm font-bold text-[#1B2B30]">{getMedicineName(item)}</p>
+            <p className="truncate text-xs font-medium text-[#5B7077]">
+              Batch {item.batch_number} · Exp. {formatDate(item.expiration_date)}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {expiryMeta && (
-              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${expiryMeta.badgeClass}`}>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${expiryMeta.badgeClass}`}>
                 {expiryMeta.label}
               </span>
             )}
-            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${rowHealth.badgeClass}`}>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${rowHealth.badgeClass}`}>
               {rowHealth.label}
             </span>
           </div>
         </div>
         <div className="mt-3 flex items-center gap-3">
-          <div className="h-1.5 flex-1 rounded-full bg-neutral-100">
-            <div className={`h-full rounded-full ${rowHealth.barClass}`} style={{ width: `${percent}%` }} />
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#E5EFF1]">
+            <div
+              className={`h-full rounded-full transition-all ${rowHealth.barClass}`}
+              style={{ width: `${percent}%` }}
+            />
           </div>
-          <span className="w-24 shrink-0 text-right text-xs font-black text-neutral-700">
+          <span className="w-28 shrink-0 text-right text-xs font-bold text-[#1B2B30]">
             {formatNumber(item.quantity)}
-            <span className="font-semibold text-neutral-400"> / {formatNumber(item.threshold)}</span>
+            <span className="font-medium text-[#5B7077]"> / {formatNumber(item.threshold)} units</span>
           </span>
         </div>
       </div>
@@ -832,233 +828,399 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
       panelClassName="w-full"
     >
-      <div className="facility-details-modal flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-900/20">
+      <div className="facility-details-modal flex flex-col overflow-hidden rounded-2xl border border-[#CFDDE0] bg-[#F9FBFB] shadow-2xl shadow-slate-900/25">
+        {/* Header */}
         <div
-          className={`border-b border-emerald-100 bg-emerald-50 px-5 py-4 text-neutral-950 transition-shadow ${
-            isScrolled ? "shadow-md shadow-emerald-900/5" : ""
+          className={`border-b border-[#CFDDE0] bg-[#F4F8F8] px-5 py-3.5 text-[#1B2B30] transition-shadow ${
+            isScrolled ? "shadow-sm" : ""
           }`}
         >
           <div className="flex items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+            <div className="flex min-w-0 items-start gap-3.5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#CFDDE0] bg-[#EBF3F5] text-[#1F4E5A]">
                 <FacilityIcon />
               </span>
               <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#1F4E5A]">
                   Facility Details
-                </p>
-                <h3 id="facility-details-modal-title" className="mt-1 truncate text-lg font-black">{facility.facility_name}</h3>
-                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm font-medium text-neutral-600">
-                  {facility.facility_code} - {formatFacilityType(facility.facility_type)}
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${healthMeta.badgeClass}`}>
+                </span>
+                <h3 id="facility-details-modal-title" className="truncate text-lg font-bold text-[#1B2B30]">
+                  {facility.facility_name}
+                </h3>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-[#5B7077]">
+                  <span className="rounded-md border border-[#CFDDE0] bg-white px-2 py-0.5 text-[#1B2B30]">
+                    {facility.facility_code}
+                  </span>
+                  <span>·</span>
+                  <span>{formatFacilityType(facility.facility_type)}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${healthMeta.badgeClass}`}>
                     {healthMeta.label}
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-black ${facility.status === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                      facility.status === "ACTIVE"
+                        ? "bg-[#E2F3EC] text-[#226048]"
+                        : "bg-[#E5EFF1] text-[#5B7077]"
+                    }`}
+                  >
                     {formatStatus(facility.status)}
                   </span>
                   {alertCount > 0 && (
-                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-black text-red-600">
+                    <span className="rounded-full border border-[#D9826B]/30 bg-[#FBE9E3] px-2 py-0.5 text-[11px] font-bold text-[#8F3F2B]">
                       {alertCount} alert{alertCount === 1 ? "" : "s"}
                     </span>
                   )}
-                </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-[#CFDDE0] bg-[#F9FBFB] px-5 py-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: "overview", label: "Overview", icon: BuildingIcon, count: null },
+              {
+                id: "inventory",
+                label: "Inventory",
+                icon: StockIcon,
+                count: facility.inventoryRows.length,
+                hasAlert: attentionTotal > 0,
+              },
+              {
+                id: "requests",
+                label: "Requests",
+                icon: FileTextIcon,
+                count: facility.requestRows.length,
+                hasAlert: false,
+              },
+              {
+                id: "forecast",
+                label: "Forecast",
+                icon: TrendIcon,
+                count: facility.forecastRows.length,
+                hasAlert: false,
+              },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
+                    isActive
+                      ? "bg-[#1F4E5A] text-white shadow-xs"
+                      : "text-[#5B7077] hover:bg-[#EBF3F5] hover:text-[#1F4E5A]"
+                  }`}
+                >
+                  <Icon />
+                  <span>{tab.label}</span>
+                  {tab.count != null && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : tab.hasAlert
+                          ? "bg-[#FBE9E3] text-[#8F3F2B]"
+                          : "bg-[#CFDDE0]/60 text-[#5B7077]"
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
+                  {tab.hasAlert && !isActive && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#D9826B]" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Scrollable Body Content */}
         <div
-          className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#f8faf7] p-4 sm:p-5"
+          className="prds-modal-scrollbar flex-1 overflow-y-auto bg-[#F9FBFB] p-4 sm:p-5"
           onScroll={(event) => setIsScrolled(event.currentTarget.scrollTop > 4)}
         >
-          <div className="facility-detail-stats grid gap-3">
-            <HealthGaugeCard percent={facility.healthPercent} health={facility.stockHealth} />
-            <DetailStat label="Inventory Value" value={formatCurrency(facility.stockCounts.totalValue)} />
-            <DetailStat label="Total Units" value={formatNumber(facility.stockCounts.totalQuantity)} />
-            <DetailStat label="Patients" value={formatNumber(facility.patientCount)} />
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-2 shadow-xs">
-            {[
-              { label: "Overview", ref: profileSectionRef },
-              { label: "Inventory Health", ref: inventorySectionRef },
-              { label: "Requests", ref: requestsSectionRef },
-              { label: "Forecast", ref: forecastSectionRef },
-            ].map((section) => (
-              <button
-                key={section.label}
-                type="button"
-                onClick={() => section.ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#5B7077] transition hover:bg-[#EBF3F5] hover:text-[#1F4E5A]"
-              >
-                {section.label}
-              </button>
-            ))}
-          </div>
-
-          {attentionTotal > 0 && (
-            <div
-              className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
-                criticalCount > 0 ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
-              }`}
-            >
-              <div className={`flex items-center gap-2 text-sm font-black ${criticalCount > 0 ? "text-red-700" : "text-amber-700"}`}>
-                <AlertDotIcon />
-                <span>
-                  {criticalCount > 0 && `${criticalCount} critical`}
-                  {criticalCount > 0 && lowCount > 0 && " · "}
-                  {lowCount > 0 && `${lowCount} low`}
-                  {alertCount > 0 && expiringCount > 0 && " · "}
-                  {expiringCount > 0 && `${expiringCount} expiring soon`}
-                  {" "}
-                  {attentionTotal === 1 ? "item needs attention" : "items need attention"}
-                </span>
+          {activeTab === "overview" && (
+            <div className="space-y-4">
+              {/* 4 Clean Metric Cards */}
+              <div className="facility-detail-stats grid gap-3">
+                <HealthGaugeCard percent={facility.healthPercent} health={facility.stockHealth} />
+                <DetailStat
+                  label="Total Stock"
+                  value={formatNumber(facility.stockCounts.totalQuantity)}
+                  subtext={`Across ${facility.inventoryRows.length} item${facility.inventoryRows.length === 1 ? "" : "s"}`}
+                />
+                <DetailStat
+                  label="Monitored Items"
+                  value={formatNumber(facility.inventoryRows.length)}
+                  subtext="Tracked medicines"
+                />
+                <DetailStat
+                  label="Stock Alerts"
+                  value={formatNumber(alertCount)}
+                  alert={alertCount > 0}
+                  subtext={
+                    alertCount > 0
+                      ? `${criticalCount} critical, ${lowCount} low stock`
+                      : "All stocks within safe threshold"
+                  }
+                />
               </div>
-              <button
-                type="button"
-                onClick={() => inventorySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className={`rounded-lg px-3 py-1.5 text-xs font-black text-white transition ${
-                  criticalCount > 0 ? "bg-red-600 hover:bg-red-700" : "bg-amber-500 hover:bg-amber-600"
-                }`}
-              >
-                Review inventory
-              </button>
+
+              {/* Actionable Attention Alert Banner */}
+              {attentionTotal > 0 && (
+                <div
+                  className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 sm:px-4 ${
+                    criticalCount > 0
+                      ? "border-[#D9826B]/30 bg-[#FBE9E3] text-[#8F3F2B]"
+                      : "border-[#34769B]/30 bg-[#E3EEF5] text-[#1F4A66]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 text-xs font-bold sm:text-sm">
+                    <AlertDotIcon />
+                    <span>
+                      {criticalCount > 0 && `${criticalCount} critical`}
+                      {criticalCount > 0 && lowCount > 0 && " · "}
+                      {lowCount > 0 && `${lowCount} low stock`}
+                      {alertCount > 0 && expiringCount > 0 && " · "}
+                      {expiringCount > 0 && `${expiringCount} expiring soon`}
+                      {" "}— attention required.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("inventory")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white transition ${
+                      criticalCount > 0 ? "bg-[#8F3F2B] hover:bg-[#733222]" : "bg-[#1F4E5A] hover:bg-[#183d47]"
+                    }`}
+                  >
+                    Review in Inventory →
+                  </button>
+                </div>
+              )}
+
+              {/* 2-Column Grid: Profile & Geographic Location */}
+              <div className="facility-detail-main grid gap-4">
+                <div className="rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-[#CFDDE0]/50 pb-2.5">
+                    <h4 className="text-sm font-bold text-[#1B2B30]">Facility Profile</h4>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                        facility.status === "ACTIVE"
+                          ? "bg-[#E2F3EC] text-[#226048]"
+                          : "bg-[#E5EFF1] text-[#5B7077]"
+                      }`}
+                    >
+                      {formatStatus(facility.status)}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <ProfileLine label="Facility Code" value={facility.facility_code} />
+                    <ProfileLine label="Facility Type" value={formatFacilityType(facility.facility_type)} />
+                    <ProfileLine label="Assigned Patients" value={formatNumber(facility.patientCount)} />
+                    <ProfileLine label="Stock Health" value={healthMeta.label} />
+                  </div>
+                  <div className="mt-3 border-t border-[#CFDDE0]/40 pt-3">
+                    <ProfileLine label="Complete Address" value={facility.address} />
+                  </div>
+                </div>
+
+                <div className="flex flex-col rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-[#CFDDE0]/50 pb-2.5">
+                    <h4 className="text-sm font-bold text-[#1B2B30]">Geographic Location</h4>
+                    <span className="text-xs font-medium text-[#5B7077]">
+                      {facility.latitude != null && facility.longitude != null
+                        ? `${Number(facility.latitude).toFixed(4)}, ${Number(facility.longitude).toFixed(4)}`
+                        : "Location not set"}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex-1">
+                    <FacilityMiniMap facility={facility} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Immediate Attention Stock Preview */}
+              {attentionRows.length > 0 && (
+                <div className="rounded-xl border border-[#D9826B]/25 bg-white p-4 shadow-xs">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-[#8F3F2B]">Stocks Needing Immediate Attention</h4>
+                      <p className="text-xs font-medium text-[#5B7077]">
+                        Items at or below safe minimum threshold levels
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("inventory")}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-[#1F4E5A] hover:underline"
+                    >
+                      View all inventory ({facility.inventoryRows.length}) →
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2.5">
+                    {attentionRows.slice(0, 3).map(renderStockRow)}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          <div className="facility-detail-main mt-4 grid gap-4">
-            <section ref={inventorySectionRef} className="scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-base font-black text-black">Inventory Health</h4>
-                  <p className="text-sm font-medium text-neutral-500">
-                    {facility.inventoryRows.length > stockRows.length
-                      ? `Showing ${stockRows.length} of ${facility.inventoryRows.length} items`
-                      : `${facility.inventoryRows.length} item${facility.inventoryRows.length === 1 ? "" : "s"}`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
+          {activeTab === "inventory" && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#CFDDE0]/50 pb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#1B2B30]">Inventory Health Status</h4>
+                    <p className="text-xs font-medium text-[#5B7077]">
+                      {facility.inventoryRows.length} monitored medicine{facility.inventoryRows.length === 1 ? "" : "s"} at this facility
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => navigate(`/inventory?facility=${facility.id}`)}
-                    className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#CFDDE0] bg-[#F4F8F8] px-3 py-1.5 text-xs font-bold text-[#1F4E5A] transition hover:bg-[#EBF3F5]"
                   >
-                    View all
+                    <StockIcon />
+                    Open Full Inventory
+                    <ExternalLinkIcon />
                   </button>
-                  <span className={`rounded-full px-3 py-1 text-xs font-black ${healthMeta.badgeClass}`}>
-                    {healthMeta.label}
-                  </span>
+                </div>
+
+                <div className="facility-health-grid mt-3 grid gap-2.5">
+                  <MiniStatus label="Healthy" value={facility.stockCounts.HEALTHY} colorClass="bg-[#4C9F80]" />
+                  <MiniStatus label="Warning" value={facility.stockCounts.WATCH} colorClass="bg-[#34769B]" />
+                  <MiniStatus label="Low Stock" value={facility.stockCounts.LOW} colorClass="bg-[#D9826B]" />
+                  <MiniStatus label="Critical" value={facility.stockCounts.CRITICAL} colorClass="bg-[#8F3F2B]" />
                 </div>
               </div>
 
-              <div className="facility-health-grid mt-4 grid gap-3">
-                <MiniStatus label="Healthy" value={facility.stockCounts.HEALTHY} colorClass="bg-emerald-500" />
-                <MiniStatus label="Warning" value={facility.stockCounts.WATCH} colorClass="bg-amber-500" />
-                <MiniStatus label="Low" value={facility.stockCounts.LOW} colorClass="bg-orange-500" />
-                <MiniStatus label="Critical" value={facility.stockCounts.CRITICAL} colorClass="bg-red-500" />
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {stockRows.length === 0 ? (
-                  <p className="rounded-lg bg-neutral-50 px-4 py-5 text-center text-sm font-bold text-neutral-500">
-                    No inventory records for this facility yet.
-                  </p>
-                ) : (
-                  <>
-                    {attentionRows.length > 0 && (
-                      <>
-                        <p className="text-[11px] font-black uppercase tracking-wide text-red-600">
-                          Needs attention
-                        </p>
-                        {attentionRows.map(renderStockRow)}
-                      </>
-                    )}
-                    {otherRows.length > 0 && (
-                      <>
-                        <p className="text-[11px] font-black uppercase tracking-wide text-neutral-400">
-                          Other items
-                        </p>
-                        {otherRows.map(renderStockRow)}
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </section>
-
-            <div className="grid gap-5">
-              <section ref={profileSectionRef} className="scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <h4 className="text-base font-black text-black">Facility Profile</h4>
-                <div className="mt-4 space-y-3">
-                  <FacilityMiniMap facility={facility} />
-                  <ProfileLine label="Facility Code" value={facility.facility_code} />
-                  <ProfileLine label="Facility Type" value={formatFacilityType(facility.facility_type)} />
-                  <ProfileLine label="Status" value={formatStatus(facility.status)} />
-                  <ProfileLine label="Address" value={facility.address} />
-                  <ProfileLine
-                    label="Coordinates"
-                    value={
-                      facility.latitude != null && facility.longitude != null
-                        ? `${Number(facility.latitude).toFixed(6)}, ${Number(facility.longitude).toFixed(6)}`
-                        : "Not set"
-                    }
-                  />
+              {attentionRows.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInventoryFilter("ALL")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      inventoryFilter === "ALL"
+                        ? "bg-[#1F4E5A] text-white shadow-xs"
+                        : "border border-[#CFDDE0] bg-white text-[#5B7077] hover:bg-[#F4F8F8]"
+                    }`}
+                  >
+                    All Medicines ({sortedInventory.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInventoryFilter("ATTENTION")}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      inventoryFilter === "ATTENTION"
+                        ? "bg-[#8F3F2B] text-white shadow-xs"
+                        : "border border-[#D9826B]/25 bg-[#FBE9E3] text-[#8F3F2B] hover:bg-[#f8ded6]"
+                    }`}
+                  >
+                    <AlertDotIcon />
+                    Needs Attention ({attentionRows.length})
+                  </button>
                 </div>
-              </section>
+              )}
 
-              <section ref={requestsSectionRef} className="scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-base font-black text-black">Distribution</h4>
-                    <p className="text-sm font-medium text-neutral-500">
-                      Medicine request activity for this facility.
+              <div className="space-y-2.5">
+                {displayedStockRows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[#CFDDE0] bg-white p-8 text-center">
+                    <p className="text-sm font-bold text-[#5B7077]">
+                      {inventoryFilter === "ATTENTION"
+                        ? "No medicines currently require urgent attention."
+                        : "No inventory records for this facility yet."}
+                    </p>
+                    <p className="mt-1 text-xs text-[#5B7077]">
+                      {inventoryFilter === "ATTENTION"
+                        ? "All stocks are within safe threshold margins."
+                        : "Medicines will appear here once distributed or recorded."}
                     </p>
                   </div>
-                  {facility.requestRows.length > recentRequests.length && (
-                    <button
-                      type="button"
-                      onClick={() => navigate("/requests")}
-                      className="shrink-0 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
-                    >
-                      View all requests
-                    </button>
-                  )}
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <MetricTile value={formatNumber(facility.requestRows.length)} label="Requests" />
-                  <MetricTile value={formatNumber(requestCounts.pending)} label="Pending" />
-                  <MetricTile value={`${facility.distributionRate}%`} label="Distribution Rate" />
-                  <MetricTile value={formatNumber(requestCounts.denied)} label="Denied" />
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-700">
-                    {requestCounts.approved} approved
-                  </span>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-700">
-                    {requestCounts.pending} pending
-                  </span>
-                  <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-black text-red-700">
-                    {requestCounts.denied} denied
-                  </span>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {recentRequests.length === 0 ? (
-                    <p className="rounded-lg bg-neutral-50 px-4 py-4 text-sm font-bold text-neutral-500">
-                      No medicine requests recorded.
+                ) : (
+                  displayedStockRows.map(renderStockRow)
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "requests" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <DetailStat
+                  label="Total Requests"
+                  value={formatNumber(facility.requestRows.length)}
+                  subtext="All-time requests"
+                />
+                <DetailStat
+                  label="Approved"
+                  value={formatNumber(requestCounts.approved)}
+                  subtext="Fulfilled orders"
+                />
+                <DetailStat
+                  label="Pending"
+                  value={formatNumber(requestCounts.pending)}
+                  alert={requestCounts.pending > 0}
+                  subtext={requestCounts.pending > 0 ? "Awaiting review" : "None pending"}
+                />
+                <DetailStat
+                  label="Distribution Rate"
+                  value={`${facility.distributionRate}%`}
+                  subtext={`${requestCounts.denied} denied`}
+                />
+              </div>
+
+              <div className="rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+                <div className="flex items-center justify-between border-b border-[#CFDDE0]/50 pb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#1B2B30]">Recent Requisitions</h4>
+                    <p className="text-xs font-medium text-[#5B7077]">
+                      Medicine request activity submitted by this facility
                     </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/requests")}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#CFDDE0] bg-[#F4F8F8] px-3 py-1.5 text-xs font-bold text-[#1F4E5A] transition hover:bg-[#EBF3F5]"
+                  >
+                    View in Requests
+                    <ExternalLinkIcon />
+                  </button>
+                </div>
+
+                <div className="mt-3 divide-y divide-[#CFDDE0]/40">
+                  {facility.requestRows.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <p className="text-sm font-bold text-[#5B7077]">No medicine requests recorded.</p>
+                      <p className="mt-1 text-xs text-[#5B7077]">When requests are submitted, they will be listed here.</p>
+                    </div>
                   ) : (
-                    recentRequests.map((request) => {
+                    facility.requestRows.slice(0, 10).map((request) => {
                       const requestStatus = getRequestStatusMeta(request.status);
+                      const itemCount = request.items?.length || 0;
+                      const totalQty =
+                        request.items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0;
 
                       return (
-                        <div key={request.id} className="flex items-center justify-between gap-3 border-b border-neutral-100 pb-3 last:border-b-0 last:pb-0">
+                        <div
+                          key={request.id}
+                          className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                        >
                           <div>
-                            <p className="text-sm font-bold text-black">{formatDate(request.request_date)}</p>
-                            <p className="text-xs font-medium text-neutral-500">
-                              {request.items?.length || 0} medicines - {request.items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0} units
+                            <p className="text-sm font-bold text-[#1B2B30]">
+                              {formatDate(request.request_date)}
+                            </p>
+                            <p className="text-xs font-medium text-[#5B7077]">
+                              {itemCount} medicine{itemCount === 1 ? "" : "s"} · {formatNumber(totalQty)} total units
                             </p>
                           </div>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${requestStatus.badgeClass}`}>
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${requestStatus.badgeClass}`}>
                             {requestStatus.label}
                           </span>
                         </div>
@@ -1066,95 +1228,105 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
                     })
                   )}
                 </div>
-                {facility.requestRows.length > recentRequests.length && (
-                  <p className="mt-3 text-xs font-bold text-neutral-400">
-                    +{facility.requestRows.length - recentRequests.length} more request{facility.requestRows.length - recentRequests.length === 1 ? "" : "s"}
-                  </p>
-                )}
-              </section>
-            </div>
-          </div>
-
-          <section ref={forecastSectionRef} className="mt-4 scroll-mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h4 className="text-base font-black text-black">Demand Forecast</h4>
-                <p className="text-sm font-medium text-neutral-500">
-                  {forecastTrend.length > 1
-                    ? `${forecastTrend[0].label} – ${forecastTrend[forecastTrend.length - 1].label} forecast`
-                    : "Upcoming predicted quantities for this facility."}
-                </p>
               </div>
-              <span className="text-2xl font-black text-black">{formatNumber(facility.forecastTotal)}</span>
             </div>
+          )}
 
-            {forecastTrend.length > 0 && (
-              <div className="mt-4 flex h-28 items-end gap-2">
-                {forecastTrend.map((month) => (
-                  <div key={month.key} className="flex h-full flex-1 flex-col items-center gap-1">
-                    <div className="flex w-full flex-1 items-end rounded-md bg-neutral-100">
-                      <div
-                        className={`w-full rounded-t-md ${
-                          month.total > 0 ? "bg-emerald-500/80" : "bg-neutral-200"
-                        }`}
-                        style={{ height: `${Math.max(4, (month.total / forecastMax) * 100)}%` }}
-                        title={`${month.label} · ${formatNumber(month.total)} units`}
-                      />
+          {activeTab === "forecast" && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#CFDDE0]/50 pb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#1B2B30]">Demand Forecast Projections</h4>
+                    <p className="text-xs font-medium text-[#5B7077]">
+                      {forecastTrend.length > 1
+                        ? `${forecastTrend[0].label} – ${forecastTrend[forecastTrend.length - 1].label} projected demand`
+                        : "Upcoming predicted quantities for this facility"}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#5B7077]">Total Forecast</p>
+                    <p className="text-xl font-black text-[#1F4E5A]">
+                      {formatNumber(facility.forecastTotal)}{" "}
+                      <span className="text-xs font-semibold text-[#5B7077]">units</span>
+                    </p>
+                  </div>
+                </div>
+
+                {forecastTrend.length > 0 ? (
+                  <div className="mt-4">
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[#5B7077]">
+                      Monthly Demand Trend
+                    </p>
+                    <div className="flex h-28 items-end gap-2 rounded-lg bg-[#F4F8F8] p-3">
+                      {forecastTrend.map((month) => (
+                        <div key={month.key} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
+                          <span className="text-[10px] font-bold text-[#5B7077]">
+                            {month.total > 0 ? formatNumber(month.total) : "0"}
+                          </span>
+                          <div className="flex w-full flex-1 items-end rounded-md bg-[#CFDDE0]/40">
+                            <div
+                              className={`w-full rounded-t-md transition-all ${
+                                month.total > 0 ? "bg-[#1F4E5A]" : "bg-[#CFDDE0]"
+                              }`}
+                              style={{ height: `${Math.max(6, (month.total / forecastMax) * 100)}%` }}
+                              title={`${month.label} · ${formatNumber(month.total)} units`}
+                            />
+                          </div>
+                          <span className="text-[11px] font-bold text-[#1B2B30]">{month.label}</span>
+                        </div>
+                      ))}
                     </div>
-                    <span className="text-[11px] font-black text-neutral-500">{month.label}</span>
                   </div>
-                ))}
+                ) : null}
               </div>
-            )}
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {forecastRows.length === 0 ? (
-                <p className="col-span-full rounded-lg bg-neutral-50 px-4 py-5 text-center text-sm font-bold text-neutral-500">
-                  No forecast records available yet.
-                </p>
-              ) : (
-                forecastRows.map((forecast) => (
-                  <div key={forecast.id} className="rounded-lg bg-neutral-50 p-4">
-                    <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">
-                      {formatDate(forecast.forecast_month)}
-                    </p>
-                    <p className="mt-2 text-2xl font-black text-black">
-                      {formatNumber(forecast.predicted_quantity)}
-                    </p>
-                    <p className="mt-1 truncate text-xs font-semibold text-neutral-500">
-                      {forecast.medicine?.generic_name || "Medicine"}
-                    </p>
+              <div className="rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+                <h4 className="mb-3 text-sm font-bold text-[#1B2B30]">Predicted Medicine Quantities</h4>
+                {facility.forecastRows.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <p className="text-sm font-bold text-[#5B7077]">No forecast records available yet.</p>
+                    <p className="mt-1 text-xs text-[#5B7077]">Projections will be generated based on distribution trends.</p>
                   </div>
-                ))
-              )}
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                    {facility.forecastRows.slice(0, 6).map((forecast) => (
+                      <div key={forecast.id} className="rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] p-3">
+                        <span className="rounded-full bg-[#EBF3F5] px-2 py-0.5 text-[10px] font-bold text-[#1F4E5A]">
+                          {formatDate(forecast.forecast_month)}
+                        </span>
+                        <p className="mt-2 text-xl font-black text-[#1B2B30]">
+                          {formatNumber(forecast.predicted_quantity)}
+                          <span className="ml-1 text-xs font-semibold text-[#5B7077]">units</span>
+                        </p>
+                        <p className="mt-1 truncate text-xs font-bold text-[#5B7077]">
+                          {forecast.medicine?.generic_name || "Medicine"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </section>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 bg-white px-5 py-4">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => navigate(`/inventory?facility=${facility.id}`)}
-              className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-bold text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-800"
-            >
-              <StockIcon />
-              View in Inventory
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/requests")}
-              className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-bold text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-800"
-            >
-              <TrendIcon />
-              View all requests
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
+        {/* Modal Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#CFDDE0] bg-white px-5 py-3.5">
+          <button
+            type="button"
+            onClick={() => navigate(`/inventory?facility=${facility.id}`)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F4F8F8] px-3.5 text-xs font-bold text-[#1F4E5A] transition hover:bg-[#EBF3F5]"
+          >
+            <StockIcon />
+            Open in Inventory
+            <ExternalLinkIcon />
+          </button>
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="h-10 rounded-lg bg-neutral-100 px-6 text-sm font-bold text-neutral-700 hover:bg-neutral-200"
+              className="h-9 rounded-lg border border-[#CFDDE0] bg-white px-5 text-xs font-bold text-[#5B7077] transition hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
             >
               Close
             </button>
@@ -1162,7 +1334,7 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
               <button
                 type="button"
                 onClick={onEdit}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 text-sm font-black text-white transition hover:bg-emerald-700"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#1F4E5A] px-5 text-xs font-bold text-white shadow-xs transition hover:bg-[#183d47]"
               >
                 <PencilIcon />
                 Edit Facility
@@ -1178,70 +1350,62 @@ function FacilityDetailsModal({ facility, onClose, onEdit, canManage = true }) {
 function HealthGaugeCard({ percent, health }) {
   const colors = {
     HEALTHY: "#4C9F80",
-    WATCH: "#E5B94E",
-    LOW: "#E09453",
-    CRITICAL: "#D9826B",
+    WATCH: "#34769B",
+    LOW: "#D9826B",
+    CRITICAL: "#8F3F2B",
     NO_DATA: "#CFDDE0",
   };
 
-  const color = colors[health] || "#E5B94E";
+  const color = colors[health] || "#34769B";
   const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (clamped / 100) * circumference;
 
   return (
-    <div className="rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-4 shadow-xs">
-      <div className="relative mx-auto h-[72px] w-[72px]">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+      <div className="relative h-[72px] w-[72px]">
         <svg viewBox="0 0 64 64" className="h-full w-full -rotate-90">
-          <circle cx="32" cy="32" r={radius} fill="none" stroke="#e9ebed" strokeWidth="7" />
+          <circle cx="32" cy="32" r={radius} fill="none" stroke="#E5EFF1" strokeWidth="6" />
           <circle
             cx="32"
             cy="32"
             r={radius}
             fill="none"
             stroke={color}
-            strokeWidth="7"
+            strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
           />
         </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-base font-black text-black">
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-[#1B2B30]">
           {percent == null ? "-" : `${clamped}%`}
         </span>
       </div>
-      <p className="mt-3 text-center text-xs font-bold uppercase tracking-wide text-neutral-500">
+      <p className="mt-2 text-center text-xs font-bold uppercase tracking-wider text-[#5B7077]">
         {percent == null ? "No stock data" : "Stock Health"}
       </p>
     </div>
   );
 }
 
-function DetailStat({ label, value }) {
+function DetailStat({ label, value, subtext, alert }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <p className="text-2xl font-black text-black">{value}</p>
-      <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</p>
-    </div>
-  );
-}
-
-function MetricTile({ value, label }) {
-  return (
-    <div className="rounded-lg bg-neutral-50 px-3 py-3 text-center">
-      <p className="text-base font-black text-black">{value}</p>
-      <p className="text-xs font-medium text-neutral-500">{label}</p>
+    <div className="flex flex-col justify-between rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+      <p className="text-xs font-bold uppercase tracking-wider text-[#5B7077]">{label}</p>
+      <p className={`mt-1 text-2xl font-black ${alert ? "text-[#8F3F2B]" : "text-[#1B2B30]"}`}>{value}</p>
+      {subtext && <p className="mt-0.5 truncate text-xs font-medium text-[#5B7077]">{subtext}</p>}
     </div>
   );
 }
 
 function MiniStatus({ label, value, colorClass }) {
   return (
-    <div className="rounded-lg bg-neutral-50 p-3">
-      <span className={`block h-1.5 w-8 rounded-full ${colorClass}`} />
-      <p className="mt-3 text-xl font-black text-black">{formatNumber(value)}</p>
-      <p className="text-xs font-bold text-neutral-500">{label}</p>
+    <div className="rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] p-2.5">
+      <span className={`block h-1.5 w-6 rounded-full ${colorClass}`} />
+      <p className="mt-2 text-lg font-black text-[#1B2B30]">{formatNumber(value)}</p>
+      <p className="text-[11px] font-bold text-[#5B7077]">{label}</p>
     </div>
   );
 }
@@ -1249,8 +1413,8 @@ function MiniStatus({ label, value, colorClass }) {
 function ProfileLine({ label, value }) {
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-black">{value || "Not set"}</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-[#5B7077]">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold text-[#1B2B30]">{value || "Not set"}</p>
     </div>
   );
 }
@@ -1314,6 +1478,35 @@ function PencilIcon() {
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
       <path d="M12 20h9" />
       <path d="m16.5 3.5 4 4L8 20l-5 1 1-5 12.5-12.5Z" />
+    </svg>
+  );
+}
+
+
+function BuildingIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <rect width="16" height="20" x="4" y="2" rx="2" ry="2" />
+      <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01" />
+    </svg>
+  );
+}
+
+function FileTextIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" viewBox="0 0 24 24">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+    </svg>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <path d="M15 3h6v6" />
+      <path d="m10 14 11-11" />
     </svg>
   );
 }

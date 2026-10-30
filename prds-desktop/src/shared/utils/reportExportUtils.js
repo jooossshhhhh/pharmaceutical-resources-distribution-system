@@ -649,6 +649,7 @@ export function processMonthlyInventoryData({
   dispensingRows = [],
   requestRows = [],
   otherProgramsRows = [],
+  stockReturnsRows = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1,
 }) {
@@ -740,6 +741,28 @@ export function processMonthlyInventoryData({
     });
   });
 
+  // 4. Confirmed Stock Returns (Barangay Health Stations -> CHO Central Warehouse)
+  const returnsByBatch = new Map();
+  const returnsByMed = new Map();
+  (stockReturnsRows || []).forEach((ret) => {
+    if (!ret) return;
+    const status = String(ret.status || "").toUpperCase();
+    if (status !== "CONFIRMED" && status !== "VERIFIED") return;
+    const dateKey = toDateKey(ret.confirmed_at || ret.submitted_at || ret.created_at);
+    if (!dateKey.startsWith(targetMonthPrefix)) return;
+
+    const qty = Number(ret.quantity) || 0;
+    const medId = String(ret.medicine_id || ret.medicine?.id || "");
+    const batch = (ret.lot_no || ret.batch_number || "").trim().toUpperCase();
+
+    if (batch) {
+      returnsByBatch.set(batch, (returnsByBatch.get(batch) || 0) + qty);
+    }
+    if (medId) {
+      returnsByMed.set(medId, (returnsByMed.get(medId) || 0) + qty);
+    }
+  });
+
   // Totals accumulators
   let totalBegVal = 0;
   let totalAddVal = 0;
@@ -811,15 +834,27 @@ export function processMonthlyInventoryData({
       expiredQty = Number(item.quantity) || 0;
     }
 
-    // Additional Stocks Received this Month
+    // Additional Stocks Received / Returned this Month (Columns L, M, N)
     let additionalQty = 0;
     if (item.additional_quantity !== undefined || item.additionalQty !== undefined) {
       additionalQty = Number(item.additional_quantity ?? item.additionalQty ?? 0);
     } else {
+      let procurementDeliveryQty = 0;
       const receivedDateKey = toDateKey(item.date_received || item.created_at);
       if (receivedDateKey.startsWith(targetMonthPrefix) && item.received_quantity) {
-        additionalQty = Number(item.received_quantity) || 0;
+        procurementDeliveryQty = Number(item.received_quantity) || 0;
       }
+
+      let returnedQty = 0;
+      if (batch && returnsByBatch.has(batch)) {
+        returnedQty = returnsByBatch.get(batch) || 0;
+        returnsByBatch.set(batch, 0);
+      } else if (medId && returnsByMed.has(medId)) {
+        returnedQty = returnsByMed.get(medId) || 0;
+        returnsByMed.set(medId, 0);
+      }
+
+      additionalQty = procurementDeliveryQty + returnedQty;
     }
 
     // Physical Remaining Count on Hand
@@ -883,6 +918,52 @@ export function processMonthlyInventoryData({
       remainingQty,
       remainingTotal,
     };
+  });
+
+  // Append any confirmed returns for batches that were not present in CHO inventory rows
+  returnsByBatch.forEach((retQty, retBatch) => {
+    if (retQty <= 0) return;
+    const retRecord = (stockReturnsRows || []).find((r) => {
+      const b = (r.lot_no || r.batch_number || "").trim().toUpperCase();
+      return b === retBatch;
+    });
+    if (!retRecord) return;
+
+    const unitCost = Number(retRecord.unit_cost) || 0;
+    const generic = (retRecord.medicine_name || retRecord.medicine?.generic_name || "").trim();
+    const dosage = (retRecord.dosage || retRecord.medicine?.dosage || "").trim();
+    const itemDescription = formatItemDescription(generic, dosage);
+    const addTotal = retQty * unitCost;
+
+    items.push({
+      index: items.length + 1,
+      poNumber: retRecord.return_id || "STOCK-RETURN",
+      itemDescription,
+      unitOfMeasure: (retRecord.unit_of_measure || retRecord.medicine?.unit_of_measure || "UNIT").trim().toUpperCase(),
+      brandName: (retRecord.brand_name || retRecord.medicine?.brand_name || "-").trim().toUpperCase(),
+      lotNo: retBatch,
+      expiryDate: retRecord.expiration_date || "-",
+      unitCost,
+      beginningQty: 0,
+      begTotal: 0,
+      additionalQty: retQty,
+      addTotal,
+      grossQty: retQty,
+      grossTotal: addTotal,
+      issuedQty: 0,
+      issuedTotal: 0,
+      programQty: 0,
+      programTotal: 0,
+      programName: "",
+      expiredQty: 0,
+      expiredTotal: 0,
+      remainingQty: retQty,
+      remainingTotal: addTotal,
+    });
+
+    totalAddVal += addTotal;
+    totalGrossVal += addTotal;
+    totalRemVal += addTotal;
   });
 
   items.sort((a, b) => {
@@ -986,6 +1067,7 @@ export function buildMonthlyInventoryBuffer({
   dispensingRows = [],
   requestRows = [],
   otherProgramsRows = [],
+  stockReturnsRows = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1,
   facilityName = "VMCH MEDICINE SUPPLIES",
@@ -1004,6 +1086,7 @@ export function buildMonthlyInventoryBuffer({
       dispensingRows,
       requestRows,
       otherProgramsRows,
+      stockReturnsRows,
       year,
       month,
       facilityName,
@@ -1023,6 +1106,7 @@ export function buildMonthlyInventoryBuffer({
         dispensingRows,
         requestRows,
         otherProgramsRows,
+        stockReturnsRows,
         year,
         month,
         facilityName,
@@ -1090,6 +1174,7 @@ export function buildMonthlyInventoryBuffer({
       dispensingRows,
       requestRows,
       otherProgramsRows,
+      stockReturnsRows,
       year,
       month,
     });
@@ -1329,6 +1414,7 @@ export function buildMonthlyInventoryWorkbook({
   dispensingRows = [],
   requestRows = [],
   otherProgramsRows = [],
+  stockReturnsRows = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1,
   facilityName = "VMCH MEDICINE SUPPLIES",
@@ -1449,6 +1535,7 @@ export function buildMonthlyInventoryWorkbook({
     dispensingRows,
     requestRows,
     otherProgramsRows,
+    stockReturnsRows,
     year,
     month,
   });
@@ -1669,6 +1756,7 @@ export async function exportMonthlyInventoryExcel({
   dispensingRows = [],
   requestRows = [],
   otherProgramsRows = [],
+  stockReturnsRows = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1,
   facilityName = "VMCH MEDICINE SUPPLIES",
@@ -1680,6 +1768,7 @@ export async function exportMonthlyInventoryExcel({
     dispensingRows,
     requestRows,
     otherProgramsRows,
+    stockReturnsRows,
     year,
     month,
     facilityName,

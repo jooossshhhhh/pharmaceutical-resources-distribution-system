@@ -93,7 +93,6 @@ export const getOwnFacilityInventory = async (facilityId) => {
       id,
       medicine_id,
       quantity,
-      threshold,
       batch_number,
       date_received,
       expiration_date,
