@@ -38,6 +38,17 @@ export const isRetiredTransferMutation = (item) => {
   return RETIRED_TRANSFER_MUTATION_TARGETS.has(target) || target.includes("stock_transfer");
 };
 
+export const isOrphanedNotificationMutation = (item) => {
+  if (String(item?.target || "").toLowerCase() !== "notifications") return false;
+  const msg = String(item?.error_message || "").toLowerCase();
+  return (
+    item.status === "FAILED" ||
+    msg.includes("row-level security") ||
+    msg.includes("violates row-level") ||
+    msg.includes("permission")
+  );
+};
+
 const mutationStatusPriority = { PENDING: 0, FAILED: 1, SYNCED: 2 };
 
 export function mergeMutationQueues(...queues) {
@@ -130,6 +141,43 @@ async function discardRetiredTransferMutations(userId, entries) {
   return true;
 }
 
+async function discardOrphanedNotificationMutations(userId, entries) {
+  const orphanedIds = new Set(
+    entries
+      .filter(isOrphanedNotificationMutation)
+      .map((item) => item.id)
+      .filter(Boolean)
+  );
+  if (orphanedIds.size === 0) return false;
+
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      for (const id of orphanedIds) {
+        if (userId) {
+          await db.execute(
+            "DELETE FROM offline_mutation_queue WHERE id = ? AND user_id = ?",
+            [id, userId]
+          );
+        } else {
+          await db.execute(
+            "DELETE FROM offline_mutation_queue WHERE id = ?",
+            [id]
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to discard orphaned notification mutations from SQLite:", err);
+    }
+  }
+
+  memoryQueue = readLocalStorageQueue().filter(
+    (item) => !( (!userId || item.user_id === userId) && (orphanedIds.has(item.id) || isOrphanedNotificationMutation(item)))
+  );
+  writeLocalStorageQueue(memoryQueue);
+  return true;
+}
+
 async function getQueueEntries(userId) {
   if (!userId) return [];
 
@@ -196,7 +244,8 @@ async function getQueueEntries(userId) {
 
   const mergedQueue = filterMutationsForUser(mergeMutationQueues(sqliteRows, localRows), userId);
   await discardRetiredTransferMutations(userId, mergedQueue);
-  return mergedQueue.filter((item) => !isRetiredTransferMutation(item));
+  await discardOrphanedNotificationMutations(userId, mergedQueue);
+  return mergedQueue.filter((item) => !isRetiredTransferMutation(item) && !isOrphanedNotificationMutation(item));
 }
 
 export async function getAllQueueEntries() {
@@ -260,7 +309,8 @@ export async function getAllQueueEntries() {
 
   const mergedQueue = mergeMutationQueues(sqliteRows, memoryQueue);
   await discardRetiredTransferMutations(null, mergedQueue);
-  return mergedQueue.filter((item) => !isRetiredTransferMutation(item));
+  await discardOrphanedNotificationMutations(null, mergedQueue);
+  return mergedQueue.filter((item) => !isRetiredTransferMutation(item) && !isOrphanedNotificationMutation(item));
 }
 
 export async function getAllPendingMutations() {
@@ -675,6 +725,11 @@ export async function processOutboxQueue() {
           await markMutationSynced(item.id);
           continue;
         }
+        if (item.target === "notifications" && (res.error.code === "42501" || String(res.error.message || "").toLowerCase().includes("row-level security") || String(res.error.message || "").toLowerCase().includes("permission"))) {
+          console.warn(`Notifications insert skipped due to RLS permissions for user ${userId}, auto-dismissing.`);
+          await dismissMutation(item.id, item.user_id || userId);
+          continue;
+        }
         throw res.error;
       }
       assertMutationAffectedRow(item.mutation_type, payload, res?.data, item.target);
@@ -682,6 +737,11 @@ export async function processOutboxQueue() {
     } catch (err) {
       if (item.mutation_type === "INSERT" && (err?.code === "23505" || String(err?.message || "").toLowerCase().includes("duplicate key"))) {
         await markMutationSynced(item.id);
+        continue;
+      }
+      if (item.target === "notifications" && (err?.code === "42501" || String(err?.message || "").toLowerCase().includes("row-level security") || String(err?.message || "").toLowerCase().includes("permission"))) {
+        console.warn(`Notifications insert skipped due to RLS permissions, auto-dismissing.`);
+        await dismissMutation(item.id, item.user_id || userId);
         continue;
       }
       console.warn(`Outbox replay failed for mutation ${item.id}:`, err);

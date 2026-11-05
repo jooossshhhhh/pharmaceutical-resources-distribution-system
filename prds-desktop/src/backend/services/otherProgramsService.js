@@ -95,6 +95,12 @@ export async function ensureScheduledProgramNotifications(programs = [], profile
     }
   }
 
+  // Only City Health Office staff (Pharma I / Pharma II) manage other programs and receive reminder alerts.
+  // BHWs do not manage programs, preventing cross-role reminder noise and unauthorized outbox inserts.
+  if (activeProfile?.role && activeProfile.role !== "PHARMA_II" && activeProfile.role !== "PHARMA_I") {
+    return;
+  }
+
   const todayIso = new Date().toLocaleDateString("en-CA");
   const duePrograms = programs.filter((prog) => {
     const normalized = normalizeProgramRecord(prog);
@@ -156,8 +162,8 @@ export async function ensureScheduledProgramNotifications(programs = [], profile
         };
         newNotifications.push(notif);
 
-        // Also persist to remote notifications if online & valid uuid
-        if (notifUuid && activeProfile?.id) {
+        // Also persist to remote notifications if online & valid uuid and Pharma II
+        if (notifUuid && activeProfile?.id && activeProfile.role === "PHARMA_II") {
           if (isCurrentNetworkOnline() && supabase) {
             supabase
               .from("notifications")
@@ -176,22 +182,10 @@ export async function ensureScheduledProgramNotifications(programs = [], profile
               .catch((err) => {
                 console.warn("Error inserting notification to remote:", err);
               });
-          } else {
-            enqueueMutation({
-              userId: activeProfile.id,
-              mutationType: "INSERT",
-              target: "notifications",
-              payload: {
-                id: notifUuid,
-                user_id: activeProfile.id,
-                title: notif.title,
-                message: notif.message,
-                is_read: false,
-              },
-            }).catch((err) => {
-              console.warn("Failed to queue offline notification:", err);
-            });
           }
+          // Note: When offline, scheduled reminder notifications are purely client-side alerts
+          // already stored in local snapshot store (STORAGE_KEYS.NOTIFICATIONS).
+          // We do NOT enqueue an offline DB insert mutation, preventing cross-user permission conflicts on shared terminals.
         }
       }
     }
