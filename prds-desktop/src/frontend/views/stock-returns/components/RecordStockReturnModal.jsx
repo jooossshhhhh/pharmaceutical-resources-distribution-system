@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Building2, ChevronDown, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, Building2, Plus, RotateCcw, Trash2 } from "lucide-react";
 
 import ModalShell from "../../../components/ModalShell";
 import {
   createStockReturn,
   generateReturnId,
-  RETURN_REASON_OPTIONS,
 } from "@backend/services/stockReturnsService";
 import { formatDate } from "@shared/utils/inventoryUtils";
 
@@ -25,8 +24,7 @@ const createEmptyItem = () => ({
 });
 
 const createInitialForm = (profile) => ({
-  reason: "EXCESS_STOCK",
-  custom_reason: "",
+  reason: "",
   facility_id: profile?.role === "BHW" ? profile?.facility_id || "" : "",
 });
 
@@ -253,12 +251,9 @@ export default function RecordStockReturnModal({
       return;
     }
 
-    const finalReason = formValues.custom_reason?.trim()
-      ? formValues.custom_reason.trim()
-      : (formValues.reason || "EXCESS_STOCK");
-
-    if (formValues.reason === "OTHER" && !formValues.custom_reason?.trim()) {
-      setFormError("Please type the custom reason for returning this stock.");
+    const finalReason = formValues.reason?.trim();
+    if (!finalReason) {
+      setFormError("Please enter the reason for returning this stock.");
       return;
     }
 
@@ -272,7 +267,7 @@ export default function RecordStockReturnModal({
         facility_id: formValues.facility_id,
         facility_code: facilityCode,
         reason: finalReason,
-        remarks: formValues.custom_reason?.trim() || null,
+        remarks: finalReason || null,
         status: isBhw ? "PENDING" : "CONFIRMED",
         items: items.map((it) => ({
           ...it,
@@ -363,50 +358,14 @@ export default function RecordStockReturnModal({
                 <label className="mb-1 block text-xs font-bold text-neutral-700">
                   Reason <span className="text-red-500">*</span>
                 </label>
-                {formValues.reason === "OTHER" ? (
-                  <div className="relative flex items-center">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={formValues.custom_reason}
-                      onChange={(event) => setFormValues((prev) => ({ ...prev, custom_reason: event.target.value }))}
-                      placeholder="Type custom reason here..."
-                      className="h-10 w-full rounded-lg border border-neutral-200 bg-white pl-3 pr-20 text-xs font-bold text-[#0d1117] outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 placeholder:text-neutral-400 placeholder:font-normal"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormValues((prev) => ({ ...prev, reason: "EXCESS_STOCK", custom_reason: "" }));
-                      }}
-                      className="absolute right-1.5 flex items-center gap-1 rounded border border-neutral-200 bg-neutral-100 px-2 py-1 text-[10px] font-bold text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 transition cursor-pointer"
-                      title="Switch back to preset list"
-                    >
-                      <ChevronDown className="h-3 w-3 text-neutral-500" />
-                      <span>Preset</span>
-                    </button>
-                  </div>
-                ) : (
-                  <select
-                    value={formValues.reason}
-                    onChange={(event) => {
-                      const val = event.target.value;
-                      if (val === "OTHER") {
-                        setFormValues((prev) => ({ ...prev, reason: "OTHER", custom_reason: "" }));
-                      } else {
-                        setFormValues((prev) => ({ ...prev, reason: val, custom_reason: "" }));
-                      }
-                    }}
-                    className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-xs font-bold text-[#0d1117] outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 cursor-pointer"
-                  >
-                    {RETURN_REASON_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                    <option value="OTHER">Other / Custom Reason...</option>
-                  </select>
-                )}
+                <input
+                  type="text"
+                  value={formValues.reason}
+                  onChange={(event) => setFormValues((prev) => ({ ...prev, reason: event.target.value }))}
+                  placeholder="Enter reason for returning stock..."
+                  className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-xs font-bold text-[#0d1117] outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 placeholder:text-neutral-400 placeholder:font-normal"
+                  required
+                />
               </div>
             </div>
           </section>
