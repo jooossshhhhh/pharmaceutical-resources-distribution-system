@@ -274,8 +274,10 @@ test("buildMonthlyInventoryBuffer generates a valid XLSX buffer with official te
   assert.ok(sheet["C3"]?.v.includes("REPORT ON PHYSICAL COUNT OF INVENTORIES: VMCH MEDICINE SUPPLIES MONTH "));
   assert.ok(sheet["C3"]?.v.includes("October, 2026"));
   assert.ok(sheet["I3"]?.v.includes("SEPTEMBER 30, 2026"));
-  const todayDay = new Date().getDate();
-  assert.ok(sheet["AB3"]?.v.includes(`OCTOBER ${todayDay}, 2026`));
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === 2026 && today.getMonth() + 1 === 10;
+  const expectedDay = isCurrentMonth ? today.getDate() : 31;
+  assert.ok(sheet["AB3"]?.v.includes(`OCTOBER ${expectedDay}, 2026`));
 
   // Row 5 is PO Header row (Option 1)
   assert.equal(sheet["D5"]?.v, "PO NO.");
@@ -602,7 +604,7 @@ test("processMonthlyInventoryData reconciles 6-stage flow and area programs accu
     {
       quantity: 50,
       batch_number: "LOT-AMOX-02",
-      expiration_date: "2026-10-31",
+      expiration_date: "2027-10-31",
       medicine: {
         id: "med-amox",
         generic_name: "Amoxicillin",
@@ -1046,7 +1048,231 @@ test("processMonthlyInventoryData appends synthetic inventory row when a confirm
   assert.equal(vitB.remainingTotal, 30 * 15);
 });
 
+test("processMonthlyInventoryData enforces strict month-to-month continuity where Ending(M) === Beginning(M+1)", () => {
+  // Scenario matching real warehouse operations:
+  // Today is November 5, 2026.
+  // Batch 1 (Amoxicillin) has been in inventory since September.
+  // Batch 2 (Paracetamol) arrived in November as new procurement.
+  const inventoryRows = [
+    {
+      id: "inv-amox",
+      medicine_id: "med-amox",
+      batch_number: "LOT-AMOX-SEP",
+      date_received: "2026-09-10",
+      quantity: 80000,
+      unit_cost: 5.0,
+      medicine: {
+        id: "med-amox",
+        generic_name: "Amoxicillin",
+        dosage: "500 mg",
+        unit_of_measure: "Capsule",
+        unit_cost: 5.0,
+      },
+    },
+    {
+      id: "inv-para",
+      medicine_id: "med-para",
+      batch_number: "LOT-PARA-NOV",
+      date_received: "2026-11-02",
+      received_quantity: 20000,
+      quantity: 18000,
+      unit_cost: 2.0,
+      medicine: {
+        id: "med-para",
+        generic_name: "Paracetamol",
+        dosage: "500 mg",
+        unit_of_measure: "Tablet",
+        unit_cost: 2.0,
+      },
+    },
+  ];
 
+  // October transactions (Batch 1 only):
+  const octDispensing = [
+    {
+      medicine_id: "med-amox",
+      batch_number: "LOT-AMOX-SEP",
+      quantity: 500,
+      dispense_date: "2026-10-15T10:00:00Z",
+    },
+  ];
 
+  // November transactions:
+  const novDispensing = [
+    {
+      medicine_id: "med-para",
+      batch_number: "LOT-PARA-NOV",
+      quantity: 2000,
+      dispense_date: "2026-11-04T11:00:00Z",
+    },
+  ];
+
+  const allDispensing = [...octDispensing, ...novDispensing];
+
+  // 1. Process October (Past Month)
+  const octResult = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows: allDispensing,
+    requestRows: [],
+    otherProgramsRows: [],
+    stockReturnsRows: [],
+    year: 2026,
+    month: 10,
+  });
+
+  // 2. Process November (Current Month)
+  const novResult = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows: allDispensing,
+    requestRows: [],
+    otherProgramsRows: [],
+    stockReturnsRows: [],
+    year: 2026,
+    month: 11,
+  });
+
+  // 3. Process December (Future Month)
+  const decResult = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows: allDispensing,
+    requestRows: [],
+    otherProgramsRows: [],
+    stockReturnsRows: [],
+    year: 2026,
+    month: 12,
+  });
+
+  // October Ending Quantity and Value
+  const octEndQty = octResult.totals.totalRemQty;
+  const octEndVal = octResult.totals.totalRemVal;
+
+  // November Beginning Quantity and Value
+  const novBegQty = novResult.totals.totalBegQty;
+  const novBegVal = novResult.totals.totalBegVal;
+
+  // Continuity Assertion 1: October Ending MUST EQUAL November Beginning
+  assert.equal(octEndQty, novBegQty, "October ending quantity must equal November beginning quantity");
+  assert.equal(octEndVal, novBegVal, "October ending valuation must equal November beginning valuation");
+
+  // November Ending Quantity and Value
+  const novEndQty = novResult.totals.totalRemQty;
+  const novEndVal = novResult.totals.totalRemVal;
+
+  // December Beginning Quantity and Value
+  const decBegQty = decResult.totals.totalBegQty;
+  const decBegVal = decResult.totals.totalBegVal;
+
+  // Continuity Assertion 2: November Ending MUST EQUAL December Beginning
+  assert.equal(novEndQty, decBegQty, "November ending quantity must equal December beginning quantity");
+  assert.equal(novEndVal, decBegVal, "November ending valuation must equal December beginning valuation");
+
+  // Conservation Assertion: Ending = Beginning + Additions - Issuances
+  const octCalcEnd = octResult.totals.totalBegVal + octResult.totals.totalAddVal - (octResult.totals.totalIssuedVal + octResult.totals.totalProgVal + octResult.totals.totalExpiredVal);
+  assert.ok(Math.abs(octCalcEnd - octResult.totals.totalRemVal) < 0.01, "October balance equation must balance");
+
+  const novCalcEnd = novResult.totals.totalBegVal + novResult.totals.totalAddVal - (novResult.totals.totalIssuedVal + novResult.totals.totalProgVal + novResult.totals.totalExpiredVal);
+  assert.ok(Math.abs(novCalcEnd - novResult.totals.totalRemVal) < 0.01, "November balance equation must balance");
+
+  // Batch-level isolation: November batch must have 0 beginning, additions, and remaining in October
+  const octParaBatch = octResult.items.find((i) => i.lotNo === "LOT-PARA-NOV");
+  assert.ok(octParaBatch);
+  assert.equal(octParaBatch.beginningQty, 0);
+  assert.equal(octParaBatch.additionalQty, 0);
+  assert.equal(octParaBatch.remainingQty, 0);
+});
+
+test("processMonthlyInventoryData tracks individual programIds and programAllocations when multiple programs share the same name", () => {
+  const inventoryRows = [
+    {
+      id: "inv-alb",
+      medicine_id: "med-alb",
+      quantity: 1000,
+      batch_number: "LOT-ALB-1",
+      expiration_date: "2028-05-31",
+      date_received: "2026-06-01",
+      medicine: {
+        id: "med-alb",
+        generic_name: "Albendazole",
+        dosage: "400 mg",
+        brand_name: "Zentel",
+        unit_of_measure: "tablet",
+        unit_cost: 54.0,
+      },
+    },
+    {
+      id: "inv-mv",
+      medicine_id: "med-mv",
+      quantity: 500,
+      batch_number: "LOT-MV-1",
+      expiration_date: "2028-05-31",
+      date_received: "2026-06-01",
+      medicine: {
+        id: "med-mv",
+        generic_name: "Multivitamins",
+        dosage: "60 mL syrup",
+        brand_name: "Ritemed",
+        unit_of_measure: "bottle",
+        unit_cost: 45.0,
+      },
+    },
+  ];
+
+  const otherProgramsRows = [
+    {
+      id: "prog-outreach-nov6",
+      status: "COMPLETED",
+      program_name: "Community Outreach",
+      program_date: "2026-11-06",
+      medicines: [
+        { medicine_id: "med-mv", batch_number: "LOT-MV-1", quantity_used: 120 },
+      ],
+    },
+    {
+      id: "prog-outreach-nov4-a",
+      status: "COMPLETED",
+      program_name: "Community Outreach",
+      program_date: "2026-11-04",
+      medicines: [
+        { medicine_id: "med-alb", batch_number: "LOT-ALB-1", quantity_used: 500 },
+      ],
+    },
+    {
+      id: "prog-outreach-nov4-b",
+      status: "COMPLETED",
+      program_name: "Community Outreach",
+      program_date: "2026-11-04",
+      medicines: [
+        { medicine_id: "med-alb", batch_number: "LOT-ALB-1", quantity_used: 2500 },
+      ],
+    },
+  ];
+
+  const res = processMonthlyInventoryData({
+    inventoryRows,
+    dispensingRows: [],
+    requestRows: [],
+    otherProgramsRows,
+    stockReturnsRows: [],
+    year: 2026,
+    month: 11,
+  });
+
+  const albRow = res.items.find((i) => i.lotNo === "LOT-ALB-1");
+  const mvRow = res.items.find((i) => i.lotNo === "LOT-MV-1");
+
+  assert.ok(albRow);
+  assert.ok(mvRow);
+
+  // Multivitamins was ONLY used in prog-outreach-nov6
+  assert.deepEqual(mvRow.programIds, ["prog-outreach-nov6"]);
+  assert.equal(mvRow.programAllocations["prog-outreach-nov6"]?.qty, 120);
+  assert.equal(mvRow.programAllocations["prog-outreach-nov4-a"], undefined);
+
+  // Albendazole was used in both Nov 4 programs, tracked separately per ID
+  assert.deepEqual(albRow.programIds, ["prog-outreach-nov4-a", "prog-outreach-nov4-b"]);
+  assert.equal(albRow.programQty, 3000);
+  assert.equal(albRow.programAllocations["prog-outreach-nov4-a"]?.qty, 500);
+  assert.equal(albRow.programAllocations["prog-outreach-nov4-b"]?.qty, 2500);
+});
 
 

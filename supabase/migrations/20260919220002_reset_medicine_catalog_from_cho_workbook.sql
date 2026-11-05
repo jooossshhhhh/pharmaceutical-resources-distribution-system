@@ -1,11 +1,8 @@
 begin;
-
 alter table public.medicines
   add column if not exists categories text[] not null default '{}';
-
 comment on column public.medicines.categories is
   'CHO medicine category labels. A medicine can belong to more than one category.';
-
 -- Reset every operational row tied to the retired mock medicine identifiers.
 delete from public.patient_medicine_records;
 delete from public.medicine_dispensing;
@@ -19,7 +16,6 @@ delete from public.forecasting;
 delete from public.program_medicines;
 delete from public.inventory;
 delete from public.medicines;
-
 delete from public.activity_logs
 where module in (
   'Inventory',
@@ -29,7 +25,6 @@ where module in (
   'Stock Transfer',
   'Medicines'
 );
-
 delete from public.notifications
 where title ilike 'Request %'
    or title ilike '%Transfer%'
@@ -38,7 +33,6 @@ where title ilike 'Request %'
    or title ilike 'Seed Request%'
    or title ilike 'Seed Transfer%'
    or title ilike 'Seed Low Stock%';
-
 -- Source: documentation/6-ClientData/ListOfMedicine.xlsx, Sheet1 H3:L202.
 -- Workbook spellings and capitalization are preserved; surrounding whitespace is trimmed.
 with source_rows(row_number, generic_name, dosage, unit_of_measure, category) as (
@@ -271,7 +265,6 @@ select
   categories
 from grouped_medicines
 order by first_row;
-
 do $verify$
 declare
   v_medicine_count integer;
@@ -333,5 +326,4 @@ begin
   end if;
 end
 $verify$;
-
 commit;

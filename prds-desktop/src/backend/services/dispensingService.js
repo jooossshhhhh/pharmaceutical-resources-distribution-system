@@ -1,7 +1,12 @@
-import { supabase } from "../client/supabase";
-import { dataClient } from "../client/dataClient";
-import { isCurrentNetworkOnline } from "../sync/networkStatus";
-import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "../database/snapshotStore";
+import { supabase } from "../client/supabase.js";
+import { dataClient } from "../client/dataClient.js";
+import { isCurrentNetworkOnline } from "../sync/networkStatus.js";
+import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "../database/snapshotStore.js";
+import { getSqliteDb, isTauriEnvironment } from "../database/sqliteClient.js";
+import { restoreSupabaseSessionIfAvailable } from "./auth/authSessionRestore.js";
+import { reconcileConfirmedReturnsIntoInventory } from "./stockReturnsService.js";
+import { isChoFacility } from "../../shared/utils/facilityUtils.js";
+import { isDisposedLot } from "../../shared/utils/inventoryUtils.js";
 import {
   buildWalkInRpcPayload,
   deductWalkInInventoryFefo,
@@ -10,7 +15,7 @@ import {
   getMonthRangeIso,
   getPatientDispensingStatus,
   getPatientMonthlyClaimsBreakdown,
-} from "@shared/utils/dispensingUtils";
+} from "../../shared/utils/dispensingUtils.js";
 
 const DISPENSING_SELECT = `
   id,
@@ -52,57 +57,548 @@ const DISPENSING_SELECT = `
   batch:inventory!medicine_dispensing_inventory_id_fkey(id, batch_number, expiration_date, unit_cost, brand_name)
 `;
 
+const withTimeout = (promise, timeoutMs = 3500) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Dispensing query timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
+
+const normalizeMedicineRecord = (m) => {
+  if (!m) return null;
+  let cats = [];
+  if (Array.isArray(m.categories)) {
+    cats = m.categories;
+  } else if (typeof m.categories_json === "string") {
+    try {
+      cats = JSON.parse(m.categories_json);
+    } catch {}
+  }
+  return { ...m, categories: cats };
+};
+
+const resolveTargetFacilityAndMatcher = (facilityId, cachedFacilities = []) => {
+  const choFacility =
+    (cachedFacilities || []).find(
+      (f) =>
+        f.facility_code === "CHO-NAGA" ||
+        f.facility_code === "CHO" ||
+        f.facility_type === "CHO" ||
+        isChoFacility(f)
+    ) || null;
+
+  const choUuid = (choFacility?.id || "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad").toLowerCase();
+
+  const isTargetCho =
+    facilityId === "CHO" ||
+    facilityId === "CHO-NAGA" ||
+    String(facilityId).toLowerCase() === choUuid ||
+    isChoFacility(facilityId) ||
+    Boolean(choFacility && (choFacility.id === facilityId || choFacility.facility_code === facilityId));
+
+  const resolvedFacilityId = isTargetCho
+    ? choFacility?.id || "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad"
+    : facilityId;
+
+  const matchesFacility = (row) => {
+    if (!resolvedFacilityId) return true;
+    const rowFacId = String(row.facility_id || row.facility?.id || "").toLowerCase();
+    const targetId = String(resolvedFacilityId).toLowerCase();
+    const rawFacId = String(facilityId).toLowerCase();
+
+    if (rowFacId === targetId || rowFacId === rawFacId) return true;
+
+    if (isTargetCho) {
+      if (
+        rowFacId === choUuid ||
+        rowFacId === "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad" ||
+        rowFacId === "cho" ||
+        rowFacId === "cho-naga"
+      ) {
+        return true;
+      }
+      if (choFacility && rowFacId === String(choFacility.id).toLowerCase()) return true;
+      if (row.facility && isChoFacility(row.facility)) return true;
+    }
+    return false;
+  };
+
+  return {
+    choFacility,
+    choUuid,
+    isTargetCho,
+    resolvedFacilityId,
+    matchesFacility,
+  };
+};
+
+const mergeInventoryLot = (existing = {}, row = {}) => {
+  let parsedData = null;
+  if (row.data_json && typeof row.data_json === "string") {
+    try {
+      parsedData = JSON.parse(row.data_json);
+    } catch {}
+  } else if (existing.data_json && typeof existing.data_json === "string") {
+    try {
+      parsedData = JSON.parse(existing.data_json);
+    } catch {}
+  }
+
+  return {
+    ...existing,
+    ...row,
+    facility: row.facility || parsedData?.facility || existing.facility || null,
+    medicine: row.medicine || parsedData?.medicine || existing.medicine || null,
+  };
+};
+
+const hydrateAndSortFacilityLots = ({
+  rawLots = [],
+  cachedMedicines = [],
+  cachedFacilities = [],
+  isTargetCho = false,
+  choFacility = null,
+  matchesFacility,
+}) => {
+  const medMap = new Map((cachedMedicines || []).map((m) => [m.id, normalizeMedicineRecord(m)]));
+  const facMap = new Map((cachedFacilities || []).map((f) => [f.id, f]));
+
+  const scopedLots = (rawLots || [])
+    .filter((lot) => lot && (matchesFacility ? matchesFacility(lot) : true))
+    .filter((lot) => !isDisposedLot(lot) && lot.status !== "DISPOSED");
+
+  const hydratedLots = scopedLots.map((item) => {
+    let parsedData = null;
+    if (item.data_json && typeof item.data_json === "string") {
+      try {
+        parsedData = JSON.parse(item.data_json);
+      } catch {}
+    }
+
+    const baseMed =
+      (item.medicine && item.medicine.generic_name && item.medicine.generic_name !== "Medicine"
+        ? item.medicine
+        : null) ||
+      (parsedData?.medicine && parsedData.medicine.generic_name && parsedData.medicine.generic_name !== "Medicine"
+        ? parsedData.medicine
+        : null) ||
+      (item.medicine_id ? medMap.get(item.medicine_id) : null) ||
+      item.medicine ||
+      null;
+
+    const parsedCategories = Array.isArray(baseMed?.categories)
+      ? baseMed.categories
+      : typeof baseMed?.categories_json === "string"
+        ? (() => {
+            try {
+              return JSON.parse(baseMed.categories_json);
+            } catch {
+              return [];
+            }
+          })()
+        : [];
+
+    const medicineObj = baseMed
+      ? {
+          ...baseMed,
+          brand_name: item.brand_name || baseMed.brand_name || "",
+          categories: parsedCategories,
+        }
+      : item.medicine_id
+        ? {
+            id: item.medicine_id,
+            generic_name: item.brand_name || "Medicine",
+            brand_name: item.brand_name || "",
+            dosage: item.dosage || "",
+            unit_of_measure: item.unit_of_measure || "unit",
+            categories: [],
+          }
+        : null;
+
+    const facilityObj =
+      item.facility ||
+      parsedData?.facility ||
+      (item.facility_id ? facMap.get(item.facility_id) : null) ||
+      (isTargetCho ? choFacility : null) ||
+      null;
+
+    return {
+      ...item,
+      facility: facilityObj,
+      medicine: medicineObj,
+      quantity: Number(item.quantity || 0),
+    };
+  });
+
+  return hydratedLots
+    .filter((lot) => lot.medicine && lot.medicine_id)
+    .sort((a, b) => {
+      const expA = a.expiration_date || "";
+      const expB = b.expiration_date || "";
+      if (expA !== expB) return expA.localeCompare(expB);
+      const recA = a.date_received || "";
+      const recB = b.date_received || "";
+      if (recA !== recB) return recA.localeCompare(recB);
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    });
+};
+
+export const getSyncSnapshotWalkInInventory = (facilityId) => {
+  if (!facilityId) return [];
+  const cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+  const cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+  const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+  if (!Array.isArray(cachedInventory) || cachedInventory.length === 0) return [];
+
+  const { choFacility, isTargetCho, matchesFacility } = resolveTargetFacilityAndMatcher(
+    facilityId,
+    cachedFacilities
+  );
+
+  return hydrateAndSortFacilityLots({
+    rawLots: cachedInventory,
+    cachedMedicines,
+    cachedFacilities,
+    isTargetCho,
+    choFacility,
+    matchesFacility,
+  });
+};
+
+export const getLocalWalkInInventory = async (facilityId) => {
+  if (!facilityId) return [];
+
+  let cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+  let cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+  const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+  let sqliteLots = [];
+
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      const [facRes, medRes, invRes] = await Promise.allSettled([
+        db.select("SELECT * FROM facilities"),
+        db.select("SELECT * FROM medicines"),
+        db.select("SELECT * FROM inventory"),
+      ]);
+
+      if (facRes.status === "fulfilled" && Array.isArray(facRes.value) && facRes.value.length > 0) {
+        cachedFacilities = facRes.value;
+        saveSnapshot(STORAGE_KEYS.FACILITIES, facRes.value);
+      }
+      if (medRes.status === "fulfilled" && Array.isArray(medRes.value) && medRes.value.length > 0) {
+        cachedMedicines = medRes.value.map(normalizeMedicineRecord);
+        saveSnapshot(STORAGE_KEYS.MEDICINES, cachedMedicines);
+      }
+      if (invRes.status === "fulfilled" && Array.isArray(invRes.value) && invRes.value.length > 0) {
+        sqliteLots = invRes.value;
+      }
+    } catch (dbErr) {
+      console.warn("Could not query local SQLite for fast dispensing inventory:", dbErr);
+    }
+  }
+
+  const { choFacility, isTargetCho, matchesFacility } = resolveTargetFacilityAndMatcher(
+    facilityId,
+    cachedFacilities
+  );
+
+  const lotMap = new Map();
+  (cachedInventory || []).forEach((row) => {
+    if (row && row.id) {
+      lotMap.set(row.id, mergeInventoryLot({}, row));
+    }
+  });
+  (sqliteLots || []).forEach((row) => {
+    if (row && row.id) {
+      const existing = lotMap.get(row.id) || {};
+      lotMap.set(row.id, mergeInventoryLot(existing, row));
+    }
+  });
+
+  const hydrated = hydrateAndSortFacilityLots({
+    rawLots: Array.from(lotMap.values()),
+    cachedMedicines,
+    cachedFacilities,
+    isTargetCho,
+    choFacility,
+    matchesFacility,
+  });
+
+  if (hydrated.length > 0) {
+    const allSnapshotInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+    const resultIdMap = new Map(hydrated.map((r) => [r.id, r]));
+    const updatedFullInv = [
+      ...hydrated,
+      ...allSnapshotInv.filter((inv) => !resultIdMap.has(inv.id)),
+    ];
+    saveSnapshot(STORAGE_KEYS.INVENTORY, updatedFullInv);
+  }
+
+  return hydrated;
+};
+
 export const getWalkInInventory = async (facilityId) => {
   if (!facilityId) {
     return [];
   }
 
+  // 1. Gather reference caches and local SQLite baseline first (zero network latency)
+  let cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+  let cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+  let cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+  let sqliteLots = [];
+
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      const [facRes, medRes, invRes] = await Promise.allSettled([
+        db.select("SELECT * FROM facilities"),
+        db.select("SELECT * FROM medicines"),
+        db.select("SELECT * FROM inventory"),
+      ]);
+
+      if (facRes.status === "fulfilled" && Array.isArray(facRes.value) && facRes.value.length > 0) {
+        cachedFacilities = facRes.value;
+        saveSnapshot(STORAGE_KEYS.FACILITIES, facRes.value);
+      }
+      if (medRes.status === "fulfilled" && Array.isArray(medRes.value) && medRes.value.length > 0) {
+        cachedMedicines = medRes.value.map(normalizeMedicineRecord);
+        saveSnapshot(STORAGE_KEYS.MEDICINES, cachedMedicines);
+      }
+      if (invRes.status === "fulfilled" && Array.isArray(invRes.value) && invRes.value.length > 0) {
+        sqliteLots = invRes.value;
+        if (!cachedInventory || cachedInventory.length === 0) {
+          cachedInventory = invRes.value;
+        }
+      }
+    } catch (dbErr) {
+      console.warn("Could not load reference tables from SQLite:", dbErr);
+    }
+  }
+
+  const { choFacility, isTargetCho, resolvedFacilityId, matchesFacility } =
+    resolveTargetFacilityAndMatcher(facilityId, cachedFacilities);
+
+  // 2. Fetch from Supabase if online (with strict timeouts so network/locks never hang UI)
+  let onlineLots = null;
   const isOnline = isCurrentNetworkOnline();
   if (isOnline) {
     try {
-      const { data, error } = await supabase
-        .from("inventory")
-        .select(`
+      await withTimeout(restoreSupabaseSessionIfAvailable(), 2000).catch(() => {});
+
+      const runOnlineInventoryQuery = async (filterByFacility = true) => {
+        let query = supabase.from("inventory").select(`
           id,
           facility_id,
           medicine_id,
           quantity,
           batch_number,
+          po_number,
+          unit_cost,
+          brand_name,
+          supplier_name,
+          intake_type,
+          return_reason,
+          status,
           date_received,
           expiration_date,
-          brand_name,
-          unit_cost,
+          updated_at,
+          facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code),
           medicine:medicines(id, generic_name, dosage, unit_of_measure, categories)
-        `)
-        .eq("facility_id", facilityId)
-        .order("expiration_date", { ascending: true })
-        .order("date_received", { ascending: true });
+        `);
+        if (filterByFacility && resolvedFacilityId) {
+          query = query.eq("facility_id", resolvedFacilityId);
+        }
+        let result = await withTimeout(
+          query
+            .order("expiration_date", { ascending: true })
+            .order("date_received", { ascending: true }),
+          3500
+        );
 
-      if (!error && data && data.length > 0) {
-        const cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
-        const medMap = new Map(cachedMedicines.map((m) => [m.id, m]));
-        return data.map((row) => ({
-          ...row,
-          medicine: row.medicine || medMap.get(row.medicine_id) || null,
-        }));
+        if (
+          result.error &&
+          (result.error.code === "42703" ||
+            result.error.code === "PGRST204" ||
+            result.error.code === "PGRST200" ||
+            result.error.code === "PGRST201" ||
+            String(result.error.message || "").toLowerCase().includes("does not exist") ||
+            String(result.error.message || "").toLowerCase().includes("relationship") ||
+            String(result.error.message || "").toLowerCase().includes("column"))
+        ) {
+          let fallbackQuery = supabase.from("inventory").select(`
+            id,
+            facility_id,
+            medicine_id,
+            quantity,
+            batch_number,
+            date_received,
+            expiration_date,
+            status,
+            updated_at,
+            facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code),
+            medicine:medicines(id, generic_name, dosage, unit_of_measure, categories)
+          `);
+          if (filterByFacility && resolvedFacilityId) {
+            fallbackQuery = fallbackQuery.eq("facility_id", resolvedFacilityId);
+          }
+          result = await withTimeout(
+            fallbackQuery
+              .order("expiration_date", { ascending: true })
+              .order("date_received", { ascending: true }),
+            3500
+          );
+        }
+
+        if (result.error) {
+          let flatQuery = supabase
+            .from("inventory")
+            .select(
+              "id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, brand_name, supplier_name, intake_type, return_reason, status, date_received, expiration_date, updated_at"
+            );
+          if (filterByFacility && resolvedFacilityId) {
+            flatQuery = flatQuery.eq("facility_id", resolvedFacilityId);
+          }
+          result = await withTimeout(
+            flatQuery
+              .order("expiration_date", { ascending: true })
+              .order("date_received", { ascending: true }),
+            3500
+          );
+        }
+
+        return result;
+      };
+
+      let result = await runOnlineInventoryQuery(true);
+
+      // If filtered query returned empty or errored, fall back to unfiltered inventory fetch (matching inventoryData.js)
+      if (result.error || !Array.isArray(result.data) || result.data.length === 0) {
+        const broadResult = await runOnlineInventoryQuery(false).catch(() => null);
+        if (broadResult && !broadResult.error && Array.isArray(broadResult.data) && broadResult.data.length > 0) {
+          result = {
+            data: broadResult.data.filter(matchesFacility),
+            error: null,
+          };
+        }
+      }
+
+      if (!result.error && Array.isArray(result.data)) {
+        onlineLots = result.data;
       }
     } catch (err) {
-      console.warn("Online inventory fetch failed, falling back to snapshot:", err);
+      console.warn("Online inventory fetch for dispensing failed or timed out, falling back to local:", err);
     }
   }
 
-  // Fallback to local snapshot
-  const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
-  const cachedMedicines = getSnapshot(STORAGE_KEYS.MEDICINES, []);
-  const medMap = new Map(cachedMedicines.map((m) => [m.id, m]));
+  // 3. Combine all sources ensuring local SQLite and snapshot cache items are always included
+  const lotMap = new Map();
 
-  return cachedInventory
-    .filter((inv) => !facilityId || String(inv.facility_id) === String(facilityId))
-    .map((inv) => ({
-      ...inv,
-      medicine: inv.medicine || medMap.get(inv.medicine_id) || null,
-    }))
-    .sort((a, b) => (a.expiration_date || "").localeCompare(b.expiration_date || ""));
+  // 3a. Start with snapshot cache (which already has rich .medicine and .facility)
+  (cachedInventory || []).forEach((row) => {
+    if (row && row.id) {
+      lotMap.set(row.id, mergeInventoryLot({}, row));
+    }
+  });
+
+  // 3b. Overlay/enrich with local SQLite rows (desktop offline/local source of truth)
+  (sqliteLots || []).forEach((row) => {
+    if (row && row.id) {
+      const existing = lotMap.get(row.id) || {};
+      lotMap.set(row.id, mergeInventoryLot(existing, row));
+    }
+  });
+
+  // 3c. Overlay with online Supabase rows if available
+  (onlineLots || []).forEach((row) => {
+    if (row && row.id) {
+      const existing = lotMap.get(row.id) || {};
+      lotMap.set(row.id, mergeInventoryLot(existing, row));
+    }
+  });
+
+  const combinedLots = Array.from(lotMap.values());
+
+  // Ensure medicines and facilities caches are refreshed when online (bounded by timeout)
+  if (isOnline && (!cachedMedicines.length || !cachedFacilities.length || onlineLots !== null)) {
+    try {
+      const [remoteMedsRes, remoteFacsRes] = await withTimeout(
+        Promise.all([
+          supabase
+            .from("medicines")
+            .select("id, generic_name, dosage, unit_of_measure, categories")
+            .order("generic_name", { ascending: true }),
+          supabase
+            .from("facilities")
+            .select("id, facility_name, facility_code, facility_type, status, address")
+            .eq("status", "ACTIVE"),
+        ]),
+        3000
+      );
+
+      if (remoteMedsRes?.data && remoteMedsRes.data.length > 0) {
+        cachedMedicines = remoteMedsRes.data;
+        saveSnapshot(STORAGE_KEYS.MEDICINES, remoteMedsRes.data);
+      }
+      if (remoteFacsRes?.data && remoteFacsRes.data.length > 0) {
+        cachedFacilities = remoteFacsRes.data;
+        saveSnapshot(STORAGE_KEYS.FACILITIES, remoteFacsRes.data);
+      }
+    } catch (catErr) {
+      console.warn("Could not refresh medicines/facilities catalog for dispensing:", catErr);
+    }
+  }
+
+  // 4. Hydrate and sort facility lots
+  const hydratedLots = hydrateAndSortFacilityLots({
+    rawLots: combinedLots,
+    cachedMedicines,
+    cachedFacilities,
+    isTargetCho,
+    choFacility,
+    matchesFacility,
+  });
+
+  // 5. Reconcile confirmed stock returns into inventory (only applicable for CHO inventory)
+  let reconciledLots = hydratedLots;
+  if (isTargetCho) {
+    try {
+      reconciledLots = await withTimeout(
+        reconcileConfirmedReturnsIntoInventory(hydratedLots, {
+          facilities: cachedFacilities,
+          medicines: cachedMedicines,
+        }),
+        3000
+      );
+    } catch (recErr) {
+      console.warn("Could not reconcile stock returns for dispensing:", recErr);
+    }
+  }
+
+  // 6. Return sorted FEFO candidates strictly scoped to target facility with valid medicines
+  const resultLots = hydrateAndSortFacilityLots({
+    rawLots: reconciledLots || hydratedLots,
+    cachedMedicines,
+    cachedFacilities,
+    isTargetCho,
+    choFacility,
+    matchesFacility,
+  });
+
+  // Update snapshot cache if we enriched or discovered valid lots
+  if (resultLots.length > 0) {
+    const allSnapshotInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+    const resultIdMap = new Map(resultLots.map((r) => [r.id, r]));
+    const updatedFullInv = [
+      ...resultLots,
+      ...allSnapshotInv.filter((inv) => !resultIdMap.has(inv.id)),
+    ];
+    saveSnapshot(STORAGE_KEYS.INVENTORY, updatedFullInv);
+  }
+
+  return resultLots;
 };
 
 export const getFacilityMedicineStockOverview = async ({ facilityId, medicineIds = [] } = {}) => {
@@ -110,13 +606,18 @@ export const getFacilityMedicineStockOverview = async ({ facilityId, medicineIds
     return [];
   }
 
+  const choUuid = "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad";
+  const resolvedFacilityId =
+    facilityId === "CHO" || facilityId === "CHO-NAGA" ? choUuid : facilityId;
+
   const isOnline = isCurrentNetworkOnline();
   if (isOnline) {
     try {
+      await restoreSupabaseSessionIfAvailable().catch(() => {});
       const { data, error } = await supabase
         .from("inventory")
         .select("id, medicine_id, quantity, batch_number, expiration_date")
-        .eq("facility_id", facilityId)
+        .eq("facility_id", resolvedFacilityId)
         .in("medicine_id", medicineIds)
         .gt("quantity", 0)
         .gt("expiration_date", new Date().toISOString().slice(0, 10))
@@ -130,12 +631,32 @@ export const getFacilityMedicineStockOverview = async ({ facilityId, medicineIds
     }
   }
 
+  // SQLite fallback in Tauri
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const placeholders = medicineIds.map(() => "?").join(",");
+      const rows = await db.select(
+        `SELECT id, medicine_id, quantity, batch_number, expiration_date FROM inventory WHERE (facility_id = ? OR facility_id = ?) AND medicine_id IN (${placeholders}) AND quantity > 0 AND (expiration_date IS NULL OR expiration_date > ?) ORDER BY expiration_date ASC`,
+        [resolvedFacilityId, facilityId, ...medicineIds, todayStr]
+      );
+      if (Array.isArray(rows) && rows.length > 0) {
+        return rows;
+      }
+    } catch (e) {
+      console.warn("SQLite stock overview fetch error:", e);
+    }
+  }
+
   const todayStr = new Date().toISOString().slice(0, 10);
   const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
   return cachedInventory
     .filter(
       (inv) =>
-        (!facilityId || String(inv.facility_id) === String(facilityId)) &&
+        (!facilityId ||
+          String(inv.facility_id) === String(resolvedFacilityId) ||
+          String(inv.facility_id) === String(facilityId)) &&
         medicineIds.includes(inv.medicine_id) &&
         Number(inv.quantity) > 0 &&
         (!inv.expiration_date || inv.expiration_date > todayStr)
@@ -603,4 +1124,57 @@ export const voidDispensingTransaction = async ({ reason, transactionId }) => {
   if (error) {
     throw error;
   }
+
+  // Optimistically update local snapshots for offline and immediate consistency
+  try {
+    const cachedDispensing = getSnapshot(STORAGE_KEYS.DISPENSING, []);
+    const matchingRows = cachedDispensing.filter(
+      (d) =>
+        String(d.dispensing_transaction_id) === String(transactionId) ||
+        String(d.id) === String(transactionId)
+    );
+
+    if (matchingRows.length > 0) {
+      const nowIso = new Date().toISOString();
+      const updatedDispensing = cachedDispensing.map((d) => {
+        if (
+          String(d.dispensing_transaction_id) === String(transactionId) ||
+          String(d.id) === String(transactionId)
+        ) {
+          return {
+            ...d,
+            voided_at: nowIso,
+            void_reason: reason,
+          };
+        }
+        return d;
+      });
+      saveSnapshot(STORAGE_KEYS.DISPENSING, updatedDispensing);
+
+      // Restore returned stock quantities to local inventory snapshot
+      const cachedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+      if (cachedInventory.length > 0) {
+        const updatedInventory = cachedInventory.map((inv) => {
+          const matchedVoidRow = matchingRows.find(
+            (vr) =>
+              (vr.inventory_id && String(vr.inventory_id) === String(inv.id)) ||
+              (String(vr.facility_id) === String(inv.facility_id) &&
+                String(vr.medicine_id) === String(inv.medicine_id) &&
+                (!vr.batch?.batch_number || vr.batch.batch_number === inv.batch_number))
+          );
+          if (matchedVoidRow) {
+            return {
+              ...inv,
+              quantity: Number(inv.quantity || 0) + Number(matchedVoidRow.quantity || 0),
+            };
+          }
+          return inv;
+        });
+        saveSnapshot(STORAGE_KEYS.INVENTORY, updatedInventory);
+      }
+    }
+  } catch (snapErr) {
+    console.warn("Optimistic snapshot update failed after void:", snapErr);
+  }
 };
+

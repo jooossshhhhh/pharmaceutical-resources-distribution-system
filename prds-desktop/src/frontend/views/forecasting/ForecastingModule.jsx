@@ -4,7 +4,6 @@ import {
   Activity,
   Building2,
   Clock,
-  Download,
   Filter,
   PackageCheck,
   Pill,
@@ -17,7 +16,6 @@ import {
 
 import AdminShell from "../../components/layout/AdminShell";
 import { useAuth } from "../../context/useAuth";
-import { downloadExportFile } from "../../services/downloadManager";
 import { logoutUser } from "@backend/services/auth/authService";
 import { supabase } from "@backend/client/supabase";
 import { saveSnapshot, getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
@@ -28,7 +26,6 @@ import {
   buildCategoryForecastRows,
   buildFacilityStockComparison,
   buildForecastAnalytics,
-  buildForecastingCsv,
   buildMedicineActionFindings,
   buildMedicineChartSeries,
 } from "@shared/utils/forecastingUtils";
@@ -216,6 +213,14 @@ export default function ForecastingModule() {
     () => facilities.filter((facility) => facility.id === selectedFacilityId),
     [facilities, selectedFacilityId]
   );
+
+  const selectedFacilityLabel = useMemo(
+    () =>
+      facilities.find((facility) => facility.id === selectedFacilityId)?.facility_name ||
+      "Selected Facility",
+    [facilities, selectedFacilityId]
+  );
+
   const medicinesById = useMemo(
     () => new Map(catalogMedicines.map((medicine) => [medicine.id, medicine])),
     [catalogMedicines]
@@ -408,22 +413,6 @@ export default function ForecastingModule() {
     [navigate]
   );
 
-  // Export Excel handler (exports all trending medicines for facility)
-  const handleExportExcel = () => {
-    const csvContent = buildForecastingCsv(
-      allTrendingMedicines,
-      selectedFacilityLabel,
-      monthHorizon
-    );
-    downloadExportFile({
-      filename: `PRDS_Forecasting_${new Date().toISOString().slice(0, 10)}`,
-      csv: csvContent,
-      recordCount: allTrendingMedicines.length,
-    });
-  };
-
-  const selectedFacilityLabel =
-    scopedFacilities.find((f) => f.id === selectedFacilityId)?.facility_name || "Facility";
 
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
@@ -565,17 +554,6 @@ export default function ForecastingModule() {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div>
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-3.5 text-xs font-bold text-[#1B2B30] shadow-2xs transition hover:bg-[#EBF3F5] cursor-pointer"
-            >
-              <Download className="h-3.5 w-3.5 text-[#5B7077]" />
-              Export
-            </button>
           </div>
         </section>
 

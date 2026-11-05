@@ -306,11 +306,19 @@ export function formatUserFacingError(error, defaultMessage = "An unexpected err
     return defaultMessage;
   }
 
+  if (
+    lower.includes("row-level security") ||
+    lower.includes("violates row-level") ||
+    (lower.includes("policy") && lower.includes("security"))
+  ) {
+    return "You do not have permission to sync this record with your current account.";
+  }
+
   return msg;
 }
 
 /**
- * Generates human-readable descriptions and action labels for outbox mutations.
+ * Generates human-readable descriptions, action labels, and non-technical details for outbox mutations.
  */
 export function describeMutation(item = {}) {
   const { mutation_type, target, payload_json } = item;
@@ -319,36 +327,83 @@ export function describeMutation(item = {}) {
     payload = typeof payload_json === "string" ? JSON.parse(payload_json) : (payload_json || {});
   } catch {}
 
-  let label = "Local Update";
-  let description = `${mutation_type || "CHANGE"} on ${target || "records"}`;
+  let label = "Record Update";
+  let description = "Saved changes on this computer";
+  let details = "";
 
-  if (target === "medicine_dispensing" || target === "dispense_medicine") {
+  if (target === "save_other_program" || target === "other_programs") {
+    label = "Health Program";
+    const programName = payload.p_program_name || payload.program_name || "";
+    const programDate = payload.p_program_date || payload.program_date || "";
+    const itemCount = Array.isArray(payload.p_items)
+      ? payload.p_items.length
+      : Array.isArray(payload.items)
+      ? payload.items.length
+      : 0;
+
+    description = programName || "Community health program";
+    const detailParts = [];
+    if (programDate) detailParts.push(`Date: ${programDate}`);
+    if (itemCount > 0) detailParts.push(`${itemCount} medicine${itemCount > 1 ? "s" : ""} allocated`);
+    details = detailParts.join(" · ") || "Community health program";
+  } else if (target === "complete_other_program") {
+    label = "Complete Program";
+    const programName = payload.p_program_name || payload.program_name || "";
+    description = programName ? `Completed: ${programName}` : "Community health program completed";
+    details = "Marked as completed";
+  } else if (target === "cancel_other_program") {
+    label = "Cancel Program";
+    const programName = payload.p_program_name || payload.program_name || "";
+    description = programName ? `Cancelled: ${programName}` : "Community health program cancelled";
+    details = "Marked as cancelled";
+  } else if (target === "medicine_dispensing" || target === "dispense_medicine") {
     label = "Walk-in Dispensing";
     const qty = payload.quantity || payload.needed_quantity || "";
     description = qty ? `Dispensed ${qty} units` : "Medicine dispensing transaction";
+    const medName = payload.medicine_name || payload.generic_name || "";
+    details = medName ? `Medicine: ${medName}` : "Patient walk-in dispensing";
   } else if (target === "patients") {
-    label = mutation_type === "INSERT" ? "New Patient Profile" : "Update Patient";
+    label = mutation_type === "INSERT" ? "New Patient Profile" : "Update Patient Profile";
     const name = [payload.first_name, payload.last_name].filter(Boolean).join(" ");
     description = name ? `Patient: ${name}` : "Patient demographic record";
+    details = payload.barangay ? `Barangay: ${payload.barangay}` : "Patient demographic profile";
   } else if (target === "inventory") {
     label = mutation_type === "INSERT" ? "Receive Stock" : "Adjust Inventory";
     const batch = payload.batch_number ? `Batch #${payload.batch_number}` : "";
     const qty = payload.quantity != null ? `${payload.quantity} units` : "";
     description = [batch, qty].filter(Boolean).join(" - ") || "Stock balance update";
+    details = payload.generic_name ? `Medicine: ${payload.generic_name}` : "Stock balance update";
   } else if (target === "medicine_requests") {
     label = "Medicine Request";
     const num = payload.request_number || payload.id?.slice(0, 8) || "";
     description = num ? `Request #${num}` : "Barangay health station request";
+    details = "Health station order";
   } else if (target === "stock_returns") {
     label = "Stock Return";
     const num = payload.return_id || payload.returnRecord?.return_id || payload.returnRecord?.return_slip_no || payload.return_slip_no || payload.id?.slice(0, 8) || "";
     description = num ? `Return #${num}` : "Barangay stock return";
-  } else if (target === "other_programs") {
-    label = "Special Program";
-    description = payload.program_name || "Community health program";
+    details = "Returned stock to CHO";
+  } else if (target === "update_bhw_inventory_threshold") {
+    label = "Stock Alert Level";
+    description = "Updated stock alert levels";
+    details = payload.min_threshold != null ? `Threshold set to ${payload.min_threshold}` : "Alert level settings";
+  } else {
+    label = mutation_type === "INSERT"
+      ? "New Record"
+      : mutation_type === "DELETE"
+      ? "Removed Record"
+      : "Updated Record";
+    const cleanTarget = String(target || "Record")
+      .replace(/^(save_|complete_|cancel_|update_|create_)/i, "")
+      .replace(/_/g, " ")
+      .trim();
+    description = cleanTarget
+      ? cleanTarget.charAt(0).toUpperCase() + cleanTarget.slice(1)
+      : "Local record update";
+    details = "Saved offline on this computer";
   }
 
-  return { label, description };
+  return { label, description, details };
 }
 
 /**

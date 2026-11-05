@@ -1,7 +1,28 @@
 import { supabase } from "../client/supabase";
 import { saveSnapshot, getSnapshot, getCachedUserSession, STORAGE_KEYS } from "../database/snapshotStore";
+import { getSqliteDb, isTauriEnvironment } from "../database/sqliteClient";
 import { isCurrentNetworkOnline } from "../sync/networkStatus";
 import { createOfflineInsertPayload, enqueueMutation } from "../sync/outboxQueue";
+
+export async function persistPatientToSqlite(patient) {
+  if (!isTauriEnvironment() || !patient?.id) return;
+  try {
+    const db = await getSqliteDb();
+    await db.execute(
+      "INSERT OR REPLACE INTO patients (id, facility_id, first_name, last_name, philhealth_id, data_json) VALUES (?, ?, ?, ?, ?, ?)",
+      [
+        patient.id,
+        patient.facility_id || null,
+        patient.first_name || "",
+        patient.last_name || "",
+        patient.philhealth_id || patient.patient_code || "",
+        JSON.stringify(patient),
+      ]
+    );
+  } catch (err) {
+    console.warn("Failed to persist patient to SQLite:", err);
+  }
+}
 
 export const hydratePatientRegisteredBy = (patientsList = []) => {
   const users = getSnapshot(STORAGE_KEYS.USERS, []);
@@ -182,6 +203,7 @@ export const createPatient = async (payload) => {
     });
     const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
     saveSnapshot(STORAGE_KEYS.PATIENTS, [newRecord, ...current]);
+    await persistPatientToSqlite(newRecord);
     return newRecord;
   }
 
@@ -202,6 +224,7 @@ export const createPatient = async (payload) => {
       }
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       saveSnapshot(STORAGE_KEYS.PATIENTS, [data, ...current]);
+      await persistPatientToSqlite(data);
     }
 
     return data;
@@ -229,6 +252,7 @@ export const createPatient = async (payload) => {
       });
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       saveSnapshot(STORAGE_KEYS.PATIENTS, [newRecord, ...current]);
+      await persistPatientToSqlite(newRecord);
       return newRecord;
     }
     throw err;
@@ -255,7 +279,9 @@ export const updatePatient = async (patientId, payload) => {
       return p;
     });
     saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
-    return updatedRecord || { id: patientId, ...updateValues };
+    const finalRecord = updatedRecord || { id: patientId, ...updateValues };
+    await persistPatientToSqlite(finalRecord);
+    return finalRecord;
   }
 
   try {
@@ -274,6 +300,7 @@ export const updatePatient = async (patientId, payload) => {
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       const updatedList = current.map((p) => (p.id === patientId ? data : p));
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
+      await persistPatientToSqlite(data);
     }
 
     return data;
@@ -300,7 +327,9 @@ export const updatePatient = async (patientId, payload) => {
         return p;
       });
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
-      return updatedRecord || { id: patientId, ...updateValues };
+      const finalRecord = updatedRecord || { id: patientId, ...updateValues };
+      await persistPatientToSqlite(finalRecord);
+      return finalRecord;
     }
     throw err;
   }
@@ -335,7 +364,9 @@ export const archivePatient = async (patientId, { reason = "" } = {}) => {
       return p;
     });
     saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
-    return updatedRecord || { id: patientId, ...archivePayload };
+    const finalRecord = updatedRecord || { id: patientId, ...archivePayload };
+    await persistPatientToSqlite(finalRecord);
+    return finalRecord;
   }
 
   try {
@@ -354,6 +385,7 @@ export const archivePatient = async (patientId, { reason = "" } = {}) => {
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       const updatedList = current.map((p) => (p.id === patientId ? data : p));
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
+      await persistPatientToSqlite(data);
     }
 
     return data;
@@ -379,7 +411,9 @@ export const archivePatient = async (patientId, { reason = "" } = {}) => {
         return p;
       });
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
-      return updatedRecord || { id: patientId, ...archivePayload };
+      const finalRecord = updatedRecord || { id: patientId, ...archivePayload };
+      await persistPatientToSqlite(finalRecord);
+      return finalRecord;
     }
     throw err;
   }
@@ -411,7 +445,9 @@ export const restorePatient = async (patientId) => {
       return p;
     });
     saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
-    return updatedRecord || { id: patientId, ...restorePayload };
+    const finalRecord = updatedRecord || { id: patientId, ...restorePayload };
+    await persistPatientToSqlite(finalRecord);
+    return finalRecord;
   }
 
   try {
@@ -430,6 +466,7 @@ export const restorePatient = async (patientId) => {
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       const updatedList = current.map((p) => (p.id === patientId ? data : p));
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
+      await persistPatientToSqlite(data);
     }
 
     return data;
@@ -455,7 +492,9 @@ export const restorePatient = async (patientId) => {
         return p;
       });
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
-      return updatedRecord || { id: patientId, ...restorePayload };
+      const finalRecord = updatedRecord || { id: patientId, ...restorePayload };
+      await persistPatientToSqlite(finalRecord);
+      return finalRecord;
     }
     throw err;
   }

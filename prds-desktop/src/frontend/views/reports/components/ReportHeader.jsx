@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Download, ChevronDown, Calendar as CalendarIcon, Building2, Check, FileSpreadsheet } from "lucide-react";
+import { Download, ChevronDown, Calendar as CalendarIcon, FileSpreadsheet } from "lucide-react";
 import { formatReportDate } from "@shared/utils/reportUtils";
 
 export default function ReportHeader({
@@ -13,6 +13,7 @@ export default function ReportHeader({
   facilityName = "Vicente Mendiola Center for Health (City Health Office)",
   onExportRis,
   onExportInventory,
+  onExportDetailedInventory,
   isExporting = false,
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -35,6 +36,25 @@ export default function ReportHeader({
     }
     return formatReportDate(selectedDate);
   }, [reportScope, selectedPeriod, selectedDate]);
+
+  const detailedReportLabel = useMemo(() => {
+    return "Detailed Inventory Report";
+  }, []);
+
+  const detailedReportSubtext = useMemo(() => {
+    return "5 Sheets: Inventory, Stock Returns, Additional Deliveries, Other Programs, & Expired Stocks";
+  }, []);
+
+  const canShowDetailedInventory = !isBhw && reportScope !== "daily" && Boolean(onExportDetailedInventory);
+  const canShowInventory = !isBhw && reportScope !== "daily" && Boolean(onExportInventory);
+  const canShowRis = Boolean(onExportRis) && (reportScope === "daily" || isBhw);
+
+  const availableExportsCount = [
+    canShowDetailedInventory,
+    canShowInventory,
+    canShowRis,
+  ].filter(Boolean).length;
+  const hasMultipleExports = availableExportsCount > 1;
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-5 border-b border-[#CFDDE0]">
@@ -71,16 +91,26 @@ export default function ReportHeader({
           </div>
         )}
 
-        {/* Export to Excel: Direct RIS button for BHW, Dropdown for CHO */}
-        {isBhw || !onExportInventory ? (
+        {/* Export to Excel: Single direct button if only one export available, otherwise dynamic dropdown */}
+        {!hasMultipleExports ? (
           <button
             type="button"
             disabled={isExporting}
-            onClick={() => onExportRis?.()}
+            onClick={() => {
+              if (canShowRis) onExportRis?.();
+              else if (canShowInventory) onExportInventory?.();
+              else if (canShowDetailedInventory) onExportDetailedInventory?.();
+            }}
             className="btn-primary flex items-center gap-2 disabled:opacity-60 text-white text-xs font-semibold rounded-lg px-3.5 py-2 shadow-xs transition-colors cursor-pointer"
           >
             <Download className="h-3.5 w-3.5" />
-            <span>{isExporting ? "Exporting..." : "Export to Excel (RIS)"}</span>
+            <span>
+              {isExporting
+                ? "Exporting..."
+                : canShowRis
+                  ? "Export to Excel (RIS)"
+                  : "Export to Excel"}
+            </span>
           </button>
         ) : (
           <div className="relative" ref={dropdownRef}>
@@ -96,46 +126,80 @@ export default function ReportHeader({
             </button>
 
             {dropdownOpen && (
-              <div className="absolute right-0 mt-1.5 w-64 bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl shadow-lg z-50 py-1.5 text-xs text-[#1B2B30] animate-in fade-in zoom-in-95 duration-150">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    onExportRis?.();
-                  }}
-                  className="w-full text-left px-3.5 py-2.5 hover:bg-[#E5EFF1]/60 flex items-start gap-2.5 transition-colors cursor-pointer group"
-                >
-                  <FileSpreadsheet className="h-4 w-4 text-[#1F4E5A] shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-[#1B2B30] group-hover:text-[#1F4E5A]">
-                      Daily Dispensing Slip (RIS)
-                    </div>
-                    <div className="text-[11px] text-[#5B7077] mt-0.5">
-                      2 Sheets: CHO clinic & Barangay Health Stations
-                    </div>
-                  </div>
-                </button>
+              <div className="absolute right-0 mt-1.5 w-80 bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl shadow-lg z-50 py-1.5 text-xs text-[#1B2B30] animate-in fade-in zoom-in-95 duration-150">
+                {/* 1. Detailed Inventory Report (5 Sheets) */}
+                {canShowDetailedInventory && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        onExportDetailedInventory?.();
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-[#E5EFF1]/60 flex items-start gap-2.5 transition-colors cursor-pointer group"
+                    >
+                      <FileSpreadsheet className="h-4 w-4 text-[#1F4E5A] shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-[#1B2B30] group-hover:text-[#1F4E5A]">
+                          {detailedReportLabel}
+                        </div>
+                        <div className="text-[11px] text-[#5B7077] mt-0.5">
+                          {detailedReportSubtext}
+                        </div>
+                      </div>
+                    </button>
+                    {(canShowInventory || canShowRis) && (
+                      <div className="border-t border-[#CFDDE0] my-1" />
+                    )}
+                  </>
+                )}
 
-                <div className="border-t border-[#CFDDE0] my-1" />
+                {/* 2. Monthly Inventory Summary Form */}
+                {canShowInventory && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        onExportInventory?.();
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-[#E5EFF1]/60 flex items-start gap-2.5 transition-colors cursor-pointer group"
+                    >
+                      <FileSpreadsheet className="h-4 w-4 text-[#1F4E5A] shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-[#1B2B30] group-hover:text-[#1F4E5A]">
+                          Monthly Inventory Form
+                        </div>
+                        <div className="text-[11px] text-[#5B7077] mt-0.5">
+                          Official CHO physical count & stock reconciliation
+                        </div>
+                      </div>
+                    </button>
+                    {canShowRis && <div className="border-t border-[#CFDDE0] my-1" />}
+                  </>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    onExportInventory?.();
-                  }}
-                  className="w-full text-left px-3.5 py-2.5 hover:bg-[#E5EFF1]/60 flex items-start gap-2.5 transition-colors cursor-pointer group"
-                >
-                  <FileSpreadsheet className="h-4 w-4 text-[#1F4E5A] shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-[#1B2B30] group-hover:text-[#1F4E5A]">
-                      Monthly Inventory Form
+                {/* 3. Daily Dispensing Slip (RIS) */}
+                {canShowRis && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDropdownOpen(false);
+                      onExportRis?.();
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-[#E5EFF1]/60 flex items-start gap-2.5 transition-colors cursor-pointer group"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 text-[#1F4E5A] shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-[#1B2B30] group-hover:text-[#1F4E5A]">
+                        Daily Dispensing Slip (RIS)
+                      </div>
+                      <div className="text-[11px] text-[#5B7077] mt-0.5">
+                        2 Sheets: CHO clinic & Barangay Health Stations
+                      </div>
                     </div>
-                    <div className="text-[11px] text-[#5B7077] mt-0.5">
-                      Official CHO physical count & stock reconciliation
-                    </div>
-                  </div>
-                </button>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -144,3 +208,4 @@ export default function ReportHeader({
     </div>
   );
 }
+

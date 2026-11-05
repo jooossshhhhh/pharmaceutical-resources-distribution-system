@@ -242,11 +242,12 @@ export const extractCompletedRequestItems = (
     );
     if (targetDateKey && reqDateKey !== targetDateKey) return;
 
-    const facilityName = (
+    const rawFacilityName = (
       req.facility?.facility_name ||
       req.destination_facility_name ||
       "Barangay Health Center"
-    ).toUpperCase();
+    );
+    const facilityName = rawFacilityName.toUpperCase();
 
     const items = req.items || [];
     items.forEach((item) => {
@@ -267,6 +268,7 @@ export const extractCompletedRequestItems = (
         requestId: req.id,
         facilityId: req.facility_id,
         facilityName,
+        rawFacilityName,
         medicine: med,
         description: desc,
         generic_name: generic,
@@ -296,9 +298,11 @@ export const extractCompletedRequestItems = (
 export const calculateReportKpis = ({
   dispensingRows = [],
   requestRows = [],
+  otherProgramsRows = [],
   inventoryRows = [],
   selectedDate = new Date(),
   medicinesMap = null,
+  isBhw = false,
 }) => {
   const targetDateKey = toDateKey(selectedDate);
   const inventoryIndex = createInventoryIndex(inventoryRows);
@@ -333,8 +337,10 @@ export const calculateReportKpis = ({
     return sum + qty * unitCost;
   }, 0);
 
-  // 2. Completed medicine requests to Barangay Health Centers on selected date
-  const todaysBhwItems = extractCompletedRequestItems(requestRows, targetDateKey, resolvedMedsMap, inventoryIndex);
+  // 2. Completed medicine requests to Barangay Health Centers on selected date (for CHO issuing distribution)
+  const todaysBhwItems = isBhw
+    ? []
+    : extractCompletedRequestItems(requestRows, targetDateKey, resolvedMedsMap, inventoryIndex);
 
   const bhwUnits = todaysBhwItems.reduce((sum, item) => sum + item.quantity, 0);
   const bhwCost = todaysBhwItems.reduce((sum, item) => sum + item.totalCost, 0);
@@ -377,6 +383,37 @@ export const calculateReportKpis = ({
     }
   });
 
+  // 4. Stations served today (CHO) & Patients served today (BHW)
+  const uniqueBhwFacilities = new Set();
+  const uniqueBhwFacilityNames = [];
+  todaysBhwItems.forEach((item) => {
+    const key = item.facilityId || item.rawFacilityName || item.facilityName;
+    if (key && !uniqueBhwFacilities.has(key)) {
+      uniqueBhwFacilities.add(key);
+      const name = item.rawFacilityName || item.facilityName;
+      if (name) {
+        uniqueBhwFacilityNames.push(name);
+      }
+    }
+  });
+
+  const uniquePatients = new Set();
+  todaysWalkIns.forEach((row) => {
+    const pId = row.patient_id || row.patient_name || row.recipient || row.id;
+    if (pId) uniquePatients.add(pId);
+  });
+
+  const stationsServedToday = {
+    count: uniqueBhwFacilities.size,
+    facilityNames: uniqueBhwFacilityNames,
+    totalLines: todaysBhwItems.length,
+  };
+
+  const patientsServedToday = {
+    count: uniquePatients.size,
+    totalRecords: todaysWalkIns.length,
+  };
+
   return {
     dispensedToday: {
       totalUnits: totalDispensedToday,
@@ -385,6 +422,8 @@ export const calculateReportKpis = ({
     },
     totalMedicineCost: totalCostToday,
     totalRemainingStockValue,
+    stationsServedToday,
+    patientsServedToday,
     stockHealth: {
       hasData: inventoryRows.length > 0,
       totalItems: inventoryRows.length,
@@ -401,6 +440,7 @@ export const calculateReportKpis = ({
 export const aggregateTopMedicines = ({
   dispensingRows = [],
   requestRows = [],
+  otherProgramsRows = [],
   inventoryRows = [],
   selectedDate = new Date(),
   limit = 5,
@@ -463,6 +503,48 @@ export const aggregateTopMedicines = ({
     map.set(name, existing);
   });
 
+  // Combine other programs
+  (otherProgramsRows || []).forEach((prog) => {
+    if (String(prog.status || "").toUpperCase() === "CANCELLED") return;
+    const rawTime =
+      prog.completed_at ||
+      prog.distribution_date ||
+      prog.program_date ||
+      prog.date ||
+      prog.created_at;
+    const rowKey = toDateKey(rawTime);
+    if (monthScope ? !rowKey.startsWith(targetMonthPrefix) : rowKey !== targetDateKey) return;
+
+    let items = prog.medicines;
+    if (!Array.isArray(items) && prog.items) items = prog.items;
+    if (!Array.isArray(items) && prog.data_json) {
+      try {
+        const parsed = typeof prog.data_json === "string" ? JSON.parse(prog.data_json) : prog.data_json;
+        items = parsed?.medicines || parsed?.items || [];
+      } catch {
+        items = [];
+      }
+    }
+    if (!Array.isArray(items)) items = [];
+
+    items.forEach((item) => {
+      const med =
+        item.medicine ||
+        (resolvedMedsMap?.get ? resolvedMedsMap.get(item.medicine_id) : null) ||
+        {};
+      const generic = (med.generic_name || item.generic_name || "").trim();
+      const dosage = (med.dosage || item.dosage || "").trim();
+      const name = generic ? `${generic}${dosage ? ` ${dosage}` : ""}` : "Unknown Medicine";
+      const qty = Number(item.quantity_used ?? item.quantity) || 0;
+      const unitCost = resolveItemUnitCost(item, { inventoryIndex, medicinesMap: resolvedMedsMap });
+
+      const existing = map.get(name) || { name, quantity: 0, cost: 0, brand: med.brand_name || "" };
+      existing.quantity += qty;
+      existing.cost += qty * unitCost;
+      map.set(name, existing);
+    });
+  });
+
   return Array.from(map.values())
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, limit)
@@ -473,11 +555,12 @@ export const aggregateTopMedicines = ({
 };
 
 /**
- * Aggregates distribution across CHO and Barangay Health Centers (Donut Chart)
+ * Aggregates distribution across CHO, Barangay Health Centers, and Other Health Programs (Donut Chart)
  */
 export const aggregateFacilityDistribution = ({
   dispensingRows = [],
   requestRows = [],
+  otherProgramsRows = [],
   selectedDate = new Date(),
   monthScope = false,
   year = new Date().getFullYear(),
@@ -511,10 +594,41 @@ export const aggregateFacilityDistribution = ({
     facilityCounts.set(name, (facilityCounts.get(name) || 0) + item.quantity);
   });
 
+  // 3. Other Health Programs / Outreach allocations
+  (otherProgramsRows || []).forEach((prog) => {
+    if (String(prog.status || "").toUpperCase() === "CANCELLED") return;
+    const rawTime =
+      prog.completed_at ||
+      prog.distribution_date ||
+      prog.program_date ||
+      prog.date ||
+      prog.created_at;
+    const rowKey = toDateKey(rawTime);
+    if (monthScope ? !rowKey.startsWith(targetMonthPrefix) : rowKey !== targetDateKey) return;
+
+    let items = prog.medicines;
+    if (!Array.isArray(items) && prog.items) items = prog.items;
+    if (!Array.isArray(items) && prog.data_json) {
+      try {
+        const parsed = typeof prog.data_json === "string" ? JSON.parse(prog.data_json) : prog.data_json;
+        items = parsed?.medicines || parsed?.items || [];
+      } catch {
+        items = [];
+      }
+    }
+    if (!Array.isArray(items)) items = [];
+
+    const progUnits = items.reduce((s, m) => s + (Number(m.quantity_used ?? m.quantity) || 0), 0);
+    if (progUnits > 0) {
+      const progLabel = prog.program_name ? `Program: ${prog.program_name}` : "Other Health Programs";
+      facilityCounts.set(progLabel, (facilityCounts.get(progLabel) || 0) + progUnits);
+    }
+  });
+
   const total = Array.from(facilityCounts.values()).reduce((a, b) => a + b, 0);
   if (total === 0) return [];
 
-  const PALETTE = ["#1F4E5A", "#34769B", "#4C9F80", "#D9826B", "#286575", "#5B7077", "#2D7A5D"];
+  const PALETTE = ["#1F4E5A", "#34769B", "#4C9F80", "#D9826B", "#286575", "#5B7077", "#2D7A5D", "#E07A5F", "#81B29A"];
 
   return Array.from(facilityCounts.entries())
     .sort((a, b) => b[1] - a[1])
@@ -532,6 +646,7 @@ export const aggregateFacilityDistribution = ({
 export const aggregateDailyDispensingTrend = ({
   dispensingRows = [],
   requestRows = [],
+  otherProgramsRows = [],
   inventoryRows = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1, // 1-indexed (1-12)
@@ -587,6 +702,40 @@ export const aggregateDailyDispensingTrend = ({
     const current = dailyMap.get(d) || { day: d, units: 0, cost: 0 };
     current.units += item.quantity;
     current.cost += item.totalCost;
+    dailyMap.set(d, current);
+  });
+
+  // Add other programs
+  (otherProgramsRows || []).forEach((prog) => {
+    if (String(prog.status || "").toUpperCase() === "CANCELLED") return;
+    const rawTime =
+      prog.completed_at ||
+      prog.distribution_date ||
+      prog.program_date ||
+      prog.date ||
+      prog.created_at;
+    if (!isMatchingMonth(rawTime)) return;
+    const d = new Date(rawTime).getDate();
+    const current = dailyMap.get(d) || { day: d, units: 0, cost: 0 };
+
+    let items = prog.medicines;
+    if (!Array.isArray(items) && prog.items) items = prog.items;
+    if (!Array.isArray(items) && prog.data_json) {
+      try {
+        const parsed = typeof prog.data_json === "string" ? JSON.parse(prog.data_json) : prog.data_json;
+        items = parsed?.medicines || parsed?.items || [];
+      } catch {
+        items = [];
+      }
+    }
+    if (!Array.isArray(items)) items = [];
+
+    items.forEach((item) => {
+      const qty = Number(item.quantity_used ?? item.quantity) || 0;
+      const unitCost = resolveItemUnitCost(item, { inventoryIndex, medicinesMap: resolvedMedsMap });
+      current.units += qty;
+      current.cost += qty * unitCost;
+    });
     dailyMap.set(d, current);
   });
 
@@ -810,6 +959,7 @@ export const aggregateHourlyDispensingFlow = ({
     hourlySlots[hour].transactions += 1;
   });
 
+
   // Convert to sorted array
   const sortedHours = Object.keys(hourlySlots)
     .map(Number)
@@ -845,6 +995,133 @@ export const aggregateHourlyDispensingFlow = ({
  * Extracts and formats all dispensing and allocation transactions for the selected date.
  * Returns a sorted array (newest to oldest) suitable for on-screen table viewing and search.
  */
+
+/**
+ * Checks whether a given string is a generic role or position title
+ * rather than a specific person's name.
+ */
+export const isPositionTitle = (name) => {
+  if (!name || typeof name !== "string") return false;
+  const clean = name.trim().toLowerCase();
+  return (
+    clean === "cho pharmacist" ||
+    clean === "pharmacist" ||
+    clean === "pharmacist i" ||
+    clean === "pharmacist ii" ||
+    clean === "pharmacist on duty" ||
+    clean === "bhw" ||
+    clean === "bhw / midwife" ||
+    clean === "midwife" ||
+    clean === "nurse" ||
+    clean === "doctor" ||
+    clean === "attending physician" ||
+    clean === "staff" ||
+    clean === "staff on duty" ||
+    clean === "admin" ||
+    clean === "super admin" ||
+    clean === "system admin" ||
+    clean === "requisition slip" ||
+    clean.startsWith("cho pharmacist")
+  );
+};
+
+export const formatPersonName = (first, last, fallback = "") => {
+  const parts = [first, last].map((s) => (s || "").trim()).filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : fallback;
+};
+
+/**
+ * Resolves the actual person name of the pharmacist or health worker who dispensed the medicine.
+ * Prevents displaying generic position titles (e.g. "CHO Pharmacist").
+ */
+export const resolveDispenserName = (
+  row = {},
+  { usersMap = null, currentUserProfile = null, defaultDispenserName = null } = {}
+) => {
+  // 1. Direct object on row.dispenser (e.g. joined from Supabase profiles relation)
+  if (row.dispenser && typeof row.dispenser === "object") {
+    const directName =
+      formatPersonName(row.dispenser.first_name, row.dispenser.last_name) ||
+      (typeof row.dispenser.full_name === "string" ? row.dispenser.full_name.trim() : "") ||
+      (typeof row.dispenser.name === "string" ? row.dispenser.name.trim() : "");
+    if (directName && !isPositionTitle(directName)) return directName;
+  } else if (typeof row.dispenser === "string" && !isPositionTitle(row.dispenser)) {
+    return row.dispenser.trim();
+  }
+
+  // 2. Lookup via dispensed_by (or created_by / user_id) in usersMap
+  const userId = row.dispensed_by || row.user_id || row.created_by;
+  if (userId && usersMap) {
+    const user = usersMap.get ? usersMap.get(String(userId)) : usersMap[String(userId)];
+    if (user) {
+      const mappedName =
+        formatPersonName(user.first_name, user.last_name) ||
+        (typeof user.full_name === "string" ? user.full_name.trim() : "") ||
+        (typeof user.name === "string" ? user.name.trim() : "");
+      if (mappedName && !isPositionTitle(mappedName)) return mappedName;
+    }
+  }
+
+  // 3. Manual dispensed by field if not a generic position title
+  if (
+    row.manual_dispensed_by &&
+    typeof row.manual_dispensed_by === "string" &&
+    !isPositionTitle(row.manual_dispensed_by)
+  ) {
+    return row.manual_dispensed_by.trim();
+  }
+
+  // 4. Current user / logged-in pharmacist profile
+  if (currentUserProfile) {
+    const currentName =
+      formatPersonName(currentUserProfile.first_name, currentUserProfile.last_name) ||
+      (typeof currentUserProfile.full_name === "string" ? currentUserProfile.full_name.trim() : "") ||
+      (typeof currentUserProfile.name === "string" ? currentUserProfile.name.trim() : "");
+    if (currentName && !isPositionTitle(currentName)) return currentName;
+  }
+
+  // 5. Default dispenser name if provided
+  if (
+    defaultDispenserName &&
+    typeof defaultDispenserName === "string" &&
+    !isPositionTitle(defaultDispenserName)
+  ) {
+    return defaultDispenserName.trim();
+  }
+
+  // 6. Inspect browser localStorage directly (for snapshot fallbacks / active sessions)
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const rawProfile = window.localStorage.getItem("prds_desktop_user_profile");
+      if (rawProfile) {
+        const parsed = JSON.parse(rawProfile);
+        const pName = formatPersonName(parsed.first_name, parsed.last_name) || parsed.full_name;
+        if (pName && !isPositionTitle(pName)) return pName;
+      }
+      const rawUsers = window.localStorage.getItem("prds_snapshot_users");
+      if (rawUsers) {
+        const users = JSON.parse(rawUsers);
+        if (Array.isArray(users)) {
+          if (userId) {
+            const matched = users.find((u) => String(u.id) === String(userId));
+            if (matched) {
+              const uName = formatPersonName(matched.first_name, matched.last_name) || matched.full_name;
+              if (uName && !isPositionTitle(uName)) return uName;
+            }
+          }
+          const phUser = users.find((u) => String(u.role || "").toLowerCase().includes("pharmacist"));
+          if (phUser) {
+            const phName = formatPersonName(phUser.first_name, phUser.last_name) || phUser.full_name;
+            if (phName && !isPositionTitle(phName)) return phName;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return "Pharmacist on Duty";
+};
+
 export const getDailyDispensingTransactions = ({
   dispensingRows = [],
   requestRows = [],
@@ -967,6 +1244,7 @@ export const getDailyDispensingTransactions = ({
       });
     });
   });
+
 
   // Sort newest first
   transactions.sort((a, b) => {

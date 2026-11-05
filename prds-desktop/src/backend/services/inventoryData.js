@@ -12,6 +12,7 @@ import { computeAdc, computeReorderQty } from "@shared/utils/demandUtils";
 import {
   buildInventoryMedicineRows,
   calculateDynamicThreshold,
+  computeProgramReservations,
   getThresholdCalculationDetails,
   createEmptyPoItem,
   emptyPoReceiptForm,
@@ -36,6 +37,7 @@ import {
   sortInventoryRows,
 } from "@shared/utils/inventoryUtils";
 import { reconcileConfirmedReturnsIntoInventory } from "./stockReturnsService";
+import { fetchOtherPrograms } from "./otherProgramsService";
 import { isChoFacility } from "@shared/utils/facilityUtils";
 
 const STORAGE_PREFIX = "prds-inventory:";
@@ -65,6 +67,22 @@ export function useInventoryData({ isBhw = false }) {
   const [medicines, setMedicines] = useState(() => getSnapshot(STORAGE_KEYS.MEDICINES, []));
   const [suppliers, setSuppliers] = useState(() => getSnapshot(STORAGE_KEYS.SUPPLIERS, []));
   const [dispensingSummary, setDispensingSummary] = useState(() => getSnapshot(STORAGE_KEYS.DISPENSING_SUMMARY, []));
+  const [otherPrograms, setOtherPrograms] = useState(() => getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []));
+
+  useEffect(() => {
+    const handleProgramsChanged = () => {
+      setOtherPrograms(getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []));
+    };
+    window.addEventListener("prds:other-programs-changed", handleProgramsChanged);
+    fetchOtherPrograms()
+      .then((progs) => {
+        if (progs && progs.length > 0) {
+          setOtherPrograms(progs);
+        }
+      })
+      .catch(() => {});
+    return () => window.removeEventListener("prds:other-programs-changed", handleProgramsChanged);
+  }, []);
   const [searchTerm, setSearchTerm] = useState(
     () => readStored(`${STORAGE_PREFIX}${profile?.id}:search`) || ""
   );
@@ -118,6 +136,7 @@ export function useInventoryData({ isBhw = false }) {
   const [selectedItem, setSelectedItem] = useState(null);
   const [formValues, setFormValues] = useState(emptyInventoryForm);
   const formSnapshotRef = useRef(null);
+  const inFlightThresholdUpdates = useRef(new Map());
 
   const EDITABLE_FIELDS = [
     "facility_id",
@@ -271,13 +290,26 @@ export function useInventoryData({ isBhw = false }) {
     return rawReturned;
   }, [inventory, isBhw, ownFacilityId, activeFacilityId]);
 
-  // Grouped medicine rows for dispensable stock
+  const isViewingCho = useMemo(() => {
+    if (isBhw) return false;
+    const currentFac = selectedFacility || facilities.find((f) => f.id === activeFacilityId);
+    return isChoFacility(currentFac);
+  }, [isBhw, selectedFacility, facilities, activeFacilityId]);
+
+  const { reservedByMedicine, reservationsByMedicine } = useMemo(() => {
+    if (!isViewingCho) {
+      return { reservedByMedicine: new Map(), reservationsByMedicine: new Map() };
+    }
+    return computeProgramReservations(otherPrograms);
+  }, [otherPrograms, isViewingCho]);
+
+  // Grouped medicine rows for dispensable stock (with reservations deducted from available stock)
   const groupedDispensableInventory = useMemo(
-    () => buildInventoryMedicineRows(dispensableLots),
-    [dispensableLots]
+    () => buildInventoryMedicineRows(dispensableLots, { reservedByMedicine, reservationsByMedicine }),
+    [dispensableLots, reservedByMedicine, reservationsByMedicine]
   );
 
-  // Grouped medicine rows for expired stock
+  // Grouped medicine rows for expired stock (expired batches cannot be allocated to programs)
   const groupedExpiredInventory = useMemo(
     () => buildInventoryMedicineRows(expiredLots),
     [expiredLots]
@@ -285,8 +317,8 @@ export function useInventoryData({ isBhw = false }) {
 
   // Grouped medicine rows for returned stock
   const groupedReturnedInventory = useMemo(
-    () => buildInventoryMedicineRows(returnedLots),
-    [returnedLots]
+    () => buildInventoryMedicineRows(returnedLots, { reservedByMedicine, reservationsByMedicine }),
+    [returnedLots, reservedByMedicine, reservationsByMedicine]
   );
 
   // Active grouped inventory based on selected tab
@@ -490,7 +522,7 @@ export function useInventoryData({ isBhw = false }) {
       let offlineInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
       let facData = getSnapshot(STORAGE_KEYS.FACILITIES, []);
       let medData = getSnapshot(STORAGE_KEYS.MEDICINES, []);
-      let offlineThresholdMap = new Map();
+      let offlineThresholdMap = new Map((getSnapshot(STORAGE_KEYS.THRESHOLDS, []) || []).map((fmt) => [`${fmt.facility_id}:${fmt.medicine_id}`, Number(fmt.threshold || 0)]));
       if (isTauriEnvironment()) {
         try {
           const db = await getSqliteDb();
@@ -533,6 +565,9 @@ export function useInventoryData({ isBhw = false }) {
       });
       setInventory(reconciledInv);
       saveSnapshot(STORAGE_KEYS.INVENTORY, reconciledInv);
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new CustomEvent("prds:inventory-updated-by-module"));
+      }
       setIsLoading(false);
       return;
     }
@@ -697,7 +732,7 @@ export function useInventoryData({ isBhw = false }) {
             for (const t of thresholdsResult.data) {
               await db.execute(
                 `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6)
+                 VALUES (?, ?, ?, ?, ?, ?)
                  ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = excluded.is_custom, updated_at = excluded.updated_at`,
                 [t.id || crypto.randomUUID(), t.facility_id, t.medicine_id, t.threshold, t.is_custom ? 1 : 0, new Date().toISOString()]
               );
@@ -744,6 +779,9 @@ export function useInventoryData({ isBhw = false }) {
       saveSnapshot(STORAGE_KEYS.MEDICINES, medData);
       saveSnapshot(STORAGE_KEYS.SUPPLIERS, supData);
       saveSnapshot(STORAGE_KEYS.DISPENSING_SUMMARY, dispData);
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new CustomEvent("prds:inventory-updated-by-module"));
+      }
 
       setFacilityFilter((currentFilter) => {
         if (currentFilter === "ALL") {
@@ -1370,7 +1408,7 @@ export function useInventoryData({ isBhw = false }) {
             for (const rec of recordsToInsert) {
               await db.execute(
                 `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                   rec.id,
                   rec.facility_id,
@@ -1397,7 +1435,7 @@ export function useInventoryData({ isBhw = false }) {
             for (const thr of thresholdsToUpsert) {
               await db.execute(
                 `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6)
+                 VALUES (?, ?, ?, ?, ?, ?)
                  ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = excluded.is_custom, updated_at = excluded.updated_at`,
                 [crypto.randomUUID(), thr.facility_id, thr.medicine_id, thr.threshold, thr.is_custom ? 1 : 0, thr.updated_at]
               );
@@ -1445,7 +1483,7 @@ export function useInventoryData({ isBhw = false }) {
             for (const rec of recordsToInsert) {
               await db.execute(
                 `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact, data_json, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                   rec.id,
                   rec.facility_id,
@@ -1472,7 +1510,7 @@ export function useInventoryData({ isBhw = false }) {
             for (const thr of thresholdsToUpsert) {
               await db.execute(
                 `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6)
+                 VALUES (?, ?, ?, ?, ?, ?)
                  ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = excluded.is_custom, updated_at = excluded.updated_at`,
                 [crypto.randomUUID(), thr.facility_id, thr.medicine_id, thr.threshold, thr.is_custom ? 1 : 0, thr.updated_at]
               );
@@ -1528,7 +1566,7 @@ export function useInventoryData({ isBhw = false }) {
               for (const rec of recordsToInsert) {
                 await db.execute(
                   `INSERT OR REPLACE INTO inventory (id, facility_id, medicine_id, supplier_id, quantity, batch_number, po_number, unit_cost, date_received, expiration_date, origin_facility_id, intake_type, return_reason, status, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                   [
                     rec.id || crypto.randomUUID(),
                     rec.facility_id,
@@ -1636,7 +1674,7 @@ export function useInventoryData({ isBhw = false }) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, po_number = $5, unit_cost = $6, origin_facility_id = $7, intake_type = $8, return_reason = $9, brand_name = $10, supplier_name = $11, supplier_address = $12, supplier_contact = $13, updated_at = $14 WHERE id = $15`,
+            `UPDATE inventory SET batch_number = ?, date_received = ?, expiration_date = ?, quantity = ?, po_number = ?, unit_cost = ?, origin_facility_id = ?, intake_type = ?, return_reason = ?, brand_name = ?, supplier_name = ?, supplier_address = ?, supplier_contact = ?, updated_at = ? WHERE id = ?`,
             [
               payload.batch_number,
               payload.date_received,
@@ -1658,7 +1696,7 @@ export function useInventoryData({ isBhw = false }) {
           if (payload.threshold !== undefined && payload.threshold !== null) {
             await db.execute(
               `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
-               VALUES ($1, $2, $3, $4, 1, $5)
+               VALUES (?, ?, ?, ?, 1, ?)
                ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at`,
               [crypto.randomUUID(), payload.facility_id, payload.medicine_id, payload.threshold, payload.updated_at]
             );
@@ -1734,7 +1772,7 @@ export function useInventoryData({ isBhw = false }) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET batch_number = $1, date_received = $2, expiration_date = $3, quantity = $4, po_number = $5, unit_cost = $6, origin_facility_id = $7, intake_type = $8, return_reason = $9, brand_name = $10, supplier_name = $11, supplier_address = $12, supplier_contact = $13, updated_at = $14 WHERE id = $15`,
+            `UPDATE inventory SET batch_number = ?, date_received = ?, expiration_date = ?, quantity = ?, po_number = ?, unit_cost = ?, origin_facility_id = ?, intake_type = ?, return_reason = ?, brand_name = ?, supplier_name = ?, supplier_address = ?, supplier_contact = ?, updated_at = ? WHERE id = ?`,
             [
               payload.batch_number,
               payload.date_received,
@@ -1756,7 +1794,7 @@ export function useInventoryData({ isBhw = false }) {
           if (payload.threshold !== undefined && payload.threshold !== null) {
             await db.execute(
               `INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at)
-               VALUES ($1, $2, $3, $4, 1, $5)
+               VALUES (?, ?, ?, ?, 1, ?)
                ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at`,
               [crypto.randomUUID(), payload.facility_id, payload.medicine_id, payload.threshold, payload.updated_at]
             );
@@ -1845,7 +1883,7 @@ export function useInventoryData({ isBhw = false }) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = $1, disposal_method = $2, disposed_by = $3, updated_at = $4 WHERE id = $5`,
+            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = ?, disposal_method = ?, disposed_by = ?, updated_at = ? WHERE id = ?`,
             [nowIso, disposalMethod, profile?.id, nowIso, lot.id]
           );
         } catch (dbErr) {
@@ -1892,7 +1930,7 @@ export function useInventoryData({ isBhw = false }) {
         try {
           const db = await getSqliteDb();
           await db.execute(
-            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = $1, disposal_method = $2, disposed_by = $3, updated_at = $4 WHERE id = $5`,
+            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = ?, disposal_method = ?, disposed_by = ?, updated_at = ? WHERE id = ?`,
             [nowIso, disposalMethod, profile?.id, nowIso, lot.id]
           );
         } catch (dbErr) {
@@ -1944,84 +1982,105 @@ export function useInventoryData({ isBhw = false }) {
       throw err;
     }
 
-    setIsSaving(true);
-    setInventoryError("");
+    const updateKey = `${targetFacilityId}:${medicineId}`;
 
-    try {
-      const isOnline = isCurrentNetworkOnline();
+    // Concurrency guard: If an update for this medicine at this facility is currently in flight, await existing request
+    if (inFlightThresholdUpdates.current.has(updateKey)) {
+      return inFlightThresholdUpdates.current.get(updateKey);
+    }
 
-      if (!isOnline) {
-        await enqueueMutation({
-          mutationType: "RPC",
-          target: "update_bhw_inventory_threshold",
-          payload: {
+    // Short-circuit if this facility item already has the requested threshold set
+    const existingItem = inventory.find(
+      (item) => item.facility_id === targetFacilityId && item.medicine_id === medicineId
+    );
+    if (existingItem && Number(existingItem.threshold) === numericThreshold && existingItem.is_threshold_custom) {
+      return { success: true, threshold: numericThreshold };
+    }
+
+    const executeUpdate = (async () => {
+      setIsSaving(true);
+      setInventoryError("");
+
+      try {
+        const isOnline = isCurrentNetworkOnline();
+
+        if (!isOnline) {
+          await enqueueMutation({
+            mutationType: "RPC",
+            target: "update_bhw_inventory_threshold",
+            payload: {
+              p_medicine_id: medicineId,
+              p_threshold: numericThreshold,
+              p_facility_id: targetFacilityId,
+            },
+          });
+
+          if (isTauriEnvironment()) {
+            try {
+              const db = await getSqliteDb();
+              const nowIso = new Date().toISOString();
+              await db.execute(
+                "INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at) VALUES (?, ?, ?, ?, 1, ?) ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at",
+                [crypto.randomUUID(), targetFacilityId, medicineId, numericThreshold, nowIso]
+              );
+            } catch (dbErr) {
+              console.warn("Failed to update local SQLite on threshold update:", dbErr);
+            }
+          }
+        } else {
+          const { error } = await supabase.rpc("update_bhw_inventory_threshold", {
             p_medicine_id: medicineId,
             p_threshold: numericThreshold,
             p_facility_id: targetFacilityId,
-          },
-        });
+          });
 
-        if (isTauriEnvironment()) {
-          try {
-            const db = await getSqliteDb();
-            const nowIso = new Date().toISOString();
-            await db.execute(
-              "INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at) VALUES ($1, $2, $3, $4, 1, $5) ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at",
-              [crypto.randomUUID(), targetFacilityId, medicineId, numericThreshold, nowIso]
-            );
-          } catch (dbErr) {
-            console.warn("Failed to update local SQLite on threshold update:", dbErr);
+          if (error) {
+            throw error;
+          }
+
+          if (isTauriEnvironment()) {
+            try {
+              const db = await getSqliteDb();
+              const nowIso = new Date().toISOString();
+              await db.execute(
+                "INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at) VALUES (?, ?, ?, ?, 1, ?) ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at",
+                [crypto.randomUUID(), targetFacilityId, medicineId, numericThreshold, nowIso]
+              );
+            } catch (dbErr) {
+              console.warn("Failed to update local SQLite cache on threshold update:", dbErr);
+            }
           }
         }
-      } else {
-        const { error } = await supabase.rpc("update_bhw_inventory_threshold", {
-          p_medicine_id: medicineId,
-          p_threshold: numericThreshold,
-          p_facility_id: targetFacilityId,
+
+        setInventory((prev) => {
+          const updated = prev.map((item) => {
+            if (item.facility_id === targetFacilityId && item.medicine_id === medicineId) {
+              return {
+                ...item,
+                threshold: numericThreshold,
+                is_threshold_custom: true,
+                updated_at: new Date().toISOString(),
+              };
+            }
+            return item;
+          });
+          saveSnapshot(STORAGE_KEYS.INVENTORY, updated);
+          return updated;
         });
 
-        if (error) {
-          throw error;
-        }
-
-        if (isTauriEnvironment()) {
-          try {
-            const db = await getSqliteDb();
-            const nowIso = new Date().toISOString();
-            await db.execute(
-              "INSERT INTO facility_medicine_thresholds (id, facility_id, medicine_id, threshold, is_custom, updated_at) VALUES ($1, $2, $3, $4, 1, $5) ON CONFLICT(facility_id, medicine_id) DO UPDATE SET threshold = excluded.threshold, is_custom = 1, updated_at = excluded.updated_at",
-              [crypto.randomUUID(), targetFacilityId, medicineId, numericThreshold, nowIso]
-            );
-          } catch (dbErr) {
-            console.warn("Failed to update local SQLite cache on threshold update:", dbErr);
-          }
-        }
+        return { success: true, threshold: numericThreshold };
+      } catch (err) {
+        const msg = err.message || "Failed to update inventory threshold.";
+        setInventoryError(msg);
+        throw err;
+      } finally {
+        setIsSaving(false);
+        inFlightThresholdUpdates.current.delete(updateKey);
       }
+    })();
 
-      setInventory((prev) => {
-        const updated = prev.map((item) => {
-          if (item.facility_id === targetFacilityId && item.medicine_id === medicineId) {
-            return {
-              ...item,
-              threshold: numericThreshold,
-              is_threshold_custom: true,
-              updated_at: new Date().toISOString(),
-            };
-          }
-          return item;
-        });
-        saveSnapshot(STORAGE_KEYS.INVENTORY, updated);
-        return updated;
-      });
-
-      return { success: true, threshold: numericThreshold };
-    } catch (err) {
-      const msg = err.message || "Failed to update inventory threshold.";
-      setInventoryError(msg);
-      throw err;
-    } finally {
-      setIsSaving(false);
-    }
+    inFlightThresholdUpdates.current.set(updateKey, executeUpdate);
+    return executeUpdate;
   };
 
   return {
@@ -2085,5 +2144,7 @@ export function useInventoryData({ isBhw = false }) {
     handleSaveInventory,
     handleDisposeStock,
     handleUpdateThreshold,
+    reservedByMedicine,
+    reservationsByMedicine,
   };
 }

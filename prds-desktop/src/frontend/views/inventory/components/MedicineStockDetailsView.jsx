@@ -95,6 +95,22 @@ export default function MedicineStockDetailsView({
     return allLots.reduce((sum, l) => sum + Number(l.quantity || 0), 0);
   }, [allLots]);
 
+  const reservations = useMemo(() => {
+    return Array.isArray(item.reservations) ? item.reservations : [];
+  }, [item.reservations]);
+
+  const reservedQuantity = useMemo(() => {
+    if (item.reserved_quantity !== undefined && item.reserved_quantity !== null) {
+      return Number(item.reserved_quantity || 0);
+    }
+    return reservations.reduce((sum, r) => sum + Number(r.quantity_reserved || 0), 0);
+  }, [item.reserved_quantity, reservations]);
+
+  const dispensableUnits = useMemo(() => {
+    if (isExpired) return totalUnits;
+    return Math.max(0, totalUnits - reservedQuantity);
+  }, [totalUnits, reservedQuantity, isExpired]);
+
   const totalValuation = useMemo(() => {
     return allLots.reduce((sum, l) => {
       const cost =
@@ -217,13 +233,13 @@ export default function MedicineStockDetailsView({
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
-                {isExpired ? "Total Expired Stock" : "Physical Stock"}
+                {isExpired ? "Total Expired Stock" : reservedQuantity > 0 ? "Dispensable Stock" : "Physical Stock"}
               </span>
               <Package className={`h-4 w-4 ${isExpired ? "text-red-500" : "text-neutral-400"}`} />
             </div>
             <div className="mt-1.5 flex items-baseline gap-1.5">
               <span className="text-2xl font-black text-[#0d1117]">
-                {formatNumber(totalUnits)}
+                {formatNumber(dispensableUnits)}
               </span>
               {unit && (
                 <span className="text-xs font-bold lowercase text-neutral-500">
@@ -232,9 +248,18 @@ export default function MedicineStockDetailsView({
               )}
             </div>
             {!isBarangayFacility ? (
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-600 font-medium">
-                <span className="font-semibold text-neutral-500">Total Cost:</span>
-                <strong className="font-bold text-[#0d1117]">{formatCurrency(totalValuation)}</strong>
+              <div className="mt-1 space-y-0.5 text-xs text-neutral-600 font-medium">
+                {reservedQuantity > 0 && !isExpired && (
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-700">
+                    <span>Physical: {formatNumber(totalUnits)}</span>
+                    <span>·</span>
+                    <span>Reserved: {formatNumber(reservedQuantity)}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-neutral-500">Total Cost:</span>
+                  <strong className="font-bold text-[#0d1117]">{formatCurrency(totalValuation)}</strong>
+                </div>
               </div>
             ) : (
               <div className="mt-1 flex items-center gap-1 text-xs text-neutral-500 font-medium">
@@ -243,11 +268,11 @@ export default function MedicineStockDetailsView({
             )}
           </div>
 
-          {/* Card 2: Active Batches */}
+          {/* Card 2: Batches */}
           <div className="rounded-xl border border-neutral-200/80 bg-[#f8f9fa] p-3.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
-                Active Batches
+                Batches
               </span>
               <Building2 className="h-4 w-4 text-emerald-600" />
             </div>
@@ -260,12 +285,20 @@ export default function MedicineStockDetailsView({
               </span>
             </div>
             {!isBarangayFacility ? (
-              <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-neutral-500">
+              <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-neutral-500 flex-wrap">
                 <span>{procurementLotsCount} Procurement</span>
                 <span>·</span>
                 <span className={returnedLotsCount > 0 ? "text-emerald-700 font-bold" : ""}>
                   {returnedLotsCount} Returned
                 </span>
+                {reservations.length > 0 && (
+                  <>
+                    <span>·</span>
+                    <span className="text-amber-700 font-bold">
+                      {reservations.length} Reserved
+                    </span>
+                  </>
+                )}
               </div>
             ) : (
               <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-neutral-500">
@@ -310,7 +343,7 @@ export default function MedicineStockDetailsView({
           <div className="rounded-xl border border-neutral-200/80 bg-[#f8f9fa] p-3.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-[0.14em] text-neutral-500">
-                {isExpired ? "Expired On" : "Nearest Expiry Date"}
+                {isExpired ? "Expired On" : "Expiration Date"}
               </span>
               <Calendar className="h-4 w-4 text-neutral-400" />
             </div>
@@ -344,6 +377,7 @@ export default function MedicineStockDetailsView({
       {/* Supplier Batch & Lot Records Table */}
       <InventoryLotTable
         lots={allLots}
+        reservations={reservations}
         canEdit={canManage}
         isBhw={isBarangayFacility}
         showProcurement={!isBarangayFacility}

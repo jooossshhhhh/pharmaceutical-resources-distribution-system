@@ -5,6 +5,8 @@ export default function ReportSummaryCards({ kpis, isBhw = false }) {
     dispensedToday = { totalUnits: 0, walkInUnits: 0, bhwUnits: 0 },
     totalMedicineCost = 0,
     totalRemainingStockValue = 0,
+    stationsServedToday = { count: 0, facilityNames: [], totalLines: 0 },
+    patientsServedToday = { count: 0, totalRecords: 0 },
     stockHealth = { hasData: false, totalItems: 0, lowStockCount: 0, lowStockNames: [] },
   } = kpis || {};
 
@@ -97,52 +99,70 @@ export default function ReportSummaryCards({ kpis, isBhw = false }) {
         </div>
       )}
 
-      {/* Card 4: Stock Safety Health */}
-      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-4 shadow-xs hover:border-[#D9826B]/50 transition-all flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold tracking-wider text-[#5B7077] uppercase">
-              Stock Safety Health
-            </span>
-            {hasStockData && (
+      {/* Card 4: Stations Served Today (CHO) / Patients Served Today (BHW) */}
+      {isBhw ? (
+        <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-4 shadow-xs hover:border-[#4C9F80]/50 transition-all flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold tracking-wider text-[#5B7077] uppercase">
+                Patients Served Today
+              </span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold tracking-wide uppercase border ${
-                  stockHealth.lowStockCount > 0
-                    ? "bg-[#FDEEE9] text-[#D9826B] border-[#D9826B]/30"
-                    : "bg-[#E2F3EC] text-[#4C9F80] border-[#4C9F80]/30"
+                  patientsServedToday.count > 0
+                    ? "bg-[#E2F3EC] text-[#4C9F80] border-[#4C9F80]/30"
+                    : "bg-[#F4F6F8] text-[#5B7077] border-[#CFDDE0]"
                 }`}
               >
-                {stockHealth.lowStockCount > 0 ? "Action Required" : "Optimal"}
+                {patientsServedToday.count > 0 ? "Community Care" : "No Records"}
               </span>
-            )}
+            </div>
+            <div className="text-2xl sm:text-[28px] font-black text-[#1B2B30] tracking-tight leading-none mt-2">
+              {patientsServedToday.count.toLocaleString()}{" "}
+              <span className="text-xs font-bold text-[#5B7077] tracking-normal">
+                {patientsServedToday.count === 1 ? "Patient" : "Patients"}
+              </span>
+            </div>
           </div>
-          <div className="mt-2">
-            {!hasStockData ? (
-              <span className="text-2xl sm:text-[28px] font-black text-[#5B7077] tracking-tight leading-none">
-                No data
-              </span>
-            ) : stockHealth.lowStockCount > 0 ? (
-              <span className="text-2xl sm:text-[28px] font-black text-[#D9826B] tracking-tight leading-none">
-                {stockHealth.lowStockCount}{" "}
-                <span className="text-xs font-bold text-[#D9826B] tracking-normal">
-                  {stockHealth.lowStockCount === 1 ? "Medicine Low" : "Medicines Low"}
-                </span>
-              </span>
-            ) : (
-              <span className="text-2xl sm:text-[28px] font-black text-[#4C9F80] tracking-tight leading-none">
-                All Healthy
-              </span>
-            )}
-          </div>
+          <p className="text-[11.5px] text-[#5B7077] mt-3 pt-2.5 border-t border-[#CFDDE0]/60 truncate">
+            {patientsServedToday.count > 0
+              ? `${dispensedToday.totalUnits.toLocaleString()} units dispensed across ${patientsServedToday.totalRecords} records`
+              : "No patient dispensing recorded today"}
+          </p>
         </div>
-        <p className="text-[11.5px] text-[#5B7077] mt-3 pt-2.5 border-t border-[#CFDDE0]/60 truncate">
-          {!hasStockData
-            ? "No inventory records available"
-            : stockHealth.lowStockNames?.length > 0
-            ? `${stockHealth.lowStockNames.join(", ")} need restocking`
-            : "All medicines above safety threshold"}
-        </p>
-      </div>
+      ) : (
+        <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-4 shadow-xs hover:border-[#4C9F80]/50 transition-all flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold tracking-wider text-[#5B7077] uppercase">
+                Stations Served Today
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold tracking-wide uppercase border ${
+                  stationsServedToday.count > 0
+                    ? "bg-[#E2F3EC] text-[#4C9F80] border-[#4C9F80]/30"
+                    : "bg-[#F4F6F8] text-[#5B7077] border-[#CFDDE0]"
+                }`}
+              >
+                {stationsServedToday.count > 0
+                  ? `${stationsServedToday.totalLines} ${stationsServedToday.totalLines === 1 ? "Line Issued" : "Lines Issued"}`
+                  : "No Releases"}
+              </span>
+            </div>
+            <div className="text-2xl sm:text-[28px] font-black text-[#1B2B30] tracking-tight leading-none mt-2">
+              {stationsServedToday.count.toLocaleString()}{" "}
+              <span className="text-xs font-bold text-[#5B7077] tracking-normal">
+                {stationsServedToday.count === 1 ? "Station" : "Stations"}
+              </span>
+            </div>
+          </div>
+          <p className="text-[11.5px] text-[#5B7077] mt-3 pt-2.5 border-t border-[#CFDDE0]/60 truncate">
+            {stationsServedToday.count > 0
+              ? stationsServedToday.facilityNames.join(", ")
+              : "No barangay requisitions issued today"}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

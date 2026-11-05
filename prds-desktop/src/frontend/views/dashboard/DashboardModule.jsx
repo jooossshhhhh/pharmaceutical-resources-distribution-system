@@ -409,6 +409,7 @@ export default function DashboardModule() {
         recentRequestsResult,
         dispensingResult,
         activePatientsResult,
+        thresholdsResult,
       ] = await Promise.all([
         scope(
           supabase
@@ -535,6 +536,7 @@ export default function DashboardModule() {
         recentRequestsResult,
         dispensingResult,
         activePatientsResult,
+        thresholdsResult,
       ];
       const firstError = results.find((result) => result?.error)?.error;
 

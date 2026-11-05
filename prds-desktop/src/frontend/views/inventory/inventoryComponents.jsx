@@ -3,7 +3,9 @@ import {
   AlertTriangle,
   ArrowDownAZ,
   ArrowDownZA,
+  BookmarkCheck,
   Building2,
+  Calendar,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -765,6 +767,14 @@ export function InventoryTable({
                           </span>
                         </div>
                         <StockLevelBar quantity={item.quantity} threshold={item.threshold} />
+                        {Number(item.reserved_quantity || 0) > 0 && (
+                          <span
+                            className="mt-0.5 block text-[10px] font-bold text-amber-700 truncate"
+                            title={`${item.gross_quantity} on hand · ${item.reserved_quantity} reserved for programs`}
+                          >
+                            {formatNumber(item.reserved_quantity)} reserved
+                          </span>
+                        )}
                       </div>
                     )}
                   </td>
@@ -833,6 +843,7 @@ export function InventoryTable({
 
 export function InventoryLotTable({
   lots = [],
+  reservations = [],
   canEdit = false,
   isBhw = false,
   showProcurement = true,
@@ -860,9 +871,17 @@ export function InventoryLotTable({
     [lots]
   );
 
-  const [activeCategory, setActiveCategory] = useState(() =>
-    procurementLots.length === 0 && returnedLots.length > 0 ? "RETURNED" : "PROCUREMENT"
-  ); // "PROCUREMENT" | "RETURNED"
+  const activeReservations = useMemo(() => {
+    if (Array.isArray(reservations) && reservations.length > 0) return reservations;
+    if (Array.isArray(lots[0]?.reservations)) return lots[0].reservations;
+    return [];
+  }, [reservations, lots]);
+
+  const [activeCategory, setActiveCategory] = useState(() => {
+    if (procurementLots.length === 0 && returnedLots.length > 0) return "RETURNED";
+    if (procurementLots.length === 0 && returnedLots.length === 0 && activeReservations.length > 0) return "RESERVED";
+    return "PROCUREMENT";
+  }); // "PROCUREMENT" | "RETURNED" | "RESERVED"
 
   useEffect(() => {
     if (procurementLots.length === 0 && returnedLots.length > 0 && activeCategory === "PROCUREMENT") {
@@ -870,11 +889,14 @@ export function InventoryLotTable({
     }
   }, [procurementLots.length, returnedLots.length]);
 
-  const displayedLots = useMemo(() => {
+  const displayedItems = useMemo(() => {
     if (!shouldShowProcurement) return lots;
+    if (activeCategory === "RESERVED") return activeReservations;
     if (activeCategory === "RETURNED") return returnedLots;
     return procurementLots;
-  }, [shouldShowProcurement, activeCategory, procurementLots, returnedLots, lots]);
+  }, [shouldShowProcurement, activeCategory, procurementLots, returnedLots, activeReservations, lots]);
+
+  const displayedLots = displayedItems;
 
   const {
     currentPage,
@@ -883,10 +905,11 @@ export function InventoryLotTable({
     setCurrentPage,
     totalCount,
     totalPages,
-  } = usePaginatedRows(displayedLots, 10);
+  } = usePaginatedRows(displayedItems, 10);
 
   const fefoLotId = useMemo(() => {
-    const unexpiredWithStock = displayedLots.filter(
+    if (activeCategory === "RESERVED") return null;
+    const unexpiredWithStock = displayedItems.filter(
       (lot) => !isLotExpired(lot) && Number(lot.quantity || 0) > 0 && lot.expiration_date
     );
     if (unexpiredWithStock.length === 0) {
@@ -896,9 +919,9 @@ export function InventoryLotTable({
       String(a.expiration_date).localeCompare(String(b.expiration_date))
     );
     return sorted[0]?.id || null;
-  }, [displayedLots]);
+  }, [displayedItems, activeCategory]);
 
-  const hasActions = showActions && (canEdit || displayedLots.some((lot) => isLotExpired(lot) && Boolean(onDisposeLot)));
+  const hasActions = showActions && activeCategory !== "RESERVED" && (canEdit || displayedItems.some((lot) => isLotExpired(lot) && Boolean(onDisposeLot)));
 
   return (
     <section className="rounded-xl border border-[#d8dadc] bg-white shadow-2xs overflow-hidden">
@@ -909,7 +932,7 @@ export function InventoryLotTable({
               Lot Records
             </p>
             <span className="inline-flex items-center rounded-full bg-neutral-200/80 px-2 py-0.5 text-[10px] font-bold text-neutral-700">
-              {displayedLots.length}
+              {displayedItems.length}
             </span>
           </div>
 
@@ -964,15 +987,42 @@ export function InventoryLotTable({
                   {returnedLots.length}
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory("RESERVED");
+                  setCurrentPage(1);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+                  activeCategory === "RESERVED"
+                    ? "bg-amber-700 text-white shadow-xs"
+                    : "text-[#5B7077] hover:text-[#1B2B30]"
+                }`}
+              >
+                <BookmarkCheck className="h-3 w-3" />
+                <span>Reserved Stock</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    activeCategory === "RESERVED"
+                      ? "bg-white/20 text-white"
+                      : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  {activeReservations.length}
+                </span>
+              </button>
             </div>
           )}
         </div>
 
         {onSelectLot && (
           <p className="text-[11px] font-semibold text-neutral-400">
-            {canEdit
-              ? "Click any lot record to view details or edit"
-              : "Click any lot record to view details"}
+            {activeCategory === "RESERVED"
+              ? "Allocated stock for upcoming & ongoing programs"
+              : canEdit
+                ? "Click any lot record to view details or edit"
+                : "Click any lot record to view details"}
           </p>
         )}
       </div>
@@ -980,26 +1030,35 @@ export function InventoryLotTable({
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200/80 bg-white text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            <tr>
-              {shouldShowProcurement && (
+            {activeCategory === "RESERVED" ? (
+              <tr>
+                <th className="px-4 py-2.5">Program Name</th>
+                <th className="px-4 py-2.5">Scheduled Date</th>
+                <th className="px-4 py-2.5">Description</th>
+                <th className="px-4 py-2.5">Reserved Quantity</th>
+              </tr>
+            ) : (
+              <tr>
+                {shouldShowProcurement && (
+                  <th className="px-4 py-2.5">
+                    {activeCategory === "RETURNED" ? "Return Slip #" : "PO #"}
+                  </th>
+                )}
+                <th className="px-4 py-2.5">Lot No.</th>
+                {shouldShowProcurement && (
+                  <th className="px-4 py-2.5">
+                    {activeCategory === "RETURNED" ? "Returning Station" : "Supplier"}
+                  </th>
+                )}
+                <th className="px-4 py-2.5">Quantity</th>
                 <th className="px-4 py-2.5">
-                  {activeCategory === "RETURNED" ? "Return Slip #" : "PO #"}
+                  {activeCategory === "RETURNED" ? "Restocked" : "Received"}
                 </th>
-              )}
-              <th className="px-4 py-2.5">Lot No.</th>
-              {shouldShowProcurement && (
-                <th className="px-4 py-2.5">
-                  {activeCategory === "RETURNED" ? "Returning Station" : "Supplier"}
-                </th>
-              )}
-              <th className="px-4 py-2.5">Quantity</th>
-              <th className="px-4 py-2.5">
-                {activeCategory === "RETURNED" ? "Restocked" : "Received"}
-              </th>
-              <th className="px-4 py-2.5">Expiration</th>
-              <th className="px-4 py-2.5">Batch Status</th>
-              {hasActions && <th className="px-4 py-2.5 text-center">Action</th>}
-            </tr>
+                <th className="px-4 py-2.5">Expiration</th>
+                <th className="px-4 py-2.5">Batch Status</th>
+                {hasActions && <th className="px-4 py-2.5 text-center">Action</th>}
+              </tr>
+            )}
           </thead>
 
           <tbody className="divide-y divide-neutral-100 text-xs">
@@ -1007,33 +1066,106 @@ export function InventoryLotTable({
               <tr>
                 <td
                   className="px-4 py-12 text-center"
-                  colSpan={(shouldShowProcurement ? 7 : 5) + (hasActions ? 1 : 0)}
+                  colSpan={activeCategory === "RESERVED" ? 4 : ((shouldShowProcurement ? 7 : 5) + (hasActions ? 1 : 0))}
                 >
                   <div className="max-w-md mx-auto">
                     <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-500">
-                      {activeCategory === "RETURNED" ? (
+                      {activeCategory === "RESERVED" ? (
+                        <BookmarkCheck className="h-5 w-5 text-amber-700" />
+                      ) : activeCategory === "RETURNED" ? (
                         <RotateCcw className="h-5 w-5 text-emerald-600" />
                       ) : (
                         <Package className="h-5 w-5" />
                       )}
                     </div>
                     <p className="font-bold text-[#0d1117]">
-                      {activeCategory === "RETURNED"
-                        ? "No Returned Stock Batches"
-                        : activeCategory === "PROCUREMENT"
-                          ? "No Supplier Deliveries"
-                          : "No Stock Batches"}
+                      {activeCategory === "RESERVED"
+                        ? "No Reserved Stock"
+                        : activeCategory === "RETURNED"
+                          ? "No Returned Stock Batches"
+                          : activeCategory === "PROCUREMENT"
+                            ? "No Supplier Deliveries"
+                            : "No Stock Batches"}
                     </p>
                     <p className="mt-0.5 text-xs text-neutral-400">
-                      {activeCategory === "RETURNED"
-                        ? "No batches for this medicine have been returned from Barangay Health Stations."
-                        : activeCategory === "PROCUREMENT"
-                          ? "No stock batches for this medicine have been recorded via Supplier Purchase Order."
-                          : "No stock batches have been recorded for this medicine."}
+                      {activeCategory === "RESERVED"
+                        ? "No upcoming programs have reserved or allocated this medicine."
+                        : activeCategory === "RETURNED"
+                          ? "No batches for this medicine have been returned from Barangay Health Stations."
+                          : activeCategory === "PROCUREMENT"
+                            ? "No stock batches for this medicine have been recorded via Supplier Purchase Order."
+                            : "No stock batches have been recorded for this medicine."}
                     </p>
                   </div>
                 </td>
               </tr>
+            ) : activeCategory === "RESERVED" ? (
+              paginatedRows.map((reservation) => {
+                const unitMeasure =
+                  reservation.medicine?.unit_of_measure ||
+                  lots[0]?.medicine?.unit_of_measure ||
+                  "";
+                return (
+                  <tr
+                    key={reservation.id || reservation.program_id}
+                    className="hover:bg-amber-50/40 transition-colors"
+                  >
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-bold text-[#0d1117] text-xs">
+                          {reservation.program_name || "Program"}
+                        </p>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider border ${
+                            reservation.program_status === "ONGOING"
+                              ? "bg-amber-50 text-amber-800 border-amber-200"
+                              : "bg-[#EBF4F8] text-[#285E7D] border-[#285E7D]/20"
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              reservation.program_status === "ONGOING"
+                                ? "bg-amber-500 animate-pulse"
+                                : "bg-[#34769B]"
+                            }`}
+                          />
+                          {reservation.program_status === "ONGOING" ? "Ongoing" : "Upcoming"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-800">
+                        <Calendar className="h-3 w-3 text-amber-600 shrink-0" />
+                        <span>{reservation.program_date ? formatDate(reservation.program_date) : "—"}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {reservation.description ? (
+                        <p className="text-xs text-neutral-600 line-clamp-2">
+                          {reservation.description}
+                        </p>
+                      ) : (
+                        <span className="text-xs italic text-neutral-400">
+                          No descriptive notes recorded.
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-sm font-black text-amber-900">
+                          {formatNumber(reservation.quantity_reserved)}
+                        </span>
+                        {unitMeasure && (
+                          <span className="text-xs font-bold text-amber-700 lowercase">
+                            {unitMeasure}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-neutral-400">Held for program</span>
+                    </td>
+                  </tr>
+                );
+              })
             ) : (
               paginatedRows.map((lot) => {
                 const expiry = getExpiryStatus(lot);
@@ -1078,7 +1210,7 @@ export function InventoryLotTable({
                         <span className="font-mono text-xs font-black text-[#0d1117] group-hover:text-emerald-700 tracking-wider">
                           {normalizeLotNumber(lot.batch_number) || "-"}
                         </span>
-                        {displayedLots.length > 1 && lot.id === fefoLotId && (
+                        {displayedItems.length > 1 && lot.id === fefoLotId && (
                           <span
                             title="First-Expired, First-Out: Priority batch to dispense"
                             className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-600/20"

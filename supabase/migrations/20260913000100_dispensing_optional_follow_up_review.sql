@@ -170,7 +170,7 @@ begin
             sum(x.quantity)::integer as quantity,
             max(x.follow_up_action) filter (where x.needed_quantity > x.quantity) as follow_up_action,
             max(x.follow_up_date) filter (where x.needed_quantity > x.quantity) as follow_up_date,
-            (max(x.referred_facility_id::text) filter (where x.needed_quantity > x.quantity))::uuid as referred_facility_id
+            max(x.referred_facility_id) filter (where x.needed_quantity > x.quantity) as referred_facility_id
           from jsonb_to_recordset(p_items) as x(
               medicine_id uuid,
               needed_quantity integer,
@@ -287,7 +287,6 @@ begin
     );
 end;
 $$;
-
 revoke all on function public.dispense_walk_in(uuid, jsonb, text) from public;
 revoke all on function public.dispense_walk_in(uuid, jsonb, text) from anon;
 grant execute on function public.dispense_walk_in(uuid, jsonb, text) to authenticated;

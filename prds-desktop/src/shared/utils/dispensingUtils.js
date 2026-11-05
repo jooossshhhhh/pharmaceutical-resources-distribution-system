@@ -207,21 +207,44 @@ export const getDefaultFollowUpDate = (today = new Date()) => {
   return date.toISOString().slice(0, 10);
 };
 
-export const buildMedicineOptions = (inventoryRows, keyword = "") => {
+export const buildMedicineOptions = (inventoryRows, keyword = "", reservedQuantities = {}) => {
   const term = (keyword || "").trim().toLowerCase();
   const medicines = new Map();
   const todayStr = new Date().toISOString().slice(0, 10);
 
   inventoryRows.forEach((row) => {
-    if (!row.medicine_id || !row.medicine) {
+    const med =
+      row.medicine ||
+      (row.generic_name
+        ? {
+            id: row.medicine_id,
+            generic_name: row.generic_name,
+            brand_name: row.brand_name || "",
+            dosage: row.dosage || "",
+            unit_of_measure: row.unit_of_measure || "unit",
+            categories: row.categories || [],
+          }
+        : row.medicine_id
+          ? {
+              id: row.medicine_id,
+              generic_name: row.medicine_name || row.brand_name || "Medicine",
+              brand_name: row.brand_name || "",
+              dosage: row.dosage || "",
+              unit_of_measure: row.unit_of_measure || "unit",
+              categories: row.categories || [],
+            }
+          : null);
+
+    if (!row.medicine_id || !med) {
       return;
     }
 
     if (!medicines.has(row.medicine_id)) {
       medicines.set(row.medicine_id, {
-        medicine: row.medicine,
+        medicine: med,
         medicine_id: row.medicine_id,
         batches: [],
+        gross_quantity: 0,
         total_quantity: 0,
       });
     }
@@ -230,8 +253,8 @@ export const buildMedicineOptions = (inventoryRows, keyword = "") => {
     const isExpired = row.expiration_date ? row.expiration_date.slice(0, 10) <= todayStr : false;
 
     if (Number(row.quantity || 0) > 0 && !isExpired) {
-      entry.batches.push(row);
-      entry.total_quantity += Number(row.quantity || 0);
+      entry.batches.push({ ...row, medicine: med });
+      entry.gross_quantity += Number(row.quantity || 0);
     }
   });
 
@@ -249,9 +272,20 @@ export const buildMedicineOptions = (inventoryRows, keyword = "") => {
         return String(batchA.id) < String(batchB.id) ? -1 : 1;
       });
 
+      const rawReserved =
+        reservedQuantities instanceof Map
+          ? reservedQuantities.get(entry.medicine_id)
+          : reservedQuantities?.[entry.medicine_id];
+      const reservedQty = Number.isFinite(Number(rawReserved)) ? Math.max(0, Number(rawReserved)) : 0;
+      const grossQty = Number(entry.gross_quantity || 0);
+      const availableQty = Math.max(0, grossQty - reservedQty);
+
       return {
         ...entry,
         batches: sortedBatches,
+        gross_quantity: entry.gross_quantity,
+        reserved_quantity: reservedQty,
+        total_quantity: availableQty,
         nearest_expiration: sortedBatches[0]?.expiration_date || "",
       };
     })
@@ -437,7 +471,11 @@ export const getBlockedPatientIdsFromClaimRows = (rows = []) => {
   const claims = new Map();
 
   rows
-    .filter((row) => (row.record_type || (row.is_manual_record ? "HISTORY_ONLY" : "LIVE_DISPENSING")) !== "HISTORY_ONLY")
+    .filter(
+      (row) =>
+        !row.voided_at &&
+        (row.record_type || (row.is_manual_record ? "HISTORY_ONLY" : "LIVE_DISPENSING")) !== "HISTORY_ONLY"
+    )
     .forEach((row) => {
       const key = `${row.patient_id}:${row.medicine_id}`;
 

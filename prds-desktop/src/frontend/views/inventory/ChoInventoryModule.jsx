@@ -14,7 +14,6 @@ import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import {
   DisposeStockModal,
-  DownloadIcon,
   FacilityPicker,
   InventoryTabToggle,
   InventoryTable,
@@ -313,39 +312,16 @@ export default function ChoInventoryModule() {
                 direction={inventorySort.key === "medicine" ? inventorySort.direction : "ASC"}
                 onToggle={handleMedicineOrder}
               />
-              {inventoryTab !== "EXPIRED" && (
+
+              {canManage && inventoryTab !== "EXPIRED" && (viewingOwnFacility || isChoFacility(selectedFacility)) && (
                 <button
                   type="button"
-                  onClick={handleExportExcel}
-                  className="btn-secondary inline-flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-bold shadow-xs transition cursor-pointer"
+                  onClick={() => openCreateModal("PROCUREMENT")}
+                  className="btn-primary inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-bold text-white shadow-sm transition active:scale-[0.99] cursor-pointer"
                 >
-                  <DownloadIcon />
-                  Export
+                  <PlusIcon />
+                  Add Stock
                 </button>
-              )}
-              {canManage && (
-                inventoryTab === "EXPIRED" ? (
-                  <button
-                    type="button"
-                    onClick={handleExportExcel}
-                    title="Export official quarantine list of expired medicines for COA and DOH condemnation"
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#D9826B]/40 bg-[#FBE9E3] px-4 text-sm font-bold text-[#8F3F2B] shadow-xs hover:bg-[#FBE9E3]/80 transition cursor-pointer"
-                  >
-                    <DownloadIcon />
-                    Condemnation Report
-                  </button>
-                ) : (
-                  (viewingOwnFacility || isChoFacility(selectedFacility)) && (
-                    <button
-                      type="button"
-                      onClick={() => openCreateModal("PROCUREMENT")}
-                      className="btn-primary inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-bold text-white shadow-sm transition active:scale-[0.99] cursor-pointer"
-                    >
-                      <PlusIcon />
-                      Add Stock
-                    </button>
-                  )
-                )
               )}
             </div>
           </div>

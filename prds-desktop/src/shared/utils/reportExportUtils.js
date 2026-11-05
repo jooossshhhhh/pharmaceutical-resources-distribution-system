@@ -237,6 +237,7 @@ export function buildDailyRisBuffer({
   selectedDate = new Date(),
   risNo = "",
   facilityName = "",
+  facilityId = null,
 }) {
   const defaultExport = Reflect.get(XLSX, "default");
   const cfb =
@@ -245,7 +246,7 @@ export function buildDailyRisBuffer({
     (typeof window !== "undefined" ? window.XLSX?.CFB || window.CFB : null);
 
   if (!cfb || !RIS_TEMPLATE_BASE64) {
-    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
+    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName, facilityId });
     return XLSX.write(wb, { bookType: "xlsx", type: "array" });
   }
 
@@ -255,7 +256,7 @@ export function buildDailyRisBuffer({
     const s2Entry = cfb.find(zip, "sheet2.xml") || cfb.find(zip, "/xl/worksheets/sheet2.xml");
 
     if (!s1Entry || !s2Entry) {
-      const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
+      const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName, facilityId });
       return XLSX.write(wb, { bookType: "xlsx", type: "array" });
     }
 
@@ -265,8 +266,12 @@ export function buildDailyRisBuffer({
     const medicinesMap = new Map(medicinesSnapshot.map((m) => [String(m.id), m]));
 
     // 1. Sheet 1 (CHO/BHS): Dispensing record in the dispensing module
-    const choRows = dispensingRows.filter((r) => {
-      if (r.voided_at) return false;
+    const choRows = (dispensingRows || []).filter((r) => {
+      if (!r || r.voided_at) return false;
+      if (facilityId) {
+        const rFac = String(r.facility_id || r.facility?.id || "");
+        if (rFac && rFac !== String(facilityId)) return false;
+      }
       return toDateKey(r.dispense_date || r.created_at) === targetDateKey;
     });
 
@@ -344,7 +349,7 @@ export function buildDailyRisBuffer({
     return cfb.write(zip, { fileType: "zip", type: "array" });
   } catch (err) {
     console.warn("Failed to inject into template CFB, falling back to XLSX.write:", err);
-    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
+    const wb = buildDailyRisWorkbook({ dispensingRows, requestRows, otherProgramsRows, selectedDate, risNo, facilityName, facilityId });
     return XLSX.write(wb, { bookType: "xlsx", type: "array" });
   }
 }
@@ -361,6 +366,7 @@ export function buildDailyRisWorkbook({
   selectedDate = new Date(),
   risNo = "",
   facilityName = "",
+  facilityId = null,
 }) {
   let wb;
 
@@ -388,8 +394,12 @@ export function buildDailyRisWorkbook({
   // ----------------------------------------------------
   // SHEET 1: CHO / BHS (Pharmacy/Station Dispensing from dispensing module)
   // ----------------------------------------------------
-  const choRows = dispensingRows.filter((r) => {
-    if (r.voided_at) return false;
+  const choRows = (dispensingRows || []).filter((r) => {
+    if (!r || r.voided_at) return false;
+    if (facilityId) {
+      const rFac = String(r.facility_id || r.facility?.id || "");
+      if (rFac && rFac !== String(facilityId)) return false;
+    }
     return toDateKey(r.dispense_date || r.created_at) === targetDateKey;
   });
 
@@ -650,12 +660,14 @@ export function processMonthlyInventoryData({
   requestRows = [],
   otherProgramsRows = [],
   stockReturnsRows = [],
+  facilities = [],
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1,
 }) {
   const targetMonthPrefix = `${year}-${String(month).padStart(2, "0")}`;
   const daysInTargetMonth = new Date(year, month, 0).getDate();
   const targetMonthEnd = `${targetMonthPrefix}-${String(daysInTargetMonth).padStart(2, "0")}`;
+  const targetMonthStart = `${targetMonthPrefix}-01`;
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const now = new Date();
@@ -663,103 +675,167 @@ export function processMonthlyInventoryData({
   const currentMonth = now.getMonth() + 1;
   const isCurrentMonth = year === currentYear && month === currentMonth;
   const isPastMonth = year < currentYear || (year === currentYear && month < currentMonth);
+  const isFutureMonth = year > currentYear || (year === currentYear && month > currentMonth);
 
   // If viewing current active month, any batch expired as of today is counted as expired;
   // If viewing a completed past month, any batch expired on or before that month end is counted as expired.
   const expirationCutoff = isCurrentMonth ? todayStr : (isPastMonth ? targetMonthEnd : "");
 
-  // 1. Walk-in Dispensing
+  const choFacility = (facilities || []).find(
+    (f) => f.facility_type === "CHO" || f.is_warehouse || String(f.facility_name || "").includes("City Health")
+  );
+  const choFacilityId = choFacility ? String(choFacility.id) : null;
+
+  // 1. Walk-in Dispensing: target month activity and subsequent activity
   const dispensingByBatch = new Map();
   const dispensingByMed = new Map();
+  const subsequentDispensingByBatch = new Map();
+  const subsequentDispensingByMed = new Map();
+
   dispensingRows.forEach((r) => {
     if (r.voided_at) return;
+    if (choFacilityId && r.facility_id && String(r.facility_id) !== choFacilityId) return;
     const dateKey = toDateKey(r.dispense_date || r.created_at);
-    if (!dateKey.startsWith(targetMonthPrefix)) return;
+    if (!dateKey) return;
 
     const qty = Number(r.quantity) || 0;
     const medId = String(r.medicine_id || r.medicine?.id || "");
-    const batch = (r.batch_number || r.lot_no || "").trim().toUpperCase();
+    const batch = (r.batch?.batch_number || r.batch_number || r.lot_no || "").trim().toUpperCase();
 
-    if (batch) {
-      dispensingByBatch.set(batch, (dispensingByBatch.get(batch) || 0) + qty);
-    }
-    if (medId) {
-      dispensingByMed.set(medId, (dispensingByMed.get(medId) || 0) + qty);
+    if (dateKey.startsWith(targetMonthPrefix)) {
+      if (batch) dispensingByBatch.set(batch, (dispensingByBatch.get(batch) || 0) + qty);
+      if (medId) dispensingByMed.set(medId, (dispensingByMed.get(medId) || 0) + qty);
+    } else if (dateKey > targetMonthEnd) {
+      if (batch) subsequentDispensingByBatch.set(batch, (subsequentDispensingByBatch.get(batch) || 0) + qty);
+      if (medId) subsequentDispensingByMed.set(medId, (subsequentDispensingByMed.get(medId) || 0) + qty);
     }
   });
 
-  // 2. Completed Barangay Requests
+  // 2. Completed Barangay Requests: target month activity and subsequent activity
   const requestsByBatch = new Map();
   const requestsByMed = new Map();
+  const subsequentRequestsByBatch = new Map();
+  const subsequentRequestsByMed = new Map();
+
   requestRows.forEach((req) => {
-    if (req.status !== "COMPLETED") return;
+    const isCompleted =
+      String(req.status || "").toUpperCase() === "COMPLETED" ||
+      String(req.status || "").toUpperCase() === "FULFILLED";
+    if (!isCompleted) return;
     const dateKey = toDateKey(
-      req.approved_at || req.received_at || req.updated_at || req.request_date
+      req.approved_at || req.received_at || req.completed_at || req.updated_at || req.request_date || req.created_at
     );
-    if (!dateKey.startsWith(targetMonthPrefix)) return;
+    if (!dateKey) return;
 
-    const items = req.items || [];
+    const items = req.items || req.data_json?.items || [];
     items.forEach((item) => {
-      const qty = Number(item.quantity) || 0;
+      const qty = Number(item.approved_quantity ?? item.quantity) || 0;
       const medId = String(item.medicine_id || item.medicine?.id || "");
-      const batch = (item.batch_number || item.lot_no || "").trim().toUpperCase();
+      const batch = (item.batch?.batch_number || item.batch_number || item.lot_no || "").trim().toUpperCase();
 
-      if (batch) {
-        requestsByBatch.set(batch, (requestsByBatch.get(batch) || 0) + qty);
-      }
-      if (medId) {
-        requestsByMed.set(medId, (requestsByMed.get(medId) || 0) + qty);
+      if (dateKey.startsWith(targetMonthPrefix)) {
+        if (batch) requestsByBatch.set(batch, (requestsByBatch.get(batch) || 0) + qty);
+        if (medId) requestsByMed.set(medId, (requestsByMed.get(medId) || 0) + qty);
+      } else if (dateKey > targetMonthEnd) {
+        if (batch) subsequentRequestsByBatch.set(batch, (subsequentRequestsByBatch.get(batch) || 0) + qty);
+        if (medId) subsequentRequestsByMed.set(medId, (subsequentRequestsByMed.get(medId) || 0) + qty);
       }
     });
   });
 
-  // 3. Other Health Programs
+  // 3. Other Health Programs: target month activity and subsequent activity
+  const programsByBatch = new Map();
   const programsByMed = new Map();
-  otherProgramsRows.forEach((prog) => {
-    if (prog.status === "CANCELLED") return;
-    const dateKey = toDateKey(
-      prog.program_date || prog.completed_at || prog.created_at
-    );
-    if (!dateKey.startsWith(targetMonthPrefix)) return;
+  const subsequentProgramsByBatch = new Map();
+  const subsequentProgramsByMed = new Map();
 
+  otherProgramsRows.forEach((prog, progIdx) => {
+    if (String(prog.status || "").toUpperCase() === "CANCELLED") return;
+    const dateKey = toDateKey(
+      prog.program_date || prog.completed_at || prog.distribution_date || prog.date || prog.created_at
+    );
+    if (!dateKey) return;
+
+    const progId =
+      prog.id !== undefined && prog.id !== null && String(prog.id).trim() !== ""
+        ? String(prog.id)
+        : `prog-${progIdx}`;
     const progName = (prog.program_name || prog.title || "OTHER HEALTH PROGRAM").trim().toUpperCase();
-    const meds = prog.medicines || [];
+    const meds = prog.medicines || prog.items || prog.data_json?.items || [];
     meds.forEach((m) => {
       const medId = String(m.medicine_id || m.medicine?.id || "");
-      const qty = Number(m.quantity_used || m.quantity) || 0;
-      if (!medId) return;
+      const qty = Number(m.quantity_used ?? m.quantity) || 0;
+      const batch = (m.batch?.batch_number || m.batch_number || m.lot_no || "").trim().toUpperCase();
+      if (!medId && !batch) return;
 
-      if (!programsByMed.has(medId)) {
-        programsByMed.set(medId, { qty, programName: progName });
-      } else {
-        const existing = programsByMed.get(medId);
-        existing.qty += qty;
-        if (!existing.programName.includes(progName)) {
-          existing.programName += `, ${progName}`;
+      if (dateKey.startsWith(targetMonthPrefix)) {
+        const recordProgAllocation = (targetMap, key) => {
+          if (!targetMap.has(key)) {
+            targetMap.set(key, {
+              qty,
+              programName: progName,
+              programIds: [progId],
+              programAllocations: {
+                [progId]: { qty, programName: progName },
+              },
+            });
+          } else {
+            const existing = targetMap.get(key);
+            existing.qty += qty;
+            if (!existing.programName.includes(progName)) {
+              existing.programName += `, ${progName}`;
+            }
+            if (!existing.programIds.includes(progId)) {
+              existing.programIds.push(progId);
+            }
+            if (!existing.programAllocations[progId]) {
+              existing.programAllocations[progId] = { qty, programName: progName };
+            } else {
+              existing.programAllocations[progId].qty += qty;
+            }
+          }
+        };
+
+        if (batch) {
+          recordProgAllocation(programsByBatch, batch);
+        }
+        if (medId) {
+          recordProgAllocation(programsByMed, medId);
+        }
+      } else if (dateKey > targetMonthEnd) {
+        if (batch) {
+          subsequentProgramsByBatch.set(batch, (subsequentProgramsByBatch.get(batch) || 0) + qty);
+        }
+        if (medId) {
+          subsequentProgramsByMed.set(medId, (subsequentProgramsByMed.get(medId) || 0) + qty);
         }
       }
     });
   });
 
-  // 4. Confirmed Stock Returns (Barangay Health Stations -> CHO Central Warehouse)
+  // 4. Confirmed Stock Returns: target month activity and subsequent activity
   const returnsByBatch = new Map();
   const returnsByMed = new Map();
+  const subsequentReturnsByBatch = new Map();
+  const subsequentReturnsByMed = new Map();
+
   (stockReturnsRows || []).forEach((ret) => {
     if (!ret) return;
     const status = String(ret.status || "").toUpperCase();
     if (status !== "CONFIRMED" && status !== "VERIFIED") return;
     const dateKey = toDateKey(ret.confirmed_at || ret.submitted_at || ret.created_at);
-    if (!dateKey.startsWith(targetMonthPrefix)) return;
+    if (!dateKey) return;
 
     const qty = Number(ret.quantity) || 0;
     const medId = String(ret.medicine_id || ret.medicine?.id || "");
     const batch = (ret.lot_no || ret.batch_number || "").trim().toUpperCase();
 
-    if (batch) {
-      returnsByBatch.set(batch, (returnsByBatch.get(batch) || 0) + qty);
-    }
-    if (medId) {
-      returnsByMed.set(medId, (returnsByMed.get(medId) || 0) + qty);
+    if (dateKey.startsWith(targetMonthPrefix)) {
+      if (batch) returnsByBatch.set(batch, (returnsByBatch.get(batch) || 0) + qty);
+      if (medId) returnsByMed.set(medId, (returnsByMed.get(medId) || 0) + qty);
+    } else if (dateKey > targetMonthEnd) {
+      if (batch) subsequentReturnsByBatch.set(batch, (subsequentReturnsByBatch.get(batch) || 0) + qty);
+      if (medId) subsequentReturnsByMed.set(medId, (subsequentReturnsByMed.get(medId) || 0) + qty);
     }
   });
 
@@ -771,6 +847,14 @@ export function processMonthlyInventoryData({
   let totalProgVal = 0;
   let totalExpiredVal = 0;
   let totalRemVal = 0;
+
+  let totalBegQty = 0;
+  let totalAddQty = 0;
+  let totalGrossQty = 0;
+  let totalIssuedQty = 0;
+  let totalProgQty = 0;
+  let totalExpiredQty = 0;
+  let totalRemQty = 0;
 
   const consolidatedInventory = consolidateInventoryRows(inventoryRows);
 
@@ -789,7 +873,7 @@ export function processMonthlyInventoryData({
     const expiryDate = item.expiration_date || item.expiry_date || "-";
     const unitCost = Number(med.unit_cost ?? item.unit_cost ?? 0);
 
-    // Issuances (Walk-in + Barangay Requests)
+    // Issuances in Target Month (Walk-in + Barangay Requests)
     let walkInQty = 0;
     if (batch && dispensingByBatch.has(batch)) {
       walkInQty = dispensingByBatch.get(batch);
@@ -808,20 +892,71 @@ export function processMonthlyInventoryData({
 
     const issuedQty = Number(item.issued_quantity ?? item.issuedQty ?? (walkInQty + reqQty));
 
-    // Other Programs
+    // Other Programs in Target Month
     let programQty = 0;
     let programName = "";
+    let programIds = [];
+    let programAllocations = {};
     if (item.program_quantity !== undefined || item.programQty !== undefined) {
       programQty = Number(item.program_quantity ?? item.programQty ?? 0);
       programName = (item.program_name || item.programName || "").trim().toUpperCase();
+      programIds = Array.isArray(item.programIds) ? item.programIds : [];
+      programAllocations = item.programAllocations || {};
+    } else if (batch && programsByBatch.has(batch)) {
+      const prog = programsByBatch.get(batch);
+      programQty = prog.qty;
+      programName = prog.programName;
+      programIds = prog.programIds || [];
+      programAllocations = prog.programAllocations || {};
+      programsByBatch.set(batch, { qty: 0, programName: "", programIds: [], programAllocations: {} });
+      if (medId && programsByMed.has(medId)) {
+        const medEntry = programsByMed.get(medId);
+        if (medEntry && medEntry.qty <= programQty) {
+          programsByMed.set(medId, { qty: 0, programName: "", programIds: [], programAllocations: {} });
+        }
+      }
     } else if (medId && programsByMed.has(medId)) {
       const prog = programsByMed.get(medId);
       programQty = prog.qty;
       programName = prog.programName;
-      programsByMed.set(medId, { qty: 0, programName: "" });
+      programIds = prog.programIds || [];
+      programAllocations = prog.programAllocations || {};
+      programsByMed.set(medId, { qty: 0, programName: "", programIds: [], programAllocations: {} });
     }
 
-    // Expired Stocks
+    // Subsequent Outflows (occurring after targetMonthEnd)
+    let subWalkInQty = 0;
+    if (batch && subsequentDispensingByBatch.has(batch)) {
+      subWalkInQty = subsequentDispensingByBatch.get(batch);
+    } else if (medId && subsequentDispensingByMed.has(medId)) {
+      subWalkInQty = subsequentDispensingByMed.get(medId);
+    }
+
+    let subReqQty = 0;
+    if (batch && subsequentRequestsByBatch.has(batch)) {
+      subReqQty = subsequentRequestsByBatch.get(batch);
+    } else if (medId && subsequentRequestsByMed.has(medId)) {
+      subReqQty = subsequentRequestsByMed.get(medId);
+    }
+
+    let subProgQty = 0;
+    if (batch && subsequentProgramsByBatch.has(batch)) {
+      subProgQty = subsequentProgramsByBatch.get(batch);
+    } else if (medId && subsequentProgramsByMed.has(medId)) {
+      subProgQty = subsequentProgramsByMed.get(medId);
+    }
+
+    const subsequentOutflows = subWalkInQty + subReqQty + subProgQty;
+
+    // Subsequent Inflows (returns occurring after targetMonthEnd)
+    let subReturnQty = 0;
+    if (batch && subsequentReturnsByBatch.has(batch)) {
+      subReturnQty = subsequentReturnsByBatch.get(batch);
+    } else if (medId && subsequentReturnsByMed.has(medId)) {
+      subReturnQty = subsequentReturnsByMed.get(medId);
+    }
+
+    // Expired Stocks inside target month
     let expiredQty = 0;
     const expDateStr = item.expiration_date ? toDateKey(item.expiration_date) : "";
     const isExplicitlyExpired = item.status === "EXPIRED" || Boolean(item.is_expired);
@@ -834,15 +969,46 @@ export function processMonthlyInventoryData({
       expiredQty = Number(item.quantity) || 0;
     }
 
-    // Additional Stocks Received / Returned this Month (Columns L, M, N)
+    // Physical live stock count on hand right now
+    const liveQty = isItemExpired ? 0 : (Number(item.quantity) || 0);
+
+    // Delivery date analysis
+    const receivedDateKey = toDateKey(item.date_received || item.created_at);
+    const wasDeliveredInTargetMonth = Boolean(receivedDateKey && receivedDateKey.startsWith(targetMonthPrefix));
+    const wasDeliveredSubsequent = Boolean(receivedDateKey && receivedDateKey > targetMonthEnd);
+
+    // When lot was received
+    const rawDeliveryQty = Number(item.received_quantity ?? item.initial_quantity ?? item.quantity) || 0;
+    const subsequentInflows = (wasDeliveredSubsequent ? rawDeliveryQty : 0) + subReturnQty;
+
+    let remainingQty = 0;
+    if (item.remaining_quantity !== undefined || item.remainingQty !== undefined) {
+      remainingQty = Number(item.remaining_quantity ?? item.remainingQty ?? 0);
+    } else if (isPastMonth) {
+      if (wasDeliveredSubsequent) {
+        remainingQty = 0;
+      } else {
+        remainingQty = Math.max(0, liveQty - subsequentInflows + subsequentOutflows);
+      }
+    } else {
+      // Current or future month: live stock on hand
+      remainingQty = liveQty;
+    }
+
+    // Additional Stocks Received / Returned in Target Month (Columns L, M, N)
     let additionalQty = 0;
     if (item.additional_quantity !== undefined || item.additionalQty !== undefined) {
       additionalQty = Number(item.additional_quantity ?? item.additionalQty ?? 0);
     } else {
       let procurementDeliveryQty = 0;
-      const receivedDateKey = toDateKey(item.date_received || item.created_at);
-      if (receivedDateKey.startsWith(targetMonthPrefix) && item.received_quantity) {
-        procurementDeliveryQty = Number(item.received_quantity) || 0;
+      if (wasDeliveredInTargetMonth) {
+        if (item.received_quantity !== undefined) {
+          procurementDeliveryQty = Number(item.received_quantity) || 0;
+        } else if (item.initial_quantity !== undefined) {
+          procurementDeliveryQty = Number(item.initial_quantity) || 0;
+        } else {
+          procurementDeliveryQty = remainingQty + issuedQty + programQty + expiredQty;
+        }
       }
 
       let returnedQty = 0;
@@ -857,18 +1023,12 @@ export function processMonthlyInventoryData({
       additionalQty = procurementDeliveryQty + returnedQty;
     }
 
-    // Physical Remaining Count on Hand
-    let remainingQty = 0;
-    if (item.remaining_quantity !== undefined || item.remainingQty !== undefined) {
-      remainingQty = Number(item.remaining_quantity ?? item.remainingQty ?? 0);
-    } else {
-      remainingQty = isItemExpired ? 0 : (Number(item.quantity) || 0);
-    }
-
     // Reconciled Beginning Balance
     let beginningQty = 0;
     if (item.beginning_quantity !== undefined || item.beginningQty !== undefined) {
       beginningQty = Number(item.beginning_quantity ?? item.beginningQty ?? 0);
+    } else if (wasDeliveredSubsequent) {
+      beginningQty = 0;
     } else {
       beginningQty = Math.max(
         0,
@@ -893,6 +1053,14 @@ export function processMonthlyInventoryData({
     totalExpiredVal += expiredTotal;
     totalRemVal += remainingTotal;
 
+    totalBegQty += beginningQty;
+    totalAddQty += additionalQty;
+    totalGrossQty += grossQty;
+    totalIssuedQty += issuedQty;
+    totalProgQty += programQty;
+    totalExpiredQty += expiredQty;
+    totalRemQty += remainingQty;
+
     return {
       index: idx + 1,
       poNumber,
@@ -913,6 +1081,8 @@ export function processMonthlyInventoryData({
       programQty,
       programTotal,
       programName,
+      programIds,
+      programAllocations,
       expiredQty,
       expiredTotal,
       remainingQty,
@@ -964,6 +1134,10 @@ export function processMonthlyInventoryData({
     totalAddVal += addTotal;
     totalGrossVal += addTotal;
     totalRemVal += addTotal;
+
+    totalAddQty += retQty;
+    totalGrossQty += retQty;
+    totalRemQty += retQty;
   });
 
   items.sort((a, b) => {
@@ -992,15 +1166,17 @@ export function processMonthlyInventoryData({
       totalProgVal,
       totalExpiredVal,
       totalRemVal,
+      totalBegQty,
+      totalAddQty,
+      totalGrossQty,
+      totalIssuedQty,
+      totalProgQty,
+      totalExpiredQty,
+      totalRemQty,
     },
   };
 }
 
-/**
- * Formats the PO Number header label for Column D.
- * For non-empty PO numbers, returns "PO NO. <number>" (normalizing redundant PO prefixes).
- * For empty/unassigned POs, returns strictly "PO NO." so the pharmacist can fill it in manually.
- */
 export function formatPoHeader(poNumber) {
   const trimmed = String(poNumber || "").trim();
   if (!trimmed) {
@@ -1735,11 +1911,11 @@ export async function exportDailyRisExcel({
   selectedDate = new Date(),
   risNo = "",
   facilityName = "",
+  facilityId = null,
 }) {
-  const buffer = buildDailyRisBuffer({ dispensingRows, requestRows, selectedDate, risNo, facilityName });
+  const buffer = buildDailyRisBuffer({ dispensingRows, requestRows, selectedDate, risNo, facilityName, facilityId });
   const dateKey = toDateKey(selectedDate);
-  const prefix = facilityName ? `${facilityName.replace(/\s+/g, "_")}_` : "";
-  const filename = `${prefix}Request_Issuance_Slip_${dateKey}.xlsx`;
+  const filename = `Request_Issuance_Slip_${dateKey}.xlsx`;
 
   return downloadExportFile({
     filename,

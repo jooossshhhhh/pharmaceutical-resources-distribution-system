@@ -1,271 +1,132 @@
 /**
  * Unified PRDS Data Client
- * Transparently bridges Supabase and local SQLite:
- * - Reads from local SQLite when offline (or for instant cached display).
- * - Writes to local SQLite optimistically and dispatches to Supabase or offline outbox queue.
+ * Transparently bridges Supabase (L3), local SQLite (L2), and in-memory/localStorage snapshots (L1)
+ * via modular table repository adapters and the RPC execution adapter.
  */
 
 import { isCurrentNetworkOnline } from "../sync/networkStatus.js";
-import { enqueueMutation } from "../sync/outboxQueue.js";
 import { getSqliteDb, isTauriEnvironment } from "../database/sqliteClient.js";
-import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "../database/snapshotStore.js";
-import { isConnectivityError } from "./networkErrorUtils.js";
+import { getSnapshot } from "../database/snapshotStore.js";
 import { supabase } from "./supabase.js";
+import { executeRpcWithFallback } from "./rpcAdapter.js";
+import {
+  batchUpsertSqliteRecords,
+  getRepositoryAdapter,
+  hydrateSqliteRow,
+  upsertSnapshotRecord,
+  upsertSqliteRecord,
+} from "./tableRepositoryAdapters.js";
+
+export {
+  batchUpsertSqliteRecords,
+  getRepositoryAdapter,
+  hydrateSqliteRow,
+  upsertSnapshotRecord,
+  upsertSqliteRecord,
+};
 
 export const dataClient = {
   /**
-   * Execute an RPC call (e.g. dispense_walk_in, submit_bhw_medicine_request)
+   * Resolves a table name or alias to its repository adapter.
    */
-  async rpc(functionName, params = {}, { userId = null, facilityId = null } = {}) {
-    const isOnline = isCurrentNetworkOnline();
-
-    if (isOnline) {
-      try {
-        const { data, error } = await supabase.rpc(functionName, params);
-        if (error) {
-          if (!isConnectivityError(error)) {
-            return { data: null, error };
-          }
-        } else {
-          return { data, error: null };
-        }
-      } catch (err) {
-        if (!isConnectivityError(err)) {
-          return { data: null, error: err };
-        }
-
-        console.warn(`Online RPC ${functionName} failed, falling back to offline outbox:`, err);
-      }
-    }
-
-    // Offline mode: Enqueue to outbox queue
-    const mutationId = await enqueueMutation({
-      userId,
-      facilityId,
-      mutationType: "RPC",
-      target: functionName,
-      payload: params,
-    });
-
-    return {
-      data: { status: "QUEUED_OFFLINE", mutationId },
-      error: null,
-      isOfflineQueued: true,
-    };
+  getRepositoryAdapter(tableName) {
+    return getRepositoryAdapter(tableName);
   },
 
   /**
-   * Query records from local SQLite (or Supabase fallback)
+   * Execute an RPC call (e.g. process_walk_in_dispensing, submit_bhw_medicine_request)
+   */
+  async rpc(functionName, params = {}, options = {}) {
+    return executeRpcWithFallback(functionName, params, options);
+  },
+
+  /**
+   * Query records from local SQLite, Supabase, or local snapshot fallback using the table's repository adapter.
    */
   async getTable(tableName, query = {}) {
+    const adapter = getRepositoryAdapter(tableName);
+    if (!adapter) {
+      return {
+        data: [],
+        error: new Error(`Unknown repository table: ${String(tableName)}`),
+      };
+    }
+
+    const facilityId = query?.facilityId || query?.facility_id || null;
+    const limit = Number.isInteger(query?.limit) && query.limit > 0 ? query.limit : null;
+    const hasFacilityColumn = adapter.columns.includes("facility_id");
     const isOnline = isCurrentNetworkOnline();
 
-    // In desktop environment, local SQLite provides instantaneous read access
+    // 1. In Tauri desktop environment, local SQLite provides instantaneous read access
     if (isTauriEnvironment()) {
       try {
         const db = await getSqliteDb();
-        const rows = await db.select(`SELECT * FROM ${tableName}`);
-        if (rows && rows.length > 0) {
-          return { data: rows, error: null };
+        const clauses = [];
+        const params = [];
+        if (facilityId && hasFacilityColumn) {
+          clauses.push("facility_id = ?");
+          params.push(facilityId);
+        }
+        const whereSql = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+        const limitSql = limit ? ` LIMIT ${limit}` : "";
+        const rows = await db.select(`SELECT * FROM ${adapter.sqliteTable}${whereSql}${limitSql}`, params);
+        if (Array.isArray(rows) && rows.length > 0) {
+          return { data: rows.map(hydrateSqliteRow), error: null };
         }
       } catch (err) {
-        console.warn(`Local SQLite query on ${tableName} failed:`, err);
+        console.warn(`Local SQLite query on ${adapter.sqliteTable} failed:`, err);
       }
     }
 
-    // If online, fallback to Supabase query
+    // 2. If online, query Supabase using the canonical Supabase table name
     if (isOnline) {
-      const { data, error } = await supabase.from(tableName).select("*");
+      let req = supabase.from(adapter.supabaseTable).select("*");
+      if (facilityId && hasFacilityColumn) {
+        req = req.eq("facility_id", facilityId);
+      }
+      if (limit) {
+        req = req.limit(limit);
+      }
+      const { data, error } = await req;
       return { data, error };
+    }
+
+    // 3. Offline fallback to L1 snapshot store if available
+    if (adapter.snapshotKey) {
+      let rows = getSnapshot(adapter.snapshotKey, []);
+      if (facilityId && hasFacilityColumn) {
+        rows = rows.filter((r) => r?.facility_id === facilityId);
+      }
+      if (limit) {
+        rows = rows.slice(0, limit);
+      }
+      return { data: rows, error: null };
     }
 
     return { data: [], error: null };
   },
 
   /**
-   * Optimistically upsert a record into local SQLite and update the snapshot cache.
+   * Optimistically upsert a record into local SQLite (L2) and update the snapshot cache (L1).
    * Ensures instant local mirroring whenever data is created or modified.
    */
   async upsertLocalRecord(tableName, record) {
     if (!record || !record.id) return false;
+    const adapter = getRepositoryAdapter(tableName);
+    if (!adapter) return false;
 
     // 1. Update SQLite if in Tauri desktop environment
     if (isTauriEnvironment()) {
       try {
         const db = await getSqliteDb();
-        const jsonStr = JSON.stringify(record);
-
-        switch (tableName) {
-          case "facilities":
-            await db.execute(
-              "INSERT OR REPLACE INTO facilities (id, facility_name, facility_code, facility_type, status, data_json) VALUES (?, ?, ?, ?, ?, ?)",
-              [record.id, record.facility_name, record.facility_code, record.facility_type, record.status, jsonStr]
-            );
-            break;
-          case "medicines":
-            await db.execute(
-              "INSERT OR REPLACE INTO medicines (id, generic_name, dosage, unit_of_measure, categories_json, data_json) VALUES (?, ?, ?, ?, ?, ?)",
-              [record.id, record.generic_name, record.dosage, record.unit_of_measure, JSON.stringify(record.categories || []), jsonStr]
-            );
-            break;
-          case "inventory":
-            await db.execute(
-              `INSERT OR REPLACE INTO inventory (
-                id, facility_id, medicine_id, quantity, threshold, batch_number, po_number,
-                unit_cost, date_received, expiration_date, origin_facility_id, intake_type,
-                return_reason, status, brand_name, supplier_name, data_json, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                record.id,
-                record.facility_id,
-                record.medicine_id,
-                record.quantity,
-                record.threshold || 0,
-                record.batch_number,
-                record.po_number || null,
-                record.unit_cost || null,
-                record.date_received,
-                record.expiration_date,
-                record.origin_facility_id || null,
-                record.intake_type || "PROCUREMENT",
-                record.return_reason || null,
-                record.status || "ACTIVE",
-                record.brand_name || null,
-                record.supplier_name || null,
-                jsonStr,
-                record.updated_at || new Date().toISOString(),
-              ]
-            );
-            break;
-          case "patients":
-            await db.execute(
-              "INSERT OR REPLACE INTO patients (id, facility_id, first_name, last_name, philhealth_id, data_json) VALUES (?, ?, ?, ?, ?, ?)",
-              [record.id, record.facility_id, record.first_name, record.last_name, record.philhealth_id || record.patient_code || "", jsonStr]
-            );
-            break;
-          case "dispensing_records":
-          case "medicine_dispensing":
-            await db.execute(
-              "INSERT OR REPLACE INTO dispensing_records (id, facility_id, patient_id, dispensed_by, data_json, created_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.facility_id, record.patient_id, record.dispensed_by, jsonStr, record.dispense_date || record.created_at || new Date().toISOString(), record.is_synced ?? 1]
-            );
-            break;
-          case "requests":
-          case "medicine_requests":
-            await db.execute(
-              "INSERT OR REPLACE INTO requests (id, request_number, facility_id, status, data_json, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.request_number || record.id?.slice(0, 8), record.facility_id, record.status, jsonStr, record.updated_at || record.request_date || new Date().toISOString(), record.is_synced ?? 1]
-            );
-            break;
-          case "stock_returns":
-            await db.execute(
-              `INSERT OR REPLACE INTO stock_returns (
-                id, return_id, facility_id, source_inventory_id, medicine_id, medicine_name,
-                brand_name, dosage, unit_of_measure, lot_no, quantity, unit_cost, expiration_date, reason, status,
-                remarks, submitted_by_id, submitted_at, confirmed_by_id, confirmed_at,
-                created_at, updated_at, is_synced, data_json
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                record.id,
-                record.return_id || record.id,
-                record.facility_id,
-                record.source_inventory_id || null,
-                record.medicine_id,
-                record.medicine_name,
-                record.brand_name || null,
-                record.dosage || null,
-                record.unit_of_measure || null,
-                record.lot_no,
-                record.quantity,
-                record.unit_cost,
-                record.expiration_date,
-                record.reason,
-                record.status || "PENDING",
-                record.remarks || null,
-                record.submitted_by_id,
-                record.submitted_at,
-                record.confirmed_by_id || null,
-                record.confirmed_at || null,
-                record.created_at || new Date().toISOString(),
-                record.updated_at || new Date().toISOString(),
-                record.is_synced ?? 1,
-                jsonStr,
-              ]
-            );
-            break;
-          case "other_programs":
-            await db.execute(
-              "INSERT OR REPLACE INTO other_programs (id, program_name, program_date, description, data_json) VALUES (?, ?, ?, ?, ?)",
-              [record.id, record.program_name, record.program_date, record.description, jsonStr]
-            );
-            break;
-          case "forecasting":
-            await db.execute(
-              "INSERT OR REPLACE INTO forecasting (id, facility_id, forecast_month, predicted_quantity, data_json) VALUES (?, ?, ?, ?, ?)",
-              [record.id, record.facility_id, record.forecast_month, record.predicted_quantity, jsonStr]
-            );
-            break;
-          case "profiles":
-            await db.execute(
-              "INSERT OR REPLACE INTO profiles (id, first_name, last_name, email, phone_number, role, facility_id, status, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.first_name, record.last_name, record.email, record.phone_number, record.role, record.facility_id, record.status, jsonStr]
-            );
-            break;
-          case "activity_logs":
-            await db.execute(
-              "INSERT OR REPLACE INTO activity_logs (id, user_id, action, module, details, created_at, data_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.user_id, record.action, record.module, record.details, record.created_at, jsonStr]
-            );
-            break;
-          case "notifications":
-            await db.execute(
-              "INSERT OR REPLACE INTO notifications (id, user_id, title, message, is_read, created_at, data_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              [record.id, record.user_id, record.title, record.message, record.is_read ? 1 : 0, record.created_at, jsonStr]
-            );
-            break;
-          default:
-            break;
-        }
+        await upsertSqliteRecord(db, tableName, record);
       } catch (err) {
-        console.warn(`Local SQLite upsert on ${tableName} failed:`, err);
+        console.warn(`Local SQLite upsert on ${adapter.sqliteTable} failed:`, err);
       }
     }
 
-    // 2. Also update corresponding localStorage snapshot
-    const tableToSnapshotKey = {
-      facilities: STORAGE_KEYS.FACILITIES,
-      medicines: STORAGE_KEYS.MEDICINES,
-      inventory: STORAGE_KEYS.INVENTORY,
-      patients: STORAGE_KEYS.PATIENTS,
-      dispensing_records: STORAGE_KEYS.DISPENSING,
-      medicine_dispensing: STORAGE_KEYS.DISPENSING,
-      requests: STORAGE_KEYS.REQUESTS,
-      medicine_requests: STORAGE_KEYS.REQUESTS,
-      stock_returns: STORAGE_KEYS.STOCK_RETURNS,
-      other_programs: STORAGE_KEYS.OTHER_PROGRAMS,
-      forecasting: STORAGE_KEYS.FORECASTING,
-      profiles: STORAGE_KEYS.USERS,
-      activity_logs: STORAGE_KEYS.ACTIVITY_LOGS,
-      notifications: STORAGE_KEYS.NOTIFICATIONS,
-    };
-
-    const snapshotKey = tableToSnapshotKey[tableName];
-    if (snapshotKey) {
-      try {
-        const currentList = getSnapshot(snapshotKey, []);
-        const idx = currentList.findIndex((item) => item.id === record.id);
-        let updatedList;
-        if (idx >= 0) {
-          updatedList = [...currentList];
-          updatedList[idx] = { ...updatedList[idx], ...record };
-        } else {
-          updatedList = [record, ...currentList];
-        }
-        saveSnapshot(snapshotKey, updatedList);
-      } catch (err) {
-        console.warn(`Snapshot update for ${snapshotKey} failed:`, err);
-      }
-    }
+    // 2. Update corresponding L1 localStorage snapshot
+    upsertSnapshotRecord(tableName, record);
 
     return true;
   },

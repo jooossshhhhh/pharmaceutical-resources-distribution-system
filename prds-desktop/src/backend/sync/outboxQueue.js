@@ -7,7 +7,7 @@
 
 import { supabase } from "../client/supabase.js";
 import { getSqliteDb, initSqliteSchema, isTauriEnvironment } from "../database/sqliteClient.js";
-import { getCachedUserSession } from "../database/snapshotStore.js";
+import { getCachedUserSession, getSnapshot, saveSnapshot, STORAGE_KEYS } from "../database/snapshotStore.js";
 import { getMutationFailureStatus } from "../client/networkErrorUtils.js";
 import { isCurrentNetworkOnline } from "./networkStatus.js";
 import { restoreSupabaseSessionIfAvailable } from "../services/auth/authSessionRestore.js";
@@ -106,10 +106,17 @@ async function discardRetiredTransferMutations(userId, entries) {
     try {
       const db = await getSqliteDb();
       for (const id of retiredIds) {
-        await db.execute(
-          "DELETE FROM offline_mutation_queue WHERE id = $1 AND user_id = $2",
-          [id, userId]
-        );
+        if (userId) {
+          await db.execute(
+            "DELETE FROM offline_mutation_queue WHERE id = ? AND user_id = ?",
+            [id, userId]
+          );
+        } else {
+          await db.execute(
+            "DELETE FROM offline_mutation_queue WHERE id = ?",
+            [id]
+          );
+        }
       }
     } catch (err) {
       console.warn("Failed to discard retired transfer mutations from SQLite:", err);
@@ -117,7 +124,7 @@ async function discardRetiredTransferMutations(userId, entries) {
   }
 
   memoryQueue = readLocalStorageQueue().filter(
-    (item) => !(item.user_id === userId && (retiredIds.has(item.id) || isRetiredTransferMutation(item)))
+    (item) => !( (!userId || item.user_id === userId) && (retiredIds.has(item.id) || isRetiredTransferMutation(item)))
   );
   writeLocalStorageQueue(memoryQueue);
   return true;
@@ -133,7 +140,7 @@ async function getQueueEntries(userId) {
     try {
       const db = await getSqliteDb();
       sqliteRows = await db.select(
-        `SELECT * FROM offline_mutation_queue WHERE user_id = $1 ORDER BY created_at ASC`,
+        `SELECT * FROM offline_mutation_queue WHERE user_id = ? ORDER BY created_at ASC`,
         [userId]
       );
       sqliteReadSucceeded = true;
@@ -144,8 +151,40 @@ async function getQueueEntries(userId) {
 
   memoryQueue = readLocalStorageQueue();
   const localRows = filterMutationsForUser(memoryQueue, userId);
+
+  // If SQLite read succeeded, backfill missing items and reconcile
   if (sqliteReadSucceeded) {
     const sqliteIds = new Set(sqliteRows.map((item) => item.id));
+
+    if (isTauriEnvironment()) {
+      const missingInSqlite = localRows.filter((item) => !sqliteIds.has(item.id));
+      if (missingInSqlite.length > 0) {
+        try {
+          const db = await getSqliteDb();
+          for (const item of missingInSqlite) {
+            await db.execute(
+              `INSERT OR REPLACE INTO offline_mutation_queue (id, user_id, facility_id, mutation_type, target, payload_json, status, retry_count, error_message, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                item.id,
+                item.user_id,
+                item.facility_id || null,
+                item.mutation_type,
+                item.target,
+                typeof item.payload_json === "string" ? item.payload_json : JSON.stringify(item.payload_json),
+                item.status || "PENDING",
+                item.retry_count || 0,
+                item.error_message || null,
+                item.created_at || new Date().toISOString(),
+              ]
+            );
+          }
+        } catch (err) {
+          console.warn("Failed to backfill missing user mutations to SQLite:", err);
+        }
+      }
+    }
+
     const reconciledLocalQueue = memoryQueue.filter((item) =>
       item.user_id !== userId || item.status !== "SYNCED" || sqliteIds.has(item.id)
     );
@@ -158,6 +197,74 @@ async function getQueueEntries(userId) {
   const mergedQueue = filterMutationsForUser(mergeMutationQueues(sqliteRows, localRows), userId);
   await discardRetiredTransferMutations(userId, mergedQueue);
   return mergedQueue.filter((item) => !isRetiredTransferMutation(item));
+}
+
+export async function getAllQueueEntries() {
+  await initSqliteSchema();
+  let sqliteRows = [];
+  let sqliteReadSucceeded = false;
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      sqliteRows = await db.select(
+        `SELECT * FROM offline_mutation_queue ORDER BY created_at ASC`
+      );
+      sqliteReadSucceeded = true;
+    } catch (err) {
+      console.warn("Failed to read all mutations from SQLite:", err);
+    }
+  }
+
+  memoryQueue = readLocalStorageQueue();
+
+  if (sqliteReadSucceeded) {
+    const sqliteIds = new Set(sqliteRows.map((item) => item.id));
+
+    if (isTauriEnvironment()) {
+      const missingInSqlite = memoryQueue.filter((item) => item.id && !sqliteIds.has(item.id));
+      if (missingInSqlite.length > 0) {
+        try {
+          const db = await getSqliteDb();
+          for (const item of missingInSqlite) {
+            await db.execute(
+              `INSERT OR REPLACE INTO offline_mutation_queue (id, user_id, facility_id, mutation_type, target, payload_json, status, retry_count, error_message, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                item.id,
+                item.user_id,
+                item.facility_id || null,
+                item.mutation_type,
+                item.target,
+                typeof item.payload_json === "string" ? item.payload_json : JSON.stringify(item.payload_json),
+                item.status || "PENDING",
+                item.retry_count || 0,
+                item.error_message || null,
+                item.created_at || new Date().toISOString(),
+              ]
+            );
+          }
+        } catch (err) {
+          console.warn("Failed to backfill missing global mutations to SQLite:", err);
+        }
+      }
+    }
+
+    const reconciledLocalQueue = memoryQueue.filter((item) =>
+      item.status !== "SYNCED" || sqliteIds.has(item.id)
+    );
+    if (reconciledLocalQueue.length !== memoryQueue.length) {
+      memoryQueue = reconciledLocalQueue;
+      writeLocalStorageQueue(memoryQueue);
+    }
+  }
+
+  const mergedQueue = mergeMutationQueues(sqliteRows, memoryQueue);
+  await discardRetiredTransferMutations(null, mergedQueue);
+  return mergedQueue.filter((item) => !isRetiredTransferMutation(item));
+}
+
+export async function getAllPendingMutations() {
+  return (await getAllQueueEntries()).filter((item) => item.status === "PENDING");
 }
 
 function notifyQueueChange() {
@@ -219,7 +326,7 @@ export async function enqueueMutation({
       const db = await getSqliteDb();
       await db.execute(
         `INSERT INTO offline_mutation_queue (id, user_id, facility_id, mutation_type, target, payload_json, status, retry_count)
-         VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', 0)`,
+         VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 0)`,
         [id, userId, facilityId, mutationType, target, payloadJson]
       );
     } catch (err) {
@@ -242,7 +349,7 @@ export async function markMutationSynced(id) {
     try {
       const db = await getSqliteDb();
       await db.execute(
-        `DELETE FROM offline_mutation_queue WHERE id = $1`,
+        `DELETE FROM offline_mutation_queue WHERE id = ?`,
         [id]
       );
       sqliteDeleted = true;
@@ -273,9 +380,9 @@ export async function markMutationFailed(id, errorMessage, status = "FAILED") {
       const db = await getSqliteDb();
       await db.execute(
         `UPDATE offline_mutation_queue
-         SET status = $3, retry_count = retry_count + 1, error_message = $2
-         WHERE id = $1`,
-        [id, errorMessage, status]
+         SET status = ?, retry_count = retry_count + 1, error_message = ?
+         WHERE id = ?`,
+        [status, errorMessage, id]
       );
     } catch (err) {
       console.warn("Failed to update failed mutation in SQLite:", err);
@@ -326,7 +433,7 @@ export async function retryFailedMutations(userId = getCachedOwnerId()) {
     const db = await getSqliteDb();
     for (const item of failed) {
       await db.execute(
-        "UPDATE offline_mutation_queue SET status = 'PENDING', error_message = NULL WHERE id = $1 AND user_id = $2 AND status = 'FAILED'",
+        "UPDATE offline_mutation_queue SET status = 'PENDING', error_message = NULL WHERE id = ? AND user_id = ? AND status = 'FAILED'",
         [item.id, userId]
       );
     }
@@ -374,7 +481,7 @@ export async function retryMutation(id, userId = getCachedOwnerId()) {
     try {
       const db = await getSqliteDb();
       await db.execute(
-        "UPDATE offline_mutation_queue SET status = 'PENDING', error_message = NULL WHERE id = $1 AND user_id = $2",
+        "UPDATE offline_mutation_queue SET status = 'PENDING', error_message = NULL WHERE id = ? AND user_id = ?",
         [id, userId]
       );
     } catch (err) {
@@ -399,7 +506,7 @@ export async function dismissMutation(id, userId = getCachedOwnerId()) {
     try {
       const db = await getSqliteDb();
       await db.execute(
-        "DELETE FROM offline_mutation_queue WHERE id = $1 AND user_id = $2",
+        "DELETE FROM offline_mutation_queue WHERE id = ? AND user_id = ?",
         [id, userId]
       );
     } catch (err) {
@@ -413,6 +520,87 @@ export async function dismissMutation(id, userId = getCachedOwnerId()) {
   writeLocalStorageQueue(memoryQueue);
   await refreshPendingCount();
   return true;
+}
+
+export async function reconcileOfflineProgramId(oldId, newId) {
+  if (!oldId || !newId || oldId === newId) return;
+
+  // 1. Update in-memory / localStorage outbox queue
+  memoryQueue = readLocalStorageQueue().map((entry) => {
+    if (
+      entry.target === "complete_other_program" ||
+      entry.target === "cancel_other_program" ||
+      entry.target === "save_other_program"
+    ) {
+      try {
+        const p = typeof entry.payload_json === "string" ? JSON.parse(entry.payload_json) : entry.payload_json;
+        if (p?.p_program_id === oldId) {
+          p.p_program_id = newId;
+          return { ...entry, payload_json: JSON.stringify(p) };
+        }
+      } catch {}
+    }
+    return entry;
+  });
+  writeLocalStorageQueue(memoryQueue);
+
+  // 2. Update local SQLite in Tauri desktop environment
+  if (isTauriEnvironment()) {
+    try {
+      const db = await getSqliteDb();
+      const existingRows = await db.select(
+        "SELECT id, data_json FROM other_programs WHERE id = ?",
+        [oldId]
+      );
+      if (existingRows?.length > 0) {
+        let updatedDataJson = existingRows[0].data_json;
+        try {
+          const parsed = JSON.parse(updatedDataJson);
+          parsed.id = newId;
+          parsed.is_offline_pending = false;
+          updatedDataJson = JSON.stringify(parsed);
+        } catch {}
+        await db.execute(
+          "UPDATE other_programs SET id = ?, data_json = ? WHERE id = ?",
+          [newId, updatedDataJson, oldId]
+        );
+      } else {
+        await db.execute(
+          "UPDATE other_programs SET id = ? WHERE id = ?",
+          [newId, oldId]
+        );
+      }
+
+      const queueRows = await db.select(
+        "SELECT id, payload_json FROM offline_mutation_queue WHERE target IN ('complete_other_program', 'cancel_other_program', 'save_other_program')"
+      );
+      for (const row of queueRows || []) {
+        try {
+          const p = typeof row.payload_json === "string" ? JSON.parse(row.payload_json) : row.payload_json;
+          if (p?.p_program_id === oldId) {
+            p.p_program_id = newId;
+            await db.execute(
+              "UPDATE offline_mutation_queue SET payload_json = ? WHERE id = ?",
+              [JSON.stringify(p), row.id]
+            );
+          }
+        } catch {}
+      }
+    } catch (e) {
+      console.warn("Failed to reconcile offline program ID in SQLite:", e);
+    }
+  }
+
+  // 3. Update snapshot store
+  try {
+    const cachedPrograms = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
+    const updatedPrograms = cachedPrograms.map((p) =>
+      p.id === oldId ? { ...p, id: newId, is_offline_pending: false } : p
+    );
+    saveSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, updatedPrograms);
+  } catch (e) {
+    console.warn("Failed to reconcile offline program ID in snapshot store:", e);
+  }
 }
 
 export async function processOutboxQueue() {
@@ -431,7 +619,12 @@ export async function processOutboxQueue() {
   const userId = session?.user?.id;
   if (!userId) return;
 
-  const pending = await getPendingMutations(userId);
+  // Option 1: Only process mutations for the active signed-in user (or unassigned items).
+  // This guarantees that all RPCs and mutations are executed using the author's credentials,
+  // preventing permission rejections and audit log corruption on shared devices
+  // (e.g. BHW session rejecting CHO Pharmacist actions).
+  const allPending = await getAllPendingMutations();
+  const pending = allPending.filter((item) => !item.user_id || item.user_id === userId);
   if (!pending || pending.length === 0) {
     return;
   }
@@ -442,6 +635,24 @@ export async function processOutboxQueue() {
       let res;
       if (item.mutation_type === "RPC") {
         res = await supabase.rpc(item.target, payload);
+
+        // Fallback for offline-created programs whose client-generated UUID was not found on server
+        if (
+          res?.error &&
+          item.target === "save_other_program" &&
+          (res.error.code === "P0002" || String(res.error.message || "").toLowerCase().includes("not found")) &&
+          payload?.p_program_id
+        ) {
+          const insertPayload = { ...payload, p_program_id: null };
+          const insertRes = await supabase.rpc(item.target, insertPayload);
+          if (!insertRes.error) {
+            res = insertRes;
+            const newServerId = typeof res.data === "string" ? res.data : res.data?.program_id;
+            if (newServerId && payload.p_program_id) {
+              await reconcileOfflineProgramId(payload.p_program_id, newServerId);
+            }
+          }
+        }
       } else if (item.mutation_type === "INSERT") {
         res = await supabase.from(item.target).insert(payload);
       } else if (item.mutation_type === "UPDATE") {

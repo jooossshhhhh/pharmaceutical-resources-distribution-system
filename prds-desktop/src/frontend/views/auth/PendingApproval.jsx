@@ -1,11 +1,73 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { useAuth } from "@frontend/context/useAuth";
+import { supabase } from "@backend/client/supabase";
 import { logoutUser } from "@backend/services/auth/authService";
+import { getProfileById } from "@backend/services/auth/profileService";
 
 export default function PendingApproval() {
   const navigate = useNavigate();
+  const { profile, supabaseUser, refreshProfile } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const targetUserId = profile?.id || supabaseUser?.id;
+
+    const checkStatus = async () => {
+      if (!targetUserId) return;
+      try {
+        const currentProfile = await getProfileById(targetUserId);
+        if (isMounted && currentProfile?.status === "ACTIVE") {
+          setIsApproved(true);
+          refreshProfile?.();
+          setTimeout(() => {
+            if (isMounted) navigate("/dashboard", { replace: true });
+          }, 1200);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    checkStatus();
+
+    if (!targetUserId) return;
+
+    const channel = supabase
+      .channel(`pending-approval-${targetUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${targetUserId}`,
+        },
+        (payload) => {
+          if (payload.new?.status === "ACTIVE") {
+            if (isMounted) {
+              setIsApproved(true);
+              refreshProfile?.();
+              setTimeout(() => {
+                if (isMounted) navigate("/dashboard", { replace: true });
+              }, 1200);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(checkStatus, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.id, supabaseUser?.id, navigate, refreshProfile]);
 
   const handleGoToLogin = async () => {
     setIsSigningOut(true);
@@ -57,23 +119,36 @@ export default function PendingApproval() {
           <div className="w-full max-w-md rounded-2xl border border-[#CFDDE0] bg-[#F9FBFB] p-6 shadow-xl shadow-slate-200/50 sm:p-8">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold tracking-tight text-[#1B2B30] mb-2">
-                Pending Approval
+                {isApproved ? "Account Approved" : "Pending Approval"}
               </h2>
               <p className="text-sm font-medium text-[#5B7077]">
-                Your account request has been submitted.
+                {isApproved
+                  ? "Your account is activated and ready."
+                  : "Your account request has been submitted."}
               </p>
             </div>
 
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
-              <p className="text-sm font-bold text-amber-900">
-                Account awaiting administrator review
-              </p>
-              <p className="mt-2 text-sm leading-6 text-amber-800">
-                A PRDS administrator must approve your account before you can
-                access the dashboard. You can return to the sign in page while
-                waiting for approval.
-              </p>
-            </div>
+            {isApproved ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+                <p className="text-sm font-bold text-emerald-900">
+                  Account Approved!
+                </p>
+                <p className="mt-2 text-sm leading-6 text-emerald-800">
+                  A PRDS administrator has approved your account. Redirecting you to the dashboard...
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+                <p className="text-sm font-bold text-amber-900">
+                  Account awaiting administrator review
+                </p>
+                <p className="mt-2 text-sm leading-6 text-amber-800">
+                  A PRDS administrator must approve your account before you can
+                  access the dashboard. You can return to the sign in page while
+                  waiting for approval.
+                </p>
+              </div>
+            )}
 
             <button
               type="button"

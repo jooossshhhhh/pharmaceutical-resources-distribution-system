@@ -6,6 +6,7 @@
 # OpenCode config (contains API keys)
 opencode.json
 opencode.jsonc
+*client_secret*.json
 
 # AI Assistants & Agent Tooling
 .agents/
@@ -57,6 +58,7 @@ scratch/
 **/scratch/
 *.tmp
 *.temp
+*.bkp
 
 # OS and editor files
 .DS_Store

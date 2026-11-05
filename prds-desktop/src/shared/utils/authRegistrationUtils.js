@@ -179,18 +179,32 @@ export const isProfileRegistrationComplete = (profile) =>
     profile?.first_name &&
     profile?.last_name &&
     profile?.role &&
-    profile?.facility_id &&
+    (profile?.facility_id || profile?.status === "ACTIVE") &&
     (profile?.email || profile?.phone_number)
   );
 
 export const getLoginAccountStatus = (profile) => {
+  if (!profile) {
+    return "unregistered";
+  }
+
+  if (profile.status === "ACTIVE") {
+    return "active";
+  }
+
+  if (profile.status === "PENDING") {
+    return "pending";
+  }
+
+  if (profile.status === "DEACTIVATED") {
+    return "deactivated";
+  }
+
   if (!isProfileRegistrationComplete(profile)) {
     return "unregistered";
   }
 
-  return profile.status === "PENDING"
-    ? "pending"
-    : String(profile.status || "unknown").toLowerCase();
+  return String(profile.status || "unknown").toLowerCase();
 };
 
 export const getRegistrationDestination = (profile) => {

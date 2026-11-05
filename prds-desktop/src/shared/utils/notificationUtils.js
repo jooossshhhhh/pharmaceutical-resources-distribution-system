@@ -2,6 +2,7 @@ export const notificationCategories = [
   { value: "all", label: "All Notifications" },
   { value: "self", label: "My Notifications" },
   { value: "facility", label: "Facility Notifications" },
+  { value: "programs", label: "Other Programs" },
   { value: "low_stock", label: "Low Stock" },
   { value: "requests", label: "Requests" },
   { value: "transfers", label: "Transfers" },
@@ -47,6 +48,8 @@ const facilityKeywords = [
   "medicine",
   "expir",
   "facility",
+  "program",
+  "outreach",
 ];
 
 const getLocalDateString = (dateValue) => {
@@ -84,6 +87,14 @@ export const getNotificationCategory = (notification) => {
 
   if (searchableText.includes("transfer")) {
     return "transfers";
+  }
+
+  if (
+    searchableText.includes("program") ||
+    searchableText.includes("outreach") ||
+    notification.category === "programs"
+  ) {
+    return "programs";
   }
 
   if (

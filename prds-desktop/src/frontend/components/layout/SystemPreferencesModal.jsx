@@ -4,6 +4,8 @@ import {
   saveDownloadPreferences,
   pickDownloadFolder,
 } from "../../services/downloadManager";
+import { getAppVersion } from "../../../backend/services/updaterService";
+import AppUpdateModal from "../common/AppUpdateModal";
 
 export default function SystemPreferencesModal({ isOpen, onClose }) {
   const [downloadPath, setDownloadPath] = useState("");
@@ -12,6 +14,8 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
   const [isSaved, setIsSaved] = useState(false);
   const [isPickingFolder, setIsPickingFolder] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [appVersion, setAppVersion] = useState("1.0.0");
 
   useEffect(() => {
     if (isOpen) {
@@ -22,6 +26,7 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
       setIsSaved(false);
       setIsPickingFolder(false);
       setShowFolderModal(false);
+      getAppVersion().then(setAppVersion).catch(() => {});
     }
   }, [isOpen]);
 
@@ -224,6 +229,36 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
               </label>
             </div>
 
+            {/* Software Updates Section */}
+            <div className="pt-2 border-t border-[#f0f2f5]">
+              <div className="flex items-center justify-between rounded-2xl border border-[#e2e4e8] bg-[#f8f9fc] p-3.5">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white border border-[#d8dadc] text-[#007f5f] shadow-2xs">
+                    <PackageIcon />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-black text-[#0d1117]">PRDS Naga Desktop</p>
+                      <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black text-emerald-800">
+                        v{appVersion}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-medium text-[#5f6673]">
+                      Official release channel
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowUpdateModal(true)}
+                  className="flex h-8.5 items-center gap-1.5 rounded-xl border border-[#c2e7da] bg-[#f0fdf9] px-3 text-xs font-bold text-[#007f5f] shadow-2xs hover:bg-[#e8fff7] hover:border-[#007f5f] transition cursor-pointer"
+                >
+                  <RefreshIcon />
+                  Check for Updates
+                </button>
+              </div>
+            </div>
+
             {/* Footer Actions */}
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#e2e4e8]">
               <button
@@ -250,6 +285,13 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
           </form>
         </div>
       </div>
+
+      {/* Software Update Modal */}
+      <AppUpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        initialCheck={true}
+      />
 
       {/* System Popup Modal for Restricted System Folders */}
       {showFolderModal && (
@@ -486,3 +528,25 @@ function InfoIcon() {
     </svg>
   );
 }
+
+function PackageIcon() {
+  return (
+    <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.29 7 12 12 20.71 7" />
+      <line x1="12" y1="22" x2="12" y2="12" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 21h5v-5" />
+    </svg>
+  );
+}
+

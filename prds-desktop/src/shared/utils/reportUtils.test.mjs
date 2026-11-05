@@ -579,3 +579,4 @@ test("aggregateMonthlyDispensingDistribution correctly resolves walk-in price fr
   assert.equal(walkInChannel.cost, 500);
   assert.equal(walkInChannel.percentage, 100);
 });
+

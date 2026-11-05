@@ -74,7 +74,10 @@ test("login account status distinguishes unregistered, pending, and active profi
   assert.equal(getLoginAccountStatus(null), "unregistered");
   assert.equal(getLoginAccountStatus({ id: "auth-user-only" }), "unregistered");
   assert.equal(getLoginAccountStatus({ ...profile, status: "PENDING" }), "pending");
+  assert.equal(getLoginAccountStatus({ ...profile, facility_id: null, status: "PENDING" }), "pending");
   assert.equal(getLoginAccountStatus({ ...profile, status: "ACTIVE" }), "active");
+  assert.equal(getLoginAccountStatus({ ...profile, facility_id: null, status: "ACTIVE" }), "active");
+  assert.equal(getLoginAccountStatus({ ...profile, status: "DEACTIVATED" }), "deactivated");
 });
 
 test("registration accepts empty phone as optional contact info, but validates format if provided", () => {

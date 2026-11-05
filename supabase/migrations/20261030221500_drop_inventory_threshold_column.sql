@@ -29,6 +29,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+#variable_conflict use_column
 DECLARE
   v_caller_profile public.profiles%ROWTYPE;
   v_target_facility_id uuid;

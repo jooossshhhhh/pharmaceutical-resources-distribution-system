@@ -16,7 +16,6 @@ import {
 } from "../database/snapshotStore";
 import {
   batchDeleteByIds,
-  batchInsertOrReplace,
   clearDatasetSyncWatermark,
   getDatasetSyncWatermark,
   getSqliteDb,
@@ -24,6 +23,7 @@ import {
   isTauriEnvironment,
   setDatasetSyncWatermark,
 } from "../database/sqliteClient";
+import { batchUpsertSqliteRecords } from "../client/tableRepositoryAdapters";
 import {
   getFailedMutationCount,
   getPendingMutations,
@@ -45,12 +45,6 @@ let lastSyncTime = localStorage.getItem(STORAGE_KEYS.LAST_SYNC_TIME) || null;
 const statusListeners = new Set();
 
 const unsupportedUpdatedAtTables = new Set([
-  "medicines",
-  "facilities",
-  "other_programs",
-  "medicine_requests",
-  "medicine_dispensing",
-  "forecasting",
   "activity_logs",
 ]);
 
@@ -245,6 +239,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
     let otherProgramsWatermark = null;
     let facilitiesWatermark = null;
     let inventoryWatermark = null;
+    let thresholdsWatermark = null;
     let patientsWatermark = null;
     let requestsWatermark = null;
     let stockReturnsWatermark = null;
@@ -260,6 +255,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         progWm,
         facWm,
         invWm,
+        threshWm,
         patWm,
         reqWm,
         retWm,
@@ -273,6 +269,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         getDatasetSyncWatermark("other_programs"),
         getDatasetSyncWatermark("facilities"),
         getDatasetSyncWatermark("inventory"),
+        getDatasetSyncWatermark("facility_medicine_thresholds"),
         getDatasetSyncWatermark("patients"),
         getDatasetSyncWatermark("medicine_requests"),
         getDatasetSyncWatermark("stock_returns"),
@@ -283,18 +280,65 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
         getDatasetSyncWatermark("stock_deficit_audits"),
       ]);
 
-      medicinesWatermark = getSafeWatermarkWindow(medWm);
-      otherProgramsWatermark = getSafeWatermarkWindow(progWm);
-      facilitiesWatermark = getSafeWatermarkWindow(facWm);
-      inventoryWatermark = getSafeWatermarkWindow(invWm);
-      patientsWatermark = getSafeWatermarkWindow(patWm);
-      requestsWatermark = getSafeWatermarkWindow(reqWm);
-      stockReturnsWatermark = getSafeWatermarkWindow(retWm);
-      dispensingWatermark = getSafeWatermarkWindow(dispWm);
-      forecastWatermark = getSafeWatermarkWindow(fcWm);
-      profilesWatermark = getSafeWatermarkWindow(profWm);
-      activityLogsWatermark = getSafeWatermarkWindow(actWm);
-      deficitAuditsWatermark = getSafeWatermarkWindow(defWm);
+      const hasNonEmptySnapshot = (key) => {
+        const snap = getSnapshot(key, []);
+        return Array.isArray(snap) && snap.length > 0;
+      };
+      const hasFacilityInventorySnapshot = () => {
+        const invSnap = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+        if (!Array.isArray(invSnap) || invSnap.length === 0) return false;
+        const activeProfile = getCachedUserSession()?.profile;
+        if (!activeProfile) return true;
+        const role = String(activeProfile.role || "").toUpperCase();
+        const targetFacId =
+          role === "BHW"
+            ? String(activeProfile.facility_id || "").toLowerCase()
+            : "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad";
+        if (!targetFacId) return true;
+        return invSnap.some(
+          (row) => String(row?.facility_id || "").toLowerCase() === targetFacId
+        );
+      };
+
+      medicinesWatermark = hasNonEmptySnapshot(STORAGE_KEYS.MEDICINES)
+        ? getSafeWatermarkWindow(medWm)
+        : null;
+      otherProgramsWatermark = hasNonEmptySnapshot(STORAGE_KEYS.OTHER_PROGRAMS)
+        ? getSafeWatermarkWindow(progWm)
+        : null;
+      facilitiesWatermark = hasNonEmptySnapshot(STORAGE_KEYS.FACILITIES)
+        ? getSafeWatermarkWindow(facWm)
+        : null;
+      inventoryWatermark = hasFacilityInventorySnapshot()
+        ? getSafeWatermarkWindow(invWm)
+        : null;
+      thresholdsWatermark = hasNonEmptySnapshot(STORAGE_KEYS.THRESHOLDS)
+        ? getSafeWatermarkWindow(threshWm)
+        : null;
+      patientsWatermark = hasNonEmptySnapshot(STORAGE_KEYS.PATIENTS)
+        ? getSafeWatermarkWindow(patWm)
+        : null;
+      requestsWatermark = hasNonEmptySnapshot(STORAGE_KEYS.REQUESTS)
+        ? getSafeWatermarkWindow(reqWm)
+        : null;
+      stockReturnsWatermark = hasNonEmptySnapshot(STORAGE_KEYS.STOCK_RETURNS)
+        ? getSafeWatermarkWindow(retWm)
+        : null;
+      dispensingWatermark = hasNonEmptySnapshot(STORAGE_KEYS.DISPENSING)
+        ? getSafeWatermarkWindow(dispWm)
+        : null;
+      forecastWatermark = hasNonEmptySnapshot(STORAGE_KEYS.FORECASTING)
+        ? getSafeWatermarkWindow(fcWm)
+        : null;
+      profilesWatermark = hasNonEmptySnapshot(STORAGE_KEYS.USERS)
+        ? getSafeWatermarkWindow(profWm)
+        : null;
+      activityLogsWatermark = hasNonEmptySnapshot(STORAGE_KEYS.ACTIVITY_LOGS)
+        ? getSafeWatermarkWindow(actWm)
+        : null;
+      deficitAuditsWatermark = hasNonEmptySnapshot(STORAGE_KEYS.DEFICIT_AUDITS)
+        ? getSafeWatermarkWindow(defWm)
+        : null;
     }
 
     const allWatermarks = [
@@ -302,6 +346,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       otherProgramsWatermark,
       facilitiesWatermark,
       inventoryWatermark,
+      thresholdsWatermark,
       patientsWatermark,
       requestsWatermark,
       stockReturnsWatermark,
@@ -345,6 +390,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       otherProgramsRes,
       facilitiesRes,
       inventoryRes,
+      thresholdsRes,
       patientsRes,
       requestsRes,
       stockReturnsRes,
@@ -379,12 +425,21 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             .from("other_programs")
             .select(`
               id,
+              facility_id,
+              status,
+              started_at,
+              completed_at,
+              cancelled_at,
+              created_at,
+              updated_at,
               program_name,
               program_date,
               description,
               medicines:program_medicines(
                 id,
                 medicine_id,
+                quantity_allocated,
+                quantity_returned,
                 quantity_used,
                 medicine:medicines(id, generic_name, dosage, unit_of_measure)
               )
@@ -426,6 +481,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           supplier_contact,
           date_received,
           expiration_date,
+          origin_facility_id,
           intake_type,
           return_reason,
           status,
@@ -438,8 +494,17 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           medicine_id,
           quantity,
           batch_number,
+          po_number,
+          unit_cost,
+          brand_name,
+          supplier_name,
+          supplier_address,
+          supplier_contact,
           date_received,
           expiration_date,
+          intake_type,
+          return_reason,
+          status,
           medicine:medicines(id, generic_name, dosage, unit_of_measure),
           facility:facilities!inventory_facility_id_fkey(id, facility_name, facility_code)
         `;
@@ -477,6 +542,20 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
 
         return res;
       })(),
+      // Facility Medicine Thresholds
+      safeFetchSingle(
+        "facility_medicine_thresholds",
+        (wm) => {
+          let q = supabase
+            .from("facility_medicine_thresholds")
+            .select("id, facility_id, medicine_id, threshold, is_custom, updated_at");
+          if (wm) {
+            q = q.gt("updated_at", wm);
+          }
+          return q;
+        },
+        thresholdsWatermark
+      ),
       // Patients
       safeFetchSingle(
         "patients",
@@ -914,6 +993,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       otherProgramsRes,
       facilitiesRes,
       inventoryRes,
+      thresholdsRes,
       patientsRes,
       requestsRes,
       stockReturnsRes,
@@ -942,6 +1022,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       "Other Programs",
       "Facilities",
       "Inventory",
+      "Thresholds",
       "Patients",
       "Requests",
       "Stock Returns",
@@ -997,6 +1078,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
     applyDeltaOrFullSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, otherProgramsRes, otherProgramsWatermark, "other_programs", "Other Programs");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.FACILITIES, facilitiesRes, facilitiesWatermark, "facilities", "Facilities");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.INVENTORY, inventoryRes, inventoryWatermark, "inventory", "Inventory");
+    applyDeltaOrFullSnapshot(STORAGE_KEYS.THRESHOLDS, thresholdsRes, thresholdsWatermark, "facility_medicine_thresholds", "Thresholds");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.PATIENTS, patientsRes, patientsWatermark, "patients", "Patients");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.REQUESTS, requestsRes, requestsWatermark, "medicine_requests", "Requests");
     applyDeltaOrFullSnapshot(STORAGE_KEYS.STOCK_RETURNS, stockReturnsRes, stockReturnsWatermark, "stock_returns", "Stock Returns");
@@ -1052,20 +1134,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM facilities");
           }
           if (facilitiesRes.data.length > 0) {
-            const rows = facilitiesRes.data.map((f) => [
-              f.id,
-              f.facility_name,
-              f.facility_code,
-              f.facility_type,
-              f.status,
-              JSON.stringify(f),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "facilities",
-              ["id", "facility_name", "facility_code", "facility_type", "status", "data_json"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "facilities", facilitiesRes.data);
           }
         }
 
@@ -1077,23 +1146,9 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM medicines");
           }
           if (medicinesRes.data.length > 0) {
-            const rows = medicinesRes.data.map((m) => [
-              m.id,
-              m.generic_name,
-              m.dosage,
-              m.unit_of_measure,
-              JSON.stringify(m.categories || []),
-              JSON.stringify(m),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "medicines",
-              ["id", "generic_name", "dosage", "unit_of_measure", "categories_json", "data_json"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "medicines", medicinesRes.data);
           }
         }
-
 
         if (inventoryRes.data) {
           if (!isCurrentSession()) return false;
@@ -1101,7 +1156,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
           // Preserve existing SQLite inventory metadata (return records, po_number, origin_facility_id, intake_type, etc.)
           let localMetaMap = new Map();
           try {
-            const existingRows = await db.query(
+            const existingRows = await db.select(
               "SELECT id, facility_id, medicine_id, batch_number, po_number, unit_cost, origin_facility_id, intake_type, return_reason, status, brand_name, supplier_name, supplier_address, supplier_contact FROM inventory"
             );
             if (Array.isArray(existingRows)) {
@@ -1132,7 +1187,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
               !(typeof inv?.po_number === "string" && inv.po_number.startsWith("RET-"))
           );
           if (inventorySourceData.length > 0) {
-            const rows = inventorySourceData.map((inv) => {
+            const enrichedRecords = inventorySourceData.map((inv) => {
               const bKey = `${inv.facility_id || ""}:${inv.medicine_id || ""}:${(inv.batch_number || "").toUpperCase().trim()}`;
               const local = (inv.id && localMetaMap.get(inv.id)) || localMetaMap.get(bKey);
 
@@ -1150,7 +1205,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
               const supplierAddress = inv.supplier_address || local?.supplier_address || inv.supplier?.address || null;
               const supplierContact = inv.supplier_contact || local?.supplier_contact || inv.supplier?.contact_number || null;
 
-              const enrichedInv = {
+              return {
                 ...inv,
                 brand_name: brandName,
                 supplier_name: supplierName,
@@ -1163,54 +1218,21 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
                 return_reason: returnReason,
                 status: status,
               };
-
-              return [
-                inv.id,
-                inv.facility_id,
-                inv.medicine_id,
-                inv.quantity,
-                inv.batch_number,
-                poNumber,
-                unitCost,
-                inv.date_received,
-                inv.expiration_date,
-                originFacilityId,
-                intakeType,
-                returnReason,
-                status,
-                brandName,
-                supplierName,
-                supplierAddress,
-                supplierContact,
-                JSON.stringify(enrichedInv),
-              ];
             });
 
-            await batchInsertOrReplace(
-              db,
-              "inventory",
-              [
-                "id",
-                "facility_id",
-                "medicine_id",
-                "quantity",
-                "batch_number",
-                "po_number",
-                "unit_cost",
-                "date_received",
-                "expiration_date",
-                "origin_facility_id",
-                "intake_type",
-                "return_reason",
-                "status",
-                "brand_name",
-                "supplier_name",
-                "supplier_address",
-                "supplier_contact",
-                "data_json",
-              ],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "inventory", enrichedRecords);
+          }
+        }
+
+        if (thresholdsRes?.data) {
+          if (!isCurrentSession()) return false;
+          if (thresholdsWatermark && thresholdsRes.usedWatermark !== null) {
+            await purgeTombstones("facility_medicine_thresholds");
+          } else {
+            await db.execute("DELETE FROM facility_medicine_thresholds");
+          }
+          if (thresholdsRes.data.length > 0) {
+            await batchUpsertSqliteRecords(db, "facility_medicine_thresholds", thresholdsRes.data);
           }
         }
 
@@ -1222,20 +1244,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM patients");
           }
           if (patientsRes.data.length > 0) {
-            const rows = patientsRes.data.map((p) => [
-              p.id,
-              p.facility_id,
-              p.first_name,
-              p.last_name,
-              p.philhealth_id || p.patient_code || "",
-              JSON.stringify(p),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "patients",
-              ["id", "facility_id", "first_name", "last_name", "philhealth_id", "data_json"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "patients", patientsRes.data);
           }
         }
 
@@ -1247,21 +1256,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM requests");
           }
           if (requestsRes.data.length > 0) {
-            const rows = requestsRes.data.map((r) => [
-              r.id,
-              r.request_number || r.id?.slice(0, 8),
-              r.facility_id,
-              r.status,
-              JSON.stringify(r),
-              r.updated_at || r.request_date || new Date().toISOString(),
-              1,
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "requests",
-              ["id", "request_number", "facility_id", "status", "data_json", "updated_at", "is_synced"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "requests", requestsRes.data);
           }
         }
 
@@ -1273,77 +1268,14 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM stock_returns");
           }
           if (stockReturnsRes.data.length > 0) {
-            const returnRows = stockReturnsRes.data.map((r) => [
-              r.id,
-              r.return_id || r.id,
-              r.facility_id,
-              r.source_inventory_id || null,
-              r.medicine_id,
-              r.medicine_name,
-              r.brand_name || null,
-              r.lot_no,
-              r.quantity,
-              r.unit_cost,
-              r.expiration_date,
-              r.reason,
-              r.status || "PENDING",
-              r.remarks || null,
-              r.submitted_by_id,
-              r.submitted_at,
-              r.confirmed_by_id || null,
-              r.confirmed_at || null,
-              r.created_at || new Date().toISOString(),
-              r.updated_at || new Date().toISOString(),
-              1,
-              JSON.stringify(r),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "stock_returns",
-              [
-                "id",
-                "return_id",
-                "facility_id",
-                "source_inventory_id",
-                "medicine_id",
-                "medicine_name",
-                "brand_name",
-                "lot_no",
-                "quantity",
-                "unit_cost",
-                "expiration_date",
-                "reason",
-                "status",
-                "remarks",
-                "submitted_by_id",
-                "submitted_at",
-                "confirmed_by_id",
-                "confirmed_at",
-                "created_at",
-                "updated_at",
-                "is_synced",
-                "data_json",
-              ],
-              returnRows
-            );
+            await batchUpsertSqliteRecords(db, "stock_returns", stockReturnsRes.data);
           }
         }
 
         if (dispensingSummaryRes.data) {
           if (!isCurrentSession()) return false;
           await db.execute("DELETE FROM monthly_dispensing_summary");
-          const rows = dispensingSummaryRes.data.map((s) => [
-            s.facility_id,
-            s.medicine_id,
-            s.month,
-            s.total_dispensed,
-          ]);
-          await batchInsertOrReplace(
-            db,
-            "monthly_dispensing_summary",
-            ["facility_id", "medicine_id", "month", "total_dispensed"],
-            rows
-          );
+          await batchUpsertSqliteRecords(db, "monthly_dispensing_summary", dispensingSummaryRes.data);
         }
 
         if (dispensingRes?.data) {
@@ -1354,21 +1286,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM dispensing_records");
           }
           if (dispensingRes.data.length > 0) {
-            const rows = dispensingRes.data.map((d) => [
-              d.id,
-              d.facility_id,
-              d.patient_id,
-              d.dispensed_by,
-              JSON.stringify(d),
-              d.dispense_date || d.created_at || new Date().toISOString(),
-              1,
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "dispensing_records",
-              ["id", "facility_id", "patient_id", "dispensed_by", "data_json", "created_at", "is_synced"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "dispensing_records", dispensingRes.data);
           }
         }
 
@@ -1380,19 +1298,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM other_programs");
           }
           if (otherProgramsRes.data.length > 0) {
-            const rows = otherProgramsRes.data.map((op) => [
-              op.id,
-              op.program_name,
-              op.program_date,
-              op.description,
-              JSON.stringify(op),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "other_programs",
-              ["id", "program_name", "program_date", "description", "data_json"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "other_programs", otherProgramsRes.data);
           }
         }
 
@@ -1404,19 +1310,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM forecasting");
           }
           if (forecastRes.data.length > 0) {
-            const rows = forecastRes.data.map((fc) => [
-              fc.id,
-              fc.facility_id,
-              fc.forecast_month,
-              fc.predicted_quantity,
-              JSON.stringify(fc),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "forecasting",
-              ["id", "facility_id", "forecast_month", "predicted_quantity", "data_json"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "forecasting", forecastRes.data);
           }
         }
 
@@ -1428,23 +1322,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM profiles");
           }
           if (usersRes.data.length > 0) {
-            const rows = usersRes.data.map((pr) => [
-              pr.id,
-              pr.first_name,
-              pr.last_name,
-              pr.email,
-              pr.phone_number,
-              pr.role,
-              pr.facility_id,
-              pr.status,
-              JSON.stringify(pr),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "profiles",
-              ["id", "first_name", "last_name", "email", "phone_number", "role", "facility_id", "status", "data_json"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "profiles", usersRes.data);
           }
         }
 
@@ -1456,42 +1334,14 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM activity_logs");
           }
           if (activityLogsRes.data.length > 0) {
-            const rows = activityLogsRes.data.map((al) => [
-              al.id,
-              al.user_id,
-              al.action,
-              al.module,
-              al.details,
-              al.created_at,
-              JSON.stringify(al),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "activity_logs",
-              ["id", "user_id", "action", "module", "details", "created_at", "data_json"],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "activity_logs", activityLogsRes.data);
           }
         }
 
         if (notificationsRes?.data) {
           if (!isCurrentSession()) return false;
           await db.execute("DELETE FROM notifications");
-          const rows = notificationsRes.data.map((n) => [
-            n.id,
-            n.user_id,
-            n.title,
-            n.message,
-            n.is_read ? 1 : 0,
-            n.created_at,
-            JSON.stringify(n),
-          ]);
-          await batchInsertOrReplace(
-            db,
-            "notifications",
-            ["id", "user_id", "title", "message", "is_read", "created_at", "data_json"],
-            rows
-          );
+          await batchUpsertSqliteRecords(db, "notifications", notificationsRes.data);
         }
 
         if (deficitAuditsRes?.data) {
@@ -1502,53 +1352,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
             await db.execute("DELETE FROM stock_deficit_audits");
           }
           if (deficitAuditsRes.data.length > 0) {
-            const rows = deficitAuditsRes.data.map((da) => [
-              da.id,
-              da.dispensing_id,
-              da.dispensing_transaction_id,
-              da.facility_id,
-              da.medicine_id,
-              da.inventory_batch_id,
-              da.batch_number,
-              da.dispensed_by,
-              da.dispensed_quantity,
-              da.available_at_sync,
-              da.deficit_quantity,
-              da.status,
-              da.reconciliation_action,
-              da.reconciled_by,
-              da.reconciled_at,
-              da.notes,
-              da.created_at,
-              JSON.stringify(da),
-              da.updated_at || da.created_at || new Date().toISOString(),
-            ]);
-            await batchInsertOrReplace(
-              db,
-              "stock_deficit_audits",
-              [
-                "id",
-                "dispensing_id",
-                "dispensing_transaction_id",
-                "facility_id",
-                "medicine_id",
-                "inventory_batch_id",
-                "batch_number",
-                "dispensed_by",
-                "dispensed_quantity",
-                "available_at_sync",
-                "deficit_quantity",
-                "status",
-                "reconciliation_action",
-                "reconciled_by",
-                "reconciled_at",
-                "notes",
-                "created_at",
-                "data_json",
-                "updated_at",
-              ],
-              rows
-            );
+            await batchUpsertSqliteRecords(db, "stock_deficit_audits", deficitAuditsRes.data);
           }
         }
 
@@ -1580,6 +1384,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       updateWatermarkIfSuccess("other_programs", otherProgramsRes),
       updateWatermarkIfSuccess("facilities", facilitiesRes),
       updateWatermarkIfSuccess("inventory", inventoryRes),
+      updateWatermarkIfSuccess("facility_medicine_thresholds", thresholdsRes),
       updateWatermarkIfSuccess("patients", patientsRes),
       updateWatermarkIfSuccess("medicine_requests", requestsRes),
       updateWatermarkIfSuccess("stock_returns", stockReturnsRes),
@@ -1609,6 +1414,11 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
       return false;
     }
 
+    if (typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new CustomEvent("prds:inventory-changed"));
+      } catch {}
+    }
     updateSyncStatus("SUCCESS");
     return true;
   } catch (err) {

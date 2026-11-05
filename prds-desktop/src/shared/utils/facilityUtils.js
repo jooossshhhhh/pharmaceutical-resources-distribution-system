@@ -255,15 +255,18 @@ export const isChoFacility = (facility) => {
     return (
       upper === "CHO" ||
       upper === "CHO-NAGA" ||
+      upper === "0B7E2EAA-1072-4FB1-8E14-D6FB46097AAD" ||
       lower.includes("city health office") ||
       lower.includes("central health office") ||
       lower.includes("cho naga")
     );
   }
+  const id = String(facility.id || "").toUpperCase();
   const code = (facility.facility_code || "").toUpperCase();
   const type = (facility.facility_type || "").toUpperCase();
   const name = (facility.facility_name || "").toLowerCase();
   return (
+    id === "0B7E2EAA-1072-4FB1-8E14-D6FB46097AAD" ||
     code === "CHO-NAGA" ||
     code === "CHO" ||
     type === "CHO" ||

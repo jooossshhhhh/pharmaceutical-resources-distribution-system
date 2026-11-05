@@ -48,7 +48,7 @@ import {
   sortRequests,
   validateChoRequestAvailability,
 } from "@shared/utils/requestUtils";
-import { SortDirectionIcon } from "../transfers/TransferUi";
+import { SortDirectionIcon } from "./RequestUi";
 import {
   ActionButton,
   ClockIcon as UiClockIcon,

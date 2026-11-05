@@ -115,7 +115,7 @@ async function initializeSqliteSchema() {
       updated_at DATETIME
     );`,
 
-    `DROP TABLE IF EXISTS suppliers;`,
+    `DROP TABLE IF EXISTS suppliers;`, `DROP TABLE IF EXISTS transfers;`,
 
     `CREATE TABLE IF NOT EXISTS inventory (
       id TEXT PRIMARY KEY,
@@ -308,8 +308,8 @@ async function initializeSqliteSchema() {
     `CREATE INDEX IF NOT EXISTS idx_dispensing_facility ON dispensing_records(facility_id);`,
     `CREATE INDEX IF NOT EXISTS idx_dispensing_patient ON dispensing_records(patient_id);`,
     `CREATE INDEX IF NOT EXISTS idx_requests_facility ON requests(facility_id);`,
-    `CREATE INDEX IF NOT EXISTS idx_transfers_source ON transfers(source_facility_id);`,
-    `CREATE INDEX IF NOT EXISTS idx_transfers_target ON transfers(target_facility_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_fmt_facility ON facility_medicine_thresholds(facility_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_fmt_medicine ON facility_medicine_thresholds(medicine_id);`,
     `CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id);`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);`,
     `CREATE INDEX IF NOT EXISTS idx_stock_deficit_facility ON stock_deficit_audits(facility_id);`,
@@ -453,7 +453,7 @@ async function initializeSqliteSchema() {
     for (const table of [
       "dispensing_records",
       "requests",
-      "transfers",
+      "facility_medicine_thresholds",
       "monthly_dispensing_summary",
       "inventory",
       "medicines",
@@ -479,7 +479,7 @@ async function initializeSqliteSchema() {
       "patients",
       "dispensing_records",
       "requests",
-      "transfers",
+      "facility_medicine_thresholds",
       "stock_returns",
       "monthly_dispensing_summary",
       "other_programs",
@@ -493,7 +493,7 @@ async function initializeSqliteSchema() {
       } catch (_e) {}
     }
     await db.execute(
-      "INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) VALUES ('snapshot_cache_version', $1, CURRENT_TIMESTAMP)",
+      "INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) VALUES ('snapshot_cache_version', ?, CURRENT_TIMESTAMP)",
       [SNAPSHOT_CACHE_VERSION]
     );
   }
@@ -610,7 +610,7 @@ export async function getDatasetSyncWatermark(datasetName) {
     try {
       const db = await getSqliteDb();
       const rows = await db.select(
-        "SELECT last_synced_at FROM sync_metadata WHERE key = $1",
+        "SELECT last_synced_at FROM sync_metadata WHERE key = ?",
         [`watermark_${datasetName}`]
       );
       return rows[0]?.last_synced_at || null;
@@ -635,7 +635,7 @@ export async function setDatasetSyncWatermark(datasetName, lastSyncedAt, records
       const db = await getSqliteDb();
       await db.execute(
         `INSERT OR REPLACE INTO sync_metadata (key, value, last_synced_at, records_synced, sync_status, updated_at)
-         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         [`watermark_${datasetName}`, lastSyncedAt, lastSyncedAt, recordsSynced, status]
       );
     } catch (err) {
@@ -655,7 +655,7 @@ export async function clearDatasetSyncWatermark(datasetName) {
   if (isTauriEnvironment()) {
     try {
       const db = await getSqliteDb();
-      await db.execute("DELETE FROM sync_metadata WHERE key = $1", [`watermark_${datasetName}`]);
+      await db.execute("DELETE FROM sync_metadata WHERE key = ?", [`watermark_${datasetName}`]);
     } catch (err) {
       console.warn(`Failed to clear sync watermark for ${datasetName} in SQLite:`, err);
     }

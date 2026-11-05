@@ -1,10 +1,11 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useContext, useRef } from "react";
 import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
 import { getDispensingHistory } from "@backend/services/dispensingService";
 import { getRequestsData } from "@backend/services/requestsService";
 import { fetchStockReturns } from "@backend/services/stockReturnsService";
-import { supabase } from "@backend/client/supabase";
+import { fetchOtherPrograms } from "@backend/services/otherProgramsService";
 import { useAuth } from "../../context/useAuth";
+import ModalContainerContext from "@frontend/context/ModalContainerContext";
 import { useNetworkStatus } from "@backend/sync/networkStatus";
 import ReportModuleSkeleton from "./components/ReportModuleSkeleton";
 import ReportHeader from "./components/ReportHeader";
@@ -12,7 +13,6 @@ import ReportSummaryCards from "./components/ReportSummaryCards";
 import ReportCalendarWidget from "./components/ReportCalendarWidget";
 import TopMedicinesChart from "./components/TopMedicinesChart";
 import FacilityDistributionChart from "./components/FacilityDistributionChart";
-import DailyTrendChart from "./components/DailyTrendChart";
 import ReportScopeToggle from "./components/ReportScopeToggle";
 import MonthYearSelector from "./components/MonthYearSelector";
 import MonthlyReconciliationKpis from "./components/MonthlyReconciliationKpis";
@@ -25,7 +25,6 @@ import {
   calculateReportKpis,
   aggregateTopMedicines,
   aggregateFacilityDistribution,
-  aggregateDailyDispensingTrend,
   aggregateMonthlyDispensingDistribution,
   aggregateHourlyDispensingFlow,
   getDailyDispensingTransactions,
@@ -36,6 +35,7 @@ import {
   exportMonthlyInventoryExcel,
   processMonthlyInventoryData,
 } from "@shared/utils/reportExportUtils";
+import { exportDetailedInventoryExcel } from "@shared/utils/inventoryDetailedExportUtils";
 
 const enrichInventoryRows = (rawInventory = [], medicinesList = []) => {
   const map = new Map((medicinesList || []).map((m) => [String(m.id), m]));
@@ -57,8 +57,66 @@ const enrichInventoryRows = (rawInventory = [], medicinesList = []) => {
   });
 };
 
+const enrichOtherProgramsRows = (rawPrograms = [], inventoryList = [], medicinesMap = new Map()) => {
+  return (rawPrograms || []).map((prog) => {
+    let rawMeds = prog.medicines;
+    if (!Array.isArray(rawMeds) && prog.items) rawMeds = prog.items;
+    if (!Array.isArray(rawMeds) && prog.data_json) {
+      try {
+        const parsed = typeof prog.data_json === "string" ? JSON.parse(prog.data_json) : prog.data_json;
+        rawMeds = parsed?.medicines || parsed?.items || [];
+      } catch {
+        rawMeds = [];
+      }
+    }
+    if (!Array.isArray(rawMeds)) rawMeds = [];
+
+    return {
+      ...prog,
+      medicines: rawMeds.map((pm) => {
+        const medId = String(pm.medicine_id || pm.medicine?.id || "");
+        const catMed = medicinesMap.get(medId) || {};
+        const candidates = (inventoryList || []).filter((inv) => String(inv.medicine_id) === medId);
+        candidates.sort((a, b) => {
+          const aCost = Number(a.unit_cost) > 0 ? 1 : 0;
+          const bCost = Number(b.unit_cost) > 0 ? 1 : 0;
+          if (aCost !== bCost) return bCost - aCost;
+          const aQty = Number(a.quantity) > 0 ? 1 : 0;
+          const bQty = Number(b.quantity) > 0 ? 1 : 0;
+          if (aQty !== bQty) return bQty - aQty;
+          return (a.expiration_date || "9999-99-99").localeCompare(b.expiration_date || "9999-99-99");
+        });
+        const invMatch = candidates[0];
+        const unitCost = Number(pm.unit_cost ?? invMatch?.unit_cost ?? pm.medicine?.unit_cost ?? catMed.unit_cost ?? 0);
+        const brandName = pm.brand_name || invMatch?.brand_name || catMed.brand_name || "";
+        const batchNo = pm.batch_number || pm.lot_no || invMatch?.batch_number || invMatch?.lot_no || "";
+        const expDate = pm.expiration_date || invMatch?.expiration_date || "";
+        const unitOfMeasure = pm.unit_of_measure || invMatch?.unit_of_measure || catMed.unit_of_measure || "";
+
+        return {
+          ...pm,
+          batch_number: batchNo,
+          lot_no: batchNo,
+          expiration_date: expDate,
+          brand_name: brandName,
+          unit_of_measure: unitOfMeasure,
+          unit_cost: unitCost,
+          medicine: {
+            ...catMed,
+            ...(pm.medicine || {}),
+            brand_name: brandName,
+            unit_cost: unitCost,
+          },
+        };
+      }),
+    };
+  });
+};
+
 export default function ChoReportModule() {
   const { profile } = useAuth();
+  const modalContext = useContext(ModalContainerContext);
+  const isViewActive = modalContext?.isViewActive ?? true;
   const [facilities, setFacilities] = useState(() => getSnapshot(STORAGE_KEYS.FACILITIES, []));
   const [dispensingRows, setDispensingRows] = useState(() => {
     const rows = getSnapshot(STORAGE_KEYS.DISPENSING, []);
@@ -104,24 +162,9 @@ export default function ChoReportModule() {
   const [otherProgramsRows, setOtherProgramsRows] = useState(() => {
     const raw = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
     const meds = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+    const inv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
     const medsMap = new Map(meds.map((m) => [String(m.id), m]));
-    return raw.map((prog) => ({
-      ...prog,
-      medicines: (prog.medicines || []).map((pm) => {
-        const medId = String(pm.medicine_id || pm.medicine?.id || "");
-        const catMed = medsMap.get(medId) || {};
-        const unitCost = Number(pm.medicine?.unit_cost ?? catMed.unit_cost ?? pm.unit_cost ?? 0);
-        return {
-          ...pm,
-          unit_cost: unitCost,
-          medicine: {
-            ...catMed,
-            ...(pm.medicine || {}),
-            unit_cost: unitCost,
-          },
-        };
-      }),
-    }));
+    return enrichOtherProgramsRows(raw, inv, medsMap);
   });
   const [inventoryRows, setInventoryRows] = useState(() => {
     const rawInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
@@ -160,14 +203,17 @@ export default function ChoReportModule() {
   // 4. Noticeable network lag persists past the debounce threshold (> 150ms)
   // If offline or data is already present, skeleton will not trigger.
   useEffect(() => {
+    let timer;
     if (isLoading && isOnline && !hasExistingData) {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         setShowSkeleton(true);
       }, 150);
-      return () => clearTimeout(timer);
     } else {
-      setShowSkeleton(false);
+      timer = setTimeout(() => {
+        setShowSkeleton(false);
+      }, 0);
     }
+    return () => clearTimeout(timer);
   }, [isLoading, isOnline, hasExistingData]);
 
   // Fetch updated data from services with instant snapshot fallback
@@ -190,11 +236,12 @@ export default function ChoReportModule() {
           const medicinesSnapshot = getSnapshot(STORAGE_KEYS.MEDICINES, []);
           const medicinesMap = new Map(medicinesSnapshot.map((m) => [String(m.id), m]));
 
+          let fetchedInventory = getSnapshot(STORAGE_KEYS.INVENTORY, []);
           if (requestsDataRes.status === "fulfilled" && requestsDataRes.value) {
             const {
               requests = [],
               facilities: fetchedFacilities = [],
-              inventoryRows: fetchedInventory = [],
+              inventoryRows: invRows = [],
               medicines: fetchedMedicines = [],
             } = requestsDataRes.value;
 
@@ -207,11 +254,11 @@ export default function ChoReportModule() {
             }
 
             const medsList = Array.from(medicinesMap.values());
-            if (fetchedInventory.length > 0) {
+            if (Array.isArray(invRows) && invRows.length > 0) {
+              fetchedInventory = invRows;
               setInventoryRows(enrichInventoryRows(fetchedInventory, medsList));
             } else {
-              const currentInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
-              setInventoryRows(enrichInventoryRows(currentInv, medsList));
+              setInventoryRows(enrichInventoryRows(fetchedInventory, medsList));
             }
 
             const completedRequests = requests
@@ -280,40 +327,14 @@ export default function ChoReportModule() {
             setDispensingRows(enrichedDispensing);
           }
 
-          if (supabase) {
-            try {
-              const { data: progData } = await supabase.from("other_programs").select(`
-                id, facility_id, program_name, program_date, description, status, completed_at, cancelled_at,
-                medicines:program_medicines(
-                  id, medicine_id, quantity_used,
-                  medicine:medicines(id, generic_name, dosage, unit_of_measure)
-                )
-              `);
-              if (progData && isMounted) {
-                const enriched = progData.map((prog) => ({
-                  ...prog,
-                  medicines: (prog.medicines || []).map((pm) => {
-                    const medId = String(pm.medicine_id || pm.medicine?.id || "");
-                    const catMed = medicinesMap.get(medId) || {};
-                    const invMatch = fetchedInventory.find((inv) => String(inv.medicine_id) === medId && Number(inv.unit_cost) > 0);
-                    const unitCost = Number(pm.unit_cost ?? invMatch?.unit_cost ?? pm.medicine?.unit_cost ?? catMed.unit_cost ?? 0);
-                    return {
-                      ...pm,
-                      unit_cost: unitCost,
-                      medicine: {
-                        ...catMed,
-                        ...(pm.medicine || {}),
-                        brand_name: catMed.brand_name || invMatch?.brand_name || "",
-                        unit_cost: unitCost,
-                      },
-                    };
-                  }),
-                }));
-                setOtherProgramsRows(enriched);
-              }
-            } catch {
-              // fallback remains active
+          try {
+            const progData = await fetchOtherPrograms();
+            if (progData && isMounted) {
+              const enriched = enrichOtherProgramsRows(progData, fetchedInventory, medicinesMap);
+              setOtherProgramsRows(enriched);
             }
+          } catch (progErr) {
+            console.warn("fetchOtherPrograms fallback in reports:", progErr);
           }
         }
       } catch (err) {
@@ -329,6 +350,136 @@ export default function ChoReportModule() {
       isMounted = false;
     };
   }, []);
+
+  // Resilient, smooth refresh for Other Programs and Inventory without flickering loaders
+  const refreshOtherProgramsAndInventory = useCallback(async () => {
+    // 1. Immediately sync latest local snapshot for instant 0ms UI update
+    const latestSnapshotProgs = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
+    const latestSnapshotInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+    const medicinesSnapshot = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+    const medicinesMap = new Map(medicinesSnapshot.map((m) => [String(m.id), m]));
+    const medsList = Array.from(medicinesMap.values());
+
+    if (latestSnapshotProgs.length > 0) {
+      const enrichedSnapshot = enrichOtherProgramsRows(latestSnapshotProgs, latestSnapshotInv, medicinesMap);
+      setOtherProgramsRows(enrichedSnapshot);
+    }
+    if (latestSnapshotInv.length > 0) {
+      setInventoryRows(enrichInventoryRows(latestSnapshotInv, medsList));
+    }
+
+    // 2. Smoothly fetch fresh data in background from server/SQLite
+    try {
+      const [progDataRes, requestsDataRes] = await Promise.allSettled([
+        fetchOtherPrograms(),
+        getRequestsData(),
+      ]);
+
+      let freshInventory = latestSnapshotInv;
+      if (requestsDataRes.status === "fulfilled" && requestsDataRes.value) {
+        const {
+          requests = [],
+          facilities: fetchedFacilities = [],
+          inventoryRows: fetchedInventory = [],
+          medicines: fetchedMedicines = [],
+        } = requestsDataRes.value;
+
+        if (fetchedMedicines.length > 0) {
+          fetchedMedicines.forEach((m) => medicinesMap.set(String(m.id), m));
+        }
+        if (fetchedFacilities.length > 0) {
+          setFacilities(fetchedFacilities);
+        }
+        if (fetchedInventory.length > 0) {
+          freshInventory = fetchedInventory;
+          setInventoryRows(enrichInventoryRows(freshInventory, Array.from(medicinesMap.values())));
+        }
+        if (requests.length > 0) {
+          const completedRequests = requests
+            .filter((r) => r.status === "COMPLETED")
+            .map((req) => ({
+              ...req,
+              items: (req.items || []).map((item) => {
+                const med =
+                  item.medicine ||
+                  (item.medicine_id ? medicinesMap.get(String(item.medicine_id)) : null) ||
+                  {};
+                return {
+                  ...item,
+                  medicine: {
+                    ...med,
+                    generic_name: med.generic_name || item.generic_name || "",
+                    brand_name: med.brand_name || item.brand_name || "",
+                    dosage: med.dosage || item.dosage || "",
+                    unit_of_measure: med.unit_of_measure || item.unit_of_measure || "",
+                    unit_cost: Number(med.unit_cost ?? item.unit_cost ?? 0),
+                  },
+                };
+              }),
+            }));
+          setRequestRows(completedRequests);
+        }
+      }
+
+      if (progDataRes.status === "fulfilled" && Array.isArray(progDataRes.value)) {
+        const enrichedFresh = enrichOtherProgramsRows(progDataRes.value, freshInventory, medicinesMap);
+        setOtherProgramsRows(enrichedFresh);
+      }
+    } catch (err) {
+      console.warn("Smooth background refresh error in ChoReportModule:", err);
+    }
+  }, []);
+
+  // Sync when Reports view becomes active again in keep-alive layout
+  const prevIsViewActiveRef = useRef(isViewActive);
+  useEffect(() => {
+    let timer;
+    if (isViewActive && !prevIsViewActiveRef.current) {
+      timer = setTimeout(() => {
+        refreshOtherProgramsAndInventory();
+      }, 0);
+    }
+    prevIsViewActiveRef.current = isViewActive;
+    return () => clearTimeout(timer);
+  }, [isViewActive, refreshOtherProgramsAndInventory]);
+
+  // Sync when switching to monthly tab or changing month/year period
+  useEffect(() => {
+    let timer;
+    if (reportScope === "monthly") {
+      timer = setTimeout(() => {
+        refreshOtherProgramsAndInventory();
+      }, 0);
+    }
+    return () => clearTimeout(timer);
+  }, [reportScope, selectedPeriod.year, selectedPeriod.month, refreshOtherProgramsAndInventory]);
+
+  // Listen to program completion/cancellation events and window focus
+  useEffect(() => {
+    const handleProgramChange = () => {
+      refreshOtherProgramsAndInventory();
+    };
+
+    const handleInventoryChange = () => {
+      refreshOtherProgramsAndInventory();
+    };
+
+    const handleWindowFocus = () => {
+      if (reportScope === "monthly") {
+        refreshOtherProgramsAndInventory();
+      }
+    };
+
+    window.addEventListener("prds:other-programs-changed", handleProgramChange);
+    window.addEventListener("prds:inventory-changed", handleInventoryChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      window.removeEventListener("prds:other-programs-changed", handleProgramChange);
+      window.removeEventListener("prds:inventory-changed", handleInventoryChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [refreshOtherProgramsAndInventory, reportScope]);
 
   // Determine if selected facility is CHO
   const choFacility = useMemo(() => {
@@ -410,20 +561,6 @@ export default function ChoReportModule() {
     });
   }, [filteredDispensing, filteredRequests, selectedDate]);
 
-  const dailyTrend = useMemo(() => {
-    return aggregateDailyDispensingTrend({
-      dispensingRows: filteredDispensing,
-      requestRows: filteredRequests,
-      inventoryRows: filteredInventory,
-      year: selectedDate.getFullYear(),
-      month: selectedDate.getMonth() + 1,
-    });
-  }, [filteredDispensing, filteredRequests, filteredInventory, selectedDate]);
-
-  const monthName = useMemo(() => {
-    return new Intl.DateTimeFormat("en-US", { month: "long" }).format(selectedDate);
-  }, [selectedDate]);
-
   const formattedSelectedDate = useMemo(() => {
     return formatReportDate(selectedDate);
   }, [selectedDate]);
@@ -458,14 +595,29 @@ export default function ChoReportModule() {
     return filteredInventory;
   }, [inventoryRows, choFacility, filteredInventory]);
 
+  // Central warehouse walk-in dispensing for monthly statutory ledgers
+  const choWarehouseDispensing = useMemo(() => {
+    if (choFacility) {
+      const choId = String(choFacility.id);
+      return dispensingRows.filter((r) => !r.facility_id || String(r.facility_id || r.facility?.id || "") === choId);
+    }
+    return dispensingRows;
+  }, [dispensingRows, choFacility]);
+
+  // Central warehouse completed requests to barangays
+  const choWarehouseRequests = useMemo(() => {
+    return requestRows;
+  }, [requestRows]);
+
   // Monthly Inventory Reconciliation Calculation
   const monthlyData = useMemo(() => {
     const res = processMonthlyInventoryData({
       inventoryRows: monthlyInventory,
-      dispensingRows: filteredDispensing,
-      requestRows: filteredRequests,
+      dispensingRows: choWarehouseDispensing,
+      requestRows: choWarehouseRequests,
       otherProgramsRows,
       stockReturnsRows,
+      facilities,
       year: selectedPeriod.year,
       month: selectedPeriod.month,
     });
@@ -506,7 +658,7 @@ export default function ChoReportModule() {
       },
       activeProgramCount: activeProgs.length,
     };
-  }, [monthlyInventory, filteredDispensing, filteredRequests, otherProgramsRows, stockReturnsRows, selectedPeriod]);
+  }, [monthlyInventory, choWarehouseDispensing, choWarehouseRequests, otherProgramsRows, stockReturnsRows, facilities, selectedPeriod]);
 
   // Monthly Dispensing Distribution across the 3 workflows:
   // 1. Medicine Requests (Barangay Health Stations)
@@ -514,14 +666,14 @@ export default function ChoReportModule() {
   // 3. Other Programs (Special Area Allocations & Health Missions)
   const monthlyDistribution = useMemo(() => {
     return aggregateMonthlyDispensingDistribution({
-      dispensingRows: filteredDispensing,
-      requestRows: filteredRequests,
+      dispensingRows: choWarehouseDispensing,
+      requestRows: choWarehouseRequests,
       otherProgramsRows,
-      inventoryRows: filteredInventory,
+      inventoryRows: monthlyInventory,
       year: selectedPeriod.year,
       month: selectedPeriod.month,
     });
-  }, [filteredDispensing, filteredRequests, otherProgramsRows, filteredInventory, selectedPeriod]);
+  }, [choWarehouseDispensing, choWarehouseRequests, otherProgramsRows, monthlyInventory, selectedPeriod]);
 
   // Export handlers
   const handleExportRis = async () => {
@@ -531,6 +683,8 @@ export default function ChoReportModule() {
         dispensingRows: filteredDispensing,
         requestRows: filteredRequests,
         selectedDate,
+        facilityName: isChoSelected || selectedFacilityId === "ALL" ? "VICENTE MENDIOLA CENTER FOR HEALTH" : selectedFacility?.facility_name,
+        facilityId: isChoSelected ? choFacility?.id : (selectedFacilityId !== "ALL" ? selectedFacilityId : null),
       });
     } catch (err) {
       console.error("Export RIS failed:", err);
@@ -542,12 +696,22 @@ export default function ChoReportModule() {
   const handleExportInventory = async () => {
     setIsExporting(true);
     try {
+      const latestSnapshotProgs = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
+      const mergedProgs = [...otherProgramsRows];
+      const existingProgIds = new Set(otherProgramsRows.map((p) => String(p.id)));
+      latestSnapshotProgs.forEach((p) => {
+        if (!existingProgIds.has(String(p.id))) {
+          mergedProgs.push(p);
+        }
+      });
+
       await exportMonthlyInventoryExcel({
         inventoryRows: monthlyInventory,
-        dispensingRows: filteredDispensing,
-        requestRows: filteredRequests,
-        otherProgramsRows,
+        dispensingRows: choWarehouseDispensing,
+        requestRows: choWarehouseRequests,
+        otherProgramsRows: mergedProgs,
         stockReturnsRows,
+        facilities,
         year: selectedPeriod.year,
         month: selectedPeriod.month,
         facilityName: "VMCH MEDICINE SUPPLIES",
@@ -556,6 +720,61 @@ export default function ChoReportModule() {
       });
     } catch (err) {
       console.error("Export Monthly Inventory failed:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportDetailedInventory = async () => {
+    setIsExporting(true);
+    try {
+      const today = new Date();
+      let mode = "recent";
+      let expYear = selectedPeriod.year;
+      let expMonth = selectedPeriod.month;
+      let expDate = today;
+
+      const isPastMonth =
+        selectedPeriod.year < today.getFullYear() ||
+        (selectedPeriod.year === today.getFullYear() && selectedPeriod.month < today.getMonth() + 1);
+
+      if (isPastMonth) {
+        mode = "monthly";
+        expYear = selectedPeriod.year;
+        expMonth = selectedPeriod.month;
+        expDate = new Date(selectedPeriod.year, selectedPeriod.month - 1, 1);
+      } else {
+        // Current month (e.g. November): use recent template addressing "as of [today]"
+        mode = "recent";
+        expYear = today.getFullYear();
+        expMonth = today.getMonth() + 1;
+        expDate = today;
+      }
+
+      const latestSnapshotProgs = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
+      const mergedProgs = [...otherProgramsRows];
+      const existingProgIds = new Set(otherProgramsRows.map((p) => String(p.id)));
+      latestSnapshotProgs.forEach((p) => {
+        if (!existingProgIds.has(String(p.id))) {
+          mergedProgs.push(p);
+        }
+      });
+
+      await exportDetailedInventoryExcel({
+        inventoryRows: monthlyInventory,
+        dispensingRows: choWarehouseDispensing,
+        requestRows: choWarehouseRequests,
+        stockReturnsRows,
+        otherProgramsRows: mergedProgs,
+        facilities,
+        medicines: getSnapshot(STORAGE_KEYS.MEDICINES, []),
+        mode,
+        selectedDate: expDate,
+        year: expYear,
+        month: expMonth,
+      });
+    } catch (err) {
+      console.error("Export Detailed Inventory failed:", err);
     } finally {
       setIsExporting(false);
     }
@@ -578,6 +797,7 @@ export default function ChoReportModule() {
         facilityName={headerFacilityName}
         onExportRis={handleExportRis}
         onExportInventory={handleExportInventory}
+        onExportDetailedInventory={handleExportDetailedInventory}
         isExporting={isExporting}
       />
 

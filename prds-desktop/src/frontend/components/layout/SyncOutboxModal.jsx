@@ -9,7 +9,12 @@ import {
 } from "@backend/sync/outboxQueue";
 import { subscribeSyncStatus, syncAllData } from "@backend/sync/syncManager";
 import { useNetworkStatus } from "@backend/sync/networkStatus";
-import { describeMutation, formatFriendlySyncTime, getFriendlySyncErrorMessage } from "@backend/sync/syncUtils";
+import {
+  describeMutation,
+  formatFriendlySyncTime,
+  formatUserFacingError,
+  getFriendlySyncErrorMessage,
+} from "@backend/sync/syncUtils";
 
 export default function SyncOutboxModal({ isOpen, onClose }) {
   const isOnline = useNetworkStatus();
@@ -133,7 +138,7 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
                 Sync & Outbox Monitor
               </h2>
               <p className="text-xs font-medium text-[#5f6673]">
-                {isOnline ? "Online · Cloud replication active" : "Offline · Local offline storage"}
+                {isOnline ? "Online · Connected to central database" : "Offline · Changes saved on this computer"}
               </p>
             </div>
           </div>
@@ -257,7 +262,7 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
                     Outbox Queue is Empty
                   </h3>
                   <p className="mt-1 max-w-xs text-[11px] text-[#5f6673]">
-                    All local offline actions have been processed and synchronized with the central database.
+                    All offline actions on this device are up to date with the central database.
                   </p>
                 </div>
               ) : (
@@ -266,7 +271,7 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
                     These changes are saved safely on this computer and will push to the central server automatically.
                   </p>
                   {pendingItems.map((item) => {
-                    const { label, description } = describeMutation(item);
+                    const { label, description, details } = describeMutation(item);
                     return (
                       <div
                         key={item.id}
@@ -283,9 +288,11 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
 
                         <div className="mt-2">
                           <p className="text-xs font-bold text-[#0d1117]">{description}</p>
-                          <p className="mt-0.5 text-[10px] text-[#5f6673] font-mono">
-                            Target: {item.target} · Type: {item.mutation_type}
-                          </p>
+                          {details && (
+                            <p className="mt-0.5 text-[11px] text-[#5f6673]">
+                              {details}
+                            </p>
+                          )}
                         </div>
 
                         <div className="mt-3 flex items-center justify-between border-t border-[#eef0f3] pt-2.5">
@@ -316,7 +323,7 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
                     No Failed Outbox Actions
                   </h3>
                   <p className="mt-1 max-w-xs text-[11px] text-[#5f6673]">
-                    No sync errors or rejected mutations. All transactions processed cleanly.
+                    No sync issues detected. All records were processed successfully.
                   </p>
                 </div>
               ) : (
@@ -327,7 +334,7 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
                         {failedItems.length} sync issue{failedItems.length === 1 ? "" : "s"} detected
                       </p>
                       <p className="text-[10px] text-red-700">
-                        Review error reasons below. You can retry items or dismiss them.
+                        Review the reasons below. You can retry items or dismiss them.
                       </p>
                     </div>
                     <button
@@ -341,7 +348,7 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
                   </div>
 
                   {failedItems.map((item) => {
-                    const { label, description } = describeMutation(item);
+                    const { label, description, details } = describeMutation(item);
                     const isItemLoading = actionInProgressId === item.id;
                     return (
                       <div
@@ -359,18 +366,20 @@ export default function SyncOutboxModal({ isOpen, onClose }) {
 
                         <div className="mt-2">
                           <p className="text-xs font-bold text-[#0d1117]">{description}</p>
-                          <p className="mt-0.5 text-[10px] text-[#5f6673] font-mono">
-                            Target: {item.target} · Type: {item.mutation_type}
-                          </p>
+                          {details && (
+                            <p className="mt-0.5 text-[11px] text-[#5f6673]">
+                              {details}
+                            </p>
+                          )}
                         </div>
 
                         {/* Error Message Box */}
                         <div className="mt-2.5 rounded-lg bg-red-50/80 border border-red-100 p-2.5">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-red-800">
-                            Rejection Reason:
+                          <p className="text-[10px] font-bold text-red-800">
+                            Why this couldn't sync:
                           </p>
-                          <p className="mt-0.5 text-xs text-red-900 break-words font-mono">
-                            {item.error_message || "Unknown error during cloud replication."}
+                          <p className="mt-0.5 text-xs text-red-900 break-words font-medium">
+                            {formatUserFacingError(item.error_message, "A server issue prevented this record from syncing. Please retry.")}
                           </p>
                         </div>
 

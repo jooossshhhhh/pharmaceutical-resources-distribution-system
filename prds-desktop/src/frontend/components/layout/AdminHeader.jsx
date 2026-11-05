@@ -38,6 +38,17 @@ export default function AdminHeader({ profile, onSignOut }) {
   const [notifications, setNotifications] = useState([]);
   const [headerError, setHeaderError] = useState("");
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [hasPendingUpdate, setHasPendingUpdate] = useState(() => {
+    return Boolean(typeof window !== "undefined" && window.__PRDS_PENDING_UPDATE__);
+  });
+
+  useEffect(() => {
+    const handleUpdateAvailable = () => {
+      setHasPendingUpdate(true);
+    };
+    window.addEventListener("prds-update-available", handleUpdateAvailable);
+    return () => window.removeEventListener("prds-update-available", handleUpdateAvailable);
+  }, []);
 
   const formattedDate = useMemo(() => {
     return new Intl.DateTimeFormat("en-US", {
@@ -243,15 +254,21 @@ export default function AdminHeader({ profile, onSignOut }) {
             setIsDownloadsOpen(false);
             setIsPreferencesOpen(true);
           }}
-          className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
+          className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition cursor-pointer ${
             isPreferencesOpen
               ? "bg-[#E5EFF1] text-[#1B2B30] ring-1 ring-[#CFDDE0]"
               : "text-[#5B7077] hover:bg-[#E5EFF1] hover:text-[#1B2B30]"
           }`}
           aria-label="Open system preferences"
-          title="System Preferences"
+          title={hasPendingUpdate ? "System Preferences (Software update available!)" : "System Preferences"}
         >
           <SettingsIcon />
+          {hasPendingUpdate && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-2 ring-[#F9FBFB]"></span>
+            </span>
+          )}
         </button>
 
         <div className="hidden h-6 w-px bg-[#CFDDE0] sm:block" />
@@ -300,8 +317,25 @@ export default function AdminHeader({ profile, onSignOut }) {
               notifications.map((notification) => (
                 <article
                   key={notification.id}
-                  className={`rounded-lg px-3 py-3 ${
-                    notification.is_read ? "hover:bg-[#E5EFF1]/50" : "bg-[#E2F3EC]/70"
+                  onClick={() => {
+                    setIsNotificationsOpen(false);
+                    if (!notification.is_read) {
+                      updateOwnNotificationReadStatus(notification.id, true, profile?.id).catch(() => {});
+                    }
+                    const titleLower = (notification.title || "").toLowerCase();
+                    const msgLower = (notification.message || "").toLowerCase();
+                    if (titleLower.includes("program") || msgLower.includes("program") || msgLower.includes("outreach")) {
+                      navigate("/other-programs");
+                    } else if (titleLower.includes("request")) {
+                      navigate("/requests");
+                    } else if (titleLower.includes("transfer")) {
+                      navigate("/stock-returns");
+                    } else {
+                      navigate("/notifications");
+                    }
+                  }}
+                  className={`rounded-lg px-3 py-3 cursor-pointer transition ${
+                    notification.is_read ? "hover:bg-[#E5EFF1]/50" : "bg-[#E2F3EC]/70 hover:bg-[#d6eee3]"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -449,11 +483,14 @@ function NotificationIcon({ title }) {
   const normalizedTitle = title?.toLowerCase() || "";
   const isRequest = normalizedTitle.includes("request");
   const isTransfer = normalizedTitle.includes("transfer");
+  const isProgram = normalizedTitle.includes("program") || normalizedTitle.includes("outreach");
   const tone = isTransfer
     ? "bg-emerald-100 text-emerald-600"
     : isRequest
       ? "bg-orange-100 text-orange-600"
-      : "bg-red-50 text-red-500";
+      : isProgram
+        ? "bg-amber-100 text-amber-700"
+        : "bg-red-50 text-red-500";
 
   return (
     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone}`}>
@@ -467,6 +504,11 @@ function NotificationIcon({ title }) {
           <>
             <path d="M7 3h8l4 4v14H7V3Z" />
             <path d="M14 3v5h5M10 13h6M10 17h4" />
+          </>
+        ) : isProgram ? (
+          <>
+            <path d="M8 2v4M16 2v4M3 10h18" />
+            <rect x="3" y="4" width="18" height="18" rx="2" />
           </>
         ) : (
           <>

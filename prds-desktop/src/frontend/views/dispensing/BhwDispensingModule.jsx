@@ -2,14 +2,22 @@ import { useEffect, useState } from "react";
 
 import { useAuth } from "../../context/useAuth";
 import { supabase } from "@backend/client/supabase";
+import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { getSqliteDb, isTauriEnvironment } from "@backend/database/sqliteClient";
 import DispensingLoadingSkeleton from "./DispensingLoadingSkeleton";
 import DispensingWorkbench from "./DispensingWorkbench";
 
 export default function BhwDispensingModule() {
   const { profile } = useAuth();
-  const [facilities, setFacilities] = useState([]);
+  const profileFacilityId = profile?.facility_id || profile?.facility?.id || null;
+  const [facilities, setFacilities] = useState(() => {
+    if (profile?.facility?.id) return [profile.facility];
+    if (!profileFacilityId) return [];
+    const cached = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+    const match = (cached || []).find((f) => String(f.id) === String(profileFacilityId));
+    return match ? [match] : [{ id: profileFacilityId }];
+  });
   const [error, setError] = useState("");
-  const profileFacilityId = profile?.facility_id;
 
   useEffect(() => {
     let cancelled = false;
@@ -20,6 +28,26 @@ export default function BhwDispensingModule() {
         return;
       }
 
+      setError("");
+
+      if (profile?.facility?.id && !cancelled) {
+        setFacilities([profile.facility]);
+      } else {
+        const cached = getSnapshot(STORAGE_KEYS.FACILITIES, []);
+        const cachedMatch = (cached || []).find((f) => String(f.id) === String(profileFacilityId));
+        if (cachedMatch && !cancelled) {
+          setFacilities([cachedMatch]);
+        } else if (isTauriEnvironment()) {
+          try {
+            const db = await getSqliteDb();
+            const rows = await db.select("SELECT * FROM facilities WHERE id = ?", [profileFacilityId]);
+            if (!cancelled && Array.isArray(rows) && rows.length > 0) {
+              setFacilities([rows[0]]);
+            }
+          } catch {}
+        }
+      }
+
       try {
         const { data, error: facilityError } = await supabase
           .from("facilities")
@@ -27,17 +55,11 @@ export default function BhwDispensingModule() {
           .eq("id", profileFacilityId)
           .single();
 
-        if (facilityError) {
-          throw facilityError;
+        if (!facilityError && data && !cancelled) {
+          setFacilities([data]);
         }
-
-        if (!cancelled) {
-          setFacilities(data ? [data] : []);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError.message || "Unable to load your facility.");
-        }
+      } catch {
+        // Local facility fallback already resolved above
       }
     };
 
@@ -49,13 +71,13 @@ export default function BhwDispensingModule() {
       cancelled = true;
       window.clearTimeout(timerId);
     };
-  }, [profileFacilityId]);
+  }, [profileFacilityId, profile?.facility]);
 
   if (error) {
     return <DispensingLoadingSkeleton error={error} />;
   }
 
-  if (facilities.length === 0) {
+  if (facilities.length === 0 && !profileFacilityId) {
     return <DispensingLoadingSkeleton />;
   }
 

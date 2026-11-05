@@ -258,3 +258,86 @@ test("getOutboxEntries, retryMutation, and dismissMutation manage individual out
   }
 });
 
+test("getAllPendingMutations returns all pending mutations across users while getPendingMutations isolates by user", async () => {
+  const { getAllPendingMutations, getPendingMutations } = await import("./outboxQueue.js");
+
+  const originalStorage = globalThis.localStorage;
+  const stored = new Map([
+    ["prds_desktop_user_session", JSON.stringify({ id: "user-1" })],
+    ["prds_desktop_user_profile", JSON.stringify({ id: "user-1" })],
+    ["prds_offline_outbox_queue", JSON.stringify([
+      { id: "p1-user1", user_id: "user-1", status: "PENDING", target: "patients", created_at: "2026-09-28T10:00:00Z" },
+      { id: "p2-user2", user_id: "user-2", status: "PENDING", target: "patients", created_at: "2026-09-28T10:05:00Z" },
+      { id: "f1-user1", user_id: "user-1", status: "FAILED", target: "patients", created_at: "2026-09-28T10:10:00Z" },
+      { id: "s1-user2", user_id: "user-2", status: "SYNCED", target: "patients", created_at: "2026-09-28T10:15:00Z" },
+    ])],
+  ]);
+
+  globalThis.localStorage = {
+    getItem: (key) => stored.get(key) || null,
+    setItem: (key, value) => stored.set(key, value),
+    get length() { return stored.size; },
+    key: (index) => [...stored.keys()][index] || null,
+  };
+
+  try {
+    const user1Pending = await getPendingMutations("user-1");
+    assert.equal(user1Pending.length, 1);
+    assert.equal(user1Pending[0].id, "p1-user1");
+
+    const user2Pending = await getPendingMutations("user-2");
+    assert.equal(user2Pending.length, 1);
+    assert.equal(user2Pending[0].id, "p2-user2");
+
+    const allPending = await getAllPendingMutations();
+    assert.equal(allPending.length, 2);
+    assert.deepEqual(allPending.map((item) => item.id), ["p1-user1", "p2-user2"]);
+  } finally {
+    globalThis.localStorage = originalStorage;
+  }
+});
+
+test("user queue isolation ensures BHW session never sees or reprocesses CHO mutations", async () => {
+  const { getPendingMutations, getOutboxEntries } = await import("./outboxQueue.js");
+
+  const originalStorage = globalThis.localStorage;
+  const stored = new Map([
+    ["prds_desktop_user_session", JSON.stringify({ id: "bhw-user-1" })],
+    ["prds_desktop_user_profile", JSON.stringify({ id: "bhw-user-1" })],
+    ["prds_offline_outbox_queue", JSON.stringify([
+      { id: "cho-mut-1", user_id: "cho-user-1", status: "PENDING", target: "save_other_program", created_at: "2026-11-02T10:00:00Z" },
+      { id: "bhw-mut-1", user_id: "bhw-user-1", status: "PENDING", target: "medicine_dispensing", created_at: "2026-11-02T10:05:00Z" },
+    ])],
+  ]);
+
+  globalThis.localStorage = {
+    getItem: (key) => stored.get(key) || null,
+    setItem: (key, value) => stored.set(key, value),
+    get length() { return stored.size; },
+    key: (index) => [...stored.keys()][index] || null,
+  };
+
+  try {
+    // When BHW is logged in:
+    const bhwPending = await getPendingMutations("bhw-user-1");
+    assert.equal(bhwPending.length, 1);
+    assert.equal(bhwPending[0].id, "bhw-mut-1");
+
+    const bhwOutbox = await getOutboxEntries("bhw-user-1");
+    assert.equal(bhwOutbox.length, 1);
+    assert.equal(bhwOutbox[0].id, "bhw-mut-1");
+
+    // CHO pending items are isolated and never returned for BHW:
+    const choPendingForBhw = bhwPending.filter((item) => item.user_id === "cho-user-1");
+    assert.equal(choPendingForBhw.length, 0);
+
+    // When CHO is logged in:
+    const choPending = await getPendingMutations("cho-user-1");
+    assert.equal(choPending.length, 1);
+    assert.equal(choPending[0].id, "cho-mut-1");
+  } finally {
+    globalThis.localStorage = originalStorage;
+  }
+});
+
+

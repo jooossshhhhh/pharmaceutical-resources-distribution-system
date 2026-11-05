@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
   USER_PROFILE: "prds_desktop_user_profile",
   DASHBOARD: "prds_snapshot_dashboard",
   INVENTORY: "prds_snapshot_inventory",
+  THRESHOLDS: "prds_snapshot_thresholds",
   FACILITIES: "prds_snapshot_facilities",
   MEDICINES: "prds_snapshot_medicines",
   SUPPLIERS: "prds_snapshot_suppliers",
@@ -234,11 +235,15 @@ export async function clearUserSession() {
       .filter((key) => key !== STORAGE_KEYS.TERMINAL_PASSCODES)
       .forEach((key) => localStorage.removeItem(key));
 
-    // Clear active Supabase auth token keys from localStorage
+    // Clear active Supabase auth token keys and sync watermarks from localStorage
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
+      if (
+        key &&
+        ((key.startsWith("sb-") && key.endsWith("-auth-token")) ||
+          key.startsWith("prds_watermark_"))
+      ) {
         keysToRemove.push(key);
       }
     }
@@ -252,8 +257,8 @@ export async function clearUserSession() {
     try {
       await initSqliteSchema();
       const db = await getSqliteDb();
-      // Only clear user credentials from metadata, preserving offline mirrored data
-      await db.execute("DELETE FROM sync_metadata WHERE key IN ('cached_user', 'cached_profile')");
+      // Clear user credentials and delta watermarks so the next login reconciles full snapshots cleanly
+      await db.execute("DELETE FROM sync_metadata WHERE key IN ('cached_user', 'cached_profile') OR key LIKE 'watermark_%'");
     } catch (err) {
       console.warn("SQLite user snapshot clear error:", err);
     }
@@ -273,6 +278,7 @@ export async function restoreSnapshotsFromSqlite(facilityId = null, role = null)
       { table: "facilities", key: STORAGE_KEYS.FACILITIES },
       { table: "medicines", key: STORAGE_KEYS.MEDICINES },
       { table: "inventory", key: STORAGE_KEYS.INVENTORY },
+      { table: "facility_medicine_thresholds", key: STORAGE_KEYS.THRESHOLDS },
       { table: "patients", key: STORAGE_KEYS.PATIENTS },
       { table: "dispensing_records", key: STORAGE_KEYS.DISPENSING },
       { table: "requests", key: STORAGE_KEYS.REQUESTS },
@@ -288,11 +294,65 @@ export async function restoreSnapshotsFromSqlite(facilityId = null, role = null)
     const cachedData = {};
     for (const { table, key } of tableMapping) {
       try {
-        const rows = await db.select(`SELECT data_json FROM ${table}`);
+        const rows =
+          table === "inventory" || table === "facility_medicine_thresholds"
+            ? await db.select(`SELECT * FROM ${table}`)
+            : await db.select(`SELECT data_json FROM ${table}`);
         if (rows && rows.length > 0) {
-          const parsed = rows.map((r) => (r.data_json ? JSON.parse(r.data_json) : null)).filter(Boolean);
-          localStorage.setItem(key, JSON.stringify(parsed));
-          cachedData[table] = parsed;
+          const medMap =
+            table === "inventory"
+              ? new Map((cachedData.medicines || []).map((m) => [m.id, m]))
+              : null;
+          const facMap =
+            table === "inventory"
+              ? new Map((cachedData.facilities || []).map((f) => [f.id, f]))
+              : null;
+          const parsed = rows
+            .map((r) => {
+              let item = null;
+              if (r.data_json) {
+                try {
+                  item = JSON.parse(r.data_json);
+                } catch {}
+              }
+              if (table === "facility_medicine_thresholds") {
+                return {
+                  ...(item || {}),
+                  ...r,
+                  is_custom: Boolean(r.is_custom),
+                };
+              }
+              if (table === "inventory") {
+                const merged = { ...(item || {}), ...r };
+                delete merged.data_json;
+                if (!merged.medicine && merged.medicine_id && medMap) {
+                  merged.medicine = medMap.get(merged.medicine_id) || null;
+                }
+                if (!merged.facility && merged.facility_id && facMap) {
+                  merged.facility = facMap.get(merged.facility_id) || null;
+                }
+                return merged.id ? merged : null;
+              }
+              return item;
+            })
+            .filter(Boolean);
+          const isBhwScoped =
+            role === "BHW" &&
+            Boolean(facilityId) &&
+            [
+              "inventory",
+              "facility_medicine_thresholds",
+              "patients",
+              "dispensing_records",
+              "requests",
+              "stock_returns",
+              "forecasting",
+            ].includes(table);
+          const scopedRows = isBhwScoped
+            ? parsed.filter((item) => !item.facility_id || item.facility_id === facilityId)
+            : parsed;
+          localStorage.setItem(key, JSON.stringify(scopedRows));
+          cachedData[table] = scopedRows;
         } else {
           localStorage.setItem(key, JSON.stringify([]));
           cachedData[table] = [];
@@ -315,6 +375,11 @@ export async function restoreSnapshotsFromSqlite(facilityId = null, role = null)
         role,
       });
       localStorage.setItem(STORAGE_KEYS.DASHBOARD, JSON.stringify(dashboard));
+    }
+
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("prds:inventory-changed"));
+      window.dispatchEvent(new CustomEvent("prds:other-programs-changed"));
     }
 
     return true;

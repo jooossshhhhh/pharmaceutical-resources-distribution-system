@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import PaginationControls from "../../components/PaginationControls";
 import ModalShell from "../../components/ModalShell";
 import { usePaginatedRows } from "../../hooks/usePaginatedRows";
-import { getDispensingHistory, getFacilityMedicineStockOverview } from "@backend/services/dispensingService";
+import { getDispensingHistory } from "@backend/services/dispensingService";
 import {
   buildPatientHistoryRows,
   formatDispensingDateTime,
@@ -20,7 +20,6 @@ import {
 } from "@backend/services/patientsService";
 import { getSnapshot, getCachedUserSession, STORAGE_KEYS } from "@backend/database/snapshotStore";
 import {
-  buildPatientDispensingFacilityOptions,
   filterPatientHistoryRows,
   formatPatientHistoryDateFilterLabel,
   formatPatientAge,
@@ -368,27 +367,14 @@ export function PatientViewModal({
     value: "",
   });
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
-  const [manualForm, setManualForm] = useState(() => emptyManualRecordForm(defaultDispensingFacilityId));
-  const [manualError, setManualError] = useState("");
-  const [isSavingManual, setIsSavingManual] = useState(false);
-  const [medicineSearch, setMedicineSearch] = useState("");
-  const [medicineOptions, setMedicineOptions] = useState([]);
-  const [isLoadingMedicines, setIsLoadingMedicines] = useState(false);
-  const [manualStockRows, setManualStockRows] = useState([]);
-  const [isLoadingManualStock, setIsLoadingManualStock] = useState(false);
-
   const patientId = patient?.id;
   const isArchived = archiveMode === "archived" || Boolean(patient?.archived_at);
-  const manualDispensingFacilities = useMemo(
-    () =>
-      buildPatientDispensingFacilityOptions({
-        defaultFacilityId: defaultDispensingFacilityId,
-        facilities: dispensingFacilities.length ? dispensingFacilities : facilities,
-        patient,
-      }),
-    [defaultDispensingFacilityId, dispensingFacilities, facilities, patient]
-  );
-  const defaultManualFacilityId = manualDispensingFacilities[0]?.id || "";
+  const patientFacilityId = patient?.facility_id || patient?.facility?.id || defaultDispensingFacilityId;
+  const [manualForm, setManualForm] = useState(() => emptyManualRecordForm(patientFacilityId));
+  const [manualError, setManualError] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const [medicineOptions, setMedicineOptions] = useState([]);
+  const [isLoadingMedicines, setIsLoadingMedicines] = useState(false);
 
   const loadClaims = useCallback(async () => {
     if (!patientId) {
@@ -409,12 +395,12 @@ export function PatientViewModal({
   }, [patientId]);
 
   useEffect(() => {
-    setManualForm(emptyManualRecordForm(defaultManualFacilityId));
+    setManualForm(emptyManualRecordForm(patientFacilityId));
     setViewMode("details");
     setManualError("");
     setHistoryDateFilter({ end: "", mode: PATIENT_HISTORY_DATE_MODES.all, start: "", value: "" });
     setIsDateFilterOpen(false);
-  }, [patientId]);
+  }, [patientId, patientFacilityId]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -435,46 +421,6 @@ export function PatientViewModal({
       .catch((error) => setManualError(error.message || "Unable to load medicines."))
       .finally(() => setIsLoadingMedicines(false));
   }, [canAddManualRecord, isLoadingMedicines, medicineOptions.length, viewMode]);
-
-  useEffect(() => {
-    if (
-      viewMode !== "add" ||
-      manualForm.record_type !== PATIENT_MANUAL_RECORD_TYPES.barangayLog ||
-      !manualForm.facility_id ||
-      !manualForm.medicine_id
-    ) {
-      setManualStockRows([]);
-      return;
-    }
-
-    let isCurrent = true;
-    setIsLoadingManualStock(true);
-
-    getFacilityMedicineStockOverview({
-      facilityId: manualForm.facility_id,
-      medicineIds: [manualForm.medicine_id],
-    })
-      .then((rows) => {
-        if (isCurrent) {
-          setManualStockRows(rows);
-        }
-      })
-      .catch((error) => {
-        if (isCurrent) {
-          setManualStockRows([]);
-          setManualError(error.message || "Unable to load facility stock.");
-        }
-      })
-      .finally(() => {
-        if (isCurrent) {
-          setIsLoadingManualStock(false);
-        }
-      });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [manualForm.facility_id, manualForm.medicine_id, manualForm.record_type, viewMode]);
 
   const transactions = useMemo(
     () => sortTransactions(groupHistoryByTransaction(claims), "newest"),
@@ -504,27 +450,6 @@ export function PatientViewModal({
     totalPages: historyTotalPages,
   } = usePaginatedRows(filteredHistoryRows, 10);
 
-  const filteredMedicineOptions = useMemo(() => {
-    const term = medicineSearch.trim().toLowerCase();
-
-    if (!term) {
-      return medicineOptions;
-    }
-
-    return medicineOptions.filter((medicine) =>
-      [medicine.generic_name, medicine.brand_name, medicine.dosage, medicine.unit_of_measure]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(term)
-    );
-  }, [medicineOptions, medicineSearch]);
-
-  const manualAvailableQuantity = useMemo(
-    () => manualStockRows.reduce((total, row) => total + Number(row.quantity || 0), 0),
-    [manualStockRows]
-  );
-
   const handleManualFieldChange = (event) => {
     const { name, value } = event.target;
     setManualForm((current) => ({ ...current, [name]: value }));
@@ -537,18 +462,21 @@ export function PatientViewModal({
 
   const openAddRecord = () => {
     setManualError("");
-    setManualForm(emptyManualRecordForm(defaultManualFacilityId));
+    setManualForm(emptyManualRecordForm(patientFacilityId));
     setViewMode("add");
   };
 
   const saveManualRecord = async (event) => {
     event.preventDefault();
 
-    const validationError = validateManualPatientRecord(manualForm, {
-      availableQuantity:
-        manualForm.record_type === PATIENT_MANUAL_RECORD_TYPES.barangayLog
-          ? manualAvailableQuantity
-          : null,
+    const formToValidate = {
+      ...manualForm,
+      facility_id: manualForm.facility_id || patientFacilityId,
+      needed_quantity: manualForm.needed_quantity || manualForm.quantity,
+    };
+
+    const validationError = validateManualPatientRecord(formToValidate, {
+      availableQuantity: null,
     });
     if (validationError) {
       setManualError(validationError);
@@ -560,21 +488,21 @@ export function PatientViewModal({
 
     try {
       await addPatientManualDispensingRecord({
-        date: manualForm.dispense_date,
-        dispensedBy: manualForm.manual_dispensed_by.trim(),
-        facilityId: manualForm.facility_id,
-        medicineId: manualForm.medicine_id,
-        neededQuantity: manualForm.needed_quantity,
+        date: formToValidate.dispense_date,
+        dispensedBy: formToValidate.manual_dispensed_by.trim(),
+        facilityId: formToValidate.facility_id,
+        medicineId: formToValidate.medicine_id,
+        neededQuantity: formToValidate.needed_quantity,
         patientId,
-        prescribedBy: manualForm.prescribed_by.trim(),
-        recordType: manualForm.record_type,
-        releasedQuantity: manualForm.quantity,
+        prescribedBy: formToValidate.prescribed_by.trim(),
+        recordType: PATIENT_MANUAL_RECORD_TYPES.historyOnly,
+        releasedQuantity: formToValidate.quantity,
       });
       await loadClaims();
-      setManualForm(emptyManualRecordForm(defaultManualFacilityId));
+      setManualForm(emptyManualRecordForm(patientFacilityId));
       setViewMode("history");
     } catch (saveError) {
-      setManualError(saveError.message || "Unable to add manual record.");
+      setManualError(saveError.message || "Unable to add dispensing record.");
     } finally {
       setIsSavingManual(false);
     }
@@ -595,7 +523,7 @@ export function PatientViewModal({
         <div className="flex items-start justify-between gap-4 border-b border-[#CFDDE0] bg-[#EBF3F5] px-5 py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#1F4E5A]">
-              {viewMode === "history" ? "Patient History" : viewMode === "add" ? "Manual Record" : formatPatientCode(patient.patient_code)}
+              {viewMode === "history" ? "Patient History" : viewMode === "add" ? "Dispensing Record" : formatPatientCode(patient.patient_code)}
             </p>
             <h2 id="patient-view-modal-title" className="mt-1 truncate text-xl font-bold text-[#1B2B30]">
               {formatPatientName(patient)}
@@ -952,46 +880,24 @@ export function PatientViewModal({
           )}
 
           {viewMode === "add" && (
-            <form onSubmit={saveManualRecord} className="rounded-xl border border-[#d8dadc] bg-white p-4 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-bold text-[#0d1117]">Add Manual Record</h3>
-                  <p className="mt-0.5 text-xs text-[#5f6673]">
-                    Choose history-only for backfiles, or barangay log for submitted weekly dispensing records.
-                  </p>
-                </div>
-                <span className="rounded-full bg-[#eff4ff] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#42474e]">
-                  Dispense ID auto-generated
-                </span>
+            <form onSubmit={saveManualRecord} className="rounded-xl border border-[#CFDDE0] bg-white p-4 shadow-xs">
+              <div className="border-b border-[#E5EFF1] pb-3">
+                <h3 className="text-sm font-bold text-[#1B2B30]">Add Dispensing Record</h3>
+                <p className="mt-0.5 text-xs text-[#5B7077]">
+                  Record manual dispensing entries from the barangay health center records.
+                </p>
               </div>
 
               {manualError && (
-                <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
+                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
                   {manualError}
                 </p>
               )}
 
               <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-                <section className="space-y-4">
-                  <Field label="Record type" required>
-                    <Select name="record_type" value={manualForm.record_type} onChange={handleManualFieldChange}>
-                      <option value={PATIENT_MANUAL_RECORD_TYPES.historyOnly}>History-only record</option>
-                      <option value={PATIENT_MANUAL_RECORD_TYPES.barangayLog}>Barangay dispensing log</option>
-                    </Select>
-                    <p className="mt-1 text-[11px] font-medium text-[#6b7280]">
-                      Barangay logs deduct stock and count toward the patient's monthly medicine claim.
-                    </p>
-                  </Field>
-
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                <section className="space-y-3.5">
+                  <div className="grid gap-3 md:grid-cols-2">
                     <Field label="Medicine" required>
-                      <Input
-                        type="search"
-                        value={medicineSearch}
-                        onChange={(event) => setMedicineSearch(event.target.value)}
-                        placeholder="Search medicine..."
-                        className="mb-2"
-                      />
                       <Select
                         name="medicine_id"
                         value={manualForm.medicine_id}
@@ -999,9 +905,9 @@ export function PatientViewModal({
                         disabled={isLoadingMedicines}
                       >
                         <option value="">{isLoadingMedicines ? "Loading medicines..." : "Select medicine"}</option>
-                        {filteredMedicineOptions.map((medicine) => (
+                        {medicineOptions.map((medicine) => (
                           <option key={medicine.id} value={medicine.id}>
-                            {getMedicineLabel(medicine)} - {medicine.brand_name || medicine.unit_of_measure}
+                            {getMedicineLabel(medicine)} {medicine.brand_name ? `(${medicine.brand_name})` : ""} - {medicine.unit_of_measure}
                           </option>
                         ))}
                       </Select>
@@ -1018,22 +924,30 @@ export function PatientViewModal({
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2">
-                    <Field label="Needed quantity" required>
-                      <Input
-                        min="1"
-                        name="needed_quantity"
-                        onChange={handleManualFieldChange}
-                        type="number"
-                        value={manualForm.needed_quantity}
-                      />
-                    </Field>
-                    <Field label="Released quantity" required>
+                    <Field label="Quantity" required>
                       <Input
                         min="1"
                         name="quantity"
-                        onChange={handleManualFieldChange}
+                        onChange={(event) => {
+                          const val = event.target.value;
+                          setManualForm((curr) => ({
+                            ...curr,
+                            quantity: val,
+                            needed_quantity: val,
+                          }));
+                        }}
+                        placeholder="e.g. 30"
                         type="number"
                         value={manualForm.quantity}
+                      />
+                    </Field>
+                    <Field label="Dispensing Facility">
+                      <Input
+                        type="text"
+                        readOnly
+                        disabled
+                        value={patient?.facility?.facility_name || "Patient's Barangay Health Center"}
+                        className="cursor-default bg-[#F4F8F9] font-medium text-[#1B2B30]"
                       />
                     </Field>
                   </div>
@@ -1043,7 +957,7 @@ export function PatientViewModal({
                       <Input
                         name="manual_dispensed_by"
                         onChange={handleManualFieldChange}
-                        placeholder="Staff name from past record"
+                        placeholder="Staff name from logbook"
                         value={manualForm.manual_dispensed_by}
                       />
                     </Field>
@@ -1056,43 +970,13 @@ export function PatientViewModal({
                       />
                     </Field>
                   </div>
-
-                  <Field label="Dispensing facility" required>
-                    <Select name="facility_id" value={manualForm.facility_id} onChange={handleManualFieldChange}>
-                      <option value="">Select facility</option>
-                      {manualDispensingFacilities.map((facility) => (
-                        <option key={facility.id} value={facility.id}>
-                          {facility.facility_name}
-                        </option>
-                      ))}
-                    </Select>
-                    <p className="mt-1 text-[11px] font-medium text-[#6b7280]">
-                      Select the actual dispensing place: CHO/current facility or the patient&apos;s registered health center.
-                    </p>
-                  </Field>
-
-                  {manualForm.record_type === PATIENT_MANUAL_RECORD_TYPES.barangayLog && (
-                    <div className="rounded-xl border border-[#d8dadc] bg-[#f8f9ff] p-3 text-sm">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
-                        Dispensing facility stock
-                      </p>
-                      <p className="mt-1 text-lg font-black text-[#0d1117]">
-                        {isLoadingManualStock ? "Checking..." : `${manualAvailableQuantity.toLocaleString()} quantity available`}
-                      </p>
-                      <p className="mt-1 text-xs text-[#5f6673]">
-                        {manualStockRows.length > 0
-                          ? `${manualStockRows.length} active lot record${manualStockRows.length === 1 ? "" : "s"} found.`
-                          : "No active stock recorded for this medicine and facility."}
-                      </p>
-                    </div>
-                  )}
                 </section>
 
-                <aside className="rounded-xl border border-[#e5e7eb] bg-[#f8f9ff] p-4">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">Patient</p>
-                  <p className="mt-2 text-sm font-bold text-[#0d1117]">{formatPatientName(patient)}</p>
-                  <p className="mt-1 text-xs text-[#5f6673]">{patient.address || "No address on file"}</p>
-                  <div className="mt-4 space-y-3">
+                <aside className="rounded-xl border border-[#CFDDE0] bg-[#F4F8F9] p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#5B7077]">Patient</p>
+                  <p className="mt-1.5 text-sm font-bold text-[#1B2B30]">{formatPatientName(patient)}</p>
+                  <p className="mt-0.5 text-xs text-[#5B7077]">{patient.address || "No address on file"}</p>
+                  <div className="mt-4 space-y-2.5">
                     <DetailLine label="Patient Code" value={formatPatientCode(patient.patient_code)} />
                     <DetailLine label="Registered Facility" value={patient.facility?.facility_name || "-"} />
                     <DetailLine label="Record Type" value={getPatientRecordTypeLabel(manualForm.record_type, true)} />

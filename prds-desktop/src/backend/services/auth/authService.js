@@ -206,6 +206,17 @@ export const signInWithUnifiedPassword = async ({ identifier, password }) => {
     // Cross-identifier bridge: check if this phone number belongs to a profile with a registered email
     const normalizedPhone = normalizePhoneNumber(cleanIdentifier);
     try {
+      const { data: resolvedEmail, error: rpcError } = await supabaseAuth.rpc(
+        "resolve_login_email_by_phone",
+        { p_phone_number: normalizedPhone }
+      );
+      if (!rpcError && resolvedEmail) {
+        return await signInWithEmailPassword({
+          email: String(resolvedEmail).toLowerCase(),
+          password,
+        });
+      }
+
       const { data: profile } = await supabaseAuth
         .from("profiles")
         .select("email")
@@ -358,12 +369,25 @@ export const signInWithPasscode = async ({ identifier, passcode }) => {
     throw new Error("Incorrect passcode. Please check your digits or sign in using Password or OTP.");
   }
 
+  if (
+    account.profile?.status &&
+    ["DEACTIVATED", "REJECTED", "PENDING"].includes(String(account.profile.status).toUpperCase())
+  ) {
+    if (String(account.profile.status).toUpperCase() === "DEACTIVATED") {
+      removeTerminalPasscodeAccount(account.userId || cleanIdentifier);
+      throw new Error("Your PRDS account has been deactivated. Contact an administrator for assistance.");
+    }
+    throw new Error("Your PRDS account is not yet active. Please sign in with Password or OTP.");
+  }
+
   const now = new Date().toISOString();
   recordLoginTimestamp(now, account.user?.id);
 
   const updatedUser = account.user
     ? { ...account.user, last_sign_in_at: now }
     : { last_sign_in_at: now };
+
+  let activeProfile = account.profile;
 
   // Restore Supabase Auth session only when online to prevent network errors from triggering SIGNED_OUT
   if (isCurrentNetworkOnline() && account.session?.refresh_token) {
@@ -375,33 +399,51 @@ export const signInWithPasscode = async ({ identifier, passcode }) => {
         });
 
       if (!refreshError && refreshedData?.session) {
+        if (updatedUser?.id) {
+          const { data: freshProfile } = await supabaseAuth
+            .from("profiles")
+            .select("*")
+            .eq("id", updatedUser.id)
+            .maybeSingle();
+          if (freshProfile) {
+            if (String(freshProfile.status).toUpperCase() === "DEACTIVATED") {
+              removeTerminalPasscodeAccount(updatedUser.id);
+              await signOutCurrentSession(supabaseAuth.auth);
+              throw new Error("Your PRDS account has been deactivated. Contact an administrator for assistance.");
+            }
+            activeProfile = { ...activeProfile, ...freshProfile };
+          }
+        }
         saveTerminalPasscodeAccount({
           user: updatedUser,
-          profile: account.profile,
+          profile: activeProfile,
           passcodeHash: account.passcodeHash,
           session: refreshedData.session,
         });
       }
     } catch (sessionErr) {
+      if (String(sessionErr?.message || "").includes("deactivated")) {
+        throw sessionErr;
+      }
       console.warn("Passcode session restore online fallback:", sessionErr);
     }
   } else {
     saveTerminalPasscodeAccount({
       user: updatedUser,
-      profile: account.profile,
+      profile: activeProfile,
       passcodeHash: account.passcodeHash,
       session: account.session,
     });
   }
 
   // Restore active user session locally with current login time
-  saveUserSession(updatedUser, account.profile);
+  saveUserSession(updatedUser, activeProfile);
   await recordAuthActivity("User Signed In", "Signed in with 6-digit terminal passcode.");
-  await restoreSnapshotsFromSqlite(account.profile?.facility_id, account.profile?.role).catch(() => {});
+  await restoreSnapshotsFromSqlite(activeProfile?.facility_id, activeProfile?.role).catch(() => {});
 
   return {
     user: updatedUser,
-    profile: account.profile,
+    profile: activeProfile,
     session: account.session,
   };
 };
@@ -441,28 +483,7 @@ export const setupUserPasscode = async ({ passcode, existingPasscodeHash = "" })
     throw updateError;
   }
 
-  // 4. Best-effort update to public.profiles table
-  try {
-    const { error: rpcError } = await supabaseAuth.rpc("set_own_passcode_status", {
-      p_has_passcode: true,
-    });
-    if (rpcError) {
-      const user = updateData?.user || currentAuthUser || (await getCurrentAuthUser());
-      if (user?.id) {
-        await supabaseAuth
-          .from("profiles")
-          .update({
-            has_passcode: true,
-            passcode_updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id);
-      }
-    }
-  } catch (err) {
-    console.warn("Profiles table passcode status update skipped/fallback:", err?.message || err);
-  }
-
-  // 5. Immediately persist to local session cache and terminal registry
+  // 4. Immediately persist to local session cache and terminal registry
   const cached = getCachedUserSession();
   const activeUser = updateData?.user || currentAuthUser || cached?.user;
   const currentProfile = cached?.profile || {};
@@ -508,28 +529,7 @@ export const removeUserPasscode = async () => {
     throw updateError;
   }
 
-  // 2. Best-effort update to public.profiles table
-  try {
-    const { error: rpcError } = await supabaseAuth.rpc("set_own_passcode_status", {
-      p_has_passcode: false,
-    });
-    if (rpcError) {
-      const user = updateData?.user || (await getCurrentAuthUser());
-      if (user?.id) {
-        await supabaseAuth
-          .from("profiles")
-          .update({
-            has_passcode: false,
-            passcode_updated_at: null,
-          })
-          .eq("id", user.id);
-      }
-    }
-  } catch (err) {
-    console.warn("Profiles table passcode removal skipped/fallback:", err?.message || err);
-  }
-
-  // 3. Update local session cache and remove from terminal passcode registry
+  // 2. Update local session cache and remove from terminal passcode registry
   const cached = getCachedUserSession();
   const activeUser = updateData?.user || cached?.user;
   const currentProfile = cached?.profile || {};

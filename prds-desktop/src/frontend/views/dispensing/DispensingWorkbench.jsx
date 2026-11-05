@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import AdminShell from "../../components/layout/AdminShell";
+import { ModalContainerContext } from "../../context/ModalContainerContext";
 import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import { supabase } from "@backend/client/supabase";
 import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { getSqliteDb, isTauriEnvironment } from "@backend/database/sqliteClient";
 import { isChoFacility } from "@shared/utils/facilityUtils";
 import {
   calculateAge,
@@ -16,7 +18,9 @@ import {
   completeWalkInDispensing,
   getClaimedPatientIds,
   getFacilityMedicineStockOverview,
+  getLocalWalkInInventory,
   getPatientsMonthlyClaimOverview,
+  getSyncSnapshotWalkInInventory,
   getWalkInInventory,
   searchDispensingPatients,
 } from "@backend/services/dispensingService";
@@ -233,6 +237,8 @@ function ReceiptModal({ onClose, onExport, onViewInHistory, receipt }) {
 
 export default function DispensingWorkbench() {
   const { profile } = useAuth();
+  const modalContext = useContext(ModalContainerContext);
+  const isViewActive = modalContext?.isViewActive ?? true;
   const isBhw = profile?.role === "BHW";
 
   const [facilities, setFacilities] = useState(() => getSnapshot(STORAGE_KEYS.FACILITIES, []));
@@ -242,7 +248,18 @@ export default function DispensingWorkbench() {
     const cached = getSnapshot(STORAGE_KEYS.FACILITIES, []);
     if (cached && cached.length > 0) {
       setFacilities(cached);
+    } else if (isTauriEnvironment()) {
+      getSqliteDb()
+        .then((db) => db.select("SELECT * FROM facilities WHERE status = 'ACTIVE'"))
+        .then((localFacs) => {
+          if (active && localFacs && localFacs.length > 0) {
+            setFacilities(localFacs);
+            saveSnapshot(STORAGE_KEYS.FACILITIES, localFacs);
+          }
+        })
+        .catch(() => {});
     }
+
     supabase
       .from("facilities")
       .select("id, facility_name, facility_code, facility_type, status, address")
@@ -272,29 +289,56 @@ export default function DispensingWorkbench() {
   }, [facilities]);
 
   const profileFacilityId = useMemo(() => {
-    if (profile?.facility_id) return profile.facility_id;
-    return choFacility?.id || null;
-  }, [profile?.facility_id, choFacility?.id]);
+    if (isBhw) {
+      return profile?.facility_id || profile?.facility?.id || null;
+    }
+    return (
+      choFacility?.id ||
+      (profile?.facility_id && isChoFacility(profile.facility_id) ? profile.facility_id : null) ||
+      (profile?.facility?.id && isChoFacility(profile.facility) ? profile.facility.id : null) ||
+      "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad"
+    );
+  }, [profile?.facility_id, profile?.facility, choFacility?.id, isBhw]);
 
   const currentFacility = useMemo(() => {
+    if (!isBhw) {
+      return (
+        choFacility ||
+        facilities.find((f) => isChoFacility(f)) || {
+          id: "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad",
+          facility_name: "City Health Office - City of Naga",
+          facility_code: "CHO-NAGA",
+          facility_type: "CHO",
+        }
+      );
+    }
     return (
       profile?.facility ||
       facilities.find((f) => f.id === profileFacilityId) ||
       null
     );
-  }, [profile?.facility, facilities, profileFacilityId]);
+  }, [isBhw, choFacility, facilities, profile?.facility, profileFacilityId]);
 
   const isDispensingFromCho = useMemo(() => {
     if (isBhw) return false;
-    return isChoFacility(currentFacility);
-  }, [isBhw, currentFacility]);
+    return true;
+  }, [isBhw]);
 
   // Wizard step
   const [wizardStep, setWizardStep] = useState(1);
   const [activeTab, setActiveTab] = useState("DISPENSE"); // "DISPENSE" | "HISTORY"
 
-  const [inventoryRows, setInventoryRows] = useState([]);
-  const [isLoadingInventory, setIsLoadingInventory] = useState(true);
+  const [inventoryRows, setInventoryRows] = useState(() => {
+    const initialTargetId =
+      profileFacilityId || (!isBhw ? "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad" : null);
+    return initialTargetId ? getSyncSnapshotWalkInInventory(initialTargetId) : [];
+  });
+  const [isLoadingInventory, setIsLoadingInventory] = useState(() => {
+    const initialTargetId =
+      profileFacilityId || (!isBhw ? "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad" : null);
+    const initialRows = initialTargetId ? getSyncSnapshotWalkInInventory(initialTargetId) : [];
+    return initialRows.length === 0;
+  });
   const [error, setError] = useState("");
 
   // Patient search state
@@ -337,6 +381,52 @@ export default function DispensingWorkbench() {
   const [receipt, setReceipt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [otherPrograms, setOtherPrograms] = useState(() =>
+    getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, [])
+  );
+
+  useEffect(() => {
+    const handleProgramsChanged = () => {
+      setOtherPrograms(getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []));
+    };
+    window.addEventListener("prds:other-programs-changed", handleProgramsChanged);
+    return () => window.removeEventListener("prds:other-programs-changed", handleProgramsChanged);
+  }, []);
+
+  const reservedStockByMedicine = useMemo(() => {
+    if (!isDispensingFromCho) return new Map();
+    const map = new Map();
+    (otherPrograms || []).forEach((program) => {
+      const isActiveReservation =
+        program &&
+        program.status !== "COMPLETED" &&
+        program.status !== "CANCELLED" &&
+        !program.completed_at &&
+        !program.cancelled_at;
+
+      if (isActiveReservation && Array.isArray(program.medicines)) {
+        program.medicines.forEach((m) => {
+          if (m?.medicine_id) {
+            if (m.quantity_allocated !== undefined && m.quantity_allocated !== null && Number(m.quantity_allocated) <= 0) {
+              return;
+            }
+            const current = map.get(m.medicine_id) || 0;
+            const qty = Number(
+              (m.quantity_allocated > 0 ? m.quantity_allocated : null) ??
+              m.quantity_used ??
+              m.quantity ??
+              0
+            );
+            if (qty > 0) {
+              map.set(m.medicine_id, current + qty);
+            }
+          }
+        });
+      }
+    });
+    return map;
+  }, [otherPrograms, isDispensingFromCho]);
+
   const location = useLocation();
 
   useEffect(() => {
@@ -357,23 +447,64 @@ export default function DispensingWorkbench() {
   );
 
   const loadInventory = useCallback(async () => {
-    if (!profileFacilityId) {
+    const targetFacilityId =
+      profileFacilityId ||
+      (!isBhw ? choFacility?.id || "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad" : null);
+
+    if (!targetFacilityId) {
       setIsLoadingInventory(false);
       return;
     }
 
-    setIsLoadingInventory(true);
+    // Phase 1a: Instant synchronous snapshot hydration (0ms)
+    let localBaseline = getSyncSnapshotWalkInInventory(targetFacilityId);
+    if (localBaseline.length > 0) {
+      setInventoryRows(localBaseline);
+      setIsLoadingInventory(false);
+    } else {
+      setIsLoadingInventory(true);
+    }
 
+    // Phase 1b: Fast local SQLite + snapshot hydration (<10ms, zero network calls)
     try {
-      const rows = await getWalkInInventory(profileFacilityId);
-      setInventoryRows(rows);
+      const fastLocalRows = await getLocalWalkInInventory(targetFacilityId);
+      if (Array.isArray(fastLocalRows) && fastLocalRows.length > 0) {
+        localBaseline = fastLocalRows;
+        setInventoryRows(fastLocalRows);
+        setIsLoadingInventory(false);
+      }
+    } catch {}
+
+    // Phase 2: Online + reconciled inventory refresh
+    try {
+      const rows = await getWalkInInventory(targetFacilityId);
+      if (Array.isArray(rows) && rows.length > 0) {
+        setInventoryRows(rows);
+      } else if (localBaseline.length > 0) {
+        setInventoryRows(localBaseline);
+      } else {
+        const postSyncRows = getSyncSnapshotWalkInInventory(targetFacilityId);
+        setInventoryRows(postSyncRows);
+      }
       setError("");
     } catch (loadError) {
-      setError(loadError.message || "Unable to load your facility inventory.");
+      if (localBaseline.length > 0) {
+        setInventoryRows(localBaseline);
+        setError("");
+      } else {
+        const postSyncRows = getSyncSnapshotWalkInInventory(targetFacilityId);
+        if (postSyncRows.length > 0) {
+          setInventoryRows(postSyncRows);
+          setError("");
+        } else {
+          setInventoryRows([]);
+          setError(loadError.message || "Unable to load your facility inventory.");
+        }
+      }
     } finally {
       setIsLoadingInventory(false);
     }
-  }, [profileFacilityId]);
+  }, [profileFacilityId, isBhw, choFacility?.id]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -385,15 +516,22 @@ export default function DispensingWorkbench() {
     };
   }, [loadInventory]);
 
-  // Keep inventory fresh when arriving at the Medicines selection step
+  // Keep inventory fresh when arriving at the Medicines selection step or when KeepAlive route activates
   useEffect(() => {
-    if (wizardStep === 2) {
+    if (wizardStep === 2 || isViewActive || location.pathname.startsWith("/dispensing")) {
       loadInventory();
     }
-  }, [wizardStep, loadInventory]);
+  }, [wizardStep, isViewActive, location.pathname, activeTab, loadInventory]);
 
   // Sync with live inventory changes across facilities/modules
   useEffect(() => {
+    const handleInventoryChange = () => {
+      loadInventory();
+    };
+    window.addEventListener("prds:inventory-changed", handleInventoryChange);
+    window.addEventListener("prds:inventory-updated-by-module", handleInventoryChange);
+    window.addEventListener("prds:stock-returns-changed", handleInventoryChange);
+
     const channel = supabase
       .channel("dispensing-inventory-sync")
       .on(
@@ -406,6 +544,9 @@ export default function DispensingWorkbench() {
       .subscribe();
 
     return () => {
+      window.removeEventListener("prds:inventory-changed", handleInventoryChange);
+      window.removeEventListener("prds:inventory-updated-by-module", handleInventoryChange);
+      window.removeEventListener("prds:stock-returns-changed", handleInventoryChange);
       supabase.removeChannel(channel);
     };
   }, [loadInventory]);
@@ -470,23 +611,30 @@ export default function DispensingWorkbench() {
     return () => window.clearTimeout(timerId);
   }, [wizardStep]);
 
-  // All eligible available non-expired stock in facility inventory
-  const allAvailableMedicines = useMemo(
-    () => buildMedicineOptions(inventoryRows, ""),
-    [inventoryRows]
-  );
+  // All eligible available non-expired stock in facility inventory (with program reservations deducted)
+  const allAvailableMedicines = useMemo(() => {
+    let rows = inventoryRows;
+    if (!rows || rows.length === 0) {
+      const targetId =
+        profileFacilityId || (!isBhw ? choFacility?.id || "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad" : null);
+      if (targetId) {
+        rows = getSyncSnapshotWalkInInventory(targetId);
+      }
+    }
+    return buildMedicineOptions(rows || [], "", reservedStockByMedicine);
+  }, [inventoryRows, profileFacilityId, isBhw, choFacility?.id, reservedStockByMedicine]);
 
   const optionsById = useMemo(
     () => new Map(allAvailableMedicines.map((option) => [option.medicine_id, option])),
     [allAvailableMedicines]
   );
 
-  // Only display medicine cards when the user is actively searching
+  // Displays all available facility medicines by default, or filters dynamically when searching
   const isSearchActive = Boolean(medicineKeyword.trim());
 
   const displayedMedicineOptions = useMemo(() => {
     if (!isSearchActive) {
-      return [];
+      return allAvailableMedicines;
     }
 
     return filterAndSortMedicineOptions({
@@ -525,6 +673,34 @@ export default function DispensingWorkbench() {
     [cart, allAvailableMedicines, optionsById]
   );
 
+  // Synchronize cart release quantities when inventory is loaded or refreshed for active partial claims
+  useEffect(() => {
+    if (cart.length > 0 && inventoryRows.length > 0) {
+      const availableMap = new Map(
+        buildMedicineOptions(inventoryRows, "", reservedStockByMedicine).map((opt) => [
+          opt.medicine_id,
+          opt.total_quantity,
+        ])
+      );
+      setCart((currentCart) => {
+        let changed = false;
+        const updated = currentCart.map((line) => {
+          if (!line.is_existing_claim) return line;
+          const stock = availableMap.get(line.medicine_id) || 0;
+          if (stock > 0 && (!line.quantity || line.quantity <= 1)) {
+            const desiredQty = Math.min(Number(line.remaining_quantity || 1), stock);
+            if (desiredQty !== line.quantity) {
+              changed = true;
+              return { ...line, quantity: desiredQty };
+            }
+          }
+          return line;
+        });
+        return changed ? updated : currentCart;
+      });
+    }
+  }, [inventoryRows, reservedStockByMedicine]);
+
   const selectedClaimed = selectedPatient ? claimedIds.has(selectedPatient.id) : false;
 
   const unreleasedMedicineIds = useMemo(
@@ -553,6 +729,7 @@ export default function DispensingWorkbench() {
 
   const referralStockByMedicineId = useMemo(() => {
     const stock = new Map();
+    const isReferralToCho = isChoFacility(defaultReferralFacility);
 
     referralStockRows.forEach((row) => {
       if (!stock.has(row.medicine_id)) {
@@ -579,8 +756,15 @@ export default function DispensingWorkbench() {
           : entry.nearestExpiration;
     });
 
+    if (isReferralToCho && reservedStockByMedicine.size > 0) {
+      stock.forEach((entry, medId) => {
+        const reserved = reservedStockByMedicine.get(medId) || 0;
+        entry.totalUnits = Math.max(0, entry.totalUnits - reserved);
+      });
+    }
+
     return stock;
-  }, [referralStockRows]);
+  }, [referralStockRows, defaultReferralFacility, reservedStockByMedicine]);
 
   const stockModalLine = useMemo(
     () => cartLines.find((line) => line.medicine_id === stockModalMedicineId) || null,
@@ -668,9 +852,48 @@ export default function DispensingWorkbench() {
     setActivePatientClaim(overview || null);
 
     if (overview?.hasPartial) {
-      const pendingItems = overview.breakdown.filter((b) => !b.is_completed);
+      const pendingItems = (overview.breakdown || []).filter((b) => !b.is_completed);
+      const targetId = String(profileFacilityId || "").toLowerCase();
+      const cachedMeds = getSnapshot(STORAGE_KEYS.MEDICINES, []);
+      const medMap = new Map((cachedMeds || []).map((m) => [m.id, m]));
+      const effectiveInv =
+        inventoryRows.length > 0
+          ? inventoryRows
+          : (getSnapshot(STORAGE_KEYS.INVENTORY, []) || [])
+              .filter((item) => {
+                if (!item.medicine_id) return false;
+                const rowFacId = String(item.facility_id || "").toLowerCase();
+                if (rowFacId === targetId) return true;
+                if (
+                  isDispensingFromCho &&
+                  (rowFacId === "0b7e2eaa-1072-4fb1-8e14-d6fb46097aad" ||
+                    rowFacId === "cho" ||
+                    rowFacId === "cho-naga" ||
+                    (item.facility && isChoFacility(item.facility)))
+                ) {
+                  return true;
+                }
+                return false;
+              })
+              .map((item) => {
+                if (item.medicine && item.medicine.generic_name && item.medicine.generic_name !== "Medicine") {
+                  return item;
+                }
+                const baseMed = medMap.get(item.medicine_id);
+                return {
+                  ...item,
+                  medicine: baseMed || item.medicine || {
+                    id: item.medicine_id,
+                    generic_name: item.brand_name || "Medicine",
+                    brand_name: item.brand_name || "",
+                    dosage: item.dosage || "",
+                    unit_of_measure: item.unit_of_measure || "unit",
+                    categories: [],
+                  },
+                };
+              });
       const initialCart = pendingItems.map((item) => {
-        const option = buildMedicineOptions(inventoryRows, "").find(
+        const option = buildMedicineOptions(effectiveInv, "", reservedStockByMedicine).find(
           (entry) => entry.medicine_id === item.medicine_id
         );
         const stock = option ? option.total_quantity : 0;
@@ -1354,6 +1577,17 @@ export default function DispensingWorkbench() {
             facilities={facilities}
             facilityId={profileFacilityId}
             isCho={isDispensingFromCho}
+            onVoid={() => {
+              loadInventory();
+              runPatientSearch();
+              if (selectedPatient) {
+                setSelectedPatient(null);
+                setActivePatientClaim(null);
+                setCart([]);
+                setPrescribedBy("");
+                setWizardStep(1);
+              }
+            }}
           />
         ) : (
           <>
@@ -1697,30 +1931,25 @@ export default function DispensingWorkbench() {
                       )}
                     </div>
 
-                    {isLoadingInventory ? (
+                    {isLoadingInventory && allAvailableMedicines.length === 0 ? (
                       <div className="mt-3">
                         <div className="h-40 animate-pulse rounded-xl bg-[#f8f9ff]" />
                         <div role="status" className="sr-only">
                           Loading available medicine stock
                         </div>
                       </div>
-                    ) : !isSearchActive ? (
-                      /* Prompt state when user hasn't typed in search or picked a filter */
+                    ) : allAvailableMedicines.length === 0 ? (
+                      /* Zero stock available in current facility */
                       <div className="mt-3 flex flex-col items-center justify-center rounded-xl border border-dashed border-[#d8dadc] bg-[#f8f9ff]/70 px-4 py-12 text-center">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 shadow-xs mb-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-xs mb-3">
                           <SearchIcon />
                         </div>
-                        <h4 className="text-sm font-bold text-[#0d1117]">Search to view medicines</h4>
+                        <h4 className="text-sm font-bold text-[#0d1117]">No medicines in facility stock</h4>
                         <p className="mt-1 max-w-sm text-xs text-[#5f6673]">
-                          Type a medicine name, brand, dosage, or form above to view available stock and add to the claim.
+                          {isDispensingFromCho
+                            ? "City Health Office has 0 dispensable medicine stock currently available."
+                            : "Your assigned health center has 0 dispensable medicine stock currently available."}
                         </p>
-                        <div className="mt-3.5 inline-flex items-center gap-2 rounded-full border border-[#d8dadc] bg-white px-3 py-1 text-xs text-[#42474e]">
-                          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                          <span>
-                            {allAvailableMedicines.length}{" "}
-                            {allAvailableMedicines.length === 1 ? "medicine" : "medicines"} available in facility stock
-                          </span>
-                        </div>
                       </div>
                     ) : (
                       /* Matching results when search or filter is active */

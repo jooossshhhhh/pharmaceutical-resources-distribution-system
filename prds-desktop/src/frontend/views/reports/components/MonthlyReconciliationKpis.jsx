@@ -35,7 +35,7 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
       {/* 1. Beginning Balance */}
-      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-3.5 shadow-xs hover:border-[#34769B]/40 transition-colors flex flex-col justify-between">
+      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl px-3 py-3.5 shadow-xs hover:border-[#34769B]/40 transition-colors flex flex-col justify-between">
         <div>
           <span className="text-[11px] font-bold tracking-wider text-[#5B7077] uppercase">
             Beginning Balance
@@ -44,14 +44,14 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
             {formatPeso(totalBegVal)}
           </div>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between text-[11px] text-[#5B7077]">
+        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between gap-1.5 whitespace-nowrap text-[10.5px] text-[#5B7077]">
           <span>Opening Stock:</span>
           <strong className="text-[#1B2B30]">{totalBegQty.toLocaleString()} units</strong>
         </div>
       </div>
 
       {/* 2. Additional Stocks / Inflows */}
-      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-3.5 shadow-xs hover:border-[#34769B]/40 transition-colors flex flex-col justify-between">
+      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl px-3 py-3.5 shadow-xs hover:border-[#34769B]/40 transition-colors flex flex-col justify-between">
         <div>
           <span className="text-[11px] font-bold tracking-wider text-[#34769B] uppercase">
             Additions (Inflows)
@@ -60,14 +60,14 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
             {formatPeso(totalAddVal)}
           </div>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between text-[11px] text-[#5B7077]">
-          <span>Procured / DOH:</span>
+        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between gap-1.5 whitespace-nowrap text-[10.5px] text-[#5B7077]">
+          <span>Received:</span>
           <strong className="text-[#34769B] font-semibold">{totalAddQty.toLocaleString()} units</strong>
         </div>
       </div>
 
       {/* 3. Regular Issuances */}
-      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-3.5 shadow-xs hover:border-[#1F4E5A]/40 transition-colors flex flex-col justify-between">
+      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl px-3 py-3.5 shadow-xs hover:border-[#1F4E5A]/40 transition-colors flex flex-col justify-between">
         <div>
           <span className="text-[11px] font-bold tracking-wider text-[#1F4E5A] uppercase">
             Regular Issuances
@@ -76,14 +76,14 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
             {formatPeso(totalIssuedVal)}
           </div>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between text-[11px] text-[#5B7077]">
-          <span>Walk-in + BHW:</span>
+        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between gap-1.5 whitespace-nowrap text-[10.5px] text-[#5B7077]">
+          <span>Dispensed:</span>
           <strong className="text-[#1F4E5A] font-semibold">{totalIssuedQty.toLocaleString()} units</strong>
         </div>
       </div>
 
       {/* 4. Area / Programs Transfer */}
-      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-3.5 shadow-xs hover:border-[#1F4E5A]/30 transition-colors flex flex-col justify-between">
+      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl px-3 py-3.5 shadow-xs hover:border-[#1F4E5A]/30 transition-colors flex flex-col justify-between">
         <div>
           <span className="text-[11px] font-bold tracking-wider text-[#5B7077] uppercase">
             Area / Programs
@@ -92,14 +92,14 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
             {formatPeso(totalProgVal)}
           </div>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between text-[11px] text-[#5B7077]">
-          <span>Outreach Campaigns:</span>
+        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between gap-1.5 whitespace-nowrap text-[10.5px] text-[#5B7077]">
+          <span>Allocated:</span>
           <strong className="text-[#1B2B30] font-semibold">{totalProgQty.toLocaleString()} units</strong>
         </div>
       </div>
 
       {/* 5. Expired Stocks */}
-      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl p-3.5 shadow-xs hover:border-[#D9826B]/40 transition-colors flex flex-col justify-between">
+      <div className="bg-[#F9FBFB] border border-[#CFDDE0] rounded-xl px-3 py-3.5 shadow-xs hover:border-[#D9826B]/40 transition-colors flex flex-col justify-between">
         <div>
           <span className="text-[11px] font-bold tracking-wider text-[#D9826B] uppercase">
             Expired Losses
@@ -108,8 +108,8 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
             {formatPeso(totalExpiredVal)}
           </div>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between text-[11px] text-[#5B7077]">
-          <span>Condemned:</span>
+        <div className="mt-2.5 pt-2 border-t border-[#CFDDE0]/60 flex items-center justify-between gap-1.5 whitespace-nowrap text-[10.5px] text-[#5B7077]">
+          <span>Expired:</span>
           <strong className={totalExpiredQty > 0 ? "text-[#D9826B] font-semibold" : "text-[#5B7077]"}>
             {totalExpiredQty.toLocaleString()} units
           </strong>
@@ -117,7 +117,7 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
       </div>
 
       {/* 6. Remaining Balance (Physical Count on Hand) */}
-      <div className="bg-[#E2F3EC] border border-[#4C9F80]/60 rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
+      <div className="bg-[#E2F3EC] border border-[#4C9F80]/60 rounded-xl px-3 py-3.5 shadow-xs flex flex-col justify-between">
         <div>
           <span className="text-[11px] font-bold tracking-wider text-[#1F4E5A] uppercase">
             Remaining Balance
@@ -126,8 +126,8 @@ export default function MonthlyReconciliationKpis({ monthlyData }) {
             {formatPeso(totalRemVal)}
           </div>
         </div>
-        <div className="mt-2.5 pt-2 border-t border-[#4C9F80]/30 flex items-center justify-between text-[11px] text-[#1F4E5A]">
-          <span>Physical on Hand:</span>
+        <div className="mt-2.5 pt-2 border-t border-[#4C9F80]/30 flex items-center justify-between gap-1.5 whitespace-nowrap text-[10.5px] text-[#1F4E5A]">
+          <span>On Hand Stock:</span>
           <strong className="font-semibold text-[#1F4E5A]">{totalRemQty.toLocaleString()} units</strong>
         </div>
       </div>

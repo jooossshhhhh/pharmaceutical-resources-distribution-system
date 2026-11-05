@@ -527,7 +527,74 @@ const maxDate = (items, key) => {
     .at(-1) || "";
 };
 
-export const buildInventoryMedicineRows = (items = []) => {
+export const computeProgramReservations = (programs = []) => {
+  const reservedByMedicine = new Map();
+  const reservationsByMedicine = new Map();
+
+  (programs || []).forEach((prog) => {
+    const isActiveReservation =
+      prog &&
+      prog.status !== "COMPLETED" &&
+      prog.status !== "CANCELLED" &&
+      !prog.completed_at &&
+      !prog.cancelled_at;
+
+    if (!isActiveReservation) return;
+
+    const programStatus =
+      prog.status === "ONGOING" || Boolean(prog.started_at) ? "ONGOING" : "UPCOMING";
+
+    const medLines = Array.isArray(prog.medicines)
+      ? prog.medicines
+      : Array.isArray(prog.items)
+      ? prog.items
+      : [];
+
+    medLines.forEach((line) => {
+      if (!line?.medicine_id) return;
+      if (line.quantity_allocated !== undefined && line.quantity_allocated !== null && Number(line.quantity_allocated) <= 0) {
+        return;
+      }
+      const medId = line.medicine_id;
+      const qty = Number(
+        (line.quantity_allocated > 0 ? line.quantity_allocated : null) ??
+        line.quantity_used ??
+        line.quantity ??
+        0
+      );
+      if (qty <= 0) return;
+
+      const currentTotal = reservedByMedicine.get(medId) || 0;
+      reservedByMedicine.set(medId, currentTotal + qty);
+
+      const list = reservationsByMedicine.get(medId) || [];
+      list.push({
+        id: `${prog.id}_${line.id || medId}`,
+        program_id: prog.id,
+        program_name: prog.program_name || prog.title || "Program",
+        program_date: prog.program_date || "",
+        program_status: programStatus,
+        started_at: prog.started_at || null,
+        description: prog.description || "",
+        facility_id: prog.facility_id || null,
+        medicine_id: medId,
+        quantity_reserved: qty,
+        medicine: line.medicine || null,
+        status: "RESERVED",
+      });
+      reservationsByMedicine.set(medId, list);
+    });
+  });
+
+  return { reservedByMedicine, reservationsByMedicine };
+};
+
+export const buildInventoryMedicineRows = (items = [], options = {}) => {
+  const {
+    reservedByMedicine = new Map(),
+    reservationsByMedicine = new Map(),
+  } = options instanceof Map ? { reservedByMedicine: options } : options;
+
   const groups = new Map();
 
   items
@@ -564,6 +631,19 @@ export const buildInventoryMedicineRows = (items = []) => {
       nearestLot.medicine?.brand_name ||
       "";
 
+    const medicineId = nearestLot.medicine_id || lots[0]?.medicine_id;
+    const grossQuantity = lots.reduce((sum, lot) => sum + Number(lot.quantity || 0), 0);
+    const reservedQuantity = Number(
+      reservedByMedicine?.get?.(medicineId) ??
+      reservedByMedicine?.[medicineId] ??
+      0
+    );
+    const reservations =
+      reservationsByMedicine?.get?.(medicineId) ??
+      reservationsByMedicine?.[medicineId] ??
+      [];
+    const netDispensableQuantity = Math.max(0, grossQuantity - reservedQuantity);
+
     return {
       ...nearestLot,
       id: key,
@@ -575,7 +655,10 @@ export const buildInventoryMedicineRows = (items = []) => {
       },
       lots: sortedLots,
       lotCount: sortedLots.length,
-      quantity: lots.reduce((sum, lot) => sum + Number(lot.quantity || 0), 0),
+      gross_quantity: grossQuantity,
+      reserved_quantity: reservedQuantity,
+      reservations,
+      quantity: netDispensableQuantity,
       threshold: Math.max(...lots.map((lot) => Number(lot.threshold || 0)), 0),
       expiration_date: nearestLot.expiration_date || "",
       updated_at: maxDate(lots, "updated_at"),

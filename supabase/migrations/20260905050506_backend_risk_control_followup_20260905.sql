@@ -16,29 +16,21 @@ Purpose:
 -- Reporting views are read-only API surfaces.
 revoke insert, update, delete on public.expiring_medicines_view
 from public, anon, authenticated;
-
 revoke insert, update, delete on public.inventory_overview
 from public, anon, authenticated;
-
 revoke insert, update, delete on public.low_stock_view
 from public, anon, authenticated;
-
 revoke insert, update, delete on public.monthly_dispensing_summary
 from public, anon, authenticated;
-
 grant select on public.expiring_medicines_view to authenticated;
 grant select on public.inventory_overview to authenticated;
 grant select on public.low_stock_view to authenticated;
 grant select on public.monthly_dispensing_summary to authenticated;
-
-
 -- Keep avatars public for profile display, but restrict upload size and file types.
 update storage.buckets
    set file_size_limit = 2097152,
        allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']::text[]
  where id = 'avatars';
-
-
 -- Inventory batch edits must come from active CHO pharmacy staff.
 create or replace function public.update_inventory_batch(
   p_inventory_id uuid,
@@ -131,17 +123,12 @@ begin
   return p_inventory_id;
 end;
 $$;
-
 revoke execute on function public.update_inventory_batch(uuid, uuid, integer, integer, text, date, date)
 from public, anon;
-
 grant execute on function public.update_inventory_batch(uuid, uuid, integer, integer, text, date, date)
 to authenticated;
-
-
 -- Advisor cleanup: cache auth.uid() once per statement where safe.
 drop policy if exists "users_can_insert_own_profile" on public.profiles;
-
 create policy "users_can_insert_own_profile"
 on public.profiles
 for insert
@@ -153,10 +140,7 @@ with check (
     and approved_by is null
     and approved_at is null
 );
-
-
 drop policy if exists "create_request_items" on public.medicine_request_items;
-
 create policy "create_request_items"
 on public.medicine_request_items
 for insert
@@ -173,10 +157,7 @@ with check (
           )
     )
 );
-
-
 drop policy if exists "create_transfer_items" on public.stock_transfer_items;
-
 create policy "create_transfer_items"
 on public.stock_transfer_items
 for insert
@@ -193,39 +174,27 @@ with check (
           )
     )
 );
-
-
 drop policy if exists "view_programs" on public.other_programs;
-
 create policy "view_programs"
 on public.other_programs
 for select
 to authenticated
 using ((select auth.uid()) is not null);
-
-
 drop policy if exists "view_program_medicines" on public.program_medicines;
-
 create policy "view_program_medicines"
 on public.program_medicines
 for select
 to authenticated
 using ((select auth.uid()) is not null);
-
-
 drop policy if exists "users_can_view_own_facility_change_requests"
 on public.profile_facility_change_requests;
-
 create policy "users_can_view_own_facility_change_requests"
 on public.profile_facility_change_requests
 for select
 to authenticated
 using (profile_id = (select auth.uid()));
-
-
 drop policy if exists "users_can_insert_own_facility_change_requests"
 on public.profile_facility_change_requests;
-
 create policy "users_can_insert_own_facility_change_requests"
 on public.profile_facility_change_requests
 for insert

@@ -15,7 +15,6 @@ import { useAuth } from "../../context/useAuth";
 import { logoutUser } from "@backend/services/auth/authService";
 import { useInventoryData } from "@backend/services/inventoryData";
 import {
-  DownloadIcon,
   InventoryTabToggle,
   InventoryTable,
   MedicineOrderToggle,
@@ -242,14 +241,7 @@ export default function BhwInventoryModule() {
                     direction={inventorySort.key === "medicine" ? inventorySort.direction : "ASC"}
                     onToggle={handleMedicineOrder}
                   />
-                  <button
-                    type="button"
-                    onClick={handleExportExcel}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#CFDDE0] bg-[#F9FBFB] px-4 text-sm font-bold text-[#1B2B30] shadow-xs hover:bg-[#E5EFF1] hover:border-[#CFDDE0] transition cursor-pointer"
-                  >
-                    <DownloadIcon />
-                    Export
-                  </button>
+
                   {inventoryTab !== "EXPIRED" && (
                     <Link
                       to="/requests"

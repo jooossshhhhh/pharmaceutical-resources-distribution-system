@@ -7,6 +7,7 @@ import {
   buildInventoryMedicineRows,
   calculateDynamicThreshold,
   calculatePoTotals,
+  computeProgramReservations,
   createEmptyPoItem,
   DISPOSAL_METHODS,
   emptyPoReceiptForm,
@@ -502,6 +503,92 @@ test("calculateDynamicThreshold correctly scales down for barangay health statio
   // BHW with known 30-day dispensing ADC of 0.8 units/day * 14-day lead buffer = 11.2 -> 12 units
   const bhwWithAdc = calculateDynamicThreshold({ adc: 0.8, quantity: 40, bufferDays: 14 });
   assert.equal(bhwWithAdc, 12);
+});
+
+test("computeProgramReservations extracts allocations for upcoming programs only", () => {
+  const programs = [
+    {
+      id: "prog-1",
+      program_name: "Outreach Mission 1",
+      program_date: "2026-11-20",
+      description: "Barangay health drive",
+      status: "UPCOMING",
+      medicines: [
+        { medicine_id: "med-ascorbic", quantity_used: 20 },
+        { medicine_id: "med-paracetamol", quantity_used: 50 },
+      ],
+    },
+    {
+      id: "prog-2",
+      program_name: "Past Outreach",
+      program_date: "2026-10-15",
+      status: "COMPLETED",
+      completed_at: "2026-10-15T10:00:00Z",
+      medicines: [
+        { medicine_id: "med-ascorbic", quantity_used: 30 },
+      ],
+    },
+    {
+      id: "prog-3",
+      program_name: "Cancelled Outreach",
+      program_date: "2026-11-25",
+      status: "CANCELLED",
+      cancelled_at: "2026-11-01T10:00:00Z",
+      medicines: [
+        { medicine_id: "med-ascorbic", quantity_used: 40 },
+      ],
+    },
+  ];
+
+  const { reservedByMedicine, reservationsByMedicine } = computeProgramReservations(programs);
+
+  assert.equal(reservedByMedicine.get("med-ascorbic"), 20);
+  assert.equal(reservedByMedicine.get("med-paracetamol"), 50);
+
+  const ascorbicReservations = reservationsByMedicine.get("med-ascorbic");
+  assert.equal(ascorbicReservations.length, 1);
+  assert.equal(ascorbicReservations[0].program_id, "prog-1");
+  assert.equal(ascorbicReservations[0].quantity_reserved, 20);
+  assert.equal(ascorbicReservations[0].status, "RESERVED");
+});
+
+test("buildInventoryMedicineRows deducts reserved quantity to yield actual dispensable stock", () => {
+  const lots = [
+    {
+      id: "lot-proc",
+      facility_id: "cho",
+      medicine_id: "med-ascorbic",
+      quantity: 90,
+      batch_number: "PO-BATCH-1",
+      expiration_date: "2027-01-27",
+      brand_name: "Ritemed",
+      medicine: { id: "med-ascorbic", generic_name: "Ascorbic 100 mg/mL", unit_of_measure: "bottle" },
+    },
+    {
+      id: "lot-ret",
+      facility_id: "cho",
+      medicine_id: "med-ascorbic",
+      quantity: 20,
+      batch_number: "RET-BATCH-2",
+      intake_type: "RETURN",
+      po_number: "RET-HGK01029",
+      expiration_date: "2027-01-27",
+      brand_name: "Ritemed",
+      medicine: { id: "med-ascorbic", generic_name: "Ascorbic 100 mg/mL", unit_of_measure: "bottle" },
+    },
+  ];
+
+  const reservedByMedicine = new Map([["med-ascorbic", 20]]);
+  const reservationsByMedicine = new Map([
+    ["med-ascorbic", [{ program_name: "Outreach 1", quantity_reserved: 20 }]],
+  ]);
+
+  const rows = buildInventoryMedicineRows(lots, { reservedByMedicine, reservationsByMedicine });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].gross_quantity, 110);
+  assert.equal(rows[0].reserved_quantity, 20);
+  assert.equal(rows[0].quantity, 90); // 110 - 20 = 90 dispensable stock
+  assert.equal(rows[0].reservations.length, 1);
 });
 
 

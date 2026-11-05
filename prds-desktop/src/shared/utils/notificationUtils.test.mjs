@@ -206,3 +206,15 @@ test("detects facility category from notification content", () => {
   };
   assert.equal(getNotificationCategory(facilityNotif), "facility");
 });
+
+
+test("detects programs category from scheduled program notification content", () => {
+  const progNotif = {
+    id: "prog-1",
+    recipient_facility_id: "cho",
+    title: "Scheduled Program Today",
+    message: '"Community Outreach" is scheduled for 2026-11-04 with 500 reserved units. Mark it as Ongoing when the outreach begins.',
+  };
+  assert.equal(getNotificationCategory(progNotif), "programs");
+  assert.equal(isFacilityNotification(progNotif), true);
+});

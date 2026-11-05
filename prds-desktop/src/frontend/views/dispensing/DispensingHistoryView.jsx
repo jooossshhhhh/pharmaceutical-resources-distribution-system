@@ -33,6 +33,7 @@ export default function DispensingHistoryView({
   facilities = [],
   facilityId = null,
   isCho = false,
+  onVoid,
 }) {
   const [historyRows, setHistoryRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,14 +72,16 @@ export default function DispensingHistoryView({
     return sortTransactions(groupHistoryByTransaction(historyRows), sortOrder);
   }, [historyRows, sortOrder]);
 
-  // Calculate Metrics from all transactions
+  // Calculate Metrics from active (non-voided) transactions
   const metrics = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const uniquePatientIds = new Set();
     let totalUnits = 0;
     let todayCount = 0;
 
-    allTransactions.forEach((tx) => {
+    const activeTransactions = allTransactions.filter((tx) => !tx.voidedAt);
+
+    activeTransactions.forEach((tx) => {
       if (tx.patient?.id || tx.patient_id) {
         uniquePatientIds.add(tx.patient?.id || tx.patient_id);
       }
@@ -91,7 +94,7 @@ export default function DispensingHistoryView({
     });
 
     return {
-      totalTransactions: allTransactions.length,
+      totalTransactions: activeTransactions.length,
       totalUnits,
       uniquePatients: uniquePatientIds.size,
       todayCount,
@@ -600,6 +603,7 @@ export default function DispensingHistoryView({
         onVoidSuccess={() => {
           setSelectedTransaction(null);
           loadHistory();
+          onVoid?.();
         }}
       />
     </div>

@@ -1,11 +1,23 @@
 import { supabase } from "../client/supabase";
-import { getSnapshot, saveSnapshot, STORAGE_KEYS } from "../database/snapshotStore";
+import { getSnapshot, saveSnapshot, getCachedUserSession, STORAGE_KEYS } from "../database/snapshotStore";
 import { isCurrentNetworkOnline } from "../sync/networkStatus";
 import { enqueueMutation } from "../sync/outboxQueue";
 import { isConnectivityError } from "../client/networkErrorUtils";
 import { normalizeNotificationReadArgs } from "@shared/utils/notificationUtils";
+import { ensureScheduledProgramNotifications } from "./otherProgramsService";
 
 export const getNotificationData = async () => {
+  // Ensure scheduled program notifications are up to date from cached programs
+  try {
+    const cachedPrograms = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
+    if (cachedPrograms.length > 0) {
+      const { profile } = getCachedUserSession();
+      await ensureScheduledProgramNotifications(cachedPrograms, profile);
+    }
+  } catch (progNotifErr) {
+    console.warn("Could not check scheduled program notifications:", progNotifErr);
+  }
+
   if (!isCurrentNetworkOnline()) {
     const cachedNotifications = getSnapshot(STORAGE_KEYS.NOTIFICATIONS, []);
     const cachedFacilities = getSnapshot(STORAGE_KEYS.FACILITIES, []);
@@ -31,15 +43,21 @@ export const getNotificationData = async () => {
       throw firstError;
     }
 
-    const notifications = notificationsResult.data || [];
+    const remoteNotifications = notificationsResult.data || [];
     const facilities = facilitiesResult.data || [];
+    const cachedNotifications = getSnapshot(STORAGE_KEYS.NOTIFICATIONS, []);
 
-    saveSnapshot(STORAGE_KEYS.NOTIFICATIONS, notifications);
+    // Merge: prioritize remote, but preserve any local/offline notifications not yet in remote
+    const remoteIds = new Set(remoteNotifications.map((n) => String(n.id)));
+    const preservedLocal = cachedNotifications.filter((n) => n && !remoteIds.has(String(n.id)));
+    const mergedNotifications = [...remoteNotifications, ...preservedLocal];
+
+    saveSnapshot(STORAGE_KEYS.NOTIFICATIONS, mergedNotifications);
     saveSnapshot(STORAGE_KEYS.FACILITIES, facilities);
 
     return {
       facilities,
-      notifications,
+      notifications: mergedNotifications,
     };
   } catch (err) {
     console.warn("getNotificationData online fetch failed, using snapshot:", err);

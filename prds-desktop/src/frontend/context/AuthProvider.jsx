@@ -15,6 +15,7 @@ import {
   recordLoginTimestamp,
 } from "@backend/database/snapshotStore";
 import { isCurrentNetworkOnline } from "@backend/sync/networkStatus";
+import { refreshPendingCount } from "@backend/sync/outboxQueue";
 
 export const AuthProvider = ({ children }) => {
   // Read instant persistent snapshot for 0ms offline boot
@@ -66,6 +67,7 @@ export const AuthProvider = ({ children }) => {
             }
             setProfile(userProfile);
             saveUserSession(currentSupabaseUser, userProfile);
+            refreshPendingCount().catch(() => {});
 
             if (currentSupabaseUser?.user_metadata?.passcode_hash) {
               saveTerminalPasscodeAccount({
@@ -194,6 +196,7 @@ export const AuthProvider = ({ children }) => {
       setProfile(newProfile);
     }
     saveUserSession(user || supabaseUser, newProfile || profile);
+    refreshPendingCount().catch(() => {});
   };
 
   const signOut = async () => {
@@ -203,8 +206,10 @@ export const AuthProvider = ({ children }) => {
       await logoutUser();
     } catch (err) {
       await clearUserSession();
+      refreshPendingCount().catch(() => {});
       throw err;
     }
+    refreshPendingCount().catch(() => {});
   };
 
   const value = {

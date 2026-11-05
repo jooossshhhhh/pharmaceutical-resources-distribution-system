@@ -28,7 +28,6 @@ as $$
           and f.facility_type = 'CHO'
     );
 $$;
-
 create or replace function public.update_own_profile_avatar(p_avatar_url text)
 returns void
 language plpgsql
@@ -59,7 +58,6 @@ begin
     );
 end;
 $$;
-
 create or replace function public.approve_stock_transfer_request(
   p_transfer_id uuid,
   p_remarks text default null
@@ -140,7 +138,6 @@ begin
   return p_transfer_id;
 end;
 $$;
-
 create or replace function public.reject_stock_transfer_request(
   p_transfer_id uuid,
   p_remarks text default null
@@ -211,7 +208,6 @@ begin
   return p_transfer_id;
 end;
 $$;
-
 create or replace function public.create_cho_stock_transfer(
   p_source_facility_id uuid,
   p_destination_facility_id uuid,

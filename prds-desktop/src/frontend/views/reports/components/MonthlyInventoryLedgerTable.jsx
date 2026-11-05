@@ -1,5 +1,5 @@
 import { useState, useMemo, Fragment } from "react";
-import { formatPeso } from "@shared/utils/reportUtils";
+import { formatPeso, formatReportDate } from "@shared/utils/reportUtils";
 import { groupReportItemsByPo } from "@shared/utils/reportExportUtils";
 import {
   Search,
@@ -59,17 +59,63 @@ export default function MonthlyInventoryLedgerTable({
     return { begDateLabel, remDateLabel };
   }, [year, month]);
 
+  const activeProgramFilterId =
+    selectedProgramFilter && typeof selectedProgramFilter === "object"
+      ? String(selectedProgramFilter.id || "")
+      : null;
+
+  const activeProgramFilterLabel =
+    selectedProgramFilter && typeof selectedProgramFilter === "object"
+      ? selectedProgramFilter.date
+        ? `${selectedProgramFilter.name} (${formatReportDate(selectedProgramFilter.date)})`
+        : String(selectedProgramFilter.name || "")
+      : selectedProgramFilter
+      ? String(selectedProgramFilter)
+      : "";
+
+  const activeProgramFilterName =
+    selectedProgramFilter && typeof selectedProgramFilter === "object"
+      ? String(selectedProgramFilter.name || "")
+      : selectedProgramFilter
+      ? String(selectedProgramFilter)
+      : "";
+
   // Filter items based on search, status filter, and active program filter
   const filteredItems = useMemo(() => {
     let result = items || [];
 
     // 1. Program filter (from program cards or dropdown)
     if (selectedProgramFilter) {
-      const pUpper = selectedProgramFilter.toUpperCase();
-      result = result.filter((item) => {
-        const progName = (item.programName || "").toUpperCase();
-        return progName.includes(pUpper);
-      });
+      if (activeProgramFilterId) {
+        result = result
+          .filter((item) => {
+            if (Array.isArray(item.programIds) && item.programIds.length > 0) {
+              return item.programIds.includes(activeProgramFilterId);
+            }
+            const pUpper = activeProgramFilterName.toUpperCase();
+            const progName = (item.programName || "").toUpperCase();
+            return pUpper ? progName.includes(pUpper) : false;
+          })
+          .map((item) => {
+            const specificAlloc = item.programAllocations?.[activeProgramFilterId];
+            if (specificAlloc) {
+              const specificQty = Number(specificAlloc.qty) || 0;
+              return {
+                ...item,
+                programQty: specificQty,
+                programTotal: specificQty * (Number(item.unitCost) || 0),
+                programName: specificAlloc.programName || item.programName,
+              };
+            }
+            return item;
+          });
+      } else {
+        const pUpper = activeProgramFilterName.toUpperCase();
+        result = result.filter((item) => {
+          const progName = (item.programName || "").toUpperCase();
+          return progName.includes(pUpper);
+        });
+      }
     }
 
     // 2. Search term (matches Generic Name, Brand, Lot No, Program Name, and Purchase Order / PO Number)
@@ -106,7 +152,7 @@ export default function MonthlyInventoryLedgerTable({
     }
 
     return result;
-  }, [items, selectedProgramFilter, searchTerm, statusFilter]);
+  }, [items, selectedProgramFilter, activeProgramFilterId, activeProgramFilterName, searchTerm, statusFilter]);
 
   // Recalculate dynamic totals for the filtered subset
   const filteredTotals = useMemo(() => {
@@ -243,7 +289,7 @@ export default function MonthlyInventoryLedgerTable({
           <div className="flex items-center gap-2">
             <Filter className="h-3.5 w-3.5 text-purple-700" />
             <span>
-              Showing only medicines transferred to: <strong>{selectedProgramFilter}</strong>
+              Showing only medicines transferred to: <strong>{activeProgramFilterLabel}</strong>
             </span>
           </div>
           <button

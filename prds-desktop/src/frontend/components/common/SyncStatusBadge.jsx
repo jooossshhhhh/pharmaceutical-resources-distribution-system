@@ -2,15 +2,18 @@ import { useEffect, useState } from "react";
 import { useNetworkStatus } from "@backend/sync/networkStatus";
 import {
   getFailedMutationCount,
+  refreshPendingCount,
   subscribeOutboxQueue,
   subscribeQueueCount,
 } from "@backend/sync/outboxQueue";
 import { subscribeSyncStatus, syncAllData } from "@backend/sync/syncManager";
 import { getFriendlySyncTooltip } from "@backend/sync/syncUtils";
+import { useAuth } from "@frontend/context/useAuth";
 import SyncOutboxModal from "../layout/SyncOutboxModal";
 
 export default function SyncStatusBadge() {
   const isOnline = useNetworkStatus();
+  const { user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
   const [syncState, setSyncState] = useState({ status: "IDLE" });
@@ -19,10 +22,15 @@ export default function SyncStatusBadge() {
 
   const refreshCounts = async () => {
     try {
-      const count = await getFailedMutationCount();
-      setFailedCount(count);
+      const [failed, pending] = await Promise.all([
+        getFailedMutationCount(),
+        refreshPendingCount(),
+      ]);
+      setFailedCount(failed);
+      setPendingCount(pending);
     } catch {
       setFailedCount(0);
+      setPendingCount(0);
     }
   };
 
@@ -37,7 +45,7 @@ export default function SyncStatusBadge() {
       unsubSync();
       unsubOutbox();
     };
-  }, []);
+  }, [user?.id]);
 
   const handleManualSync = async () => {
     if (!isOnline || syncState.status === "SYNCING") {

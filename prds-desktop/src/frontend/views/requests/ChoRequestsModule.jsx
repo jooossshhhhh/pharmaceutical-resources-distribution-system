@@ -346,14 +346,7 @@ export default function ChoRequestsModule() {
       ...current,
       items: current.items.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
-        const updated = { ...item, [field]: value };
-        if (
-          field === "quantity" &&
-          (item.consumed_quantity === "" || item.consumed_quantity === undefined)
-        ) {
-          updated.consumed_quantity = value;
-        }
-        return updated;
+        return { ...item, [field]: value };
       }),
     }));
   };
@@ -1604,6 +1597,7 @@ function ChoReviewModal({
 function ManualMedicineSearchDropdown({
   bhsStockMap,
   disabled = false,
+  facilityId = "",
   medicines = [],
   onChange,
   otherSelectedIds = new Set(),
@@ -1677,7 +1671,7 @@ function ManualMedicineSearchDropdown({
     <div ref={dropdownRef} className="relative w-full">
       {!selectedMedicine || isOpen ? (
         <div
-          className={`relative flex h-9.5 w-full items-center rounded-lg border bg-white px-3 transition ${
+          className={`relative flex h-8.5 w-full items-center rounded-lg border bg-white px-2.5 transition ${
             isOpen
               ? "border-emerald-500 ring-2 ring-emerald-100"
               : "border-neutral-200 hover:border-neutral-300"
@@ -1759,9 +1753,9 @@ function ManualMedicineSearchDropdown({
               setIsOpen(true);
             }
           }}
-          className="flex h-9.5 w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 hover:border-neutral-300 transition cursor-pointer"
+          className="flex h-8.5 w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-2.5 hover:border-neutral-300 transition cursor-pointer"
         >
-          <div className="flex items-center gap-2 truncate">
+          <div className="flex items-center gap-1.5 truncate">
             <span className="text-xs font-bold text-neutral-900 truncate">
               {selectedMedicine.generic_name}
             </span>
@@ -1776,7 +1770,7 @@ function ManualMedicineSearchDropdown({
               </span>
             )}
           </div>
-          <span className="text-[10.5px] font-semibold text-emerald-600 hover:text-emerald-700 shrink-0 ml-2">
+          <span className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 shrink-0 ml-1.5">
             Change
           </span>
         </div>
@@ -1784,7 +1778,7 @@ function ManualMedicineSearchDropdown({
 
       {/* Dropdown menu */}
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-56 w-full min-w-[340px] overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
           {filteredMedicines.length === 0 ? (
             <div className="px-3 py-4 text-center text-xs text-neutral-500">
               No matching medicines found for "{searchQuery}".
@@ -1792,8 +1786,6 @@ function ManualMedicineSearchDropdown({
           ) : (
             filteredMedicines.map((medicine) => {
               const isAlreadySelected = otherSelectedIds.has(medicine.id) && medicine.id !== value;
-              const choStock = warehouseStockMap?.get(medicine.id) ?? 0;
-              const bhsStock = bhsStockMap?.get(medicine.id) ?? 0;
               const isCurrent = medicine.id === value;
 
               return (
@@ -1819,33 +1811,26 @@ function ManualMedicineSearchDropdown({
                       {medicine.generic_name}
                     </span>
                     {isAlreadySelected && (
-                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 shrink-0">
                         Already Added
                       </span>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[10.5px]">
+                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10.5px]">
                     {medicine.dosage && (
-                      <span className="text-neutral-600 font-medium">
+                      <span className="text-neutral-500 font-medium">
                         {medicine.dosage}
                       </span>
                     )}
                     {medicine.brand_name && medicine.brand_name !== "-" && (
-                      <span className="text-emerald-700 font-semibold">
+                      <span className="text-emerald-700 font-medium">
                         • {medicine.brand_name}
                       </span>
                     )}
-                    <span className="text-neutral-400">•</span>
-                    <span className="text-neutral-600 font-semibold">
-                      CHO: <strong className={choStock > 0 ? "text-emerald-700" : "text-amber-700"}>{choStock.toLocaleString()}</strong>
-                    </span>
-                    {stationName && (
-                      <>
-                        <span className="text-neutral-400">•</span>
-                        <span className="text-purple-700 font-semibold">
-                          BHS: <strong>{bhsStock.toLocaleString()}</strong>
-                        </span>
-                      </>
+                    {medicine.unit_of_measure && (
+                      <span className="text-neutral-400 font-normal">
+                        ({medicine.unit_of_measure})
+                      </span>
                     )}
                   </div>
                 </button>
@@ -1933,56 +1918,56 @@ function ManualPaperRequestModal({
       labelledBy="paper-request-title"
       onClose={onClose}
       overlayClassName="bg-slate-950/40 backdrop-blur-sm"
-      panelClassName="max-w-3xl w-full p-0 overflow-hidden rounded-2xl bg-white shadow-2xl border border-neutral-100"
+      panelClassName="max-w-5xl w-full p-0 overflow-hidden rounded-2xl bg-white shadow-2xl border border-neutral-100"
     >
       <form onSubmit={(e) => onSubmit(e, { proceedToRelease: false })} className="w-full flex max-h-[90vh] flex-col overflow-hidden">
         {/* Modal Header */}
-        <header className="flex items-center justify-between border-b border-neutral-100 px-6 py-4 bg-neutral-50/50">
+        <header className="flex items-center justify-between border-b border-neutral-100 px-6 py-3.5 bg-neutral-50/50">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
-              <FileSpreadsheet className="h-5 w-5" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+              <FileSpreadsheet className="h-4.5 w-4.5" />
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h2 id="paper-request-title" className="text-base font-black text-neutral-900 tracking-tight">
+                <h2 id="paper-request-title" className="text-sm font-black text-neutral-900 tracking-tight">
                   Record Manual Requisition
                 </h2>
-                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
                   Paper Slip Entry
                 </span>
               </div>
               <p className="text-[11px] font-medium text-neutral-500 mt-0.5">
-                Record paper requests from health stations and update their stock.
+                Record physical RIS requisitions from barangay stations and log consumed stock.
               </p>
             </div>
           </div>
         </header>
 
         {/* Modal Body */}
-        <div className="prds-modal-scrollbar flex-1 space-y-4 overflow-y-auto px-6 py-5">
+        <div className="prds-modal-scrollbar flex-1 space-y-3.5 overflow-y-auto px-6 py-4">
           {error && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700">
+            <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
               <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
               <p className="flex-1">{error}</p>
             </div>
           )}
 
           {/* Section 1: Requisition Origin & Reference */}
-          <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-4 space-y-3">
+          <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-3.5 space-y-2.5">
             <div className="flex items-center gap-2 text-xs font-bold text-neutral-800 uppercase tracking-wider">
               <Building2 className="h-4 w-4 text-emerald-600" />
               <span>Requisition Details</span>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 mb-1">
-                  Requesting Barangay Health Station <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                  Requesting Station <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={form.facility_id}
                   onChange={(event) => onChange("facility_id", event.target.value)}
-                  className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
+                  className="w-full h-8.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition truncate"
                 >
                   <option value="">Select barangay station...</option>
                   {healthCenterFacilities.map((facility) => (
@@ -1994,249 +1979,223 @@ function ManualPaperRequestModal({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 mb-1">
-                  RIS No.
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                  RIS Reference No.
                 </label>
                 <input
                   type="text"
                   value={form.paper_slip_reference || ""}
                   onChange={(event) => onChange("paper_slip_reference", event.target.value)}
                   placeholder="e.g. RIS-2026-10-042"
-                  className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
+                  className="w-full h-8.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 mb-1">
-                  Date <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                  Requisition Date <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    max={todayDateString}
-                    value={form.request_date || todayDateString}
-                    onChange={(event) => onChange("request_date", event.target.value)}
-                    className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
-                  />
-                </div>
+                <input
+                  type="date"
+                  max={todayDateString}
+                  value={form.request_date || todayDateString}
+                  onChange={(event) => onChange("request_date", event.target.value)}
+                  className="w-full h-8.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 mb-1">
-                  BHW / Midwife Representative
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1">
+                  BHW / Representative
                 </label>
                 <input
                   type="text"
                   value={form.manual_requested_by}
                   onChange={(event) => onChange("manual_requested_by", event.target.value)}
-                  placeholder="e.g. Maria Santos (Midwife / BHW)"
-                  className="w-full h-10 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
+                  placeholder="e.g. Maria Santos (Midwife)"
+                  className="w-full h-8.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
                 />
               </div>
             </div>
           </div>
 
-          {/* Section 2: Requested Medicines */}
-          <div className="rounded-xl border border-neutral-200/80 bg-white p-4 space-y-3.5 shadow-2xs">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+          {/* Section 2: Requested Medicines Slip */}
+          <div className="rounded-xl border border-neutral-200/80 bg-white shadow-2xs">
+            <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-2.5 bg-neutral-50/60 rounded-t-xl">
               <div className="flex items-center gap-2">
                 <Pill className="h-4 w-4 text-emerald-600" />
                 <h3 className="text-xs font-black uppercase tracking-wider text-neutral-800">
                   Requested Medicines
                 </h3>
                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10.5px] font-bold text-neutral-600">
-                  {form.items.length} {form.items.length === 1 ? "item line" : "item lines"}
+                  {form.items.length} {form.items.length === 1 ? "line" : "lines"}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={onAddItem}
-                className="btn-primary inline-flex items-center gap-1.5 h-8 rounded-lg px-3 text-xs font-bold text-white transition shadow-xs cursor-pointer"
+                className="btn-primary inline-flex items-center gap-1.5 h-7.5 rounded-lg px-2.5 text-xs font-bold text-white transition shadow-xs cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Add Medicine Line</span>
               </button>
             </div>
 
-            <div className="space-y-3">
-              {form.items.map((item, index) => {
-                const selectedMed = medicinesMap.get(item.medicine_id);
-                const bhsStock = item.medicine_id ? bhsStockMap.get(item.medicine_id) ?? 0 : 0;
-                const warehouseStock = item.medicine_id ? warehouseStockMap.get(item.medicine_id) ?? 0 : 0;
-                const requestedQty = Number(item.quantity) || 0;
-                const consumedQty = Number(item.consumed_quantity) || 0;
-                const stationName = selectedFacility?.facility_name || "BHS Station";
+            <div className="p-3">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-neutral-200/80 text-[10.5px] font-bold uppercase tracking-wider text-neutral-500">
+                    <th className="w-8 py-2 px-1 text-center font-bold">#</th>
+                    <th className="py-2 px-2 font-bold min-w-[380px]">Medicine Description <span className="text-red-500">*</span></th>
+                    <th className="w-24 py-2 px-2 text-center font-bold">CHO Stock</th>
+                    <th className="w-24 py-2 px-2 text-center font-bold">Station Stock</th>
+                    <th className="w-20 py-2 px-2 text-right font-bold">Consumed</th>
+                    <th className="w-20 py-2 px-2 text-right font-bold">Requested <span className="text-red-500">*</span></th>
+                    <th className="w-8 py-2 px-1 text-center font-bold"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {form.items.map((item, index) => {
+                    const selectedMed = medicinesMap.get(item.medicine_id);
+                    const bhsStock = item.medicine_id ? bhsStockMap.get(item.medicine_id) ?? 0 : 0;
+                    const warehouseStock = item.medicine_id ? warehouseStockMap.get(item.medicine_id) ?? 0 : 0;
+                    const zIndexLevel = (form.items.length - index) * 10;
 
-                const remainingBeforeRelease = Math.max(0, bhsStock - consumedQty);
-                const postReleaseStock = remainingBeforeRelease + requestedQty;
+                    return (
+                      <tr
+                        key={index}
+                        style={{ zIndex: zIndexLevel }}
+                        className="relative border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50/40 transition-colors"
+                      >
+                        {/* Line Number */}
+                        <td className="w-8 py-2.5 px-1 text-center text-xs font-bold text-neutral-400 align-middle">
+                          {index + 1}
+                        </td>
 
-                return (
-                  <div
-                    key={index}
-                    className="rounded-xl border border-neutral-200/90 bg-[#fafbfc] hover:border-neutral-300 p-3.5 transition space-y-3"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-neutral-200/80 text-[11px] font-black text-neutral-700 mt-1">
-                        #{index + 1}
-                      </span>
+                        {/* Medicine Dropdown */}
+                        <td className="py-2.5 px-2 align-middle min-w-[380px]">
+                          <ManualMedicineSearchDropdown
+                            medicines={medicines}
+                            value={item.medicine_id}
+                            onChange={(medId) => onUpdateItem(index, "medicine_id", medId)}
+                            otherSelectedIds={selectedMedicineIds}
+                            placeholder="Search medicine generic name, dosage, or brand..."
+                          />
+                        </td>
 
-                      {/* Medicine Search Dropdown */}
-                      <div className="flex-1 min-w-0">
-                        <label className="block text-[11px] font-bold text-neutral-600 mb-1">
-                          Medicine <span className="text-red-500">*</span>
-                        </label>
-                        <ManualMedicineSearchDropdown
-                          medicines={medicines}
-                          value={item.medicine_id}
-                          onChange={(medId) => onUpdateItem(index, "medicine_id", medId)}
-                          otherSelectedIds={selectedMedicineIds}
-                          bhsStockMap={bhsStockMap}
-                          warehouseStockMap={warehouseStockMap}
-                          stationName={stationName}
-                        />
-
-                        {/* Medicine details badge */}
-                        {selectedMed && (
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10.5px]">
-                            <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200/80 px-2 py-0.5 font-bold text-blue-700">
-                              Unit: {selectedMed.unit_of_measure || "units"}
-                            </span>
-                            {form.facility_id && (
-                              <span
-                                className={`inline-flex items-center rounded-md px-2 py-0.5 font-bold border ${
-                                  bhsStock > 0
-                                    ? "bg-purple-50 border-purple-200 text-purple-800"
-                                    : "bg-neutral-100 border-neutral-200 text-neutral-600"
-                                }`}
-                              >
-                                Station Stock: {bhsStock.toLocaleString()} {selectedMed.unit_of_measure || "units"}
-                              </span>
-                            )}
+                        {/* CHO Stock */}
+                        <td className="w-24 py-2.5 px-2 text-center align-middle whitespace-nowrap">
+                          {selectedMed ? (
                             <span
-                              className={`inline-flex items-center rounded-md px-2 py-0.5 font-bold border ${
+                              className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-[11px] font-bold ${
                                 warehouseStock > 0
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                                  : "bg-amber-50 border-amber-200 text-amber-800"
+                                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200/80"
+                                  : "bg-amber-50 text-amber-800 border border-amber-200/80"
                               }`}
                             >
-                              {warehouseStock > 0
-                                ? `CHO Stock: ${warehouseStock.toLocaleString()} ${selectedMed.unit_of_measure || "units"}`
-                                : "Zero Stock in CHO Warehouse"}
+                              {warehouseStock.toLocaleString()} {selectedMed.unit_of_measure || "units"}
                             </span>
-                          </div>
-                        )}
-                      </div>
+                          ) : (
+                            <span className="text-neutral-300 text-xs">—</span>
+                          )}
+                        </td>
 
-                      {/* Remove button */}
-                      <div className="pt-6">
-                        <button
-                          type="button"
-                          onClick={() => onRemoveItem(index)}
-                          disabled={form.items.length === 1}
-                          title={form.items.length === 1 ? "At least one item line is required" : "Remove this medicine line"}
-                          className="grid h-9.5 w-9.5 place-items-center rounded-lg border border-neutral-200 bg-white text-neutral-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition disabled:opacity-30 disabled:hover:text-neutral-400 disabled:hover:border-neutral-200 disabled:hover:bg-white cursor-pointer"
-                          aria-label="Remove item"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
+                        {/* Station Stock */}
+                        <td className="w-24 py-2.5 px-2 text-center align-middle whitespace-nowrap">
+                          {!form.facility_id ? (
+                            <span className="text-neutral-400 text-[10.5px] italic">Select station</span>
+                          ) : selectedMed ? (
+                            <span
+                              className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                                bhsStock > 0
+                                  ? "bg-purple-50 text-purple-800 border border-purple-200/80"
+                                  : "bg-neutral-100 text-neutral-600 border border-neutral-200/80"
+                              }`}
+                            >
+                              {bhsStock.toLocaleString()} {selectedMed.unit_of_measure || "units"}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-300 text-xs">—</span>
+                          )}
+                        </td>
 
-                    {/* Quantities Row */}
-                    {selectedMed && (
-                      <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-neutral-200/60">
                         {/* Consumed Quantity */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                            Quantity Consumed
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              min="0"
-                              value={item.consumed_quantity ?? ""}
-                              onChange={(event) => onUpdateItem(index, "consumed_quantity", event.target.value)}
-                              placeholder="0"
-                              className="w-full h-9 rounded-lg border border-neutral-200 bg-white pl-3 pr-12 text-xs font-bold text-neutral-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition"
-                            />
-                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-neutral-400 pointer-events-none truncate max-w-[36px]">
-                              {selectedMed?.unit_of_measure || "units"}
-                            </span>
-                          </div>
-                        </div>
+                        <td className="w-20 py-2.5 px-2 align-middle">
+                          <input
+                            type="number"
+                            min="0"
+                            disabled={!item.medicine_id}
+                            value={item.consumed_quantity ?? ""}
+                            onChange={(event) => onUpdateItem(index, "consumed_quantity", event.target.value)}
+                            placeholder="0"
+                            className="w-full h-8.5 rounded-lg border border-neutral-200 bg-white px-2 text-xs font-bold text-neutral-800 text-right outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition disabled:bg-neutral-50 disabled:text-neutral-300 placeholder:text-neutral-300"
+                          />
+                        </td>
 
                         {/* Requested Quantity */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-neutral-700 mb-1">
-                            Quantity Requested <span className="text-red-500">*</span>
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(event) => onUpdateItem(index, "quantity", event.target.value)}
-                              placeholder="0"
-                              className="w-full h-9 rounded-lg border border-neutral-200 bg-white pl-3 pr-12 text-xs font-bold text-neutral-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition"
-                            />
-                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-neutral-400 pointer-events-none truncate max-w-[36px]">
-                              {selectedMed?.unit_of_measure || "qty"}
-                            </span>
-                          </div>
-                        </div>
+                        <td className="w-20 py-2.5 px-2 align-middle">
+                          <input
+                            type="number"
+                            min="1"
+                            disabled={!item.medicine_id}
+                            value={item.quantity}
+                            onChange={(event) => onUpdateItem(index, "quantity", event.target.value)}
+                            placeholder="0"
+                            className="w-full h-8.5 rounded-lg border border-neutral-200 bg-white px-2 text-xs font-black text-neutral-900 text-right outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition disabled:bg-neutral-50 disabled:text-neutral-300 placeholder:text-neutral-300"
+                          />
+                        </td>
 
-                        {/* Alpaco Inventory Tracking Live Calculation Banner */}
-                        {form.facility_id && (requestedQty > 0 || consumedQty > 0) && (
-                          <div className="sm:col-span-2 rounded-lg bg-emerald-50/70 border border-emerald-200/80 px-3 py-2 flex items-center justify-between gap-2 text-xs">
-                            <div className="flex flex-wrap items-center gap-1.5 text-emerald-900 font-semibold text-[11px]">
-                              <span className="font-bold text-emerald-700">💡 Stock Calculation:</span>
-                              <span>Previous ({bhsStock})</span>
-                              <span>-</span>
-                              <span>Consumed ({consumedQty})</span>
-                              <span>=</span>
-                              <span className="font-bold text-purple-800">{remainingBeforeRelease} remaining</span>
-                              <span>➔</span>
-                              <span className="font-black text-emerald-800">Post-Release Stock: {postReleaseStock} {selectedMed.unit_of_measure || "units"}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                        {/* Remove Action */}
+                        <td className="w-8 py-2.5 px-1 text-center align-middle">
+                          <button
+                            type="button"
+                            onClick={() => onRemoveItem(index)}
+                            disabled={form.items.length === 1}
+                            title={form.items.length === 1 ? "At least one item line is required" : "Remove this medicine line"}
+                            className="grid h-7.5 w-7.5 place-items-center rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-25 disabled:hover:text-neutral-400 disabled:hover:bg-transparent cursor-pointer mx-auto"
+                            aria-label="Remove item"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
 
-          {/* Total Requested & Summary above Remarks */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-4 py-2.5 text-xs font-bold text-neutral-700">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-emerald-600" />
-              <span>
-                Total Requested: <strong className="text-emerald-700 font-black">{totalRequestedUnits.toLocaleString()} units</strong>
-              </span>
-            </div>
-            {totalConsumedUnits > 0 && (
-              <div className="flex items-center gap-1.5 text-purple-800">
+            {/* Total Requested & Consumed Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-4 py-2.5 bg-neutral-50/50 rounded-b-xl text-xs font-bold text-neutral-700">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-emerald-600" />
                 <span>
-                  Total Consumed: <strong className="font-bold">{totalConsumedUnits.toLocaleString()} units</strong>
+                  Total Requested: <strong className="text-emerald-700 font-black">{totalRequestedUnits.toLocaleString()} units</strong>
                 </span>
               </div>
-            )}
+              {totalConsumedUnits > 0 && (
+                <div className="flex items-center gap-1.5 text-purple-800">
+                  <span>
+                    Total Consumed: <strong className="font-bold">{totalConsumedUnits.toLocaleString()} units</strong>
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Section 3: Remarks */}
-          <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-4 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-neutral-800 uppercase tracking-wider">
-              <FileText className="h-4 w-4 text-neutral-600" />
-              <span>Remarks</span>
+          <div className="rounded-xl border border-neutral-200/80 bg-neutral-50/40 p-3 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
+              <FileText className="h-3.5 w-3.5 text-neutral-500" />
+              <span>Remarks & Notes</span>
+              <span className="text-neutral-400 font-normal lowercase">(optional)</span>
             </div>
-            <textarea
+            <input
+              type="text"
               value={form.remarks}
               onChange={(event) => onChange("remarks", event.target.value)}
-              rows="2"
-              placeholder="Optional notes or delivery specifications..."
-              className="w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
+              placeholder="Add optional notes, delivery instructions, or remarks..."
+              className="w-full h-8.5 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition placeholder:text-neutral-400"
             />
           </div>
         </div>
@@ -2259,7 +2218,7 @@ function ManualPaperRequestModal({
               onClick={(e) => onSubmit(e, { proceedToRelease: false })}
               className="h-9 rounded-lg border border-emerald-600 text-emerald-700 hover:bg-emerald-50 px-4 text-xs font-bold transition cursor-pointer disabled:opacity-50"
             >
-              {isSaving ? "Saving..." : "Save as Pending"}
+              {isSaving ? "Saving..." : "Save to Queue (Pending)"}
             </button>
             <button
               type="button"
@@ -2267,7 +2226,7 @@ function ManualPaperRequestModal({
               onClick={(e) => onSubmit(e, { proceedToRelease: true })}
               className="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 text-xs font-bold text-white transition shadow-sm disabled:opacity-50 cursor-pointer"
             >
-              {isSaving ? "Processing..." : "Save & Release Now"}
+              {isSaving ? "Processing..." : "Proceed to Batch Release ➔"}
             </button>
           </div>
         </footer>

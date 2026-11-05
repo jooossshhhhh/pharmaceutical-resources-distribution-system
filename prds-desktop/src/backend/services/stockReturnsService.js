@@ -412,28 +412,9 @@ export async function deductFacilityStockForReturn({
       }
     }
 
-    // 3. Update Supabase if online
-    if (isOnline()) {
-      try {
-        await supabase
-          .from("inventory")
-          .update({ quantity: newQty, updated_at: nowIso })
-          .eq("id", targetRow.id);
-      } catch (cloudErr) {
-        console.warn("[stockReturnsService] Remote inventory deduct error, enqueuing:", cloudErr);
-        await enqueueMutation({
-          mutationType: "UPDATE",
-          target: "inventory",
-          payload: { id: targetRow.id, quantity: newQty, updated_at: nowIso },
-        });
-      }
-    } else {
-      await enqueueMutation({
-        mutationType: "UPDATE",
-        target: "inventory",
-        payload: { id: targetRow.id, quantity: newQty, updated_at: nowIso },
-      });
-    }
+    // Note: PostgreSQL trigger trg_handle_stock_return_lifecycle on public.stock_returns
+    // atomically deducts source facility inventory when the stock_returns row is inserted
+    // (including for BHW users whose RLS does not allow direct UPDATE on public.inventory).
 
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -770,54 +751,16 @@ export async function createStockReturn({
     createdPayloads.push(payload);
   }
 
-  // 4. Activity log for return batch
+  // 4. Update local snapshot for return batch
+  // (Database trigger trg_handle_stock_return_lifecycle on public.stock_returns handles
+  //  activity_logs recording and CHO pharmacist notifications automatically in PostgreSQL)
   if (createdPayloads.length > 0) {
-    const totalUnits = createdPayloads.reduce((sum, p) => sum + p.quantity, 0);
-    const itemSummary = createdPayloads
-      .map((p) => `${p.quantity}x ${p.medicine_name || "medicine"} (Lot: ${p.lot_no})`)
-      .join(", ");
-    const primaryStatus = createdPayloads[0].status;
-
-    if (isOnline()) {
-      try {
-        await supabase.from("activity_logs").insert({
-          user_id: userProfile?.id,
-          action: primaryStatus === "CONFIRMED" ? "Stock Return Confirmed" : "Stock Return Submitted",
-          module: "Stock Returns",
-          details: `Return ${sharedReturnId}: ${totalUnits} total unit(s) [${itemSummary}]. Reason: ${getReturnReasonLabel(sharedReason)}`,
-        });
-      } catch {}
-    }
-
     const currentSnapshot = flattenStockReturnRows(getSnapshot(STORAGE_KEYS.STOCK_RETURNS) || []);
     const newIds = new Set(createdPayloads.map((p) => p.id));
     saveSnapshot(STORAGE_KEYS.STOCK_RETURNS, [
       ...createdPayloads,
       ...currentSnapshot.filter((row) => !newIds.has(row.id)),
     ]);
-    // 5. Notify CHO Pharmacists when a BHW submits a return
-    if (isBhw && isOnline()) {
-      try {
-        const { data: choProfiles } = await supabase
-          .from("profiles")
-          .select("id")
-          .in("role", ["PHARMA_II", "PHARMA_I"])
-          .eq("status", "ACTIVE");
-
-        if (Array.isArray(choProfiles) && choProfiles.length > 0) {
-          const originStation = userProfile?.facility_name || "Barangay Health Center";
-          const notifications = choProfiles.map((cp) => ({
-            user_id: cp.id,
-            title: "New Stock Return Submitted",
-            message: `${originStation} submitted return ${sharedReturnId} for ${totalUnits} unit(s) (${itemSummary}). Reason: ${getReturnReasonLabel(sharedReason)}.`,
-            created_at: new Date().toISOString(),
-          }));
-          await supabase.from("notifications").insert(notifications);
-        }
-      } catch (notifErr) {
-        console.warn("[stockReturnsService] CHO notification dispatch skipped:", notifErr);
-      }
-    }
   }
 
   return createdPayloads.length === 1 ? createdPayloads[0] : createdPayloads;
@@ -1068,26 +1011,9 @@ export async function confirmStockReturn(returnId, confirmedByUserId = null) {
           }
         }
 
-        // Update Supabase
-        const { facility, medicine, origin_facility, threshold, ...dbLot } = targetLot;
-        if (isOnline()) {
-          try {
-            await supabase.from("inventory").upsert(dbLot);
-          } catch (cloudInvErr) {
-            console.warn("[stockReturnsService] Remote inventory return upsert failed, enqueuing:", cloudInvErr);
-            await enqueueMutation({
-              mutationType: isUpdate ? "UPDATE" : "INSERT",
-              target: "inventory",
-              payload: dbLot,
-            });
-          }
-        } else {
-          await enqueueMutation({
-            mutationType: isUpdate ? "UPDATE" : "INSERT",
-            target: "inventory",
-            payload: dbLot,
-          });
-        }
+        // Note: Confirmed returns are persisted in public.stock_returns (status = 'CONFIRMED')
+        // and projected into local CHO inventory via reconcileConfirmedReturnsIntoInventory.
+        // Do not upsert synthetic inv_ret_* IDs directly into public.inventory.
 
         if (typeof window !== "undefined") {
           window.dispatchEvent(
@@ -1376,8 +1302,8 @@ export async function reconcileConfirmedReturnsIntoInventory(
             `INSERT OR REPLACE INTO inventory (
               id, facility_id, medicine_id, quantity, batch_number, po_number,
               unit_cost, date_received, expiration_date, origin_facility_id, intake_type,
-              return_reason, status, brand_name, supplier_name, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              return_reason, status, brand_name, supplier_name, data_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               newLot.id,
               newLot.facility_id,
@@ -1394,6 +1320,7 @@ export async function reconcileConfirmedReturnsIntoInventory(
               newLot.status,
               newLot.brand_name,
               newLot.supplier_name,
+              JSON.stringify(newLot),
               newLot.updated_at,
             ]
           );
@@ -1404,7 +1331,13 @@ export async function reconcileConfirmedReturnsIntoInventory(
     }
 
     if (hasNewLots) {
-      saveSnapshot(STORAGE_KEYS.INVENTORY, updatedInventory);
+      const globalInv = getSnapshot(STORAGE_KEYS.INVENTORY, []);
+      const updatedMap = new Map(updatedInventory.map((item) => [item.id, item]));
+      const mergedGlobal = [
+        ...updatedInventory,
+        ...(Array.isArray(globalInv) ? globalInv : []).filter((item) => item?.id && !updatedMap.has(item.id)),
+      ];
+      saveSnapshot(STORAGE_KEYS.INVENTORY, mergedGlobal);
     }
 
     return updatedInventory;

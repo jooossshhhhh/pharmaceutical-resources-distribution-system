@@ -11,7 +11,6 @@ alter table public.medicine_requests
     add column if not exists request_source text not null default 'SYSTEM',
     add column if not exists manual_requested_by text,
     add column if not exists encoded_by uuid references public.profiles(id);
-
 do $$
 begin
     alter table public.medicine_requests
@@ -20,14 +19,11 @@ begin
 exception
     when duplicate_object then null;
 end $$;
-
 update public.medicine_requests
    set encoded_by = requested_by
  where encoded_by is null;
-
 alter table public.medicine_dispensing
     add column if not exists record_type text not null default 'LIVE_DISPENSING';
-
 do $$
 begin
     alter table public.medicine_dispensing
@@ -36,15 +32,12 @@ begin
 exception
     when duplicate_object then null;
 end $$;
-
 update public.medicine_dispensing
    set record_type = 'HISTORY_ONLY'
  where coalesce(is_manual_record, false) = true
    and record_type = 'LIVE_DISPENSING';
-
 create index if not exists idx_medicine_dispensing_record_type_patient_date
     on public.medicine_dispensing(record_type, patient_id, dispense_date desc);
-
 create or replace view public.monthly_dispensing_summary as
 select
     facility_id,
@@ -54,9 +47,7 @@ select
 from public.medicine_dispensing
 where coalesce(record_type, 'LIVE_DISPENSING') <> 'HISTORY_ONLY'
 group by facility_id, medicine_id, date_trunc('month', dispense_date)::date;
-
 grant select on public.monthly_dispensing_summary to authenticated;
-
 create or replace function public.get_patient_monthly_claim_status(
     p_patient_id uuid
 )
@@ -127,7 +118,6 @@ begin
     return jsonb_build_object('claimed_this_month', coalesce(v_claimed, false));
 end;
 $$;
-
 create or replace function public.dispense_walk_in(
     p_patient_id uuid,
     p_items jsonb,
@@ -411,9 +401,7 @@ begin
     );
 end;
 $$;
-
 drop function if exists public.add_patient_manual_dispensing_record(uuid, uuid, integer, integer, uuid, text, text, date);
-
 create or replace function public.add_patient_manual_dispensing_record(
     p_patient_id uuid,
     p_medicine_id uuid,
@@ -657,7 +645,6 @@ begin
     );
 end;
 $$;
-
 create or replace function public.create_manual_medicine_request(
     p_facility_id uuid,
     p_items jsonb,
@@ -763,21 +750,16 @@ begin
     return v_request_id;
 end;
 $$;
-
 revoke all on function public.get_patient_monthly_claim_status(uuid) from public;
 revoke all on function public.get_patient_monthly_claim_status(uuid) from anon;
 grant execute on function public.get_patient_monthly_claim_status(uuid) to authenticated;
-
 revoke all on function public.dispense_walk_in(uuid, jsonb, text) from public;
 revoke all on function public.dispense_walk_in(uuid, jsonb, text) from anon;
 grant execute on function public.dispense_walk_in(uuid, jsonb, text) to authenticated;
-
 revoke all on function public.add_patient_manual_dispensing_record(uuid, uuid, integer, integer, uuid, text, text, date, text) from public;
 revoke all on function public.add_patient_manual_dispensing_record(uuid, uuid, integer, integer, uuid, text, text, date, text) from anon;
 grant execute on function public.add_patient_manual_dispensing_record(uuid, uuid, integer, integer, uuid, text, text, date, text) to authenticated;
-
 revoke all on function public.create_manual_medicine_request(uuid, jsonb, text, text) from public;
 revoke all on function public.create_manual_medicine_request(uuid, jsonb, text, text) from anon;
 grant execute on function public.create_manual_medicine_request(uuid, jsonb, text, text) to authenticated;
-
 select pg_notify('pgrst', 'reload schema');

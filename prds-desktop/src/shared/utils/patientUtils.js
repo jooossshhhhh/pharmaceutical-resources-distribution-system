@@ -458,7 +458,7 @@ export const getPatientRecordTypeLabel = (recordType, isManual = false) => {
   }
 
   if (recordType === PATIENT_MANUAL_RECORD_TYPES.historyOnly || isManual) {
-    return "History-only";
+    return "Manual Dispensing";
   }
 
   return "Live dispensing";
@@ -629,7 +629,7 @@ export const validateManualPatientRecord = (formValues = {}, { availableQuantity
     return "Dispensed by is required.";
   }
 
-  const needed = Number(formValues.needed_quantity);
+  const needed = Number(formValues.needed_quantity ?? formValues.quantity);
   const released = Number(formValues.quantity);
 
   if (!Number.isFinite(needed) || needed <= 0) {

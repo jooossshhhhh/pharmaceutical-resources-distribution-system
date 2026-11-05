@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Calendar,
   CheckCircle2,
@@ -81,16 +82,17 @@ export default function DispensingTransactionModal({
       setIsVoidConfirmOpen(false);
       onVoidSuccess?.();
     } catch (err) {
-      console.error("Failed to void transaction:", err);
-      setVoidError(err?.message || "Failed to void transaction. Check your permissions.");
+      console.error("Failed to void dispensing:", err);
+      setVoidError(err?.message || "Failed to void dispensing. Check your permissions.");
     } finally {
       setIsVoiding(false);
     }
   };
 
   return (
-    <ModalShell onClose={onClose} panelClassName="max-w-3xl">
-      <div className="w-full overflow-hidden rounded-2xl bg-white shadow-2xl border border-[#CFDDE0]">
+    <>
+      <ModalShell onClose={onClose} panelClassName="max-w-3xl">
+        <div className="w-full overflow-hidden rounded-2xl bg-white shadow-2xl border border-[#CFDDE0]">
         {/* Header Bar */}
         <div className="flex items-center justify-between border-b border-[#CFDDE0] bg-[#F9FBFB] px-6 py-4">
           <div className="flex items-center gap-3">
@@ -146,7 +148,7 @@ export default function DispensingTransactionModal({
           {isVoided && (
             <div className="rounded-xl border border-[#D9826B]/40 bg-[#FBE9E3] p-4 text-xs">
               <p className="font-bold text-[#8F3F2B] flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4" /> This dispensing transaction was voided on{" "}
+                <AlertTriangle className="h-4 w-4" /> This dispensing was voided on{" "}
                 {formatDispensingDateTime(transaction.voidedAt)}
               </p>
               {transaction.voidReason && (
@@ -424,10 +426,10 @@ export default function DispensingTransactionModal({
                   setIsVoidConfirmOpen(true);
                 }}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50/80 px-3.5 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100 hover:border-red-300 cursor-pointer shadow-2xs"
-                title="Void and cancel this transaction (Restores stock to inventory)"
+                title="Void and cancel this dispensing (Restores stock to inventory)"
               >
                 <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
-                <span>Void Transaction</span>
+                <span>Void Dispensing</span>
               </button>
             )}
           </div>
@@ -440,18 +442,38 @@ export default function DispensingTransactionModal({
             Close
           </button>
         </div>
+      </div>
+    </ModalShell>
 
-        {/* Void Confirmation Dialog */}
-        {isVoidConfirmOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+      {/* Void Confirmation Dialog - Portaled to document.body so it won't be trapped inside parent modal */}
+      {isVoidConfirmOpen &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="void-modal-title"
+            className="fixed inset-0 z-[9995] flex items-center justify-center p-4"
+          >
+            {/* Full-screen backdrop covering entire viewport */}
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={() => {
+                if (!isVoiding) {
+                  setIsVoidConfirmOpen(false);
+                }
+              }}
+              aria-hidden="true"
+            />
+
+            {/* Confirmation Dialog Card */}
+            <div className="relative z-10 w-full max-w-md rounded-2xl border border-red-200 bg-white p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700">
                   <AlertTriangle className="h-5 w-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-[#1B2B30]">
-                    Void Dispensing Transaction
+                  <h4 id="void-modal-title" className="text-sm font-black text-[#1B2B30]">
+                    Void Dispensing
                   </h4>
                   <p className="text-xs text-[#5B7077]">
                     Dispensing ID: {formatTransactionNumber(transaction.transactionId || transaction.key)}
@@ -462,7 +484,7 @@ export default function DispensingTransactionModal({
               <div className="rounded-xl border border-red-100 bg-red-50/70 p-3 text-xs text-red-800 space-y-1">
                 <p className="font-bold">This action will:</p>
                 <ul className="list-disc list-inside text-[11px] space-y-0.5 text-red-700">
-                  <li>Cancel this transaction permanently with an audit log.</li>
+                  <li>Cancel this dispensing permanently with an audit log.</li>
                   <li>Return all <strong>{totalUnits.toLocaleString()} unit(s)</strong> back to the medicine inventory.</li>
                   <li>Restore the patient's monthly claim allocation.</li>
                 </ul>
@@ -484,6 +506,7 @@ export default function DispensingTransactionModal({
                   placeholder="e.g., Wrong dosage released, duplicate entry, prescription changed..."
                   rows={3}
                   className="w-full rounded-xl border border-[#CFDDE0] bg-[#F9FBFB] p-2.5 text-xs font-medium text-[#1B2B30] outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20 transition resize-none"
+                  autoFocus
                 />
               </div>
 
@@ -513,9 +536,9 @@ export default function DispensingTransactionModal({
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
-      </div>
-    </ModalShell>
+    </>
   );
 }

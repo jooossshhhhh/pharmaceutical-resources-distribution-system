@@ -244,6 +244,7 @@ export default function BhwReportModule() {
       requestRows,
       inventoryRows,
       selectedDate,
+      isBhw: true,
     });
   }, [dispensingRows, requestRows, inventoryRows, selectedDate]);
 
@@ -274,9 +275,11 @@ export default function BhwReportModule() {
     try {
       await exportDailyRisExcel({
         dispensingRows,
-        requestRows,
+        requestRows: [],
         selectedDate,
         facilityName,
+        facilityId,
+        isBhw: true,
       });
     } catch (err) {
       console.error("Export RIS failed:", err);

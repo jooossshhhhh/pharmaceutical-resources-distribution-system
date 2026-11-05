@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Info, Package, Sparkles, Sliders, X } from "lucide-react";
 import ModalShell from "../../../components/ModalShell";
 import {
@@ -41,12 +41,14 @@ export default function BhwThresholdModal({
   const [thresholdInput, setThresholdInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [modalError, setModalError] = useState("");
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     if (isOpen) {
       setThresholdInput(String(currentThreshold > 0 ? currentThreshold : threshDetails.threshold));
       setModalError("");
       setIsSaving(false);
+      isSubmittingRef.current = false;
     }
   }, [isOpen, currentThreshold, threshDetails.threshold]);
 
@@ -63,18 +65,31 @@ export default function BhwThresholdModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSaving || isSubmittingRef.current) {
+      return;
+    }
+
     const val = Number(thresholdInput);
     if (!Number.isFinite(val) || val < 0) {
       setModalError("Threshold must be a valid number (0 or higher).");
       return;
     }
 
+    const newThreshold = Math.floor(val);
+
+    // If threshold is already set to this exact value, close modal smoothly without error or redundant RPC
+    if (newThreshold === currentThreshold) {
+      onClose();
+      return;
+    }
+
+    isSubmittingRef.current = true;
     setIsSaving(true);
     setModalError("");
     try {
       await onSave({
         medicineId,
-        threshold: Math.floor(val),
+        threshold: newThreshold,
         facilityId: item.facility_id || item.facility?.id,
       });
       onClose();
@@ -82,6 +97,7 @@ export default function BhwThresholdModal({
       setModalError(err.message || "Failed to update threshold.");
     } finally {
       setIsSaving(false);
+      isSubmittingRef.current = false;
     }
   };
 

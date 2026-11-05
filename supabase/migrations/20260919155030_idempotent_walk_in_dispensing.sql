@@ -7,11 +7,8 @@ create table if not exists public.dispensing_idempotency_keys (
   result jsonb not null,
   created_at timestamptz not null default now()
 );
-
 alter table public.dispensing_idempotency_keys enable row level security;
-
 revoke all on table public.dispensing_idempotency_keys from public, anon, authenticated;
-
 create or replace function public.dispense_walk_in_idempotent(
   p_operation_id uuid,
   p_patient_id uuid,
@@ -79,9 +76,7 @@ begin
   return v_result;
 end;
 $$;
-
 revoke all on function public.dispense_walk_in_idempotent(uuid, uuid, jsonb, text) from public;
 revoke all on function public.dispense_walk_in_idempotent(uuid, uuid, jsonb, text) from anon;
 grant execute on function public.dispense_walk_in_idempotent(uuid, uuid, jsonb, text) to authenticated;
-
 notify pgrst, 'reload schema';

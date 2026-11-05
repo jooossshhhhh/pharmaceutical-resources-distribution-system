@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import AppRoutes from "@frontend/routes/AppRoutes";
 import DesktopTitlebar from "@frontend/components/layout/DesktopTitlebar";
 import { initSqliteSchema, isTauriEnvironment } from "@backend/database/sqliteClient";
+import { initBackgroundUpdateCheck } from "@backend/services/updaterService";
 
 function App() {
   useEffect(() => {
@@ -9,6 +10,7 @@ function App() {
       initSqliteSchema().catch((error) => {
         console.warn("Unable to initialize the local database:", error);
       });
+      initBackgroundUpdateCheck(10000);
     }
 
     const handleContextMenu = (e) => {

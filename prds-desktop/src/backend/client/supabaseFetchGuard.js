@@ -38,6 +38,26 @@ export function createAuthenticatedFetch({
       if (!session?.access_token) {
         throw createAuthSessionRequiredError();
       }
+
+      if (init?.headers) {
+        if (typeof Headers !== "undefined" && init.headers instanceof Headers) {
+          init.headers.set("Authorization", `Bearer ${session.access_token}`);
+        } else if (Array.isArray(init.headers)) {
+          const idx = init.headers.findIndex(
+            ([k]) => String(k).toLowerCase() === "authorization"
+          );
+          if (idx >= 0) {
+            init.headers[idx] = ["Authorization", `Bearer ${session.access_token}`];
+          } else {
+            init.headers.push(["Authorization", `Bearer ${session.access_token}`]);
+          }
+        } else if (typeof init.headers === "object") {
+          init.headers = {
+            ...init.headers,
+            Authorization: `Bearer ${session.access_token}`,
+          };
+        }
+      }
     }
 
     return fetchImpl(input, init);

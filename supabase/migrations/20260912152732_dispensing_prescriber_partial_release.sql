@@ -16,14 +16,11 @@ alter table public.medicine_dispensing
     add column if not exists referred_facility_id uuid
         references public.facilities(id)
         on delete restrict;
-
 update public.medicine_dispensing
    set needed_quantity = quantity
  where needed_quantity is null;
-
 alter table public.medicine_dispensing
     alter column needed_quantity set not null;
-
 alter table public.medicine_dispensing
     drop constraint if exists medicine_dispensing_needed_quantity_check,
     add constraint medicine_dispensing_needed_quantity_check
@@ -32,13 +29,10 @@ alter table public.medicine_dispensing
     add constraint medicine_dispensing_follow_up_action_check
         check (follow_up_action is null or follow_up_action in ('SCHEDULE_NEXT_WEEK', 'REFER_TO_BARANGAY')),
     drop constraint if exists medicine_dispensing_follow_up_required_check;
-
 create index if not exists idx_medicine_dispensing_patient_medicine_month
     on public.medicine_dispensing(patient_id, medicine_id, dispense_date)
     where voided_at is null;
-
 drop function if exists public.dispense_walk_in(uuid, jsonb);
-
 create or replace function public.dispense_walk_in(
     p_patient_id uuid,
     p_items jsonb,
@@ -318,11 +312,9 @@ begin
     );
 end;
 $$;
-
 revoke all on function public.dispense_walk_in(uuid, jsonb, text) from public;
 revoke all on function public.dispense_walk_in(uuid, jsonb, text) from anon;
 grant execute on function public.dispense_walk_in(uuid, jsonb, text) to authenticated;
-
 create or replace function public.get_patient_monthly_claim_status(
     p_patient_id uuid
 )
@@ -392,7 +384,6 @@ begin
     return jsonb_build_object('claimed_this_month', coalesce(v_claimed, false));
 end;
 $$;
-
 revoke all on function public.get_patient_monthly_claim_status(uuid) from public;
 revoke all on function public.get_patient_monthly_claim_status(uuid) from anon;
 grant execute on function public.get_patient_monthly_claim_status(uuid) to authenticated;

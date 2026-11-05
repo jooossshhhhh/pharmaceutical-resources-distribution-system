@@ -18,6 +18,7 @@ import {
   updateManagedUser,
 } from "@backend/services/userManagementService";
 import { getSnapshot, STORAGE_KEYS } from "@backend/database/snapshotStore";
+import { supabase } from "@backend/client/supabase";
 
 const emptyForm = {
   facility_id: "",
@@ -109,6 +110,22 @@ export default function UserManagementModule() {
 
   useEffect(() => {
     loadUsers();
+
+    // Subscribe to real-time changes on profiles table for smooth multi-user concurrency
+    const channel = supabase
+      .channel("realtime-user-management")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        () => {
+          loadUsers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const selectStatus = (nextStatus) => {
@@ -150,10 +167,30 @@ export default function UserManagementModule() {
     setIsSaving(true);
     setUserError("");
 
+    const isModalEditingThisUser = selectedUser?.id === user.id;
+    const targetFacilityId =
+      overrides.facility_id !== undefined
+        ? overrides.facility_id
+        : isModalEditingThisUser
+          ? formValues.facility_id
+          : user.facility_id;
+    const targetRole =
+      overrides.role !== undefined
+        ? overrides.role
+        : isModalEditingThisUser
+          ? formValues.role
+          : user.role;
+    const targetStatus =
+      overrides.status !== undefined
+        ? overrides.status
+        : isModalEditingThisUser
+          ? formValues.status
+          : user.status;
+
     const payload = {
-      facility_id: (overrides.facility_id ?? formValues.facility_id) || null,
-      role: overrides.role ?? formValues.role,
-      status: overrides.status ?? formValues.status,
+      facility_id: targetFacilityId || null,
+      role: targetRole,
+      status: targetStatus,
       updated_at: new Date().toISOString(),
     };
 
@@ -173,7 +210,7 @@ export default function UserManagementModule() {
               ...payload,
               facility: facilityObj
                 ? { id: facilityObj.id, facility_name: facilityObj.facility_name, facility_code: facilityObj.facility_code }
-                : u.facility,
+                : (payload.facility_id ? u.facility : null),
             }
           : u
       )
@@ -197,6 +234,11 @@ export default function UserManagementModule() {
   };
 
   const handleQuickApprove = (user) => {
+    if (!user?.facility_id) {
+      openUserModal(user);
+      setUserError("Please assign a facility to this user before approving their account.");
+      return;
+    }
     updateUser(user, { status: "ACTIVE" });
   };
 

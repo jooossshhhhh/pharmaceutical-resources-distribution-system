@@ -262,6 +262,56 @@ test("describeMutation generates human-friendly labels and details for outbox en
   });
   assert.equal(request.label, "Medicine Request");
   assert.equal(request.description, "Request #REQ-001");
+
+  // Health Program (save_other_program RPC)
+  const program = describeMutation({
+    mutation_type: "RPC",
+    target: "save_other_program",
+    payload_json: JSON.stringify({
+      p_program_name: "TB Control Program",
+      p_program_date: "2026-11-20",
+      p_items: [{ medicine_id: "m1", quantity_used: 10 }],
+    }),
+  });
+  assert.equal(program.label, "Health Program");
+  assert.equal(program.description, "TB Control Program");
+  assert.equal(program.details, "Date: 2026-11-20 · 1 medicine allocated");
+
+  // Complete and Cancel programs
+  const completeProg = describeMutation({
+    mutation_type: "RPC",
+    target: "complete_other_program",
+    payload_json: JSON.stringify({ p_program_name: "Immunization Day" }),
+  });
+  assert.equal(completeProg.label, "Complete Program");
+  assert.equal(completeProg.description, "Completed: Immunization Day");
+
+  const cancelProg = describeMutation({
+    mutation_type: "RPC",
+    target: "cancel_other_program",
+    payload_json: JSON.stringify({ p_program_name: "Dental Mission" }),
+  });
+  assert.equal(cancelProg.label, "Cancel Program");
+  assert.equal(cancelProg.description, "Cancelled: Dental Mission");
+
+  // Threshold update
+  const threshold = describeMutation({
+    mutation_type: "RPC",
+    target: "update_bhw_inventory_threshold",
+    payload_json: JSON.stringify({ min_threshold: 25 }),
+  });
+  assert.equal(threshold.label, "Stock Alert Level");
+  assert.equal(threshold.details, "Threshold set to 25");
+
+  // Fallback without jargon
+  const unknownTable = describeMutation({
+    mutation_type: "INSERT",
+    target: "facility_records",
+    payload_json: JSON.stringify({}),
+  });
+  assert.equal(unknownTable.label, "New Record");
+  assert.equal(unknownTable.description, "Facility records");
+  assert.doesNotMatch(unknownTable.description, /rpc/i);
 });
 
 test("getSafeWatermarkWindow computes safe watermark window with clock skew rewind", () => {

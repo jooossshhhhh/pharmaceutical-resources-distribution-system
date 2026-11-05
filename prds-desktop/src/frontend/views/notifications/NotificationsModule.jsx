@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import PaginationControls from "../../components/PaginationControls";
 import AdminShell from "../../components/layout/AdminShell";
@@ -48,6 +49,7 @@ const roleLabels = {
 
 const notificationTypeFilters = [
   { value: "all", label: "All Types" },
+  { value: "programs", label: "Other Programs" },
   { value: "low_stock", label: "Low Stock" },
   { value: "requests", label: "Requests" },
   { value: "transfers", label: "Transfers" },
@@ -67,6 +69,11 @@ const getFullName = (notification) => {
 
 const getNotificationMeta = (category) => {
   const meta = {
+    programs: {
+      label: "Other Program",
+      tone: "amber",
+      icon: <ProgramIcon />,
+    },
     low_stock: {
       label: "Low Stock",
       tone: "red",
@@ -145,6 +152,7 @@ export default function NotificationsModule() {
   const counts = useMemo(() => {
     const total = visibleNotifications.length;
     let unread = 0;
+    let programsCount = 0;
     let lowStock = 0;
     let requests = 0;
     let transfers = 0;
@@ -154,14 +162,15 @@ export default function NotificationsModule() {
     for (const notification of visibleNotifications) {
       if (!notification.is_read) unread++;
       const cat = getNotificationCategory(notification);
-      if (cat === "low_stock") lowStock++;
+      if (cat === "programs") programsCount++;
+      else if (cat === "low_stock") lowStock++;
       else if (cat === "requests") requests++;
       else if (cat === "transfers") transfers++;
       else if (cat === "facility") facility++;
       else system++;
     }
 
-    return { total, unread, lowStock, requests, transfers, facility, system };
+    return { total, unread, programs: programsCount, lowStock, requests, transfers, facility, system };
   }, [visibleNotifications]);
 
   // Count active advanced filters
@@ -477,6 +486,30 @@ export default function NotificationsModule() {
                   }`}
                 >
                   {counts.unread}
+                </span>
+              </button>
+
+              {/* Other Programs Pill */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCategory((prev) => (prev === "programs" ? "all" : "programs"));
+                }}
+                className={`inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                  category === "programs"
+                    ? "bg-[#1F4E5A] text-white shadow-xs"
+                    : "bg-white text-[#5B7077] border border-[#CFDDE0] hover:bg-[#F4F8F8] hover:text-[#1B2B30]"
+                }`}
+              >
+                <span>Other Programs</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                    category === "programs"
+                      ? "bg-white/20 text-white"
+                      : "bg-[#E5EFF1] text-[#5B7077]"
+                  }`}
+                >
+                  {counts.programs || 0}
                 </span>
               </button>
 
@@ -893,10 +926,41 @@ function NotificationDetailModal({
   onToggleRead,
   onClose,
 }) {
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const category = notification ? getNotificationCategory(notification) : "system";
   const meta = getNotificationMeta(category);
   const canUpdateReadStatus = Boolean(notification && notification.user_id === currentUserId);
+
+  const programInfo = useMemo(() => {
+    if (!notification) return null;
+    const isProgramNotif =
+      category === "programs" ||
+      (notification.title && notification.title.toLowerCase().includes("program")) ||
+      (notification.message && notification.message.toLowerCase().includes("program"));
+
+    if (!isProgramNotif) return null;
+
+    const cachedPrograms = getSnapshot(STORAGE_KEYS.OTHER_PROGRAMS, []);
+    let matchingProg = null;
+
+    if (notification.program_id) {
+      matchingProg = cachedPrograms.find((p) => String(p.id) === String(notification.program_id));
+    }
+    if (!matchingProg) {
+      matchingProg = cachedPrograms.find((p) =>
+        p.program_name && notification.message && notification.message.includes(p.program_name)
+      );
+    }
+
+    return {
+      program: matchingProg,
+      programName: matchingProg?.program_name,
+      programDate: matchingProg?.program_date,
+      status: matchingProg?.status || "UPCOMING",
+      medicines: matchingProg?.medicines || [],
+    };
+  }, [notification, category]);
 
   // Extract request reference if message relates to a medicine request
   const requestInfo = useMemo(() => {
@@ -1018,6 +1082,57 @@ function NotificationDetailModal({
 
         {/* Body */}
         <div className="p-6 space-y-4">
+          {/* Program Overview Callout if program notification */}
+          {programInfo && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-200/80 text-amber-900">
+                    <ProgramIcon className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-800">
+                      Outreach Program
+                    </span>
+                    <p className="text-sm font-black text-amber-950">
+                      {programInfo.programName || "Scheduled Program"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose?.();
+                    navigate("/other-programs");
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition cursor-pointer"
+                >
+                  <span>Open Module</span>
+                  <ChevronRightIcon className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {programInfo.medicines && programInfo.medicines.length > 0 && (
+                <div className="rounded-lg border border-amber-200/80 bg-white/90 p-2.5">
+                  <p className="text-[11px] font-bold text-amber-900 mb-1">
+                    Reserved Stock Allocations:
+                  </p>
+                  <div className="space-y-1">
+                    {programInfo.medicines.map((m, idx) => {
+                      const medName = m.medicine?.generic_name || m.generic_name || "Medicine";
+                      const qty = m.quantity_allocated ?? m.quantity_used ?? 0;
+                      return (
+                        <div key={idx} className="flex justify-between text-xs text-slate-700">
+                          <span className="font-medium truncate">{medName}</span>
+                          <span className="font-black text-amber-900 tabular-nums shrink-0">{Number(qty).toLocaleString()} units</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Transaction / Request ID Callout if request is recognized */}
           {requestInfo?.requestNumber && (
             <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5">
@@ -1245,6 +1360,16 @@ function CopyIcon({ className = "h-3.5 w-3.5" }) {
     <svg className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
       <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
       <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
+function ProgramIcon({ className = "h-5 w-5" }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+      <path d="M8 2v4M16 2v4M3 10h18" />
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M12 14h4M12 18h2" />
     </svg>
   );
 }

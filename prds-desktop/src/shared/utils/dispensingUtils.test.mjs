@@ -162,6 +162,75 @@ test("buildMedicineOptions strictly excludes expired and zero-stock inventory en
   assert.equal(options.find((opt) => opt.medicine_id === "med-expired"), undefined);
 });
 
+test("buildMedicineOptions deducts reservedQuantities and restricts available dispensable stock", () => {
+  const rows = [
+    {
+      id: "batch-1",
+      medicine_id: "med-1",
+      quantity: 110,
+      batch_number: "BATCH-110",
+      expiration_date: futureDate(120),
+      medicine: { generic_name: "Ascorbic acid", brand_name: "Ritemed", dosage: "100mg", unit_of_measure: "bottle" },
+    },
+  ];
+
+  // 20 bottles reserved for upcoming other program
+  const reservedMap = new Map([["med-1", 20]]);
+  const options = buildMedicineOptions(rows, "", reservedMap);
+
+  assert.equal(options.length, 1);
+  assert.equal(options[0].gross_quantity, 110);
+  assert.equal(options[0].reserved_quantity, 20);
+  assert.equal(options[0].total_quantity, 90);
+
+  // Attempting to dispense 95 units should trigger available stock error
+  const error = getCartLineError({
+    line: { medicine_id: "med-1", needed_quantity: 95, quantity: 95 },
+    medicineOptions: options,
+  });
+  assert.match(error, /Only 90 available quantity/);
+
+  // If 110 are reserved, it should be excluded from available options
+  const fullyReserved = buildMedicineOptions(rows, "", new Map([["med-1", 110]]));
+  assert.equal(fullyReserved.length, 0);
+});
+
+test("buildMedicineOptions safely handles empty Map and unmapped keys without NaN stock loss", () => {
+  const multiRows = [
+    {
+      id: "batch-1",
+      medicine_id: "med-1",
+      quantity: 500,
+      expiration_date: futureDate(120),
+      medicine: { generic_name: "Albendazole", dosage: "400mg", unit_of_measure: "tablet" },
+    },
+    {
+      id: "batch-2",
+      medicine_id: "med-2",
+      quantity: 1000,
+      expiration_date: futureDate(150),
+      medicine: { generic_name: "Ascorbic acid", dosage: "500mg", unit_of_measure: "tablet" },
+    },
+  ];
+
+  // Empty Map must not turn unmapped entries into NaN
+  const emptyMapOptions = buildMedicineOptions(multiRows, "", new Map());
+  assert.equal(emptyMapOptions.length, 2);
+  assert.equal(emptyMapOptions[0].total_quantity, 500);
+  assert.equal(emptyMapOptions[1].total_quantity, 1000);
+
+  // Partial Map reservation only deducts the mapped medicine
+  const partialMap = new Map([["med-1", 100]]);
+  const partialOptions = buildMedicineOptions(multiRows, "", partialMap);
+  assert.equal(partialOptions.length, 2);
+  const albendazole = partialOptions.find((o) => o.medicine_id === "med-1");
+  const ascorbic = partialOptions.find((o) => o.medicine_id === "med-2");
+  assert.equal(albendazole.total_quantity, 400);
+  assert.equal(albendazole.reserved_quantity, 100);
+  assert.equal(ascorbic.total_quantity, 1000);
+  assert.equal(ascorbic.reserved_quantity, 0);
+});
+
 test("buildMedicineOptions filters by keyword across name fields", () => {
   assert.equal(buildMedicineOptions(inventoryRows, "paracet").length, 1);
   assert.equal(buildMedicineOptions(inventoryRows, "biogesic").length, 1);

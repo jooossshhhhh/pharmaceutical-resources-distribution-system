@@ -262,7 +262,6 @@ begin
   return p_request_id;
 end;
 $$;
-
 revoke all on function public.approve_and_release_medicine_request(uuid, jsonb, text) from public;
 revoke all on function public.approve_and_release_medicine_request(uuid, jsonb, text) from anon;
 grant execute on function public.approve_and_release_medicine_request(uuid, jsonb, text) to authenticated;
