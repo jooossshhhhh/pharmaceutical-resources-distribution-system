@@ -1,6 +1,6 @@
 [package]
 name = "prds-desktop"
-version = "1.0.0"
+version = "1.0.1"
 description = "Pharmaceutical Resources Distribution System Desktop"
 authors = ["City Health Office of Naga, Cebu"]
 edition = "2021"

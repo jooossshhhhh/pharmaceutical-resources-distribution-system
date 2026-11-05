@@ -7,7 +7,7 @@
 
 import { isTauriEnvironment } from "../database/sqliteClient.js";
 
-const DEFAULT_FALLBACK_VERSION = "1.0.0";
+const DEFAULT_FALLBACK_VERSION = "1.0.1";
 
 /**
  * Format raw byte size into human readable string (e.g., "14.2 MB")
