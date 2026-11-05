@@ -154,6 +154,14 @@ export default function ChoInventoryModule() {
     selectInventoryTab(tab);
   };
 
+  const handleOpenItem = (item) => {
+    if (inventoryTab === "EXPIRED") {
+      setDisposingLot(item);
+    } else {
+      setViewingMedicine(item);
+    }
+  };
+
   return (
     <AdminShell currentDateTime={today} profile={profile} onSignOut={logoutUser}>
       {inventoryError && !modalMode && (
@@ -336,7 +344,7 @@ export default function ChoInventoryModule() {
           sortKey={inventorySort.key}
           sortDirection={inventorySort.direction}
           onSort={handleSort}
-          onOpenItem={(item) => setViewingMedicine(item)}
+          onOpenItem={handleOpenItem}
           onClearFilters={clearFilters}
           consumptionByMedicine={consumptionByMedicine}
           currentPage={currentPage}

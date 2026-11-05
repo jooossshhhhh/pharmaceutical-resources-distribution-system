@@ -16,8 +16,6 @@ const MONTH_NAMES = [
   "December",
 ];
 
-const AVAILABLE_YEARS = [2022, 2023, 2024, 2025, 2026, 2027, 2028];
-
 export default function MonthYearSelector({
   year = new Date().getFullYear(),
   month = new Date().getMonth() + 1,
@@ -26,6 +24,29 @@ export default function MonthYearSelector({
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
   const isCurrentMonth = year === currentYear && month === currentMonth;
+  const isAtLatestMonth = year > currentYear || (year === currentYear && month >= currentMonth);
+
+  // Available years: past years up to current year (future years cannot be audited)
+  const availableYears = useMemo(() => {
+    const list = [];
+    for (let y = 2022; y <= currentYear; y++) {
+      list.push(y);
+    }
+    return list;
+  }, [currentYear]);
+
+  // Available months: if viewing current year, future months are disabled
+  const monthOptions = useMemo(() => {
+    return MONTH_NAMES.map((mName, idx) => {
+      const mNum = idx + 1;
+      const isFuture = year > currentYear || (year === currentYear && mNum > currentMonth);
+      return {
+        name: mName,
+        value: mNum,
+        isFuture,
+      };
+    });
+  }, [year, currentYear, currentMonth]);
 
   // Compute period coverage and previous month anchor dates
   const periodInfo = useMemo(() => {
@@ -58,11 +79,15 @@ export default function MonthYearSelector({
   };
 
   const handleNextMonth = () => {
+    if (isAtLatestMonth) return;
     let nextMonth = month + 1;
     let nextYear = year;
     if (nextMonth > 12) {
       nextMonth = 1;
       nextYear += 1;
+    }
+    if (nextYear > currentYear || (nextYear === currentYear && nextMonth > currentMonth)) {
+      return;
     }
     onChangePeriod?.({ year: nextYear, month: nextMonth });
   };
@@ -83,12 +108,16 @@ export default function MonthYearSelector({
         {/* Month Dropdown */}
         <select
           value={month}
-          onChange={(e) => onChangePeriod?.({ year, month: Number(e.target.value) })}
+          onChange={(e) => {
+            const m = Number(e.target.value);
+            if (year === currentYear && m > currentMonth) return;
+            onChangePeriod?.({ year, month: m });
+          }}
           className="bg-[#F9FBFB] border border-[#CFDDE0] hover:border-[#34769B] focus:outline-none focus:ring-1 focus:ring-[#34769B] text-xs font-semibold text-[#1B2B30] rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
         >
-          {MONTH_NAMES.map((mName, idx) => (
-            <option key={mName} value={idx + 1}>
-              {mName}
+          {monthOptions.map((m) => (
+            <option key={m.name} value={m.value} disabled={m.isFuture}>
+              {m.name}{m.isFuture ? " (Future - Unopened)" : ""}
             </option>
           ))}
         </select>
@@ -96,10 +125,17 @@ export default function MonthYearSelector({
         {/* Year Dropdown */}
         <select
           value={year}
-          onChange={(e) => onChangePeriod?.({ year: Number(e.target.value), month })}
+          onChange={(e) => {
+            const newYear = Number(e.target.value);
+            let newMonth = month;
+            if (newYear === currentYear && newMonth > currentMonth) {
+              newMonth = currentMonth;
+            }
+            onChangePeriod?.({ year: newYear, month: newMonth });
+          }}
           className="bg-[#F9FBFB] border border-[#CFDDE0] hover:border-[#34769B] focus:outline-none focus:ring-1 focus:ring-[#34769B] text-xs font-semibold text-[#1B2B30] rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
         >
-          {AVAILABLE_YEARS.map((y) => (
+          {availableYears.map((y) => (
             <option key={y} value={y}>
               {y}
             </option>
@@ -118,9 +154,10 @@ export default function MonthYearSelector({
           </button>
           <button
             type="button"
-            title="Next Month"
+            title={isAtLatestMonth ? "Future months cannot be audited yet" : "Next Month"}
+            disabled={isAtLatestMonth}
             onClick={handleNextMonth}
-            className="p-1.5 bg-[#F9FBFB] hover:bg-[#E5EFF1]/60 text-[#5B7077] hover:text-[#1B2B30] border border-[#CFDDE0] rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 bg-[#F9FBFB] hover:bg-[#E5EFF1]/60 text-[#5B7077] hover:text-[#1B2B30] border border-[#CFDDE0] rounded-lg transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-[#F9FBFB] disabled:hover:text-[#5B7077]"
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </button>

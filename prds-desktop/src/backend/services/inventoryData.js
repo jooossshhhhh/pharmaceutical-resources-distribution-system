@@ -365,7 +365,7 @@ export function useInventoryData({ isBhw = false }) {
 
     expiredLots.forEach((lot) => {
       const qty = Number(lot.quantity || 0);
-      const unitCost = Number(lot.medicine?.unit_cost || 0);
+      const unitCost = Number(lot.unit_cost || lot.medicine?.unit_cost || 0);
       totalUnits += qty;
       totalLossValue += qty * unitCost;
     });
@@ -460,6 +460,8 @@ export function useInventoryData({ isBhw = false }) {
         item.medicine?.dosage,
         item.medicine?.unit_of_measure,
         item.facility?.facility_name,
+        item.batch_number,
+        item.po_number,
         ...(item.lots || []).map((lot) => lot.brand_name),
         ...(item.lots || []).map((lot) => lot.supplier_name || lot.supplier?.supplier_name),
         ...(item.lots || []).map((lot) => lot.batch_number),
@@ -1849,50 +1851,63 @@ export function useInventoryData({ isBhw = false }) {
     }
   };
 
-  const handleDisposeStock = async (lot, { method, remarks } = {}) => {
-    if (!lot?.id) return false;
+  const handleDisposeStock = async (target, { method, remarks } = {}) => {
+    const lots = Array.isArray(target) ? target : [target];
+    const validLots = lots.filter((l) => l?.id);
+    if (validLots.length === 0) return false;
+
     setIsSaving(true);
     setInventoryError("");
 
-    const disposalMethod = method || "LGU City Health Condemnation Protocol";
+    const disposalMethod = method?.trim() || "Condemned & Disposed";
     const nowIso = new Date().toISOString();
-    const updatedLot = {
-      ...lot,
-      status: "DISPOSED",
-      quantity: 0,
-      disposed_at: nowIso,
-      disposal_method: disposalMethod,
-      disposed_by: profile?.id,
-      updated_at: nowIso,
-    };
+    const lotIds = validLots.map((l) => l.id);
+    const lotIdSet = new Set(lotIds);
+
+    const updatedLotsMap = new Map();
+    validLots.forEach((l) => {
+      updatedLotsMap.set(l.id, {
+        ...l,
+        status: "DISPOSED",
+        quantity: 0,
+        disposed_at: nowIso,
+        disposal_method: disposalMethod,
+        disposed_by: profile?.id,
+        updated_at: nowIso,
+      });
+    });
 
     const isOnline = isCurrentNetworkOnline();
 
     if (!isOnline) {
-      await enqueueMutation({
-        mutationType: "UPDATE",
-        target: "inventory",
-        payload: {
-          id: lot.id,
-          quantity: 0,
-          updated_at: nowIso,
-        },
-      });
+      for (const l of validLots) {
+        await enqueueMutation({
+          mutationType: "UPDATE",
+          target: "inventory",
+          payload: {
+            id: l.id,
+            quantity: 0,
+            updated_at: nowIso,
+          },
+        });
+      }
 
       if (isTauriEnvironment()) {
         try {
           const db = await getSqliteDb();
-          await db.execute(
-            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = ?, disposal_method = ?, disposed_by = ?, updated_at = ? WHERE id = ?`,
-            [nowIso, disposalMethod, profile?.id, nowIso, lot.id]
-          );
+          for (const l of validLots) {
+            await db.execute(
+              `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = ?, disposal_method = ?, disposed_by = ?, updated_at = ? WHERE id = ?`,
+              [nowIso, disposalMethod, profile?.id, nowIso, l.id]
+            );
+          }
         } catch (dbErr) {
           console.warn("Failed to update local SQLite on stock disposal:", dbErr);
         }
       }
 
       setInventory((prev) => {
-        const next = prev.map((item) => (item.id === lot.id ? updatedLot : item));
+        const next = prev.map((item) => (lotIdSet.has(item.id) ? updatedLotsMap.get(item.id) : item));
         saveSnapshot(STORAGE_KEYS.INVENTORY, next);
         return next;
       });
@@ -1909,19 +1924,20 @@ export function useInventoryData({ isBhw = false }) {
           quantity: 0,
           updated_at: nowIso,
         })
-        .eq("id", lot.id);
+        .in("id", lotIds);
 
       if (error) {
         throw error;
       }
 
       try {
-        await supabase.from("activity_logs").insert({
+        const logEntries = validLots.map((l) => ({
           user_id: profile?.id,
           action: "Stock Disposed",
           module: "Inventory",
-          details: `Disposed ${lot.quantity || 0} units of ${getMedicineName(lot)} (Lot #${lot.batch_number || "N/A"}) due to expiration. Method: ${disposalMethod}${remarks ? ` (${remarks})` : ""}`,
-        });
+          details: `Disposed ${l.quantity || 0} units of ${getMedicineName(l)} (Lot #${l.batch_number || "N/A"}) due to expiration. Method: ${disposalMethod}${remarks ? ` (${remarks})` : ""}`,
+        }));
+        await supabase.from("activity_logs").insert(logEntries);
       } catch (logErr) {
         console.warn("Disposal activity log write skipped:", logErr);
       }
@@ -1929,17 +1945,19 @@ export function useInventoryData({ isBhw = false }) {
       if (isTauriEnvironment()) {
         try {
           const db = await getSqliteDb();
-          await db.execute(
-            `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = ?, disposal_method = ?, disposed_by = ?, updated_at = ? WHERE id = ?`,
-            [nowIso, disposalMethod, profile?.id, nowIso, lot.id]
-          );
+          for (const l of validLots) {
+            await db.execute(
+              `UPDATE inventory SET status = 'DISPOSED', quantity = 0, disposed_at = ?, disposal_method = ?, disposed_by = ?, updated_at = ? WHERE id = ?`,
+              [nowIso, disposalMethod, profile?.id, nowIso, l.id]
+            );
+          }
         } catch (dbErr) {
           console.warn("Failed to update local SQLite on stock disposal:", dbErr);
         }
       }
 
       setInventory((prev) => {
-        const next = prev.map((item) => (item.id === lot.id ? updatedLot : item));
+        const next = prev.map((item) => (lotIdSet.has(item.id) ? updatedLotsMap.get(item.id) : item));
         saveSnapshot(STORAGE_KEYS.INVENTORY, next);
         return next;
       });
@@ -1951,7 +1969,7 @@ export function useInventoryData({ isBhw = false }) {
     } catch (err) {
       console.error("Disposal error:", err);
       setInventory((prev) => {
-        const next = prev.map((item) => (item.id === lot.id ? updatedLot : item));
+        const next = prev.map((item) => (lotIdSet.has(item.id) ? updatedLotsMap.get(item.id) : item));
         saveSnapshot(STORAGE_KEYS.INVENTORY, next);
         return next;
       });

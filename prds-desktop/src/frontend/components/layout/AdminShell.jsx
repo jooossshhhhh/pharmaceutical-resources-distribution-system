@@ -62,11 +62,7 @@ function AdminShellRoot({
   return (
     <ModalContainerContext.Provider value={contextValue}>
       <main className="prds-admin-shell h-full min-h-0 overflow-hidden bg-[var(--grad-canvas)] text-[#1B2B30]">
-        <div
-          className={`grid h-full min-h-0 transition-[grid-template-columns] duration-300 ${
-            isSidebarCollapsed ? "grid-cols-[52px_1fr]" : "grid-cols-[204px_1fr]"
-          }`}
-        >
+        <div className="flex h-full min-h-0 w-full overflow-hidden">
           <AdminSidebar
             profile={profile}
             isCollapsed={isSidebarCollapsed}
@@ -81,7 +77,7 @@ function AdminShellRoot({
             />
             <section
               ref={mainScrollRef}
-              className="prds-main-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-5"
+              className="prds-main-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-6"
             >
               <div className="mx-auto min-w-0 max-w-[1280px]">{children}</div>
             </section>
@@ -123,5 +119,3 @@ export default function AdminShell({
     </AdminShellContext.Provider>
   );
 }
-
-

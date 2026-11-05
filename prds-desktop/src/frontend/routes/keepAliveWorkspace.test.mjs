@@ -48,8 +48,8 @@ test("role guards properly restrict administrative modules", () => {
   assert.equal(isRouteAuthorized(usersRoute, "BHW"), false);
 
   const facilitiesRoute = WORKSPACE_ROUTE_CONFIG.find((r) => r.path === "/facilities");
-  assert.deepEqual(facilitiesRoute.allowedRoles, ["PHARMA_I", "PHARMA_II"]);
-  assert.equal(isRouteAuthorized(facilitiesRoute, "PHARMA_I"), true);
+  assert.deepEqual(facilitiesRoute.allowedRoles, ["PHARMA_II"]);
+  assert.equal(isRouteAuthorized(facilitiesRoute, "PHARMA_I"), false);
   assert.equal(isRouteAuthorized(facilitiesRoute, "PHARMA_II"), true);
   assert.equal(isRouteAuthorized(facilitiesRoute, "BHW"), false);
 

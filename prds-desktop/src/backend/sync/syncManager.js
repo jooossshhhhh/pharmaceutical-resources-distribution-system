@@ -1417,6 +1417,7 @@ export async function syncAllData({ retryFailed = false, forceFullSync = false }
     if (typeof window !== "undefined") {
       try {
         window.dispatchEvent(new CustomEvent("prds:inventory-changed"));
+        window.dispatchEvent(new CustomEvent("prds:patients-changed"));
       } catch {}
     }
     updateSyncStatus("SUCCESS");

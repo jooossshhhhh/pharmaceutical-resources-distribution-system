@@ -600,6 +600,19 @@ export default function DispensingWorkbench() {
     return () => window.clearTimeout(timerId);
   }, [runPatientSearch]);
 
+  // Sync with live patient registrations across modules
+  useEffect(() => {
+    const handlePatientChange = () => {
+      if (patientKeyword.trim()) {
+        runPatientSearch();
+      }
+    };
+    window.addEventListener("prds:patients-changed", handlePatientChange);
+    return () => {
+      window.removeEventListener("prds:patients-changed", handlePatientChange);
+    };
+  }, [patientKeyword, runPatientSearch]);
+
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       const heading = document.querySelector("[data-step-heading]");
@@ -1961,13 +1974,6 @@ export default function DispensingWorkbench() {
                             (b) => b.medicine_id === option.medicine_id
                           );
                           const isCompletedForMonth = existingClaimItem?.is_completed;
-                          const expDate = option.nearest_expiration
-                            ? new Date(option.nearest_expiration).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })
-                            : null;
 
                           return (
                             <button
@@ -1992,11 +1998,6 @@ export default function DispensingWorkbench() {
                                   <p className="mt-1 text-xs text-[#5f6673]">
                                     {getMedicineFullLabel(option.medicine)}
                                   </p>
-                                  {expDate && (
-                                    <p className="mt-0.5 text-[11px] text-slate-500">
-                                      Earliest exp: {expDate}
-                                    </p>
-                                  )}
                                 </div>
                                 <span
                                   className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ${

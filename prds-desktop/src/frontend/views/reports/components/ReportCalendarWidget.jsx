@@ -62,6 +62,8 @@ export default function ReportCalendarWidget({ selectedDate, onSelectDate }) {
   const todayMonth = today.getMonth();
   const todayDay = today.getDate();
 
+  const isAtLatestMonth = year > todayYear || (year === todayYear && month >= todayMonth);
+
   const minYear = 2000;
 
   // Year options: from current year down to year 2000
@@ -83,6 +85,7 @@ export default function ReportCalendarWidget({ selectedDate, onSelectDate }) {
   };
 
   const nextMonth = () => {
+    if (isAtLatestMonth) return;
     const nextDate = new Date(year, month + 1, 1);
     setViewDate(nextDate);
     const maxDays = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate();
@@ -92,7 +95,11 @@ export default function ReportCalendarWidget({ selectedDate, onSelectDate }) {
   };
 
   const handleYearSelect = (newYear) => {
-    const nextDate = new Date(newYear, month, 1);
+    let targetMonth = month;
+    if (newYear === todayYear && targetMonth > todayMonth) {
+      targetMonth = todayMonth;
+    }
+    const nextDate = new Date(newYear, targetMonth, 1);
     setViewDate(nextDate);
     const maxDays = new Date(newYear, month + 1, 0).getDate();
     const baseDay = selectedDate ? selectedDate.getDate() : today.getDate();
@@ -178,15 +185,19 @@ export default function ReportCalendarWidget({ selectedDate, onSelectDate }) {
               <div className="absolute left-0 top-full mt-1.5 w-32 max-h-52 overflow-y-auto bg-white border border-[#CFDDE0] rounded-xl shadow-lg z-50 py-1 text-xs">
                 {MONTHS.map((m, idx) => {
                   const isSelected = idx === month;
+                  const isFutureMonth = year > todayYear || (year === todayYear && idx > todayMonth);
                   return (
                     <button
                       key={m.short}
                       type="button"
-                      onClick={() => handleMonthSelect(idx)}
-                      className={`w-full text-left px-3 py-1.5 font-medium transition-colors cursor-pointer flex items-center justify-between ${
-                        isSelected
-                          ? "bg-[#1F4E5A] text-white font-bold"
-                          : "text-[#1B2B30] hover:bg-[#E2F3EC] hover:text-[#1F4E5A]"
+                      disabled={isFutureMonth}
+                      onClick={() => !isFutureMonth && handleMonthSelect(idx)}
+                      className={`w-full text-left px-3 py-1.5 font-medium transition-colors flex items-center justify-between ${
+                        isFutureMonth
+                          ? "opacity-35 cursor-not-allowed text-slate-400"
+                          : isSelected
+                          ? "bg-[#1F4E5A] text-white font-bold cursor-pointer"
+                          : "text-[#1B2B30] hover:bg-[#E2F3EC] hover:text-[#1F4E5A] cursor-pointer"
                       }`}
                     >
                       <span>{m.name}</span>
@@ -265,10 +276,11 @@ export default function ReportCalendarWidget({ selectedDate, onSelectDate }) {
           </button>
           <button
             type="button"
+            disabled={isAtLatestMonth}
             onClick={nextMonth}
-            className="p-1 rounded-md text-[#5B7077] hover:bg-[#E5EFF1]/60 hover:text-[#1B2B30] transition-colors cursor-pointer"
+            className="p-1 rounded-md text-[#5B7077] hover:bg-[#E5EFF1]/60 hover:text-[#1B2B30] transition-colors cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
             aria-label="Next month"
-            title="Next month"
+            title={isAtLatestMonth ? "Future months are not available" : "Next month"}
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -302,18 +314,26 @@ export default function ReportCalendarWidget({ selectedDate, onSelectDate }) {
             todayYear === year &&
             todayMonth === month &&
             todayDay === day;
+          const isFuture =
+            year > todayYear ||
+            (year === todayYear && month > todayMonth) ||
+            (year === todayYear && month === todayMonth && day > todayDay);
 
           return (
             <button
               key={`day-${day}`}
               type="button"
-              onClick={() => handleDayClick(day)}
-              className={`h-7 w-7 mx-auto rounded-full flex items-center justify-center font-medium transition-all cursor-pointer relative ${
-                isSelected
-                  ? "bg-[#1F4E5A] text-white font-bold shadow-xs scale-105"
+              disabled={isFuture}
+              onClick={() => !isFuture && handleDayClick(day)}
+              title={isFuture ? "Future date cannot be audited" : undefined}
+              className={`h-7 w-7 mx-auto rounded-full flex items-center justify-center font-medium transition-all relative ${
+                isFuture
+                  ? "opacity-30 cursor-not-allowed text-slate-400"
+                  : isSelected
+                  ? "bg-[#1F4E5A] text-white font-bold shadow-xs scale-105 cursor-pointer"
                   : isToday
-                  ? "border border-[#4C9F80] text-[#4C9F80] font-semibold hover:bg-[#E2F3EC]/50"
-                  : "text-[#1B2B30] hover:bg-[#E2F3EC]/40 hover:text-[#1F4E5A]"
+                  ? "border border-[#4C9F80] text-[#4C9F80] font-semibold hover:bg-[#E2F3EC]/50 cursor-pointer"
+                  : "text-[#1B2B30] hover:bg-[#E2F3EC]/40 hover:text-[#1F4E5A] cursor-pointer"
               }`}
             >
               {day}

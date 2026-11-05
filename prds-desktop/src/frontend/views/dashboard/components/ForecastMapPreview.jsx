@@ -21,6 +21,7 @@ export default function ForecastMapPreview({
   showMetrics = true,
   title = "City of Naga Health Center Coverage",
   onManageFacilities = null,
+  showFacilityDirectory = false,
 }) {
   const navigate = useNavigate();
   const [metricFilter, setMetricFilter] = useState("all"); // 'all' | 'demand' | 'review' | 'healthy'
@@ -155,9 +156,10 @@ export default function ForecastMapPreview({
               helperText="Low or critical stock"
             />
 
-            <button
-              type="button"
-              onClick={() => (onManageFacilities ? onManageFacilities() : navigate("/facilities"))}
+            {showFacilityDirectory && (
+              <button
+                type="button"
+                onClick={() => (onManageFacilities ? onManageFacilities() : navigate("/facilities"))}
               className="mt-auto flex items-center justify-between gap-2 rounded-xl border border-[#CFDDE0] bg-white px-3.5 py-3 text-xs font-black text-[#1F4E5A] shadow-xs hover:bg-[#E5EFF1] hover:border-[#1F4E5A]/40 transition group cursor-pointer"
               title="Open full facilities directory"
             >
@@ -167,6 +169,7 @@ export default function ForecastMapPreview({
               </span>
               <ArrowRight className="h-3.5 w-3.5 text-[#5B7077] group-hover:translate-x-0.5 transition-transform" />
             </button>
+            )}
           </div>
         )}
       </div>

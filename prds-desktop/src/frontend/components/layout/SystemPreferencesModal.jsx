@@ -4,6 +4,13 @@ import {
   saveDownloadPreferences,
   pickDownloadFolder,
 } from "../../services/downloadManager";
+import {
+  UI_SCALE_PRESETS,
+  getSavedUiScale,
+  applyUiScale,
+  saveUiScale,
+  getRecommendedScale,
+} from "../../services/uiScaleService";
 import { getAppVersion } from "../../../backend/services/updaterService";
 import AppUpdateModal from "../common/AppUpdateModal";
 
@@ -17,12 +24,22 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [appVersion, setAppVersion] = useState("1.0.0");
 
+  const [initialScale, setInitialScale] = useState("medium");
+  const [uiScale, setUiScale] = useState("medium");
+  const [recommendedScale, setRecommendedScale] = useState("medium");
+
   useEffect(() => {
     if (isOpen) {
       const prefs = getDownloadPreferences();
       setDownloadPath(prefs.downloadPath || "Downloads\\PRDS_Exports");
       setDefaultFormat(prefs.defaultFormat || "xlsx");
       setNotifyOnExport(prefs.notifyOnExport ?? true);
+
+      const currentScale = getSavedUiScale();
+      setInitialScale(currentScale);
+      setUiScale(currentScale);
+      setRecommendedScale(getRecommendedScale());
+
       setIsSaved(false);
       setIsPickingFolder(false);
       setShowFolderModal(false);
@@ -59,14 +76,31 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
     }
   };
 
+  const handleScaleChange = (scaleId) => {
+    setUiScale(scaleId);
+    applyUiScale(scaleId);
+  };
+
+  const handleResetScale = () => {
+    setUiScale("medium");
+    applyUiScale("medium");
+  };
+
+  const handleCancel = () => {
+    applyUiScale(initialScale);
+    onClose();
+  };
+
   const handleSave = (e) => {
     e?.preventDefault();
     const cleanPath = downloadPath.trim() || "Downloads\\PRDS_Exports";
     saveDownloadPreferences({
       downloadPath: cleanPath,
-      defaultFormat,
+      defaultFormat: "xlsx",
       notifyOnExport,
     });
+    saveUiScale(uiScale);
+    setInitialScale(uiScale);
     setDownloadPath(cleanPath);
     setIsSaved(true);
     setTimeout(() => {
@@ -85,11 +119,11 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="system-preferences-title"
-        className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/45 px-4 pt-14 pb-6 backdrop-blur-xs transition-opacity"
       >
-        <div className="relative w-full max-w-[530px] rounded-2xl border border-[#d8dadc] bg-white shadow-2xl shadow-neutral-900/20 animate-in fade-in zoom-in-95 duration-200">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-[#e2e4e8] px-6 py-4">
+        <div className="relative flex max-h-[calc(100vh-5rem)] w-full max-w-[540px] flex-col rounded-2xl border border-[#d8dadc] bg-white shadow-2xl shadow-neutral-900/20 animate-in fade-in zoom-in-95 duration-200">
+          {/* Header (Close icon removed per user preference) */}
+          <div className="flex shrink-0 items-center justify-between border-b border-[#e2e4e8] px-6 py-4">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eff4ff] text-[#003b7a]">
                 <SettingsGearIcon />
@@ -99,22 +133,14 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
                   System Preferences
                 </h2>
                 <p className="text-xs font-medium text-[#5f6673]">
-                  Desktop download path & export configuration
+                  Desktop download path & UI scale configuration
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[#5f6673] hover:bg-[#f1f3f5] hover:text-[#0d1117] transition cursor-pointer"
-              aria-label="Close preferences"
-            >
-              <CloseIcon />
-            </button>
           </div>
 
           {/* Form Body */}
-          <form onSubmit={handleSave} className="p-6 space-y-5">
+          <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-5">
             {/* Download Path Section */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -195,19 +221,77 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
               </div>
             </div>
 
-            {/* Default Export Format */}
-            <div className="space-y-2 pt-2 border-t border-[#f0f2f5]">
-              <label className="text-xs font-black uppercase tracking-wider text-[#0d1117]">
-                Default Export Format
-              </label>
-              <div className="flex items-center gap-3 rounded-xl border border-[#007f5f] bg-[#e8fff7] p-3 ring-1 ring-[#007f5f]/30">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800">
-                  XLS
-                </span>
-                <div>
-                  <p className="text-xs font-black text-[#0d1117]">Microsoft Excel</p>
-                  <p className="text-[10px] font-medium text-[#5f6673]">.xlsx workbook</p>
+            {/* Display & Interface Scale Section */}
+            <div className="space-y-2.5 pt-2 border-t border-[#f0f2f5]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-black uppercase tracking-wider text-[#0d1117]">
+                    Display & Interface Scale
+                  </label>
+                  {recommendedScale && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#eff4ff] px-2 py-0.5 text-[10px] font-bold text-[#003b7a]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#3b82f6]"></span>
+                      Recommended: {UI_SCALE_PRESETS.find((p) => p.id === recommendedScale)?.label}
+                    </span>
+                  )}
                 </div>
+                {uiScale !== "medium" && (
+                  <button
+                    type="button"
+                    onClick={handleResetScale}
+                    className="text-xs font-bold text-[#007f5f] hover:underline cursor-pointer"
+                  >
+                    Reset to Standard
+                  </button>
+                )}
+              </div>
+
+              {/* 4 Scale Cards */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {UI_SCALE_PRESETS.map((preset) => {
+                  const isSelected = uiScale === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleScaleChange(preset.id)}
+                      className={`group relative flex flex-col items-center justify-between rounded-xl border p-2.5 text-center transition cursor-pointer ${
+                        isSelected
+                          ? "border-[#007f5f] bg-[#e8fff7] ring-2 ring-[#007f5f]/30 shadow-xs"
+                          : "border-[#e2e4e8] bg-[#f8f9fc] hover:border-[#b0b8c1] hover:bg-white text-[#42474e]"
+                      }`}
+                    >
+                      <div className="flex h-6 w-full items-center justify-center">
+                        <span
+                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-black transition ${
+                            isSelected
+                              ? "bg-[#007f5f] text-white"
+                              : "bg-[#e2e4e8] text-[#5f6673] group-hover:bg-[#d0d7de]"
+                          }`}
+                        >
+                          {preset.percent}
+                        </span>
+                      </div>
+                      <div className="mt-1 space-y-0.5">
+                        <p className={`text-xs font-black ${isSelected ? "text-[#007f5f]" : "text-[#0d1117]"}`}>
+                          {preset.label}
+                        </p>
+                        <p className="text-[10px] font-medium text-[#5f6673]">
+                          {preset.sublabel}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] font-medium text-[#5f6673]">
+                <span>
+                  {UI_SCALE_PRESETS.find((p) => p.id === uiScale)?.description || "Adapts overall interface sizing"}
+                </span>
+                <span className="text-[10px] font-bold text-[#007f5f] uppercase tracking-wider">
+                  Live Preview
+                </span>
               </div>
             </div>
 
@@ -260,13 +344,13 @@ export default function SystemPreferencesModal({ isOpen, onClose }) {
             </div>
 
             {/* Footer Actions */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#e2e4e8]">
+            <div className="flex shrink-0 items-center justify-end gap-3 pt-3 border-t border-[#e2e4e8]">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleCancel}
                 className="h-9 rounded-xl border border-[#d8dadc] bg-white px-4 text-xs font-bold text-[#42474e] hover:bg-[#f8f9fc] transition cursor-pointer"
               >
-                Cancel
+                Close
               </button>
               <button
                 type="submit"
@@ -320,9 +404,9 @@ function FolderRestrictedSystemModal({ currentPath, onSelectPath, onClose }) {
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="folder-notice-title"
-      className="fixed inset-0 z-[9995] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9995] flex items-center justify-center bg-black/60 px-4 pt-14 pb-6 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
     >
-      <div className="relative w-full max-w-[500px] rounded-2xl border border-[#e2e4e8] bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150 space-y-4">
+      <div className="relative w-full max-w-[500px] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-2xl border border-[#e2e4e8] bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-150 space-y-4">
         {/* Header Badge */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -437,14 +521,14 @@ function FolderRestrictedSystemModal({ currentPath, onSelectPath, onClose }) {
           </div>
         </div>
 
-        {/* Footer Actions matching the prompt's intent */}
+        {/* Footer Actions */}
         <div className="flex items-center justify-between pt-3 border-t border-[#e2e4e8]">
           <button
             type="button"
             onClick={onClose}
             className="h-9 rounded-xl border border-[#d8dadc] bg-white px-4 text-xs font-bold text-[#42474e] hover:bg-[#f1f3f5] transition cursor-pointer"
           >
-            Cancel
+            Close
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -549,4 +633,3 @@ function RefreshIcon() {
     </svg>
   );
 }
-

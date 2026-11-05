@@ -18,7 +18,7 @@ const navItems = [
   { label: "Stock Returns", path: "/stock-returns" },
   { label: "Transfers", path: "/transfers" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"] },
-  { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"] },
+  { label: "Facilities", path: "/facilities", roles: ["PHARMA_II"] },
   { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_II"] },
   { label: "Notifications", path: "/notifications" },
 ];
@@ -29,8 +29,8 @@ test("only Pharma II can access the user management module", () => {
   assert.equal(canAccessModule("BHW", "/users"), false);
 });
 
-test("only CHO roles can access the facilities module", () => {
-  assert.equal(canAccessModule("PHARMA_I", "/facilities"), true);
+test("only Pharma II can access the facilities module", () => {
+  assert.equal(canAccessModule("PHARMA_I", "/facilities"), false);
   assert.equal(canAccessModule("PHARMA_II", "/facilities"), true);
   assert.equal(canAccessModule("BHW", "/facilities"), false);
 });
@@ -56,7 +56,7 @@ test("only Pharma II can access other programs module", () => {
 test("filters role-restricted navigation items", () => {
   assert.deepEqual(
     getAllowedNavItems(navItems, "PHARMA_I").map((item) => item.label),
-    ["Dashboard", "Stock Returns", "Facilities", "Notifications"]
+    ["Dashboard", "Stock Returns", "Notifications"]
   );
 
   assert.deepEqual(

@@ -990,28 +990,20 @@ export function processMonthlyInventoryData({
       } else {
         remainingQty = Math.max(0, liveQty - subsequentInflows + subsequentOutflows);
       }
+    } else if (isFutureMonth) {
+      // Future unopened month: physical count has not occurred yet, balances cannot exist
+      remainingQty = 0;
     } else {
-      // Current or future month: live stock on hand
+      // Current active month: live stock on hand
       remainingQty = liveQty;
     }
 
-    // Additional Stocks Received / Returned in Target Month (Columns L, M, N)
-    let additionalQty = 0;
-    if (item.additional_quantity !== undefined || item.additionalQty !== undefined) {
-      additionalQty = Number(item.additional_quantity ?? item.additionalQty ?? 0);
+    // 1. Confirmed Stock Returns in Target Month (Columns L, M, N: ADDITIONAL DELIVERIES/RETURNS)
+    // Only records return stocks received from health stations during the month
+    let returnedQty = 0;
+    if (item.returned_quantity !== undefined || item.returnedQty !== undefined) {
+      returnedQty = Number(item.returned_quantity ?? item.returnedQty ?? 0);
     } else {
-      let procurementDeliveryQty = 0;
-      if (wasDeliveredInTargetMonth) {
-        if (item.received_quantity !== undefined) {
-          procurementDeliveryQty = Number(item.received_quantity) || 0;
-        } else if (item.initial_quantity !== undefined) {
-          procurementDeliveryQty = Number(item.initial_quantity) || 0;
-        } else {
-          procurementDeliveryQty = remainingQty + issuedQty + programQty + expiredQty;
-        }
-      }
-
-      let returnedQty = 0;
       if (batch && returnsByBatch.has(batch)) {
         returnedQty = returnsByBatch.get(batch) || 0;
         returnsByBatch.set(batch, 0);
@@ -1019,23 +1011,45 @@ export function processMonthlyInventoryData({
         returnedQty = returnsByMed.get(medId) || 0;
         returnsByMed.set(medId, 0);
       }
+    }
+    const additionalQty = isFutureMonth ? 0 : returnedQty;
 
-      additionalQty = procurementDeliveryQty + returnedQty;
+    // 2. Additional Procurement Deliveries received in Target Month
+    let procurementDeliveryQty = 0;
+    if (item.procurement_quantity !== undefined || item.procurementDeliveryQty !== undefined) {
+      procurementDeliveryQty = Number(item.procurement_quantity ?? item.procurementDeliveryQty ?? 0);
+    } else if (wasDeliveredInTargetMonth && !isFutureMonth) {
+      if (item.received_quantity !== undefined) {
+        procurementDeliveryQty = Number(item.received_quantity) || 0;
+      } else if (item.initial_quantity !== undefined) {
+        procurementDeliveryQty = Number(item.initial_quantity) || 0;
+      } else {
+        procurementDeliveryQty = Math.max(0, remainingQty + issuedQty + programQty + expiredQty - returnedQty);
+      }
     }
 
-    // Reconciled Beginning Balance
+    // 3. Reconciled Beginning Balance (Columns I, J, K: BEGINNING BALANCE)
     let beginningQty = 0;
     if (item.beginning_quantity !== undefined || item.beginningQty !== undefined) {
       beginningQty = Number(item.beginning_quantity ?? item.beginningQty ?? 0);
-    } else if (wasDeliveredSubsequent) {
+    } else if (wasDeliveredSubsequent || wasDeliveredInTargetMonth || isFutureMonth) {
       beginningQty = 0;
     } else {
       beginningQty = Math.max(
         0,
-        remainingQty + issuedQty + programQty + expiredQty - additionalQty
+        remainingQty + issuedQty + programQty + expiredQty - returnedQty - procurementDeliveryQty
       );
     }
-    const grossQty = beginningQty + additionalQty;
+
+    // 4. Summation (Columns O, P, Q: SUMMATION ( BEGINNING BALANCE + ADDITIONAL DELIVERY))
+    // Records beginning balance plus additional procurement delivery within the month
+    const grossQty = isFutureMonth ? 0 : (beginningQty + procurementDeliveryQty);
+
+    // 5. Remaining Balance (Columns AB, AC, AD)
+    // Balance conservation: Remaining = Summation + Returns - (Issuances + Program + Expired)
+    if (item.remaining_quantity === undefined && item.remainingQty === undefined) {
+      remainingQty = isFutureMonth ? 0 : Math.max(0, grossQty + returnedQty - (issuedQty + programQty + expiredQty));
+    }
 
     const begTotal = beginningQty * unitCost;
     const addTotal = additionalQty * unitCost;
@@ -1074,6 +1088,7 @@ export function processMonthlyInventoryData({
       begTotal,
       additionalQty,
       addTotal,
+      procurementDeliveryQty,
       grossQty,
       grossTotal,
       issuedQty,
@@ -1118,8 +1133,9 @@ export function processMonthlyInventoryData({
       begTotal: 0,
       additionalQty: retQty,
       addTotal,
-      grossQty: retQty,
-      grossTotal: addTotal,
+      procurementDeliveryQty: 0,
+      grossQty: 0,
+      grossTotal: 0,
       issuedQty: 0,
       issuedTotal: 0,
       programQty: 0,
@@ -1132,11 +1148,9 @@ export function processMonthlyInventoryData({
     });
 
     totalAddVal += addTotal;
-    totalGrossVal += addTotal;
     totalRemVal += addTotal;
 
     totalAddQty += retQty;
-    totalGrossQty += retQty;
     totalRemQty += retQty;
   });
 
@@ -1392,13 +1406,34 @@ export function buildMonthlyInventoryBuffer({
 
     const colsXml = `<cols>` +
       `<col min="2" max="2" width="11" customWidth="1"/>` +
+      `<col min="3" max="3" width="8" customWidth="1"/>` +
       `<col min="4" max="4" width="${colDWidth}" customWidth="1"/>` +
       `<col min="5" max="5" width="15.7109375" customWidth="1"/>` +
       `<col min="6" max="6" width="${colFWidth}" style="2" customWidth="1"/>` +
       `<col min="7" max="7" width="${colGWidth}" customWidth="1"/>` +
-      `<col min="8" max="23" width="12.7109375" customWidth="1"/>` +
-      `<col min="24" max="24" width="15.7109375" customWidth="1"/>` +
-      `<col min="25" max="30" width="12.7109375" customWidth="1"/>` +
+      `<col min="8" max="8" width="13" customWidth="1"/>` +          // H (EXPIRY DATE)
+      `<col min="9" max="9" width="13" customWidth="1"/>` +          // I (BEG QTY)
+      `<col min="10" max="10" width="13" customWidth="1"/>` +        // J (BEG UNIT COST)
+      `<col min="11" max="11" width="22" customWidth="1"/>` +      // K (BEG TOTAL COST)
+      `<col min="12" max="12" width="13" customWidth="1"/>` +        // L (RETURNS QTY)
+      `<col min="13" max="13" width="13" customWidth="1"/>` +        // M (RETURNS UNIT COST)
+      `<col min="14" max="14" width="22" customWidth="1"/>` +      // N (RETURNS TOTAL COST)
+      `<col min="15" max="15" width="13" customWidth="1"/>` +        // O (SUMMATION QTY)
+      `<col min="16" max="16" width="13" customWidth="1"/>` +        // P (SUMMATION UNIT COST)
+      `<col min="17" max="17" width="24" customWidth="1"/>` +        // Q (SUMMATION TOTAL COST)
+      `<col min="18" max="18" width="13" customWidth="1"/>` +        // R (ISSUANCES QTY)
+      `<col min="19" max="19" width="13" customWidth="1"/>` +        // S (ISSUANCES UNIT COST)
+      `<col min="20" max="20" width="22" customWidth="1"/>` +      // T (ISSUANCES TOTAL COST)
+      `<col min="21" max="21" width="13" customWidth="1"/>` +        // U (TRANSFERRED QTY)
+      `<col min="22" max="22" width="13" customWidth="1"/>` +        // V (TRANSFERRED UNIT COST)
+      `<col min="23" max="23" width="22" customWidth="1"/>` +      // W (TRANSFERRED TOTAL COST)
+      `<col min="24" max="24" width="24" customWidth="1"/>` +        // X (AREA / PROGRAM)
+      `<col min="25" max="25" width="13" customWidth="1"/>` +        // Y (EXPIRED QTY)
+      `<col min="26" max="26" width="13" customWidth="1"/>` +        // Z (EXPIRED UNIT COST)
+      `<col min="27" max="27" width="22" customWidth="1"/>` +      // AA (EXPIRED TOTAL COST)
+      `<col min="28" max="28" width="13" customWidth="1"/>` +        // AB (REMAINING QTY)
+      `<col min="29" max="29" width="13" customWidth="1"/>` +        // AC (REMAINING UNIT COST)
+      `<col min="30" max="30" width="24" customWidth="1"/>` +        // AD (REMAINING TOTAL COST)
       `</cols>`;
 
     xml = xml.replace(/<cols>[\s\S]*?<\/cols>/, colsXml);
@@ -1413,13 +1448,13 @@ export function buildMonthlyInventoryBuffer({
       rowsXml += `<c r="C${currentRow}" s="4"/>`;
       rowsXml += `<c r="D${currentRow}" s="32" t="inlineStr"><is><t>${escapeXml(group.headerText)}</t></is></c>`;
       rowsXml += `<c r="E${currentRow}" s="4"/><c r="F${currentRow}" s="33"/><c r="G${currentRow}" s="4"/><c r="H${currentRow}" s="4"/><c r="I${currentRow}" s="4"/>`;
-      rowsXml += `<c r="J${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="K${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-      rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="N${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-      rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="Q${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-      rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="T${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-      rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="W${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-      rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AA${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-      rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AD${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+      rowsXml += `<c r="J${currentRow}" s="36"/><c r="K${currentRow}" s="36"/>`;
+      rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36"/><c r="N${currentRow}" s="36"/>`;
+      rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36"/><c r="Q${currentRow}" s="36"/>`;
+      rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36"/><c r="T${currentRow}" s="36"/>`;
+      rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36"/><c r="W${currentRow}" s="36"/>`;
+      rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36"/><c r="AA${currentRow}" s="36"/>`;
+      rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36"/><c r="AD${currentRow}" s="36"/>`;
       rowsXml += `</row>`;
       currentRow++;
 
@@ -1427,13 +1462,13 @@ export function buildMonthlyInventoryBuffer({
         rowsXml += `<row r="${currentRow}" spans="3:30" ht="20.1" customHeight="1" x14ac:dyDescent="0.25">`;
         rowsXml += `<c r="C${currentRow}" s="4"><v>${b + 1}</v></c>`;
         rowsXml += `<c r="D${currentRow}" s="33"/><c r="E${currentRow}" s="4"/><c r="F${currentRow}" s="33"/><c r="G${currentRow}" s="4"/><c r="H${currentRow}" s="4"/><c r="I${currentRow}" s="4"/>`;
-        rowsXml += `<c r="J${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="K${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="N${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="Q${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="T${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="W${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AA${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AD${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="J${currentRow}" s="36"/><c r="K${currentRow}" s="36"/>`;
+        rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36"/><c r="N${currentRow}" s="36"/>`;
+        rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36"/><c r="Q${currentRow}" s="36"/>`;
+        rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36"/><c r="T${currentRow}" s="36"/>`;
+        rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36"/><c r="W${currentRow}" s="36"/>`;
+        rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36"/><c r="AA${currentRow}" s="36"/>`;
+        rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36"/><c r="AD${currentRow}" s="36"/>`;
         rowsXml += `</row>`;
         currentRow++;
       }
@@ -1444,13 +1479,13 @@ export function buildMonthlyInventoryBuffer({
         rowsXml += `<c r="C${currentRow}" s="4"/>`;
         rowsXml += `<c r="D${currentRow}" s="32" t="inlineStr"><is><t>${escapeXml(group.headerText)}</t></is></c>`;
         rowsXml += `<c r="E${currentRow}" s="4"/><c r="F${currentRow}" s="33"/><c r="G${currentRow}" s="4"/><c r="H${currentRow}" s="4"/><c r="I${currentRow}" s="4"/>`;
-        rowsXml += `<c r="J${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="K${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="N${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="Q${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="T${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="W${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AA${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
-        rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c><c r="AD${currentRow}" s="36" t="inlineStr"><is><t>₱</t></is></c>`;
+        rowsXml += `<c r="J${currentRow}" s="36"/><c r="K${currentRow}" s="36"/>`;
+        rowsXml += `<c r="L${currentRow}" s="4"/><c r="M${currentRow}" s="36"/><c r="N${currentRow}" s="36"/>`;
+        rowsXml += `<c r="O${currentRow}" s="4"/><c r="P${currentRow}" s="36"/><c r="Q${currentRow}" s="36"/>`;
+        rowsXml += `<c r="R${currentRow}" s="4"/><c r="S${currentRow}" s="36"/><c r="T${currentRow}" s="36"/>`;
+        rowsXml += `<c r="U${currentRow}" s="4"/><c r="V${currentRow}" s="36"/><c r="W${currentRow}" s="36"/>`;
+        rowsXml += `<c r="X${currentRow}" s="33"/><c r="Y${currentRow}" s="4"/><c r="Z${currentRow}" s="36"/><c r="AA${currentRow}" s="36"/>`;
+        rowsXml += `<c r="AB${currentRow}" s="4"/><c r="AC${currentRow}" s="36"/><c r="AD${currentRow}" s="36"/>`;
         rowsXml += `</row>`;
         currentRow++;
 
@@ -1467,12 +1502,15 @@ export function buildMonthlyInventoryBuffer({
           rowsXml += `<c r="I${currentRow}" s="4"><v>${item.beginningQty}</v></c>`;
           rowsXml += `<c r="J${currentRow}" s="36"><v>${item.unitCost}</v></c>`;
           rowsXml += `<c r="K${currentRow}" s="36"><f>I${currentRow}*J${currentRow}</f><v>${item.begTotal}</v></c>`;
-          // Additional Deliveries (L, M, N)
+          // Additional Deliveries/Returns (L, M, N) - Return stocks only
           rowsXml += `<c r="L${currentRow}" s="4"><v>${item.additionalQty}</v></c>`;
-          rowsXml += `<c r="M${currentRow}" s="36"><v>${item.additionalQty > 0 ? item.unitCost : 0}</v></c>`;
+          rowsXml += `<c r="M${currentRow}" s="36"><f>P${currentRow}</f><v>${item.unitCost}</v></c>`;
           rowsXml += `<c r="N${currentRow}" s="36"><f>L${currentRow}*M${currentRow}</f><v>${item.addTotal}</v></c>`;
-          // Summation (O, P, Q)
-          rowsXml += `<c r="O${currentRow}" s="4"><f>I${currentRow}+L${currentRow}</f><v>${item.grossQty}</v></c>`;
+          // Summation (O, P, Q) - Beginning Balance + Additional Procurement Delivery within month
+          const oFormula = item.procurementDeliveryQty > 0
+            ? `<f>I${currentRow}+${item.procurementDeliveryQty}</f>`
+            : `<f>I${currentRow}</f>`;
+          rowsXml += `<c r="O${currentRow}" s="4">${oFormula}<v>${item.grossQty}</v></c>`;
           rowsXml += `<c r="P${currentRow}" s="36"><f>J${currentRow}</f><v>${item.unitCost}</v></c>`;
           rowsXml += `<c r="Q${currentRow}" s="36"><f>O${currentRow}*P${currentRow}</f><v>${item.grossTotal}</v></c>`;
           // Issuances (R, S, T)
@@ -1481,15 +1519,15 @@ export function buildMonthlyInventoryBuffer({
           rowsXml += `<c r="T${currentRow}" s="36"><f>R${currentRow}*S${currentRow}</f><v>${item.issuedTotal}</v></c>`;
           // Transferred to Other Programs (U, V, W, X)
           rowsXml += `<c r="U${currentRow}" s="4"><v>${item.programQty}</v></c>`;
-          rowsXml += `<c r="V${currentRow}" s="36"><v>${item.programQty > 0 ? item.unitCost : 0}</v></c>`;
+          rowsXml += `<c r="V${currentRow}" s="36"><f>P${currentRow}</f><v>${item.unitCost}</v></c>`;
           rowsXml += `<c r="W${currentRow}" s="36"><f>U${currentRow}*V${currentRow}</f><v>${item.programTotal}</v></c>`;
           rowsXml += `<c r="X${currentRow}" s="33" t="inlineStr"><is><t>${escapeXml(item.programName)}</t></is></c>`;
           // Expired (Y, Z, AA)
           rowsXml += `<c r="Y${currentRow}" s="4"><v>${item.expiredQty}</v></c>`;
-          rowsXml += `<c r="Z${currentRow}" s="36"><v>${item.expiredQty > 0 ? item.unitCost : 0}</v></c>`;
+          rowsXml += `<c r="Z${currentRow}" s="36"><f>P${currentRow}</f><v>${item.unitCost}</v></c>`;
           rowsXml += `<c r="AA${currentRow}" s="36"><f>Y${currentRow}*Z${currentRow}</f><v>${item.expiredTotal}</v></c>`;
-          // Remaining Balance (AB, AC, AD)
-          rowsXml += `<c r="AB${currentRow}" s="4"><f>O${currentRow}-(R${currentRow}+U${currentRow}+Y${currentRow})</f><v>${item.remainingQty}</v></c>`;
+          // Remaining Balance (AB, AC, AD) - Summation + Returns - (Issuances + Programs + Expired)
+          rowsXml += `<c r="AB${currentRow}" s="4"><f>O${currentRow}+L${currentRow}-(R${currentRow}+U${currentRow}+Y${currentRow})</f><v>${item.remainingQty}</v></c>`;
           rowsXml += `<c r="AC${currentRow}" s="36"><f>P${currentRow}</f><v>${item.unitCost}</v></c>`;
           rowsXml += `<c r="AD${currentRow}" s="36"><f>AB${currentRow}*AC${currentRow}</f><v>${item.remainingTotal}</v></c>`;
           rowsXml += `</row>`;
@@ -1763,20 +1801,6 @@ export function buildMonthlyInventoryWorkbook({
     for (const group of groups) {
       // 1. PO Header Row above the medicines (Option 1)
       ws[`D${currentRow}`] = { t: "s", v: group.headerText };
-      ws[`J${currentRow}`] = { t: "s", v: "₱" };
-      ws[`K${currentRow}`] = { t: "s", v: "₱" };
-      ws[`M${currentRow}`] = { t: "s", v: "₱" };
-      ws[`N${currentRow}`] = { t: "s", v: "₱" };
-      ws[`P${currentRow}`] = { t: "s", v: "₱" };
-      ws[`Q${currentRow}`] = { t: "s", v: "₱" };
-      ws[`S${currentRow}`] = { t: "s", v: "₱" };
-      ws[`T${currentRow}`] = { t: "s", v: "₱" };
-      ws[`V${currentRow}`] = { t: "s", v: "₱" };
-      ws[`W${currentRow}`] = { t: "s", v: "₱" };
-      ws[`Z${currentRow}`] = { t: "s", v: "₱" };
-      ws[`AA${currentRow}`] = { t: "s", v: "₱" };
-      ws[`AC${currentRow}`] = { t: "s", v: "₱" };
-      ws[`AD${currentRow}`] = { t: "s", v: "₱" };
       currentRow++;
 
       // 2. Medicine Items under this PO
@@ -1791,22 +1815,23 @@ export function buildMonthlyInventoryWorkbook({
         ws[`J${currentRow}`] = { t: "n", v: item.unitCost, z: "₱#,##0.00" };
         ws[`K${currentRow}`] = { t: "n", f: `I${currentRow}*J${currentRow}`, v: item.begTotal, z: "₱#,##0.00" };
         ws[`L${currentRow}`] = { t: "n", v: item.additionalQty };
-        ws[`M${currentRow}`] = { t: "n", v: item.additionalQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
+        ws[`M${currentRow}`] = { t: "n", f: `P${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
         ws[`N${currentRow}`] = { t: "n", f: `L${currentRow}*M${currentRow}`, v: item.addTotal, z: "₱#,##0.00" };
-        ws[`O${currentRow}`] = { t: "n", f: `I${currentRow}+L${currentRow}`, v: item.grossQty };
+        const oFormula = item.procurementDeliveryQty > 0 ? `I${currentRow}+${item.procurementDeliveryQty}` : `I${currentRow}`;
+        ws[`O${currentRow}`] = { t: "n", f: oFormula, v: item.grossQty };
         ws[`P${currentRow}`] = { t: "n", f: `J${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
         ws[`Q${currentRow}`] = { t: "n", f: `O${currentRow}*P${currentRow}`, v: item.grossTotal, z: "₱#,##0.00" };
         ws[`R${currentRow}`] = { t: "n", v: item.issuedQty };
         ws[`S${currentRow}`] = { t: "n", f: `P${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
         ws[`T${currentRow}`] = { t: "n", f: `R${currentRow}*S${currentRow}`, v: item.issuedTotal, z: "₱#,##0.00" };
         ws[`U${currentRow}`] = { t: "n", v: item.programQty };
-        ws[`V${currentRow}`] = { t: "n", v: item.programQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
+        ws[`V${currentRow}`] = { t: "n", f: `P${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
         ws[`W${currentRow}`] = { t: "n", f: `U${currentRow}*V${currentRow}`, v: item.programTotal, z: "₱#,##0.00" };
         ws[`X${currentRow}`] = { t: "s", v: item.programName };
         ws[`Y${currentRow}`] = { t: "n", v: item.expiredQty };
-        ws[`Z${currentRow}`] = { t: "n", v: item.expiredQty > 0 ? item.unitCost : 0, z: "₱#,##0.00" };
+        ws[`Z${currentRow}`] = { t: "n", f: `P${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
         ws[`AA${currentRow}`] = { t: "n", f: `Y${currentRow}*Z${currentRow}`, v: item.expiredTotal, z: "₱#,##0.00" };
-        ws[`AB${currentRow}`] = { t: "n", f: `O${currentRow}-(R${currentRow}+U${currentRow}+Y${currentRow})`, v: item.remainingQty };
+        ws[`AB${currentRow}`] = { t: "n", f: `O${currentRow}+L${currentRow}-(R${currentRow}+U${currentRow}+Y${currentRow})`, v: item.remainingQty };
         ws[`AC${currentRow}`] = { t: "n", f: `P${currentRow}`, v: item.unitCost, z: "₱#,##0.00" };
         ws[`AD${currentRow}`] = { t: "n", f: `AB${currentRow}*AC${currentRow}`, v: item.remainingTotal, z: "₱#,##0.00" };
         currentRow++;
@@ -1877,26 +1902,26 @@ export function buildMonthlyInventoryWorkbook({
     { wch: 13 }, // H (EXPIRY DATE)
     { wch: 13 }, // I (QUANTITY)
     { wch: 13 }, // J (UNIT COST)
-    { wch: 13 }, // K (TOTAL COST)
+    { wch: 22 }, // K (TOTAL COST)
     { wch: 13 }, // L (QUANTITY)
     { wch: 13 }, // M (UNIT COST)
-    { wch: 13 }, // N (TOTAL COST)
+    { wch: 22 }, // N (TOTAL COST)
     { wch: 13 }, // O (QUANTITY)
     { wch: 13 }, // P (UNIT COST)
-    { wch: 13 }, // Q (TOTAL COST)
+    { wch: 24 }, // Q (TOTAL COST)
     { wch: 13 }, // R (QUANTITY)
     { wch: 13 }, // S (UNIT COST)
-    { wch: 13 }, // T (TOTAL COST)
+    { wch: 22 }, // T (TOTAL COST)
     { wch: 13 }, // U (QUANTITY)
     { wch: 13 }, // V (UNIT COST)
-    { wch: 13 }, // W (TOTAL COST)
-    { wch: 16 }, // X (AREA/PROGRAM)
+    { wch: 22 }, // W (TOTAL COST)
+    { wch: 24 }, // X (AREA/PROGRAM)
     { wch: 13 }, // Y (QUANTITY)
     { wch: 13 }, // Z (UNIT COST)
-    { wch: 13 }, // AA (TOTAL COST)
+    { wch: 22 }, // AA (TOTAL COST)
     { wch: 13 }, // AB (QUANTITY)
     { wch: 13 }, // AC (UNIT COST)
-    { wch: 13 }, // AD (TOTAL COST)
+    { wch: 24 }, // AD (TOTAL COST)
   ];
 
   return wb;

@@ -970,6 +970,7 @@ export default function DashboardModule() {
             previewMode={false}
             showExpand={true}
             showMetrics={true}
+            showFacilityDirectory={profile?.role === "PHARMA_II"}
             stockStatusByFacility={stockStatusByFacility}
             title={dashboardConfig.coverageLabel || "City of Naga Health Center Coverage & Facility Network"}
           />

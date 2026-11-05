@@ -190,7 +190,7 @@ export const getRequestsData = async ({ facilityId = null } = {}) => {
         .order("facility_name", { ascending: true }),
       supabase
         .from("inventory")
-        .select("id, facility_id, medicine_id, quantity, batch_number, expiration_date, po_number, unit_cost, date_received, brand_name")
+        .select("id, facility_id, medicine_id, quantity, batch_number, expiration_date, po_number, unit_cost, date_received, brand_name, status")
         .then(async (res) => {
           if (
             res.error &&

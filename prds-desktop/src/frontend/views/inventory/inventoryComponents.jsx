@@ -344,25 +344,50 @@ export function DisposeStockModal({
   onConfirm,
   isSubmitting = false,
 }) {
-  const defaultMethod =
-    typeof DISPOSAL_METHODS[0] === "object"
-      ? DISPOSAL_METHODS[0]?.label || DISPOSAL_METHODS[0]?.value || "LGU City Health Condemnation Protocol"
-      : DISPOSAL_METHODS[0] || "LGU City Health Condemnation Protocol";
-  const [method, setMethod] = useState(defaultMethod);
+  const [method, setMethod] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [selectedLotId, setSelectedLotId] = useState("ALL");
+
+  const availableLots = useMemo(() => {
+    if (!lot) return [];
+    if (Array.isArray(lot.lots) && lot.lots.length > 0) {
+      return lot.lots;
+    }
+    return [lot];
+  }, [lot]);
 
   useEffect(() => {
     if (isOpen) {
-      setMethod(defaultMethod);
+      setSelectedLotId(availableLots.length > 1 ? "ALL" : (availableLots[0]?.id || "ALL"));
+      setMethod("");
       setRemarks("");
     }
-  }, [isOpen, lot?.id, defaultMethod]);
+  }, [isOpen, lot?.id, availableLots]);
 
   if (!isOpen || !lot) return null;
 
-  const qty = Number(lot.quantity || 0);
-  const unitCost = Number(lot.medicine?.unit_cost || lot.unit_cost || 0);
-  const lossValue = qty * unitCost;
+  const isAllSelected = selectedLotId === "ALL" && availableLots.length > 1;
+  const currentLot = isAllSelected ? null : (availableLots.find((l) => l.id === selectedLotId) || availableLots[0]);
+  const targetLots = isAllSelected ? availableLots : (currentLot ? [currentLot] : availableLots);
+
+  const totalQty = targetLots.reduce((sum, l) => sum + Number(l.quantity || 0), 0);
+  const totalLoss = targetLots.reduce((sum, l) => {
+    const q = Number(l.quantity || 0);
+    let cost = Number(l.unit_cost || l.medicine?.unit_cost || lot.unit_cost || lot.medicine?.unit_cost || 0);
+    if (!cost) {
+      const anyWithCost = availableLots.find((alt) => Number(alt.unit_cost || 0) > 0);
+      if (anyWithCost) cost = Number(anyWithCost.unit_cost);
+    }
+    return sum + (q * cost);
+  }, 0);
+
+  const displayBatchNumber = isAllSelected
+    ? `All Expired Batches (${availableLots.length} lots)`
+    : (currentLot?.batch_number || lot.batch_number || "—");
+
+  const displayExpDate = isAllSelected
+    ? `${formatDate(availableLots[0]?.expiration_date)} (earliest)`
+    : formatDate(currentLot?.expiration_date || lot.expiration_date);
 
   return (
     <ModalShell
@@ -386,16 +411,44 @@ export function DisposeStockModal({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="p-5 space-y-4 text-xs">
+          {availableLots.length > 1 && (
+            <div>
+              <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-700 mb-1.5">
+                Select Batch to Condemn ({availableLots.length} expired batches)
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLotId("ALL")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                    selectedLotId === "ALL"
+                      ? "bg-[#D9826B] text-white shadow-2xs"
+                      : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                  }`}
+                >
+                  All Batches ({formatNumber(availableLots.reduce((s, l) => s + Number(l.quantity || 0), 0))} units)
+                </button>
+                {availableLots.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setSelectedLotId(l.id)}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-mono font-bold transition cursor-pointer ${
+                      selectedLotId === l.id
+                        ? "bg-[#D9826B] text-white shadow-2xs"
+                        : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                    }`}
+                  >
+                    LOT {l.batch_number || "N/A"} ({formatNumber(l.quantity)})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3.5 space-y-2">
             <div className="flex justify-between">
               <span className="text-neutral-500 font-semibold">Medicine:</span>
@@ -403,20 +456,20 @@ export function DisposeStockModal({
             </div>
             <div className="flex justify-between">
               <span className="text-neutral-500 font-semibold">Lot / Batch #:</span>
-              <span className="font-mono font-bold text-neutral-800">{lot.batch_number || "—"}</span>
+              <span className="font-mono font-bold text-neutral-800">{displayBatchNumber}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-neutral-500 font-semibold">Expired On:</span>
-              <span className="font-bold text-red-700">{formatDate(lot.expiration_date)}</span>
+              <span className="font-bold text-red-700">{displayExpDate}</span>
             </div>
             <div className="flex justify-between border-t border-neutral-200 pt-2">
               <span className="text-neutral-500 font-semibold">Quantity to Condemn:</span>
-              <span className="font-black text-sm text-red-600">{formatNumber(qty)} units</span>
+              <span className="font-black text-sm text-red-600">{formatNumber(totalQty)} units</span>
             </div>
-            {lossValue > 0 && (
+            {totalLoss > 0 && (
               <div className="flex justify-between">
                 <span className="text-neutral-500 font-semibold">Loss Value (COA):</span>
-                <span className="font-bold text-neutral-700">{formatCurrency(lossValue)}</span>
+                <span className="font-bold text-neutral-700">{formatCurrency(totalLoss)}</span>
               </div>
             )}
           </div>
@@ -425,21 +478,13 @@ export function DisposeStockModal({
             <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-700 mb-1">
               Disposal / Condemnation Method
             </label>
-            <select
+            <input
+              type="text"
               value={method}
               onChange={(e) => setMethod(e.target.value)}
-              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-800 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
-            >
-              {DISPOSAL_METHODS.map((m) => {
-                const optVal = typeof m === "object" ? m.label || m.value : m;
-                const optLabel = typeof m === "object" ? m.label || m.value : m;
-                return (
-                  <option key={optVal} value={optVal}>
-                    {optLabel}
-                  </option>
-                );
-              })}
-            </select>
+              placeholder="e.g. Incineration, Chemical Neutralization, Return to Supplier"
+              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-800 outline-none focus:border-[#D9826B] focus:ring-2 focus:ring-[#D9826B]/20"
+            />
           </div>
 
           <div>
@@ -451,7 +496,7 @@ export function DisposeStockModal({
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               placeholder="e.g. Condemned and witnessed by CHO Inspection and COA representative"
-              className="w-full rounded-lg border border-neutral-300 bg-white p-2.5 text-xs text-neutral-800 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
+              className="w-full rounded-lg border border-neutral-300 bg-white p-2.5 text-xs text-neutral-800 outline-none focus:border-[#D9826B] focus:ring-2 focus:ring-[#D9826B]/20"
             />
           </div>
 
@@ -471,7 +516,7 @@ export function DisposeStockModal({
           <button
             type="button"
             disabled={isSubmitting}
-            onClick={() => onConfirm(lot, { method, remarks })}
+            onClick={() => onConfirm(isAllSelected ? availableLots : (currentLot || lot), { method, remarks })}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#D9826B] px-4 py-2 text-xs font-black text-white hover:bg-[#C26B54] disabled:opacity-50 cursor-pointer shadow-xs"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -721,10 +766,24 @@ export function InventoryTable({
                       <p className="text-sm font-black leading-snug text-[#1B2B30]">
                         {getMedicineName(item)}
                       </p>
-                      {item.lotCount > 1 && (
-                        <span className="inline-flex items-center rounded-md bg-[#E5EFF1] border border-[#CFDDE0] px-1.5 py-0.2 text-[10px] font-bold text-[#5B7077]">
-                          {item.lotCount} batches
-                        </span>
+                      {isExpiredTab ? (
+                        item.lotCount > 1 ? (
+                          <span className="inline-flex items-center rounded-md bg-[#FBE9E3] border border-[#D9826B]/30 px-1.5 py-0.2 text-[10px] font-bold text-[#8F3F2B]">
+                            {item.lotCount} expired batches
+                          </span>
+                        ) : (
+                          (item.batch_number || item.lots?.[0]?.batch_number) && (
+                            <span className="inline-flex items-center rounded-md bg-neutral-100 border border-neutral-300 px-1.5 py-0.2 text-[10px] font-mono font-bold text-neutral-700">
+                              LOT {item.batch_number || item.lots?.[0]?.batch_number}
+                            </span>
+                          )
+                        )
+                      ) : (
+                        item.lotCount > 1 && (
+                          <span className="inline-flex items-center rounded-md bg-[#E5EFF1] border border-[#CFDDE0] px-1.5 py-0.2 text-[10px] font-bold text-[#5B7077]">
+                            {item.lotCount} batches
+                          </span>
+                        )
                       )}
                     </div>
                     {showFacility && item.facility?.facility_name && (

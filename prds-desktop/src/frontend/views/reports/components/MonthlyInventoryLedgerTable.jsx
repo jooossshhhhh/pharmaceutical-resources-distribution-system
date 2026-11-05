@@ -317,10 +317,10 @@ export default function MonthlyInventoryLedgerTable({
                 <div className="text-[10px] font-semibold text-slate-600 tracking-normal">{begDateLabel}</div>
               </th>
               <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-blue-100/70 text-blue-900">
-                Additional Stocks
+                Additional Deliveries / Returns
               </th>
-              <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-slate-100">
-                Summation (Gross)
+              <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-amber-100/70 text-amber-900">
+                Summation (Beg + Delivery)
               </th>
               <th colSpan={3} className="px-3 py-2 text-center border-r border-[#d8dadc] bg-emerald-100/70 text-emerald-900">
                 Less: Issuances
@@ -465,7 +465,7 @@ export default function MonthlyInventoryLedgerTable({
                             {item.additionalQty > 0 ? item.additionalQty.toLocaleString() : "-"}
                           </td>
                           <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                            {item.additionalQty > 0 ? formatPeso(item.unitCost) : "-"}
+                            {formatPeso(item.unitCost)}
                           </td>
                           <td className="px-2.5 py-1.5 text-right font-semibold text-blue-900 border-r border-[#d8dadc]/60">
                             {item.addTotal > 0 ? formatPeso(item.addTotal) : "-"}
@@ -476,7 +476,7 @@ export default function MonthlyInventoryLedgerTable({
                             {item.grossQty.toLocaleString()}
                           </td>
                           <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                            {item.grossQty > 0 ? formatPeso(item.unitCost) : "-"}
+                            {formatPeso(item.unitCost)}
                           </td>
                           <td className="px-2.5 py-1.5 text-right font-bold text-[#0d1117] border-r border-[#d8dadc]/60">
                             {formatPeso(item.grossTotal)}
@@ -487,7 +487,7 @@ export default function MonthlyInventoryLedgerTable({
                             {item.issuedQty > 0 ? item.issuedQty.toLocaleString() : "-"}
                           </td>
                           <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                            {item.issuedQty > 0 ? formatPeso(item.unitCost) : "-"}
+                            {formatPeso(item.unitCost)}
                           </td>
                           <td className="px-2.5 py-1.5 text-right font-semibold text-emerald-900 border-r border-[#d8dadc]/60">
                             {item.issuedTotal > 0 ? formatPeso(item.issuedTotal) : "-"}
@@ -498,7 +498,7 @@ export default function MonthlyInventoryLedgerTable({
                             {item.programQty > 0 ? item.programQty.toLocaleString() : "-"}
                           </td>
                           <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                            {item.programQty > 0 ? formatPeso(item.unitCost) : "-"}
+                            {formatPeso(item.unitCost)}
                           </td>
                           <td className="px-2.5 py-1.5 text-right font-semibold text-purple-900 border-r border-[#d8dadc]/60">
                             {item.programTotal > 0 ? formatPeso(item.programTotal) : "-"}
@@ -518,7 +518,7 @@ export default function MonthlyInventoryLedgerTable({
                             {item.expiredQty > 0 ? item.expiredQty.toLocaleString() : "-"}
                           </td>
                           <td className="px-2.5 py-1.5 text-right text-[#42474e] border-r border-[#d8dadc]/60">
-                            {item.expiredQty > 0 ? formatPeso(item.unitCost) : "-"}
+                            {formatPeso(item.unitCost)}
                           </td>
                           <td className="px-2.5 py-1.5 text-right font-semibold text-red-800 border-r border-[#d8dadc]/60">
                             {item.expiredTotal > 0 ? formatPeso(item.expiredTotal) : "-"}

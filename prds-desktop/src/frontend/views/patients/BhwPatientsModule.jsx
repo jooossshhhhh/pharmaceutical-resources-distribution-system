@@ -80,6 +80,16 @@ export default function BhwPatientsModule() {
     }
   }, [profileFacilityId]);
 
+useEffect(() => {
+    const handlePatientChange = () => {
+      loadPatients();
+    };
+    window.addEventListener("prds:patients-changed", handlePatientChange);
+    return () => {
+      window.removeEventListener("prds:patients-changed", handlePatientChange);
+    };
+  }, [loadPatients]);
+
   useEffect(() => {
     const timerId = window.setTimeout(() => {
       loadPatients();

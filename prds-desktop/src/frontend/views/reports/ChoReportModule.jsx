@@ -179,6 +179,20 @@ export default function ChoReportModule() {
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
   }));
+
+  // Guard against future reporting periods: physical inventory reports only cover past closed or active current months
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const isFuturePeriod =
+    selectedPeriod.year > currentYear ||
+    (selectedPeriod.year === currentYear && selectedPeriod.month > currentMonth);
+
+  useEffect(() => {
+    if (isFuturePeriod) {
+      setSelectedPeriod({ year: currentYear, month: currentMonth });
+    }
+  }, [isFuturePeriod, currentYear, currentMonth]);
   const [selectedProgramFilter, setSelectedProgramFilter] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);

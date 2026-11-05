@@ -6,7 +6,7 @@ export const WORKSPACE_ROUTE_CONFIG = [
   {
     path: "/facilities",
     label: "Facilities",
-    allowedRoles: ["PHARMA_I", "PHARMA_II"],
+    allowedRoles: ["PHARMA_II"],
   },
   {
     path: "/medicines",

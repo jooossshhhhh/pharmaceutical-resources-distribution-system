@@ -49,7 +49,7 @@ const navItems = [
   { label: "Other Programs", path: "/other-programs", roles: ["PHARMA_II"], category: "Operations" },
   { label: "Forecasting", path: "/forecasting", category: "Reports & Analytics" },
   { label: "Reports", path: "/reports", category: "Reports & Analytics" },
-  { label: "Facilities", path: "/facilities", roles: ["PHARMA_I", "PHARMA_II"], category: "Administration" },
+  { label: "Facilities", path: "/facilities", roles: ["PHARMA_II"], category: "Administration" },
   { label: "User Management", path: "/users", roles: ["PHARMA_II"], category: "Administration" },
   { label: "Activity Logs", path: "/activity-logs", category: "System" },
   { label: "Notifications", path: "/notifications", category: "System" },
@@ -187,7 +187,7 @@ export default function AdminSidebar({
 
   return (
     <aside
-      className={`relative z-[60] flex h-full min-h-0 flex-col overflow-hidden border-r border-[#1A4350]/60 bg-gradient-to-b from-[#245866] via-[#1F4E5A] to-[#1A4350] text-[#D5E5E8] transition-all duration-300 ${
+      className={`relative z-[60] flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[#1A4350]/60 bg-gradient-to-b from-[#245866] via-[#1F4E5A] to-[#1A4350] text-[#D5E5E8] transition-all duration-300 ${
         isCollapsed ? "w-14.5" : "w-57"
       }`}
     >

@@ -23,6 +23,15 @@ export async function persistPatientToSqlite(patient) {
     console.warn("Failed to persist patient to SQLite:", err);
   }
 }
+export function dispatchPatientsChanged(detail = null) {
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    try {
+      window.dispatchEvent(new CustomEvent("prds:patients-changed", { detail }));
+    } catch (_err) {
+      // ignore
+    }
+  }
+}
 
 export const hydratePatientRegisteredBy = (patientsList = []) => {
   const users = getSnapshot(STORAGE_KEYS.USERS, []);
@@ -204,6 +213,7 @@ export const createPatient = async (payload) => {
     const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
     saveSnapshot(STORAGE_KEYS.PATIENTS, [newRecord, ...current]);
     await persistPatientToSqlite(newRecord);
+    dispatchPatientsChanged({ action: "create", patient: newRecord });
     return newRecord;
   }
 
@@ -226,6 +236,7 @@ export const createPatient = async (payload) => {
       saveSnapshot(STORAGE_KEYS.PATIENTS, [data, ...current]);
       await persistPatientToSqlite(data);
     }
+    dispatchPatientsChanged({ action: "create", patient: data });
 
     return data;
   } catch (err) {
@@ -253,6 +264,7 @@ export const createPatient = async (payload) => {
       const current = getSnapshot(STORAGE_KEYS.PATIENTS, []);
       saveSnapshot(STORAGE_KEYS.PATIENTS, [newRecord, ...current]);
       await persistPatientToSqlite(newRecord);
+      dispatchPatientsChanged({ action: "create", patient: newRecord });
       return newRecord;
     }
     throw err;
@@ -281,6 +293,7 @@ export const updatePatient = async (patientId, payload) => {
     saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
     const finalRecord = updatedRecord || { id: patientId, ...updateValues };
     await persistPatientToSqlite(finalRecord);
+    dispatchPatientsChanged({ action: "update", patient: finalRecord });
     return finalRecord;
   }
 
@@ -302,6 +315,7 @@ export const updatePatient = async (patientId, payload) => {
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
       await persistPatientToSqlite(data);
     }
+    dispatchPatientsChanged({ action: "update", patient: data });
 
     return data;
   } catch (err) {
@@ -329,6 +343,7 @@ export const updatePatient = async (patientId, payload) => {
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
       const finalRecord = updatedRecord || { id: patientId, ...updateValues };
       await persistPatientToSqlite(finalRecord);
+      dispatchPatientsChanged({ action: "update", patient: finalRecord });
       return finalRecord;
     }
     throw err;
@@ -366,6 +381,7 @@ export const archivePatient = async (patientId, { reason = "" } = {}) => {
     saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
     const finalRecord = updatedRecord || { id: patientId, ...archivePayload };
     await persistPatientToSqlite(finalRecord);
+    dispatchPatientsChanged({ action: "archive", patientId });
     return finalRecord;
   }
 
@@ -387,6 +403,7 @@ export const archivePatient = async (patientId, { reason = "" } = {}) => {
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
       await persistPatientToSqlite(data);
     }
+    dispatchPatientsChanged({ action: "archive", patientId });
 
     return data;
   } catch (err) {
@@ -413,6 +430,7 @@ export const archivePatient = async (patientId, { reason = "" } = {}) => {
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
       const finalRecord = updatedRecord || { id: patientId, ...archivePayload };
       await persistPatientToSqlite(finalRecord);
+      dispatchPatientsChanged({ action: "archive", patientId });
       return finalRecord;
     }
     throw err;
@@ -447,6 +465,7 @@ export const restorePatient = async (patientId) => {
     saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
     const finalRecord = updatedRecord || { id: patientId, ...restorePayload };
     await persistPatientToSqlite(finalRecord);
+    dispatchPatientsChanged({ action: "restore", patientId });
     return finalRecord;
   }
 
@@ -468,6 +487,7 @@ export const restorePatient = async (patientId) => {
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
       await persistPatientToSqlite(data);
     }
+    dispatchPatientsChanged({ action: "restore", patientId });
 
     return data;
   } catch (err) {
@@ -494,6 +514,7 @@ export const restorePatient = async (patientId) => {
       saveSnapshot(STORAGE_KEYS.PATIENTS, updatedList);
       const finalRecord = updatedRecord || { id: patientId, ...restorePayload };
       await persistPatientToSqlite(finalRecord);
+      dispatchPatientsChanged({ action: "restore", patientId });
       return finalRecord;
     }
     throw err;

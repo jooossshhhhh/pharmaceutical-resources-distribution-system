@@ -204,6 +204,17 @@ export default function KeepAliveWorkspaceLayout() {
   }
 
 
+// When window or tab regains visibility/focus, refresh layouts and responsive elements
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        window.dispatchEvent(new Event("resize"));
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   // Notify charts, maps, and responsive layouts to refresh dimensions when switching views
   useEffect(() => {
     const timer = setTimeout(() => {

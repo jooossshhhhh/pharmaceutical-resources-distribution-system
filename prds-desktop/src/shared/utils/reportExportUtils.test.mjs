@@ -157,9 +157,9 @@ test("buildMonthlyInventoryWorkbook creates valid physical count inventory form"
   assert.equal(sheet["J6"]?.v, 35); // Unit cost
   assert.equal(sheet["K6"]?.f, "I6*J6"); // Formula
   assert.equal(sheet["K6"]?.v, 1820);
-  assert.equal(sheet["O6"]?.f, "I6+L6"); // Gross Available
+  assert.equal(sheet["O6"]?.f, "I6"); // Summation (Beginning + Delivery in month)
   assert.equal(sheet["O6"]?.v, 52);
-  assert.equal(sheet["AB6"]?.f, "O6-(R6+U6+Y6)"); // Remaining Ending Balance formula
+  assert.equal(sheet["AB6"]?.f, "O6+L6-(R6+U6+Y6)"); // Remaining Ending Balance formula
   assert.equal(sheet["AB6"]?.v, 52);
   assert.equal(sheet["AC6"]?.f, "P6");
   assert.equal(sheet["AD6"]?.f, "AB6*AC6");
@@ -965,10 +965,10 @@ test("processMonthlyInventoryData records confirmed stock returns in additional 
   assert.equal(ascorbic.beginningQty, 190, "Beginning balance must properly account for the 20 returned units");
   assert.equal(ascorbic.begTotal, 190 * 45);
 
-  // Gross Summation (Columns O, P, Q):
-  // Gross Qty = Beginning (190) + Additional (20) = 210
-  assert.equal(ascorbic.grossQty, 210);
-  assert.equal(ascorbic.grossTotal, 210 * 45);
+  // Summation (Beginning Balance + Delivery) (Columns O, P, Q):
+  // Summation Qty = Beginning (190) + Procurement Delivery (0) = 190
+  assert.equal(ascorbic.grossQty, 190);
+  assert.equal(ascorbic.grossTotal, 190 * 45);
 
   // Less Issuances (Columns R, S, T):
   assert.equal(ascorbic.issuedQty, 70);
@@ -979,11 +979,11 @@ test("processMonthlyInventoryData records confirmed stock returns in additional 
   assert.equal(ascorbic.remainingTotal, 140 * 45);
 
   // Mathematical conservation of inventory check:
-  // Remaining = Gross - Issued = 210 - 70 = 140
-  assert.equal(ascorbic.grossQty - ascorbic.issuedQty, ascorbic.remainingQty);
+  // Remaining = Summation + Returns - Issued = 190 + 20 - 70 = 140
+  assert.equal(ascorbic.grossQty + ascorbic.additionalQty - ascorbic.issuedQty, ascorbic.remainingQty);
   assert.equal(totals.totalBegVal, 190 * 45);
   assert.equal(totals.totalAddVal, 20 * 45);
-  assert.equal(totals.totalGrossVal, 210 * 45);
+  assert.equal(totals.totalGrossVal, 190 * 45);
   assert.equal(totals.totalIssuedVal, 70 * 45);
   assert.equal(totals.totalRemVal, 140 * 45);
 });
@@ -1040,11 +1040,12 @@ test("processMonthlyInventoryData appends synthetic inventory row when a confirm
   assert.equal(vitB.itemDescription, "Vitamin B Complex 100 mg");
   assert.equal(vitB.beginningQty, 0);
   assert.equal(vitB.additionalQty, 30);
-  assert.equal(vitB.grossQty, 30);
+  assert.equal(vitB.procurementDeliveryQty, 0);
+  assert.equal(vitB.grossQty, 0);
   assert.equal(vitB.remainingQty, 30);
   assert.equal(vitB.unitCost, 15);
   assert.equal(vitB.addTotal, 30 * 15);
-  assert.equal(vitB.grossTotal, 30 * 15);
+  assert.equal(vitB.grossTotal, 0);
   assert.equal(vitB.remainingTotal, 30 * 15);
 });
 
@@ -1158,19 +1159,17 @@ test("processMonthlyInventoryData enforces strict month-to-month continuity wher
   const novEndQty = novResult.totals.totalRemQty;
   const novEndVal = novResult.totals.totalRemVal;
 
-  // December Beginning Quantity and Value
-  const decBegQty = decResult.totals.totalBegQty;
-  const decBegVal = decResult.totals.totalBegVal;
+  // Future Month Assertion: December is a future unopened month, so beginning and remaining balances must be 0
+  assert.equal(decResult.totals.totalBegQty, 0, "Future month beginning balance must be 0");
+  assert.equal(decResult.totals.totalBegVal, 0, "Future month beginning valuation must be 0");
+  assert.equal(decResult.totals.totalRemQty, 0, "Future month remaining balance must be 0");
+  assert.equal(decResult.totals.totalRemVal, 0, "Future month remaining valuation must be 0");
 
-  // Continuity Assertion 2: November Ending MUST EQUAL December Beginning
-  assert.equal(novEndQty, decBegQty, "November ending quantity must equal December beginning quantity");
-  assert.equal(novEndVal, decBegVal, "November ending valuation must equal December beginning valuation");
-
-  // Conservation Assertion: Ending = Beginning + Additions - Issuances
-  const octCalcEnd = octResult.totals.totalBegVal + octResult.totals.totalAddVal - (octResult.totals.totalIssuedVal + octResult.totals.totalProgVal + octResult.totals.totalExpiredVal);
+  // Conservation Assertion: Ending = Summation + Returns - (Issuances + Programs + Expired)
+  const octCalcEnd = octResult.totals.totalGrossVal + octResult.totals.totalAddVal - (octResult.totals.totalIssuedVal + octResult.totals.totalProgVal + octResult.totals.totalExpiredVal);
   assert.ok(Math.abs(octCalcEnd - octResult.totals.totalRemVal) < 0.01, "October balance equation must balance");
 
-  const novCalcEnd = novResult.totals.totalBegVal + novResult.totals.totalAddVal - (novResult.totals.totalIssuedVal + novResult.totals.totalProgVal + novResult.totals.totalExpiredVal);
+  const novCalcEnd = novResult.totals.totalGrossVal + novResult.totals.totalAddVal - (novResult.totals.totalIssuedVal + novResult.totals.totalProgVal + novResult.totals.totalExpiredVal);
   assert.ok(Math.abs(novCalcEnd - novResult.totals.totalRemVal) < 0.01, "November balance equation must balance");
 
   // Batch-level isolation: November batch must have 0 beginning, additions, and remaining in October
